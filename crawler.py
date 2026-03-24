@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 LIBRARIES_CSV = "librariesJAVA.csv"
 RAW_DIR = Path("raw") # <- output folder
 CRAWL_LOG = "crawl_log.csv" # <- log file
-DELAY = 0.1         # seconds between requests
+DELAY = 0.15         # seconds between requests
 REQUEST_TIMEOUT = 15  # seconds
 
 # Body classes that indicate a meaningful content page worth saving
