@@ -1,6 +1,7 @@
 import csv
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -12,7 +13,8 @@ from bs4 import BeautifulSoup
 # ---------------------------------------------------------------------------
 LIBRARIES_CSV = "librariesJAVA.csv"
 RAW_DIR = Path("raw") # <- output folder
-CRAWL_LOG = "crawl_log.csv" # <- log file
+LOG_DIR = Path("logs")
+CRAWL_LOG = LOG_DIR / "crawl_log.csv" # <- log file
 DELAY = 0.15         # seconds between requests
 REQUEST_TIMEOUT = 15  # seconds
 
@@ -123,11 +125,11 @@ def crawl_library(library: dict, log_writer) -> None:
             status = resp.status_code
         except requests.RequestException as exc:
             log.warning("FAIL  %s  %s", url, exc)
-            log_writer.writerow([name, url, "ERROR", str(exc), ""])
+            log_writer.writerow([datetime.now().isoformat(), name, url, "ERROR", str(exc), ""])
             time.sleep(DELAY)
             continue
 
-        log_writer.writerow([name, url, status, "", ""])
+        log_writer.writerow([datetime.now().isoformat(), name, url, status, "", ""])
 
         if status != 200:
             log.warning("HTTP %s  %s", status, url)
@@ -167,11 +169,12 @@ def crawl_library(library: dict, log_writer) -> None:
 
 def main():
     RAW_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(exist_ok=True)
     libraries = load_libraries(LIBRARIES_CSV)
 
     with open(CRAWL_LOG, "w", newline="", encoding="utf-8") as log_file:
         writer = csv.writer(log_file)
-        writer.writerow(["library", "url", "status", "error", "notes"])
+        writer.writerow(["timestamp", "library", "url", "status", "error", "notes"])
 
         for library in libraries:
             if library.get("ecosystem", "").strip().lower() == "java":
