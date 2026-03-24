@@ -1,0 +1,4 @@
+/venv/
+/raw/
+crawl_log.csv
+.DS_Store
