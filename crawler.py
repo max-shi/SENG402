@@ -110,6 +110,13 @@ def crawl_library(library: dict, log_writer) -> None:
             continue
         visited.add(url)
 
+        # ---- skip if already saved ----------------------------------------
+        parsed_check = urlparse(url)
+        dest_check = RAW_DIR / name / parsed_check.path.lstrip("/")
+        if dest_check.is_file():
+            log.info("  SKIP (exists)  %s", dest_check)
+            continue
+
         # ---- fetch --------------------------------------------------------
         try:
             resp = session.get(url, timeout=REQUEST_TIMEOUT)
