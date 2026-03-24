@@ -1,5 +1,5 @@
 /venv/
 /raw/
-crawl_log.csv
+/logs/
 /corpus/
 .DS_Store

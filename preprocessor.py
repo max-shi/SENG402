@@ -12,6 +12,7 @@ Usage:
 import csv
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -29,6 +30,8 @@ LIBRARIES_CSV = "librariesJAVA.csv"
 RAW_DIR = Path("raw")
 CORPUS_DIR = Path("corpus")
 CORPUS_CSV = CORPUS_DIR / "corpus.csv"
+LOG_DIR = Path("logs")
+PREPROCESS_LOG = LOG_DIR / "preprocess_log.csv"
 
 CORPUS_COLUMNS = [
     "library",
@@ -42,7 +45,6 @@ CORPUS_COLUMNS = [
     "element_id",
     "text",
 ]
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -120,7 +122,7 @@ def strip_page(soup: BeautifulSoup) -> None:
 # Stage 2 — Version Detection
 # ---------------------------------------------------------------------------
 
-def detect_version(soup: BeautifulSoup, csv_version: str) -> str:
+def detect_version(soup: BeautifulSoup, csv_version: str, filepath: str = "") -> str:
     """
     Auto-detect modern vs legacy Javadoc from the parsed (stripped) tree.
     Warns and overrides if the CSV disagrees.
@@ -140,12 +142,13 @@ def detect_version(soup: BeautifulSoup, csv_version: str) -> str:
         detected = "legacy"
     else:
         detected = "modern"  # default
-        log.warning("Could not detect Javadoc version; defaulting to modern")
+        log.warning("Could not detect Javadoc version; defaulting to modern: %s", filepath)
 
     csv_version_clean = csv_version.strip().lower() if csv_version else ""
     if csv_version_clean and csv_version_clean != detected:
         log.warning(
-            "Version mismatch: CSV says '%s', auto-detected '%s' — using '%s'",
+            "Version mismatch for %s: CSV says '%s', auto-detected '%s' — using '%s'",
+            filepath,
             csv_version_clean,
             detected,
             detected,
@@ -306,7 +309,8 @@ def process_file(
 
     # Stage 2 — Detect version
     csv_version = library.get("javadoc_version", "").strip().lower()
-    version = detect_version(soup, csv_version)
+    source_file = str(html_path.relative_to(raw_root))
+    version = detect_version(soup, csv_version, filepath=source_file)
 
     # Stage 3 — Extract
     if version == "legacy":
@@ -315,7 +319,7 @@ def process_file(
         raw_rows = extract_modern(soup)
 
     class_name = class_name_from_title(soup)
-    source_file = str(html_path.relative_to(raw_root))
+    log.debug("  %s  version=%s  class=%s", source_file, version, class_name)
 
     # Stage 4 & 5 — Clean and filter
     result: list[dict] = []
@@ -342,12 +346,22 @@ def process_file(
 def main() -> None:
     libraries = load_libraries(LIBRARIES_CSV)
     CORPUS_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(exist_ok=True)
 
     total_rows = 0
 
-    with open(CORPUS_CSV, "w", newline="", encoding="utf-8") as out_f:
+    with (
+        open(CORPUS_CSV, "w", newline="", encoding="utf-8") as out_f,
+        open(PREPROCESS_LOG, "w", newline="", encoding="utf-8") as log_f,
+    ):
         writer = csv.DictWriter(out_f, fieldnames=CORPUS_COLUMNS)
         writer.writeheader()
+
+        log_writer = csv.writer(log_f)
+        log_writer.writerow([
+            "timestamp", "library", "source_file", "javadoc_version", "class_name",
+            "chunks_extracted", "status", "error",
+        ])
 
         for library in libraries:
             ecosystem = library.get("ecosystem", "").strip().lower()
@@ -359,6 +373,7 @@ def main() -> None:
 
             if not lib_dir.is_dir():
                 log.warning("No raw directory for library '%s' — skipping", name)
+                log_writer.writerow([datetime.now().isoformat(), name, "", "", "", 0, "SKIP", "no raw directory"])
                 continue
 
             html_files = sorted(lib_dir.rglob("*.html"))
@@ -369,8 +384,21 @@ def main() -> None:
             lib_rows = 0
             for html_path in html_files:
                 rows = process_file(html_path, library, RAW_DIR)
-                if not rows:
+                source_file = str(html_path.relative_to(RAW_DIR))
+
+                if rows:
+                    version = rows[0]["javadoc_version"]
+                    class_name = rows[0]["class_name"]
+                    log_writer.writerow([
+                        datetime.now().isoformat(), name, source_file, version, class_name,
+                        len(rows), "OK", "",
+                    ])
+                else:
                     log.warning("Zero rows extracted from %s", html_path)
+                    log_writer.writerow([
+                        datetime.now().isoformat(), name, source_file, "", "", 0, "EMPTY", "zero rows extracted",
+                    ])
+
                 for row in rows:
                     writer.writerow(row)
                     lib_rows += 1
@@ -379,6 +407,7 @@ def main() -> None:
                 "Finished library '%s': %d text chunks extracted", name, lib_rows
             )
             total_rows += lib_rows
+            log_f.flush()
 
     log.info("Corpus complete: %d total rows written to %s", total_rows, CORPUS_CSV)
 
