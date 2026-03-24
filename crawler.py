@@ -177,11 +177,6 @@ def main():
             if library.get("ecosystem", "").strip().lower() == "java":
                 crawl_library(library, writer)
                 log_file.flush()  # write progress after each library
-                log.info("TEST: Stopping after first library")
-                log.warning("TEST: Stopping after first library")
-                log.debug("TEST: Stopping after first library")
-                break  # TEST: only crawl first library
-
 
 if __name__ == "__main__":
     main()
