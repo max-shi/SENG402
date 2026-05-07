@@ -44,6 +44,7 @@ CORPUS_COLUMNS = [
     "section_type",
     "element_id",
     "text",
+    "text_html",
 ]
 logging.basicConfig(
     level=logging.INFO,
@@ -112,10 +113,9 @@ def strip_page(soup: BeautifulSoup) -> None:
     for el in soup.find_all("dt"):
         el.decompose()
 
-    # Replace <pre> and <code> with a single space (preserve surrounding text)
-    for tag_name in ("pre", "code"):
-        for el in soup.find_all(tag_name):
-            el.replace_with(" ")
+    # Replace <pre> blocks with a single space (preserve surrounding text)
+    for el in soup.find_all("pre"):
+        el.replace_with(" ")
 
 
 # ---------------------------------------------------------------------------
@@ -130,6 +130,7 @@ def detect_version(soup: BeautifulSoup, csv_version: str, filepath: str = "") ->
     is_modern = (
         soup.select_one("section.detail") is not None
         or soup.select_one("section#class-description") is not None
+        or soup.select_one("section#package-description") is not None
     )
     is_legacy = (
         soup.select_one("div.description") is not None
@@ -173,6 +174,7 @@ def extract_modern(soup: BeautifulSoup) -> list[dict]:
                 "section_type": "class_description",
                 "element_id": "",
                 "text": block.get_text(" ", strip=True),
+                "text_html": block.decode_contents(),
             })
 
     # Package description
@@ -183,6 +185,7 @@ def extract_modern(soup: BeautifulSoup) -> list[dict]:
                 "section_type": "package_description",
                 "element_id": "",
                 "text": block.get_text(" ", strip=True),
+                "text_html": block.decode_contents(),
             })
 
     # Member details
@@ -194,6 +197,7 @@ def extract_modern(soup: BeautifulSoup) -> list[dict]:
                 "section_type": "member_description",
                 "element_id": element_id,
                 "text": block.get_text(" ", strip=True),
+                "text_html": block.decode_contents(),
             })
 
         for notes_dl in detail.select("dl.notes"):
@@ -202,6 +206,7 @@ def extract_modern(soup: BeautifulSoup) -> list[dict]:
                     "section_type": "param_return_throws",
                     "element_id": element_id,
                     "text": dd.get_text(" ", strip=True),
+                    "text_html": dd.decode_contents(),
                 })
 
     return rows
@@ -224,6 +229,7 @@ def extract_legacy(soup: BeautifulSoup) -> list[dict]:
                 "section_type": "class_description",
                 "element_id": "",
                 "text": first_block.get_text(" ", strip=True),
+                "text_html": first_block.decode_contents(),
             })
 
     # Member details
@@ -242,6 +248,7 @@ def extract_legacy(soup: BeautifulSoup) -> list[dict]:
                     "section_type": "member_description",
                     "element_id": element_id,
                     "text": block.get_text(" ", strip=True),
+                    "text_html": block.decode_contents(),
                 })
 
             for dl in member.find_all("dl"):
@@ -250,9 +257,52 @@ def extract_legacy(soup: BeautifulSoup) -> list[dict]:
                         "section_type": "param_return_throws",
                         "element_id": element_id,
                         "text": dd.get_text(" ", strip=True),
+                        "text_html": dd.decode_contents(),
                     })
 
     return rows
+
+
+# ---------------------------------------------------------------------------
+# HTML Preview (for preprocess_log)
+# ---------------------------------------------------------------------------
+
+# Tags to keep as-is in the HTML preview
+_KEEP_TAGS = {
+    "p", "br", "ul", "ol", "li", "dl", "dd", "dt",
+    "b", "strong", "em", "i", "a", "span", "div",
+}
+
+def extract_html_preview(soup: BeautifulSoup) -> str:
+    """
+    Serialise the stripped soup back to HTML, keeping only basic inline/block
+    tags (<p>, <br>, <ul>, <ol>, <li>, <dl>, <dd>, <b>, <strong>, <em>, <a>,
+    etc.) and discarding everything else while preserving their text content.
+    """
+    from bs4 import NavigableString, Tag as _Tag
+
+    def _render(node) -> str:
+        if isinstance(node, NavigableString):
+            return str(node)
+        if not isinstance(node, _Tag):
+            return ""
+        inner = "".join(_render(child) for child in node.children)
+        tag = node.name.lower() if node.name else ""
+        if tag in _KEEP_TAGS:
+            attrs = ""
+            if tag == "a" and node.get("href"):
+                href = node["href"]
+                attrs = f' href="{href}"'
+            return f"<{tag}{attrs}>{inner}</{tag}>"
+        return inner
+
+    parts = []
+    for child in soup.body.children if soup.body else soup.children:
+        parts.append(_render(child))
+    html = "".join(parts)
+    # Collapse excessive blank lines
+    html = re.sub(r"(\s*\n){3,}", "\n\n", html)
+    return html.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -294,13 +344,13 @@ def process_file(
     html_path: Path,
     library: dict,
     raw_root: Path,
-) -> list[dict]:
+) -> tuple[list[dict], str]:
     """Process a single HTML file and return corpus rows."""
     try:
         html = html_path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         log.error("Cannot read %s: %s", html_path, exc)
-        return []
+        return [], ""
 
     soup = BeautifulSoup(html, BS_PARSER)
 
@@ -321,6 +371,9 @@ def process_file(
     class_name = class_name_from_title(soup)
     log.debug("  %s  version=%s  class=%s", source_file, version, class_name)
 
+    # HTML preview (before text stripping)
+    html_preview = extract_html_preview(soup)
+
     # Stage 4 & 5 — Clean and filter
     result: list[dict] = []
     for row in raw_rows:
@@ -338,9 +391,10 @@ def process_file(
             "section_type": row["section_type"],
             "element_id": row["element_id"],
             "text": cleaned,
+            "text_html": re.sub(r"\s+", " ", row.get("text_html", "")).strip(),
         })
 
-    return result
+    return result, html_preview
 
 
 def main() -> None:
@@ -360,7 +414,7 @@ def main() -> None:
         log_writer = csv.writer(log_f)
         log_writer.writerow([
             "timestamp", "library", "source_file", "javadoc_version", "class_name",
-            "chunks_extracted", "status", "error",
+            "chunks_extracted", "status", "error", "html_preview",
         ])
 
         for library in libraries:
@@ -373,7 +427,7 @@ def main() -> None:
 
             if not lib_dir.is_dir():
                 log.warning("No raw directory for library '%s' — skipping", name)
-                log_writer.writerow([datetime.now().isoformat(), name, "", "", "", 0, "SKIP", "no raw directory"])
+                log_writer.writerow([datetime.now().isoformat(), name, "", "", "", 0, "SKIP", "no raw directory", ""])
                 continue
 
             html_files = sorted(lib_dir.rglob("*.html"))
@@ -383,7 +437,7 @@ def main() -> None:
 
             lib_rows = 0
             for html_path in html_files:
-                rows = process_file(html_path, library, RAW_DIR)
+                rows, html_preview = process_file(html_path, library, RAW_DIR)
                 source_file = str(html_path.relative_to(RAW_DIR))
 
                 if rows:
@@ -391,12 +445,12 @@ def main() -> None:
                     class_name = rows[0]["class_name"]
                     log_writer.writerow([
                         datetime.now().isoformat(), name, source_file, version, class_name,
-                        len(rows), "OK", "",
+                        len(rows), "OK", "", html_preview,
                     ])
                 else:
                     log.warning("Zero rows extracted from %s", html_path)
                     log_writer.writerow([
-                        datetime.now().isoformat(), name, source_file, "", "", 0, "EMPTY", "zero rows extracted",
+                        datetime.now().isoformat(), name, source_file, "", "", 0, "EMPTY", "zero rows extracted", html_preview,
                     ])
 
                 for row in rows:

@@ -176,10 +176,10 @@ def main():
         writer = csv.writer(log_file)
         writer.writerow(["timestamp", "library", "url", "status", "error", "notes"])
 
-        for library in libraries:
-            if library.get("ecosystem", "").strip().lower() == "java":
-                crawl_library(library, writer)
-                log_file.flush()  # write progress after each library
+        java_libs = [l for l in libraries if l.get("ecosystem", "").strip().lower() == "java"]
+        for library in java_libs[:3]:
+            crawl_library(library, writer)
+            log_file.flush()  # write progress after each library
 
 if __name__ == "__main__":
     main()
