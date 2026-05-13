@@ -41,6 +41,14 @@ _INLINE_SPHINX_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Inline markup that produces noise for LIWC
+# :class:`Foo`, :meth:`bar`, :func:`baz`, :attr:`x`, :exc:`E`, :data:`d`, etc.
+_RST_ROLE_RE = re.compile(r":[a-zA-Z]+:`[^`]*`")
+# Plain backtick spans: `foo` or ``foo``
+_BACKTICK_RE = re.compile(r"``?[^`]+``?")
+# Angle-bracket URLs: <https://...>
+_ANGLE_URL_RE = re.compile(r"<https?://[^>]*>")
+
 
 def _strip_noise(lines: list[str]) -> list[str]:
     result = []
@@ -100,6 +108,9 @@ def _clean_docstring(raw: str) -> str:
     dedented = [_INLINE_SPHINX_RE.sub("", l) for l in dedented]
 
     text = "\n".join(dedented)
+    text = _RST_ROLE_RE.sub("", text)
+    text = _BACKTICK_RE.sub("", text)
+    text = _ANGLE_URL_RE.sub("", text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = text.strip()

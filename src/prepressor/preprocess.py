@@ -28,6 +28,7 @@ import csv
 import importlib
 import logging
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType
@@ -122,6 +123,20 @@ def word_count(text: str) -> int:
     return len(text.split())
 
 
+def sanitize_for_csv(text: str) -> str:
+    """Strip characters that the utf-8 CSV writer cannot encode.
+
+    Some Java source files contain lone UTF-16 surrogate codepoints
+    (``\\uD800``-``\\uDFFF``), often inside string literals used for
+    encoding tests. They survive ``read_text(errors="replace")`` but the
+    standard ``utf-8`` encoder refuses them with
+    ``"surrogates not allowed"``. Replace any such char with U+FFFD.
+    """
+    if not text:
+        return text
+    return text.encode("utf-8", "replace").decode("utf-8").replace("\x00", "")
+
+
 # ---------------------------------------------------------------------------
 # Driver
 # ---------------------------------------------------------------------------
@@ -155,121 +170,189 @@ def run_language(extractor: ModuleType, min_words: int,
     chunks_csv = eco_dir / f"{ecosystem}_chunks.csv"
     library_csv = eco_dir / f"{ecosystem}_libraries.csv"
     log_csv = eco_dir / f"preprocess_{ecosystem}.csv"
+    errors_log = eco_dir / "extract_errors.log"
+
+    # Capture all WARNING+ messages from the extractor (parse errors,
+    # surrogate sanitisations, missing source dirs, etc.) into a per-language
+    # log file alongside the CSV outputs. Attached to the root logger so it
+    # picks up messages from both this module and the extractor module.
+    file_handler = logging.FileHandler(errors_log, mode="w", encoding="utf-8")
+    file_handler.setLevel(logging.WARNING)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    logging.getLogger().addHandler(file_handler)
 
     total_chunks_kept = 0
 
-    with (
-        open(chunks_csv, "w", newline="", encoding="utf-8") as chunks_f,
-        open(library_csv, "w", newline="", encoding="utf-8") as lib_f,
-        open(log_csv, "w", newline="", encoding="utf-8") as log_f,
-    ):
-        chunk_writer = csv.DictWriter(chunks_f, fieldnames=CHUNK_COLUMNS)
-        chunk_writer.writeheader()
+    try:
+        with (
+            open(chunks_csv, "w", newline="", encoding="utf-8") as chunks_f,
+            open(library_csv, "w", newline="", encoding="utf-8") as lib_f,
+            open(log_csv, "w", newline="", encoding="utf-8") as log_f,
+        ):
+            chunk_writer = csv.DictWriter(chunks_f, fieldnames=CHUNK_COLUMNS)
+            chunk_writer.writeheader()
 
-        lib_writer = csv.DictWriter(lib_f, fieldnames=LIBRARY_COLUMNS)
-        lib_writer.writeheader()
+            lib_writer = csv.DictWriter(lib_f, fieldnames=LIBRARY_COLUMNS)
+            lib_writer.writeheader()
 
-        log_writer = csv.DictWriter(log_f, fieldnames=LOG_COLUMNS)
-        log_writer.writeheader()
+            log_writer = csv.DictWriter(log_f, fieldnames=LOG_COLUMNS)
+            log_writer.writeheader()
 
-        for library_meta in libraries:
-            name = library_meta["name"].strip()
-            files = list(extractor.discover_files(library_meta))
+            for library_meta in libraries:
+                name = library_meta["name"].strip()
+                files = list(extractor.discover_files(library_meta))
 
-            if not files:
-                log.warning("[%s] no source files for library '%s' — skipping",
-                            ecosystem, name)
-                log_writer.writerow({
-                    "timestamp": datetime.now().isoformat(),
-                    "library": name, "source_file": "",
-                    "chunks_extracted": 0, "chunks_kept": 0,
-                    "status": "SKIP", "error": "no source files",
-                })
-                continue
-
-            log.info("[%s] '%s': %d source files", ecosystem, name, len(files))
-
-            # Per-library buffers
-            lib_concat_parts: list[str] = []
-            lib_chunk_count = 0
-            lib_word_count = 0
-
-            for file_path in files:
-                # rel path: handled by extractors internally for the log;
-                # use file_path.name fallback if not under RAW_DIR (shouldn't happen).
-                try:
-                    rel = str(file_path.relative_to(extractor.RAW_DIR))
-                except ValueError:
-                    rel = str(file_path)
-
-                try:
-                    raw_chunks = extractor.extract_chunks(file_path, library_meta)
-                except Exception as exc:  # noqa: BLE001 — keep pipeline going
-                    log.exception("[%s] error extracting %s", ecosystem, rel)
+                if not files:
+                    log.warning("[%s] no source files for library '%s' — skipping",
+                                ecosystem, name)
                     log_writer.writerow({
                         "timestamp": datetime.now().isoformat(),
-                        "library": name, "source_file": rel,
+                        "library": name, "source_file": "",
                         "chunks_extracted": 0, "chunks_kept": 0,
-                        "status": "ERROR", "error": str(exc),
+                        "status": "SKIP", "error": "no source files",
                     })
                     continue
 
-                kept = 0
-                for ch in raw_chunks:
-                    cleaned = clean_text(ch.get("text", ""))
-                    n = word_count(cleaned)
-                    if n < min_words:
+                log.info("[%s] '%s': %d source files", ecosystem, name, len(files))
+
+                # Per-library buffers
+                lib_concat_parts: list[str] = []
+                lib_chunk_count = 0
+                lib_word_count = 0
+
+                for file_path in files:
+                    # rel path: handled by extractors internally for the log;
+                    # use file_path.name fallback if not under RAW_DIR (shouldn't happen).
+                    try:
+                        rel = str(file_path.relative_to(extractor.RAW_DIR))
+                    except ValueError:
+                        rel = str(file_path)
+
+                    try:
+                        raw_chunks = extractor.extract_chunks(file_path, library_meta)
+                    except Exception as exc:  # noqa: BLE001 — keep pipeline going
+                        log.exception("[%s] error extracting %s", ecosystem, rel)
+                        log_writer.writerow({
+                            "timestamp": datetime.now().isoformat(),
+                            "library": name, "source_file": rel,
+                            "chunks_extracted": 0, "chunks_kept": 0,
+                            "status": "ERROR", "error": str(exc),
+                        })
                         continue
 
-                    extra = ch.get("extra", {}) or {}
-                    row = {
-                        "library": name,
-                        "ecosystem": ecosystem,
-                        "domain": library_meta.get("domain", "").strip(),
-                        "organisation": library_meta.get("organisation", "").strip(),
-                        "javadoc_version": extra.get("javadoc_version", "n/a"),
-                        "source_file": rel,
-                        "class_name": ch.get("class_name", ""),
-                        "section_type": ch.get("section_type", ""),
-                        "element_id": ch.get("element_id", ""),
-                        "n_words": n,
-                        "text": cleaned,
-                        "text_html": ch.get("text_html", ""),
-                    }
-                    chunk_writer.writerow(row)
-                    kept += 1
+                    kept = 0
+                    for ch in raw_chunks:
+                        cleaned = sanitize_for_csv(clean_text(ch.get("text", "")))
+                        n = word_count(cleaned)
+                        if n < min_words:
+                            continue
 
-                    lib_concat_parts.append(ensure_terminator(cleaned))
-                    lib_word_count += n
+                        extra = ch.get("extra", {}) or {}
+                        row = {
+                            "library": name,
+                            "ecosystem": ecosystem,
+                            "domain": library_meta.get("domain", "").strip(),
+                            "organisation": library_meta.get("organisation", "").strip(),
+                            "javadoc_version": extra.get("javadoc_version", "n/a"),
+                            "source_file": rel,
+                            "class_name": ch.get("class_name", ""),
+                            "section_type": ch.get("section_type", ""),
+                            "element_id": ch.get("element_id", ""),
+                            "n_words": n,
+                            "text": cleaned,
+                            "text_html": sanitize_for_csv(ch.get("text_html", "")),
+                        }
+                        chunk_writer.writerow(row)
+                        kept += 1
 
-                lib_chunk_count += kept
+                        lib_concat_parts.append(ensure_terminator(cleaned))
+                        lib_word_count += n
 
-                status = "OK" if kept else "EMPTY"
-                log_writer.writerow({
-                    "timestamp": datetime.now().isoformat(),
-                    "library": name, "source_file": rel,
-                    "chunks_extracted": len(raw_chunks),
-                    "chunks_kept": kept,
-                    "status": status, "error": "",
+                    lib_chunk_count += kept
+
+                    status = "OK" if kept else "EMPTY"
+                    log_writer.writerow({
+                        "timestamp": datetime.now().isoformat(),
+                        "library": name, "source_file": rel,
+                        "chunks_extracted": len(raw_chunks),
+                        "chunks_kept": kept,
+                        "status": status, "error": "",
+                    })
+
+                # Write the per-library concatenated row
+                lib_writer.writerow({
+                    "library": name,
+                    "ecosystem": ecosystem,
+                    "domain": library_meta.get("domain", "").strip(),
+                    "organisation": library_meta.get("organisation", "").strip(),
+                    "n_chunks": lib_chunk_count,
+                    "n_words": lib_word_count,
+                    "text": sanitize_for_csv(JOIN_SEP.join(lib_concat_parts)),
                 })
-
-            # Write the per-library concatenated row
-            lib_writer.writerow({
-                "library": name,
-                "ecosystem": ecosystem,
-                "domain": library_meta.get("domain", "").strip(),
-                "organisation": library_meta.get("organisation", "").strip(),
-                "n_chunks": lib_chunk_count,
-                "n_words": lib_word_count,
-                "text": JOIN_SEP.join(lib_concat_parts),
-            })
-            total_chunks_kept += lib_chunk_count
-            log.info("[%s] '%s' done: %d chunks kept, %d words concatenated",
-                     ecosystem, name, lib_chunk_count, lib_word_count)
-            log_f.flush()
+                total_chunks_kept += lib_chunk_count
+                log.info("[%s] '%s' done: %d chunks kept, %d words concatenated",
+                         ecosystem, name, lib_chunk_count, lib_word_count)
+                log_f.flush()
+    finally:
+        logging.getLogger().removeHandler(file_handler)
+        file_handler.close()
 
     log.info("[%s] complete: %d chunks \u2192 %s", ecosystem, total_chunks_kept, chunks_csv)
     log.info("[%s] per-library corpus \u2192 %s", ecosystem, library_csv)
+    log.info("[%s] warnings/errors \u2192 %s", ecosystem, errors_log)
+
+
+# ---------------------------------------------------------------------------
+# Consolidated output
+# ---------------------------------------------------------------------------
+
+def _write_consolidated_libraries(run_dir: Path, langs: list[str]) -> None:
+    """Merge per-language *_libraries.csv files into a single libraries.csv."""
+    csv.field_size_limit(sys.maxsize)
+
+    consolidated = run_dir / "libraries.csv"
+    rows: list[dict] = []
+    for lang in langs:
+        lib_csv = run_dir / lang / f"{lang}_libraries.csv"
+        if not lib_csv.exists():
+            log.warning("Consolidated libraries: %s not found, skipping", lib_csv)
+            continue
+        with open(lib_csv, newline="", encoding="utf-8") as f:
+            rows.extend(csv.DictReader(line.replace("\x00", "") for line in f))
+
+    if not rows:
+        log.warning("Consolidated libraries: no data to write")
+        return
+
+    # Build ecosystem-level aggregate rows
+    eco_buckets: dict[str, list[dict]] = {}
+    for r in rows:
+        eco_buckets.setdefault(r["ecosystem"], []).append(r)
+
+    aggregate_rows: list[dict] = []
+    for eco, eco_rows in eco_buckets.items():
+        aggregate_rows.append({
+            "library": f"_ALL_{eco.upper()}",
+            "ecosystem": eco,
+            "domain": "ALL",
+            "organisation": "ALL",
+            "n_chunks": sum(int(r.get("n_chunks") or 0) for r in eco_rows),
+            "n_words": sum(int(r.get("n_words") or 0) for r in eco_rows),
+            "text": sanitize_for_csv(JOIN_SEP.join(
+                r["text"] for r in eco_rows if r.get("text")
+            )),
+        })
+
+    with open(consolidated, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=LIBRARY_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+        writer.writerows(aggregate_rows)
+
+    log.info("Consolidated libraries (%d entries + %d aggregate rows) → %s",
+             len(rows), len(aggregate_rows), consolidated)
 
 
 # ---------------------------------------------------------------------------
@@ -311,6 +394,8 @@ def main() -> None:
         extractor = importlib.import_module(EXTRACTORS[lang])
         run_language(extractor, min_words=args.min_words,
                      run_dir=run_dir, library_range=library_range)
+
+    _write_consolidated_libraries(run_dir, targets)
 
 
 if __name__ == "__main__":

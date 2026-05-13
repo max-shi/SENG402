@@ -1,14 +1,20 @@
 """
-cloner — Python Library Source Acquirer
+cloner — Library Source Acquirer (Python & Java)
 
-Clones Python library repositories at a specified git tag into
-files/raw/raw_python/<library_name>/, mirroring the role that crawler.py
-plays for Java Javadoc HTML.
+Clones each library's source repository at a pinned git tag into
+``files/raw/raw_<lang>/<library_name>/``. Replaces both the old Python-only
+cloner and the Java Javadoc HTML crawler — the new pipeline extracts prose
+directly from source for both languages.
 
 Usage:
-    python cloner.py                    # clone all libraries
-    python cloner.py --libraries 1      # first library only
-    python cloner.py --libraries 3-10   # libraries 3 through 10 (1-indexed)
+    python cloner.py                          # clone all libraries, both langs
+    python cloner.py --lang python            # python only
+    python cloner.py --lang java              # java only
+    python cloner.py --lang java --libraries 1
+    python cloner.py --lang python --libraries 3-10
+
+Both CSVs must share the columns:
+    name, ecosystem, repo_url, git_tag, source_subdir, ...
 
 Press Space at any time to pause/resume between libraries.
 Already-cloned repos are updated to the correct tag on re-run.
@@ -28,10 +34,21 @@ from pause_helper import PauseController
 # Configuration
 # ---------------------------------------------------------------------------
 _HERE = Path(__file__).parent
-LIBRARIES_CSV = str(_HERE.parent / "libraries" / "librariesPYTHON.csv")
-RAW_DIR = _HERE.parent.parent / "files" / "raw" / "raw_python"
-LOG_DIR = _HERE.parent.parent / "files" / "raw" / "raw_python" / "logs"
-CLONE_LOG = LOG_DIR / "clone_log.csv"
+LIB_DIR = _HERE.parent / "libraries"
+FILES_ROOT = _HERE.parent.parent / "files" / "raw"
+
+# Per-language source layout. Add a new ecosystem here and the rest of the
+# script picks it up automatically.
+ECOSYSTEMS = {
+    "python": {
+        "csv":     LIB_DIR / "librariesPYTHON.csv",
+        "raw_dir": FILES_ROOT / "raw_python",
+    },
+    "java": {
+        "csv":     LIB_DIR / "librariesJAVA.csv",
+        "raw_dir": FILES_ROOT / "raw_java",
+    },
+}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,11 +81,11 @@ def run(cmd: list[str], cwd: Optional[Path] = None) -> tuple[int, str]:
 # Core cloner
 # ---------------------------------------------------------------------------
 
-def clone_library(library: dict, log_writer) -> None:
+def clone_library(library: dict, raw_dir: Path, log_writer) -> None:
     name = library["name"].strip()
     repo_url = library["repo_url"].strip()
     git_tag = library.get("git_tag", "").strip()
-    dest = RAW_DIR / name
+    dest = raw_dir / name
 
     log.info("=== %s  tag=%s", name, git_tag or "HEAD")
 
@@ -122,39 +139,68 @@ def parse_library_range(value: str) -> tuple[int, int]:
     return n, n
 
 
+def run_ecosystem(lang: str, lib_range: Optional[str], pause: PauseController) -> None:
+    cfg = ECOSYSTEMS[lang]
+    csv_path: Path = cfg["csv"]
+    raw_dir: Path = cfg["raw_dir"]
+    log_dir = raw_dir / "logs"
+    clone_log = log_dir / "clone_log.csv"
+
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    libraries = load_libraries(str(csv_path))
+    libraries = [l for l in libraries
+                 if l.get("ecosystem", "").strip().lower() == lang]
+
+    if lib_range:
+        start, end = parse_library_range(lib_range)
+        libraries = libraries[start - 1:end]
+        log.info("[%s] restricting to libraries %d–%d (%d total)",
+                 lang, start, end, len(libraries))
+
+    if not libraries:
+        log.warning("[%s] no libraries to clone", lang)
+        return
+
+    with open(clone_log, "w", newline="", encoding="utf-8") as log_f:
+        writer = csv.writer(log_f)
+        writer.writerow(["timestamp", "library", "repo_url", "git_tag",
+                         "status", "output"])
+        for library in libraries:
+            pause.check()
+            clone_library(library, raw_dir, writer)
+            log_f.flush()
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Clone Python library repos into raw_python/")
+    parser = argparse.ArgumentParser(
+        description="Clone library source repos into files/raw/raw_<lang>/"
+    )
+    parser.add_argument(
+        "--lang",
+        choices=[*ECOSYSTEMS.keys(), "all"],
+        default="all",
+        help="Which ecosystem to clone (default: all).",
+    )
     parser.add_argument(
         "--libraries",
-        help="Library or range to clone, e.g. '1' or '3-10' (1-indexed). Default: all.",
+        help="Library or range to clone, e.g. '1' or '3-10' (1-indexed). "
+             "Applied within each --lang selection. Default: all.",
     )
     args = parser.parse_args()
 
-    RAW_DIR.mkdir(exist_ok=True)
-    LOG_DIR.mkdir(exist_ok=True)
-    libraries = load_libraries(LIBRARIES_CSV)
-
-    python_libs = [l for l in libraries if l.get("ecosystem", "").strip().lower() == "python"]
-
-    if args.libraries:
-        start, end = parse_library_range(args.libraries)
-        python_libs = python_libs[start - 1:end]
-        log.info("Restricting to libraries %d–%d (%d total)", start, end, len(python_libs))
+    targets = list(ECOSYSTEMS) if args.lang == "all" else [args.lang]
 
     pause = PauseController()
     pause.start()
     log.info("Press Space to pause/resume between libraries.")
 
-    with open(CLONE_LOG, "w", newline="", encoding="utf-8") as log_f:
-        writer = csv.writer(log_f)
-        writer.writerow(["timestamp", "library", "repo_url", "git_tag", "status", "output"])
-
-        for library in python_libs:
-            pause.check()
-            clone_library(library, writer)
-            log_f.flush()
-
-    pause.stop()
+    try:
+        for lang in targets:
+            run_ecosystem(lang, args.libraries, pause)
+    finally:
+        pause.stop()
 
 
 if __name__ == "__main__":
