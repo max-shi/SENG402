@@ -32,9 +32,11 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Module interface constants
 # ---------------------------------------------------------------------------
+_HERE = Path(__file__).parent
+
 ECOSYSTEM = "java"
-LIBRARIES_CSV = "librariesJAVA.csv"
-RAW_DIR = Path("raw")
+LIBRARIES_CSV = str(_HERE.parent / "libraries" / "librariesJAVA.csv")
+RAW_DIR = _HERE.parent.parent / "files" / "raw" / "raw_java"
 
 # ---------------------------------------------------------------------------
 # Stripping rules

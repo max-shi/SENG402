@@ -1,13 +1,20 @@
 """
-Cloner — Python Library Source Acquirer
+cloner — Python Library Source Acquirer
 
-Clones Python library repositories at a specified git tag into raw_python/<name>/,
-mirroring the role that crawler.py plays for Java Javadoc HTML.
+Clones Python library repositories at a specified git tag into
+files/raw/raw_python/<library_name>/, mirroring the role that crawler.py
+plays for Java Javadoc HTML.
 
 Usage:
-    python cloner.py
+    python cloner.py                    # clone all libraries
+    python cloner.py --libraries 1      # first library only
+    python cloner.py --libraries 3-10   # libraries 3 through 10 (1-indexed)
+
+Press Space at any time to pause/resume between libraries.
+Already-cloned repos are updated to the correct tag on re-run.
 """
 
+import argparse
 import csv
 import logging
 import subprocess
@@ -15,12 +22,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from pause_helper import PauseController
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-LIBRARIES_CSV = "librariesPYTHON.csv"
-RAW_DIR = Path("raw_python")
-LOG_DIR = Path("logs")
+_HERE = Path(__file__).parent
+LIBRARIES_CSV = str(_HERE.parent / "libraries" / "librariesPYTHON.csv")
+RAW_DIR = _HERE.parent.parent / "files" / "raw" / "raw_python"
+LOG_DIR = _HERE.parent.parent / "files" / "raw" / "raw_python" / "logs"
 CLONE_LOG = LOG_DIR / "clone_log.csv"
 
 logging.basicConfig(
@@ -104,19 +114,47 @@ def clone_library(library: dict, log_writer) -> None:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def parse_library_range(value: str) -> tuple[int, int]:
+    if "-" in value:
+        parts = value.split("-", 1)
+        return int(parts[0]), int(parts[1])
+    n = int(value)
+    return n, n
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Clone Python library repos into raw_python/")
+    parser.add_argument(
+        "--libraries",
+        help="Library or range to clone, e.g. '1' or '3-10' (1-indexed). Default: all.",
+    )
+    args = parser.parse_args()
+
     RAW_DIR.mkdir(exist_ok=True)
     LOG_DIR.mkdir(exist_ok=True)
     libraries = load_libraries(LIBRARIES_CSV)
+
+    python_libs = [l for l in libraries if l.get("ecosystem", "").strip().lower() == "python"]
+
+    if args.libraries:
+        start, end = parse_library_range(args.libraries)
+        python_libs = python_libs[start - 1:end]
+        log.info("Restricting to libraries %d–%d (%d total)", start, end, len(python_libs))
+
+    pause = PauseController()
+    pause.start()
+    log.info("Press Space to pause/resume between libraries.")
 
     with open(CLONE_LOG, "w", newline="", encoding="utf-8") as log_f:
         writer = csv.writer(log_f)
         writer.writerow(["timestamp", "library", "repo_url", "git_tag", "status", "output"])
 
-        python_libs = [l for l in libraries if l.get("ecosystem", "").strip().lower() == "python"]
-        for library in python_libs[:3]:
+        for library in python_libs:
+            pause.check()
             clone_library(library, writer)
             log_f.flush()
+
+    pause.stop()
 
 
 if __name__ == "__main__":

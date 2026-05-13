@@ -16,12 +16,9 @@ Usage:
     python preprocess.py --libraries 3-4   # only libraries 3 and 4 (1-indexed)
 
 Outputs (per language <lang>):
-    corpus/<lang>_chunks.csv      one row per extracted prose chunk
-                                  (diagnostic / per-chunk analyses)
-    corpus/<lang>_libraries.csv   one row per library, with all chunk
-                                  text concatenated (sentence-bounded)
-                                  — primary input for LIWC
-    logs/preprocess_<lang>.csv    per-file extraction log
+    files/preprocess/preprocess_output_{timestamp}/{lang}/<lang>_chunks.csv
+    files/preprocess/preprocess_output_{timestamp}/{lang}/<lang>_libraries.csv
+    files/preprocess/preprocess_output_{timestamp}/{lang}/preprocess_<lang>.csv
 """
 
 from __future__ import annotations
@@ -38,7 +35,8 @@ from types import ModuleType
 # ---------------------------------------------------------------------------
 # Shared configuration
 # ---------------------------------------------------------------------------
-OUTPUT_BASE_DIR = Path("preprocess")
+_HERE = Path(__file__).parent
+OUTPUT_BASE_DIR = _HERE.parent.parent / "files" / "preprocess"
 
 MIN_CHUNK_WORDS = 10          # drop chunks shorter than this (post-clean)
 JOIN_SEP = " "                 # separator between concatenated chunks

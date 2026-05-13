@@ -20,9 +20,11 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Module interface constants
 # ---------------------------------------------------------------------------
+_HERE = Path(__file__).parent
+
 ECOSYSTEM = "python"
-LIBRARIES_CSV = "librariesPYTHON.csv"
-RAW_DIR = Path("raw_python")
+LIBRARIES_CSV = str(_HERE.parent / "libraries" / "librariesPYTHON.csv")
+RAW_DIR = _HERE.parent.parent / "files" / "raw" / "raw_python"
 
 # ---------------------------------------------------------------------------
 # Docstring noise stripping
