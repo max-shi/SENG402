@@ -48,6 +48,10 @@ ECOSYSTEMS = {
         "csv":     LIB_DIR / "librariesJAVA.csv",
         "raw_dir": FILES_ROOT / "raw_java",
     },
+    "javascript": {
+        "csv":     LIB_DIR / "librariesJAVASCRIPT.csv",
+        "raw_dir": FILES_ROOT / "raw_javascript",
+    },
 }
 
 logging.basicConfig(

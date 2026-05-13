@@ -362,13 +362,14 @@ def _write_consolidated_libraries(run_dir: Path, langs: list[str]) -> None:
 EXTRACTORS = {
     "java": "extractor_java",
     "python": "extractor_python",
+    "javascript": "extractor_javascript",
 }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     parser.add_argument(
-        "--lang", choices=["java", "python", "all"], default="all",
+        "--lang", choices=["java", "python", "javascript", "all"], default="all",
         help="Which ecosystem to preprocess (default: all)",
     )
     parser.add_argument(

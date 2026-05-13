@@ -1,5 +1,7 @@
 # SENG402 — API Documentation Corpus Pipeline
 
+`source /Users/max/Documents/SENG402/SENG402/venv/bin/activate`
+
 This pipeline collects API documentation from Java and Python libraries, extracts natural-language prose from it, and produces a clean text corpus ready for LIWC analysis.
 
 ---
