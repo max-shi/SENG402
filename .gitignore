@@ -2,3 +2,10 @@
 .DS_Store
 /files/
 /unused/
+!/files/corpus/
+!/files/corpus/**
+/files/corpus/**/raw/
+/files/raw/confirmatory/
+md/
+__pycache__/
+.obsidian
