@@ -1,0 +1,175 @@
+# torch-sparse
+
+**torch-sparse** is a PyTorch extension library providing efficient sparse matrix operations for use in deep learning workflows, particularly graph neural networks. It centers around a `SparseTensor` abstraction that stores sparse data in a flexible COO/CSR/CSC-like layout, plus a rich set of functional operations (arithmetic, matrix multiplication, reductions, indexing, sampling, graph partitioning, and more) that operate efficiently on this representation.
+
+## Introduction
+
+Sparse matrices show up everywhere in graph-based machine learning — adjacency matrices, message-passing weight matrices, attention masks, and more. torch-sparse provides:
+
+- A `SparseTensor` class that wraps row/column indices and values, with automatic caching of derived structures (`rowptr`, `colptr`, `csr2csc`, row/col counts, etc.) for fast repeated access.
+- A large collection of top-level functions for constructing, transforming, and computing with sparse tensors: addition, multiplication, matrix products (sparse-dense and sparse-sparse), reductions, coalescing, transposition, concatenation, indexing/selection, and graph-specific utilities like random walks, subgraph sampling, and METIS-based partitioning.
+- Interoperability with `scipy.sparse` matrices and native PyTorch sparse tensor formats (COO, CSR, CSC).
+
+## Core Concepts
+
+### `SparseTensor`
+
+The central data structure of the library. A `SparseTensor` represents a 2D sparse matrix and can be built from several sources:
+
+- `SparseTensor.from_edge_index(edge_index, edge_attr=None, sparse_sizes=None, is_sorted=False, trust_data=False)` — build from a `(2, nnz)` edge index tensor, as commonly used in graph libraries.
+- `SparseTensor.from_dense(mat, has_value=True)` — build from a dense tensor.
+- `SparseTensor.from_torch_sparse_coo_tensor(mat, has_value=True)` / `from_torch_sparse_csr_tensor(mat, has_value=True)` — build from native PyTorch sparse tensors.
+- `SparseTensor.eye(M, N=None, has_value=True, dtype=None, device=None, fill_cache=False)` — build an identity-like sparse matrix.
+- `SparseTensor.from_storage(storage)` — build directly from a `SparseStorage` object.
+- `from_scipy(mat, has_value=True)` — build from a `scipy.sparse` matrix.
+
+Once constructed, a `SparseTensor` supports:
+
+- **Layout access**: `.coo()`, `.csr()`, `.csc()` return `(row/rowptr, col, value)` tuples in the respective format.
+- **Shape/metadata**: `.sizes()`, `.size(dim)`, `.sparse_sizes()`, `.sparse_size(dim)`, `.dim()`, `.nnz()`, `.numel()`, `.density()`, `.sparsity()`, `.avg_row_length()`, `.avg_col_length()`, `.bandwidth()`, `.avg_bandwidth()`, `.bandwidth_proportion()`, `.is_quadratic()`, `.is_symmetric()`.
+- **Transformations**: `.coalesce(reduce='sum')`, `.to_symmetric(reduce='sum')`, `.sparse_resize()`, `.sparse_reshape()`, `.clone()`, `.copy()`.
+- **Value manipulation**: `.set_value()`/`.set_value_()`, `.fill_value()`/`.fill_value_()`, `.has_value()`.
+- **Device/dtype conversion**: `.type()`, `.type_as()`, `.to_device()`, `.device_as()`, `.cpu()`, `.cuda()`, `.float()`, `.double()`, `.long()`, `.bool()`, and other dtype casts, plus `.pin_memory()` and `.is_pinned()`.
+- **Autograd helpers**: `.detach()`, `.detach_()`, `.requires_grad()`, `.requires_grad_()`.
+- **Export**: `.to_dense()`, `.to_torch_sparse_coo_tensor()`, `.to_torch_sparse_csr_tensor()`, `.to_torch_sparse_csc_tensor()`, `to_scipy(self, layout=None, dtype=None)`.
+- Module-level helpers: `to(self, *args, **kwargs)`, `cpu(self)`, `cuda(self, device=None, non_blocking=False)`, `share_memory_(self)`, `is_shared(self)`.
+
+### `SparseStorage`
+
+The underlying storage engine backing `SparseTensor`. It manages row/column indices, optional values, and lazily-computed/cached auxiliary structures such as `rowptr`, `colptr`, `rowcount`, `colcount`, `csr2csc`, and `csc2csr` permutations. Most users interact with `SparseTensor` directly rather than `SparseStorage`, but it is available for lower-level control:
+
+- Structural accessors: `.row()`, `.rowptr()`, `.col()`, `.value()`, and corresponding `has_*()` checks.
+- Caching controls: `.fill_cache_()`, `.clear_cache_()`, `.cached_keys()`, `.num_cached_keys()`.
+- Shape/coalescing: `.sparse_sizes()`, `.sparse_resize()`, `.sparse_reshape()`, `.is_coalesced()`, `.coalesce(reduce='add')`.
+- Device/dtype: `.type()`, `.type_as()`, `.to_device()`, `.device_as()`, `.cuda()`, `.pin_memory()`, `.is_pinned()`.
+- `.copy()`, `.clone()`.
+
+## Functional Operations
+
+### Arithmetic
+- `add(src, other)` — element-wise addition of a `SparseTensor` with another `SparseTensor`, dense tensor, or scalar (overloaded).
+- `add_(src, other)` — in-place variant.
+- `add_nnz(src, other, layout=None)` / `add_nnz_(src, other, layout=None)` — add a value tensor aligned with existing non-zero entries.
+- `mul(src, other)`, `mul_(src, other)`, `mul_nnz(src, other, layout=None)`, `mul_nnz_(src, other, layout=None)` — analogous multiplication operations.
+- `spadd(indexA, valueA, indexB, valueB, m, n)` — low-level functional sparse addition on raw index/value tensors.
+
+### Matrix multiplication
+- `spmm(index, value, m, n, matrix)` — low-level sparse-dense matrix multiply on raw COO tensors.
+- `spmm_sum(src, other)`, `spmm_add(src, other)`, `spmm_mean(src, other)`, `spmm_min(src, other)`, `spmm_max(src, other)` — reduction-specific sparse-dense matrix multiplication using `SparseTensor`.
+- `spmm(src, other, reduce='sum')` — general dispatch over the reductions above.
+- `spspmm_sum(src, other)`, `spspmm_add(src, other)`, `spspmm(src, other, reduce='sum')` — sparse-sparse matrix multiplication returning a `SparseTensor`.
+- `matmul(src, other, reduce='sum')` — unified entry point dispatching to sparse-dense or sparse-sparse multiplication depending on `other`'s type.
+- `spspmm(indexA, valueA, indexB, valueB, m, k, n, coalesced=False)` — low-level sparse-sparse matrix multiply on raw COO tensors.
+
+### Reductions
+- `reduction(src, dim=None, reduce='sum')` — general reduction dispatcher.
+- `sum(src, dim=None)`, `mean(src, dim=None)`, `min(src, dim=None)`, `max(src, dim=None)` — convenience wrappers.
+
+### Structural transformations
+- `coalesce(index, value, m, n, op='add')` — deduplicate and merge repeated indices in raw COO format.
+- `t(src)` — transpose a `SparseTensor`.
+- `transpose(index, value, m, n, coalesced=True)` — low-level transpose on raw COO tensors.
+- `cat(tensors, dim)` — concatenate a list of `SparseTensor`s along a given dimension (overloaded for row/column/diagonal concatenation).
+- `cat_first(tensors)`, `cat_second(tensors)`, `cat_diag(tensors)` — dimension-specific concatenation helpers.
+- `narrow(src, dim, start, length)` — extract a contiguous sparse slice.
+- `select(src, dim, idx)` — select a single row/column.
+- `index_select(src, dim, idx)` / `index_select_nnz(src, idx, layout=None)` — index-based selection along rows/columns or non-zero entries.
+- `masked_select(src, dim, mask)` / `masked_select_nnz(src, mask, layout=None)` — boolean-mask-based selection.
+- `permute(src, perm)` — permute rows and columns.
+- `remove_diag(src, k=0)`, `set_diag(src, values=None, k=0)`, `fill_diag(src, fill_value, k=0)`, `get_diag(src)` — diagonal manipulation utilities.
+
+### Graph-specific utilities
+- `reverse_cuthill_mckee(src, is_symmetric=None)` — reorder a `SparseTensor` to reduce bandwidth, returning the reordered tensor and the permutation.
+- `partition(src, num_parts, recursive=False, weighted=False, node_weight=None, balance_edge=False)` — METIS-based graph partitioning, returning a permuted `SparseTensor`, node permutation, and partition pointer tensor.
+- `weight2metis(weight)` — convert edge weights into a METIS-compatible weight tensor.
+- `random_walk(src, start, walk_length)` — perform random walks over the sparse graph.
+- `saint_subgraph(src, node_idx)` — extract a GraphSAINT-style induced subgraph.
+- `sample(src, num_neighbors, subset=None)` / `sample_adj(src, subset, num_neighbors, replace=False)` — neighbor sampling for mini-batch graph training.
+
+### Conversion utilities
+- `to_torch_sparse(index, value, m, n)` / `from_torch_sparse(A)` — convert to/from native PyTorch sparse COO tensors using raw index/value pairs.
+- `to_scipy(index, value, m, n)` / `from_scipy(A)` — convert to/from `scipy.sparse` matrices using raw index/value pairs.
+- `eye(m, dtype=None, device=None)` — construct raw identity COO index/value tensors.
+
+### Low-level helpers
+- `get_layout(layout=None)` — normalize/validate a layout string (`"coo"`, `"csr"`, or `"csc"`).
+- `index_sort(inputs, max_value=None)` — sort a tensor of indices, returning sorted values and permutation.
+- `is_scalar(other)` — check whether a value should be treated as a scalar in overloaded operations.
+- `tensor(x, dtype, device)` — testing helper to construct a tensor with a given dtype/device.
+
+## How the pieces fit together
+
+- Build a `SparseTensor` from an edge list, dense matrix, or another sparse format.
+- Use arithmetic (`add`, `mul`) and matrix-multiplication (`matmul`, `spmm`, `spspmm`) functions to compute with it, or call reductions (`sum`, `mean`, `min`, `max`) to aggregate values.
+- Use structural functions (`t`, `cat`, `narrow`, `select`, `index_select`, `masked_select`, `permute`) to manipulate its shape and content.
+- Use graph utilities (`sample_adj`, `saint_subgraph`, `random_walk`, `partition`, `reverse_cuthill_mckee`) when working with graph-structured data, such as in GNN training pipelines.
+- Convert to/from `scipy.sparse` or native PyTorch sparse tensors for interoperability with other tooling.
+
+## Usage Examples
+
+### Building a sparse tensor and running matrix multiplication
+
+```python
+import torch
+from torch_sparse import SparseTensor
+
+# Build from an edge index (as in a graph)
+edge_index = torch.tensor([[0, 1, 1, 2],
+                            [1, 0, 2, 1]])
+edge_weight = torch.tensor([1.0, 1.0, 0.5, 0.5])
+
+adj = SparseTensor.from_edge_index(
+    edge_index, edge_attr=edge_weight, sparse_sizes=(3, 3)
+)
+
+# Coalesce to merge duplicate entries and sort indices
+adj = adj.coalesce(reduce="sum")
+
+# Sparse-dense matmul (e.g. propagating node features)
+x = torch.randn(3, 16)
+out = adj @ x  # dispatches to matmul(adj, x)
+
+print(out.shape)  # torch.Size([3, 16])
+```
+
+### Row/column reductions and symmetrization
+
+```python
+from torch_sparse import sum as sparse_sum
+
+row_sum = sparse_sum(adj, dim=1)
+col_sum = sparse_sum(adj, dim=0)
+
+sym_adj = adj.to_symmetric(reduce="sum")
+print(sym_adj.is_symmetric())  # True
+```
+
+### Neighbor sampling for mini-batch GNN training
+
+```python
+from torch_sparse import sample_adj
+
+subset = torch.tensor([0, 1, 2])
+sub_adj, node_idx = sample_adj(adj, subset, num_neighbors=5, replace=False)
+```
+
+### Graph partitioning with METIS
+
+```python
+from torch_sparse import partition
+
+part_adj, perm, ptr = partition(adj, num_parts=2, recursive=False)
+```
+
+### Converting to/from scipy
+
+```python
+scipy_mat = adj.to_scipy(layout="csr")
+
+from torch_sparse import from_scipy
+adj_back = from_scipy(scipy_mat)
+```
+
+## Summary
+
+torch-sparse offers a comprehensive toolkit for representing and computing with sparse matrices in PyTorch, with first-class support for graph learning workflows: efficient storage with cached auxiliary structures, a broad set of arithmetic and matrix-multiplication primitives, structural manipulation functions, and graph-specific operations like sampling, random walks, and partitioning.

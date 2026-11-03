@@ -1,0 +1,87 @@
+# kotlin-jvm-blocking-bridge-runtime-jvm
+
+## Overview
+
+`kotlin-jvm-blocking-bridge-runtime-jvm` is the runtime support library for the Kotlin JVM Blocking Bridge toolchain. It works alongside the Kotlin compiler plugin of the same family to expose Kotlin `suspend` functions to Java callers as ordinary, blocking method calls — without requiring Java consumers to interact with Kotlin coroutines, `Continuation` objects, or coroutine builders directly.
+
+When a Kotlin library annotates its `suspend` functions for "blocking bridge" generation, the compiler plugin generates additional synthetic, non-suspend Java-visible methods that internally run the original suspend function to completion and return its result synchronously. This runtime module provides the supporting infrastructure that those generated bridge methods rely on at execution time.
+
+From a consuming application's perspective, the practical effect is simple: Java code can call what looks like a completely normal, blocking method, while the underlying Kotlin implementation is written using idiomatic `suspend fun` and coroutine APIs.
+
+## Main Components
+
+### `CallsFromJava`
+
+`CallsFromJava` is a demonstration/example entry point included with the library to illustrate how generated blocking bridge methods are invoked from Java code.
+
+```java
+public class CallsFromJava {
+    public static void main(String[] args);
+}
+```
+
+Running `CallsFromJava.main` demonstrates a typical Java call site: invoking a Kotlin-defined `suspend` function through its generated blocking bridge, as though it were a regular synchronous Java method. This class exists primarily as a runnable reference/example rather than as an API you integrate into your own application logic.
+
+## How It Works (Conceptually)
+
+1. A Kotlin library defines `suspend` functions and marks them (via the associated compiler plugin) for blocking-bridge generation.
+2. The Kotlin compiler plugin generates additional bytecode-level "bridge" methods, visible to Java, with ordinary (non-suspend) signatures.
+3. At call time, these generated bridge methods depend on this runtime module to correctly launch and block on the underlying coroutine, propagating its result or exception back to the calling Java thread synchronously.
+4. Java consumers simply call the generated method — no coroutine builders, executors, or callback handling required on their end.
+
+This runtime module is a required dependency at both compile time and runtime for any project that consumes Kotlin libraries built with the JVM Blocking Bridge compiler plugin.
+
+## Usage Example
+
+Suppose a Kotlin library exposes the following suspend function, compiled with the blocking bridge plugin enabled:
+
+```kotlin
+// Kotlin library code (compiled with the blocking-bridge compiler plugin)
+class GreetingService {
+    @JvmBlockingBridge
+    suspend fun greet(name: String): String {
+        delay(100)
+        return "Hello, $name!"
+    }
+}
+```
+
+From Java, the generated bridge allows this to be called as a plain blocking method:
+
+```java
+// Java consumer code
+GreetingService service = new GreetingService();
+String greeting = service.greet("World"); // blocks the calling thread until complete
+System.out.println(greeting);
+```
+
+The included `CallsFromJava` class demonstrates this pattern end-to-end and can be run directly to see the blocking bridge mechanism in action:
+
+```bash
+java -cp <your-classpath> CallsFromJava
+```
+
+## Installation
+
+Add the runtime as a dependency alongside any Kotlin library compiled with the JVM Blocking Bridge compiler plugin:
+
+**Gradle (Kotlin DSL)**
+```kotlin
+dependencies {
+    implementation("me.him188:kotlin-jvm-blocking-bridge-runtime-jvm:<version>")
+}
+```
+
+**Maven**
+```xml
+<dependency>
+    <groupId>me.him188</groupId>
+    <artifactId>kotlin-jvm-blocking-bridge-runtime-jvm</artifactId>
+    <version>VERSION</version>
+</dependency>
+```
+
+## Notes
+
+- This module is a *runtime* dependency; the code-generation behavior itself is provided by the corresponding Kotlin compiler plugin, which must also be applied to any Kotlin project whose `suspend` functions should be made callable from Java.
+- Java consumers do not need to add any coroutine-specific dependencies themselves; this runtime module handles the necessary bridging.

@@ -1,18 +1,18 @@
 """
-f7_prefilter — Pre-crawl F7 pass for obviously-junk name patterns.
+f7_prefilter: Pre-crawl F7 pass for obviously-junk name patterns.
 
-F7 in §7.6.4 is "not a stub, fork, or mirror". Most of that check is
+F7 in RULES.md is "not a stub, fork, or mirror". Most of that check is
 better performed post-crawl (when the actual documentation text is
 available for inspection). But three name patterns are ~100% junk
 without needing to look at the docs, and pre-filtering them saves
 crawler bandwidth:
 
     1. `*-parent`, `*-bom`, `*-dependencies` (case-insensitive suffix
-       match on the artifact segment) — Maven metapackages that are
+       match on the artifact segment), Maven metapackages that are
        just dependency-aggregators with no real code or prose.
-    2. `com.ibm.websphere.appserver.features:*` — IBM WebSphere
+    2. `com.ibm.websphere.appserver.features:*`, IBM WebSphere
        proprietary feature bundles.
-    3. `org.webjars.bower:*` — Bower packages republished as jars;
+    3. `org.webjars.bower:*`, Bower packages republished as jars;
        docs are auto-generated wrappers.
 
 The helper runs in dry-run mode by default (prints matches only, no
@@ -21,7 +21,7 @@ changes to disk). Pass `--apply` to actually remove them from
 vacated slots, and append exclusion rows to exclusion_log.csv.
 
 Usage:
-    python3 src/corpus/f7_prefilter.py [--freeze-date YYYYMMDD] [--apply]
+    python3 src/corpus/f7_prefilter.py [--freeze-date <name>] [--apply]
 """
 
 from __future__ import annotations
@@ -33,8 +33,12 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sys
+sys.path[:0] = [str(p) for p in Path(__file__).resolve().parents[1].iterdir() if p.is_dir()]
+from frame_config import load_n_target
+
 ROOT = Path(__file__).resolve().parents[2]
-N_TARGET = 200
+N_TARGET = 200  # overridden in main() from the frame's frame_metadata.json
 
 # Suffix patterns on the *artifact* segment of a Maven coordinate
 # (i.e. the part after the last ':', or the whole name for PyPI).
@@ -82,6 +86,9 @@ def main() -> None:
     manifest_path = frame_dir / "sample_manifest.csv"
     excl_path = frame_dir / "exclusion_log.csv"
 
+    global N_TARGET
+    N_TARGET = load_n_target(frame_dir)
+
     if not manifest_path.exists():
         raise SystemExit(f"manifest not found: {manifest_path}")
 
@@ -102,7 +109,7 @@ def main() -> None:
     # Report.
     by_eco = Counter(r["ecosystem"] for r, _ in matched)
     print(f"F7 pre-filter matches: {len(matched)} primary rows "
-          f"(python={by_eco.get('python', 0)}, java={by_eco.get('java', 0)})")
+          f"({', '.join(f'{eco}={n}' for eco, n in sorted(by_eco.items()))})")
     print()
     for r, rule in matched:
         print(f"  [{r['ecosystem']:6}] draw={r['draw_order']:3}  "
@@ -130,7 +137,8 @@ def main() -> None:
         excl_rows = list(er)
 
     new_rows: list[dict] = []
-    for eco in ("python", "java"):
+    ecosystems = sorted({r["ecosystem"] for r in all_rows})
+    for eco in ecosystems:
         eco_rows = [r for r in all_rows if r["ecosystem"] == eco]
         eco_rows.sort(key=lambda r: int(r["draw_order"]))
         kept: list[dict] = []

@@ -1,0 +1,155 @@
+# TexSoup
+
+TexSoup is a Python library for parsing, navigating, and manipulating LaTeX documents. Inspired by the ergonomics of BeautifulSoup, it lets you treat a `.tex` file as a tree of nodes that you can search, modify, and rewrite—without needing to fully understand or reimplement LaTeX's grammar.
+
+TexSoup parses raw LaTeX source into a tree of expressions (commands, environments, groups, and text) wrapped in a friendly node API. You can query the tree with CSS-like `find`/`find_all` methods, edit contents in place, and serialize the tree back into valid LaTeX (or export it to formats like JSON).
+
+## Installation
+
+```bash
+pip install texsoup
+```
+
+## Quick Start
+
+```python
+from texsoup import TexSoup
+
+soup = TexSoup(r"""
+\documentclass{article}
+\begin{document}
+Hello \textbf{world}!
+\begin{itemize}
+    \item First
+    \item Second
+\end{itemize}
+\end{document}
+""")
+
+# Find a command or environment by name
+bold = soup.find("textbf")
+print(bold.string)  # "world"
+
+# Search all matches
+items = soup.find_all("item")
+for item in items:
+    print(item.text)
+
+# Modify the tree
+bold.string = "LaTeX"
+print(str(soup))
+```
+
+## Core Concepts
+
+### `TexSoup(tex_code, skip_envs=(), tolerance=0)`
+
+The main entry point. Pass in a string of LaTeX source (or a file-like buffer, depending on your input) and get back a `TexNode` representing the root of the parsed document.
+
+- `skip_envs`: a collection of environment names (e.g. `verbatim`, `lstlisting`) whose contents should be read as raw, unparsed text instead of being tokenized as LaTeX.
+- `tolerance`: controls how strict parsing is. A tolerance of `0` is strict (malformed LaTeX raises errors); higher values allow TexSoup to recover from issues like unclosed environments.
+
+### `TexNode`
+
+`TexNode` is the primary object you interact with as a user. It's a thin, friendly wrapper around the lower-level `TexExpr` tree, and most of your code will call its methods:
+
+- **Navigation**: `children()`, `descendants()`, `all()`, `contents()`, `args()`
+- **Searching**: `find(name=None, **attrs)`, `find_all(name=None, **attrs)`, `count(name=None, **attrs)`, `search_regex(pattern, **kwargs)`
+- **Reading**: `name()`, `string()`, `text()`, `position()`, `char_pos_to_line(char_pos)`
+- **Editing**: `append(*nodes)`, `insert(i, *nodes)`, `delete()`, `remove(node)`, `replace(child, *nodes)`, `replace_with(*nodes)`, `copy()`
+- **Mutating properties**: `name`, `string`, `contents`, and `args` are all both readable and settable, allowing in-place rewriting of a command or environment's identity, text, and arguments.
+
+Example:
+
+```python
+section = soup.find("section")
+section.name = "subsection"      # rename the command
+section.string = "New Title"     # replace its contents
+
+# Remove all \item nodes with no text
+for item in soup.find_all("item"):
+    if not item.text.strip():
+        item.delete()
+```
+
+### The Expression Tree: `TexExpr` and Subclasses
+
+Underneath every `TexNode` is a `TexExpr`, the raw syntactic object representing a piece of LaTeX. `TexNode` methods largely delegate to the corresponding `TexExpr` methods (`children()`, `contents()`, `string()`, `append()`, `insert()`, `remove()`).
+
+The expression hierarchy models different LaTeX constructs:
+
+- **`TexEnv`** — base class for LaTeX environments (`\begin{...}...\end{...}` or bracket/brace groupings), with a settable `begin`/`end` label.
+  - **`TexNamedEnv`** — a standard named environment like `\begin{itemize}...\end{itemize}`.
+  - **`TexUnNamedEnv`** — environments without explicit `\begin`/`\end` markers, such as groups.
+    - **`TexGroup`** — a bracketed or braced group, e.g. `{...}` or `[...]`, with `keyvals()` for parsing key-value option lists (as in `\usepackage[key=value]{...}`) and a `parse(cls, s)` classmethod for constructing one from a string.
+      - **`BraceGroup`** — a `{...}` group.
+      - **`BracketGroup`** — a `[...]` group.
+    - **`TexMathModeEnv`** / **`TexDisplayMathModeEnv`** — inline (`$...$`) and display (`$$...$$` or `\[...\]`)-style math environments detected via mode switches.
+    - **`TexMathEnv`** / **`TexDisplayMathEnv`** — named math environments (e.g. `equation`, `align`) and their display variants.
+- **`TexCmd`** — a LaTeX command such as `\textbf{...}` or `\item`, including its name and arguments.
+- **`TexText`** — a run of plain text content (subclasses both `TexExpr` and `str`, so it behaves like a normal string).
+
+### `TexArgs`
+
+`TexArgs` is a specialized `list` subclass representing the arguments attached to a command or environment (optional `[...]` and required `{...}` arguments). It supports the usual mutating list operations (`append`, `extend`, `insert`, `remove`, `pop`, `reverse`, `clear`), each aware of how arguments should be rendered back into LaTeX source.
+
+```python
+cmd = soup.find("textbf")
+print(cmd.args)          # TexArgs([...])
+cmd.args = ["Hello"]      # replace the argument list wholesale
+```
+
+## Exporting
+
+The `export` module lets you serialize a parsed document (or subtree) into structured formats for downstream tooling.
+
+```python
+from texsoup import TexSoup
+from texsoup.export import dumps, dump
+
+soup = TexSoup(r"\section{Intro}")
+
+json_str = dumps(soup, format='json')
+
+with open("out.json", "w") as fp:
+    dump(soup, fp, format='json')
+```
+
+## Lower-Level Modules
+
+Most users only need `TexSoup` and the `TexNode`/`TexExpr` API above. For advanced use cases—building custom parsers, writing linters, or extending TexSoup's grammar—the library exposes its internals:
+
+- **`texsoup.tex.read(tex, skip_envs=(), tolerance=0)`** — the top-level parse function used internally by `TexSoup(...)`.
+- **`texsoup.reader`** — a collection of functions (`read_tex`, `read_expr`, `read_env`, `read_args`, `read_command`, etc.) implementing the recursive-descent parsing of LaTeX source into expression trees. This includes specialized readers for math environments (`read_math_env`), verbatim content (`read_verbatim_contents`), skip-environments (`read_skip_env`), and command arguments (`read_arg_optional`, `read_arg_required`).
+- **`texsoup.tokens`** — the tokenizer layer, turning raw text into a stream of `Token`s. Includes handlers for comments (`tokenize_line_comment`), math mode switches (`tokenize_math_sym_switch`, `tokenize_math_asym_switch`), command names (`tokenize_command_name`), escaped symbols, and more. `tokenize(text)` and `next_token(text, prev=None)` are the main entry points.
+- **`texsoup.category.categorize(text)`** — assigns LaTeX "category codes" to characters/tokens, informing how the tokenizer interprets them (similar in spirit to TeX's catcode mechanism).
+- **`texsoup.utils`** — shared low-level utilities: the `Buffer` class (a cursor-based, look-ahead/push-back capable string/list reader used throughout the reader and tokenizer), `Token` (a `str` subclass carrying position metadata), `CharToLineOffset` (mapping character offsets to line numbers, used by `TexNode.char_pos_to_line`), and helper decorators (`to_buffer`, `to_list`, `IntEnum`).
+
+## Example: Bulk-Editing a Document
+
+```python
+from texsoup import TexSoup
+
+with open("paper.tex") as f:
+    soup = TexSoup(f.read(), skip_envs=("verbatim", "lstlisting"), tolerance=1)
+
+# Rename all \figure environments' labels
+for fig in soup.find_all("figure"):
+    label = fig.find("label")
+    if label:
+        label.string = label.string.replace("fig:", "figure:")
+
+# Strip all \todo commands entirely
+for todo in soup.find_all("todo"):
+    todo.delete()
+
+# Count citations
+print("Number of citations:", soup.count("cite"))
+
+with open("paper_clean.tex", "w") as f:
+    f.write(str(soup))
+```
+
+## License
+
+See `LICENSE` for details.

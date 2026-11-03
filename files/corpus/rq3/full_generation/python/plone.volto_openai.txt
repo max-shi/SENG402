@@ -1,0 +1,410 @@
+# plone.volto
+
+`plone.volto` provides integration and migration utilities for Volto-oriented Plone sites. Its public API includes:
+
+- Content classes for folderish document, event, and news-item content.
+- Marker interfaces and schema-based behaviors for Volto-related metadata.
+- Browser views for navigation, breadcrumbs, migrations, and block-type services.
+- Utilities for converting rich text into blocks and migrating legacy content.
+- Block, image, preview-image, link-integrity, and catalog indexing helpers.
+- Setup, upgrade, testing, localization, and maintenance utilities.
+
+The package is designed to be used within a Plone/Zope application environment, where browser views, adapters, behaviors, and setup handlers are registered by the application framework.
+
+## Main components
+
+## Content types and marker interfaces
+
+The package defines folderish variants of common content classes:
+
+- `FolderishDocument`
+- `FolderishEvent`
+- `FolderishNewsItem`
+
+These classes inherit from `Container`, indicating that they can contain other items.
+
+Related interfaces provide type markers:
+
+- `IFolderishType`
+- `IFolderishDocument`
+- `IFolderishEvent`
+- `IFolderishNewsItem`
+
+Example:
+
+```python
+from plone.volto.content import FolderishDocument
+from plone.volto.interfaces import IFolderishDocument
+
+document = FolderishDocument()
+
+# In a configured component environment, the interface can be used as
+# a marker for folderish document content.
+IFolderishDocument.providedBy(document)
+```
+
+## Behaviors and metadata schemas
+
+Several schema interfaces represent Volto-related behaviors:
+
+- `IKicker`
+- `IHeadTitle`
+- `INavTitle`
+- `IPreview`
+- `IPreviewLink`
+
+`IHeadTitle` extends `IKicker`, so a head-title behavior also participates in the kicker behavior contract.
+
+Preview image handling includes:
+
+- `PreviewImageScalesFieldAdapter`
+- `update_preview_image_scales(obj, event)`
+
+The event handler can be used where preview image scale information must be refreshed after an object event.
+
+```python
+from plone.volto.behaviors.preview_link import update_preview_image_scales
+
+# Typically called by an event subscriber registration or maintenance code.
+update_preview_image_scales(content, event)
+```
+
+## Browser views
+
+The package exposes browser views for navigation and migration workflows.
+
+### Breadcrumbs and navigation
+
+- `PhysicalNavigationBreadcrumbs.breadcrumbs()`
+- `CatalogNavigationTabs.topLevelTabs(actions=None, category="portal_tabs")`
+- `CatalogNavigationTabs.customize_entry(entry, brain=None)`
+
+These views support breadcrumb and navigation-tab generation, including catalog-aware customization of navigation entries.
+
+```python
+from plone.volto.browser.navigation import CatalogNavigationTabs
+
+view = CatalogNavigationTabs(context, request)
+
+tabs = view.topLevelTabs(category="portal_tabs")
+for tab in tabs:
+    print(tab)
+```
+
+### Block type service
+
+`BlockTypesGet` is a service view with:
+
+- `publishTraverse(request, name)`
+- `reply()`
+
+It is intended to expose block-type information through a traversable service endpoint.
+
+```python
+from plone.volto.services.blocktypes.get import BlockTypesGet
+
+service = BlockTypesGet(context, request)
+response = service.reply()
+```
+
+### Migration views
+
+Two browser-view classes provide migration-oriented workflows:
+
+- `MigrateRichTextToVoltoBlocks`
+- `MigrateToVolto`
+
+`MigrateRichTextToVoltoBlocks` provides `types_with_blocks()`, while `MigrateToVolto` includes operations for installing Volto support, migrating folderish content, collections, default pages, and rich text.
+
+```python
+from plone.volto.browser.migrate_to_volto import MigrateToVolto
+
+view = MigrateToVolto(context, request)
+
+view.install_plone_volto()
+view.migrate_to_folderish()
+view.migrate_collections()
+view.convert_richtext()
+```
+
+Migration operations can change site content and configuration. Run them in an appropriate maintenance or upgrade context.
+
+## Rich-text and block migration
+
+Rich text can be converted into Volto blocks through standalone helpers:
+
+- `get_blocks_from_richtext(text, service_url="http://localhost:5000/html", slate=True)`
+- `migrate_richtext_to_blocks(...)`
+- `types_with_blocks()`
+
+The conversion helper accepts an HTML conversion service URL and a `slate` option.
+
+```python
+from plone.volto.browser.migrate_richtext import get_blocks_from_richtext
+
+html = "<p>Hello <strong>world</strong></p>"
+
+blocks = get_blocks_from_richtext(
+    html,
+    service_url="http://localhost:5000/html",
+    slate=True,
+)
+```
+
+To migrate a selected set of portal types:
+
+```python
+from plone.volto.browser.migrate_richtext import migrate_richtext_to_blocks
+
+migrate_richtext_to_blocks(
+    portal_types=["Document", "News Item"],
+    fieldname="text",
+    purge_richtext=False,
+    slate=True,
+)
+```
+
+The migration utility also supports removing the original rich-text value with `purge_richtext=True`.
+
+## Content migration helpers
+
+`plone.volto.browser.migrate_to_volto` includes utilities for generating blocks and exporting relations:
+
+- `generate_listing_block(obj)`
+- `generate_listing_block_from_collection(obj, move_relative_path=False)`
+- `make_document(obj, service_url="http://localhost:5000/html", slate=True)`
+- `export_relations(obj)`
+
+Example:
+
+```python
+from plone.volto.browser.migrate_to_volto import (
+    export_relations,
+    generate_listing_block_from_collection,
+    make_document,
+)
+
+listing_block = generate_listing_block_from_collection(
+    collection,
+    move_relative_path=True,
+)
+
+document_data = make_document(
+    legacy_document,
+    service_url="http://localhost:5000/html",
+)
+
+relations = export_relations(legacy_document)
+```
+
+## Indexing and block utilities
+
+The package provides indexer helpers for content and block metadata:
+
+- `hasPreviewImage(obj)`
+- `image_field_indexer(obj)`
+- `block_types_indexer(obj)`
+
+These functions are suitable for use by catalog-indexing registrations or maintenance scripts.
+
+```python
+from plone.volto.indexers.indexers import (
+    block_types_indexer,
+    hasPreviewImage,
+    image_field_indexer,
+)
+
+if hasPreviewImage(content):
+    image_value = image_field_indexer(content)
+
+block_types = block_types_indexer(content)
+```
+
+Additional block maintenance utilities include:
+
+- `audit_blocks()`
+- `where_is_this_block()`
+- `migrate_listing_block_to_summary(block)`
+- `remove_image_scales(blocks)`
+
+```python
+from plone.volto.scripts.listingaddsummary import migrate_listing_block_to_summary
+from plone.volto.scripts.searchscalesinimageblocks import remove_image_scales
+
+updated_listing = migrate_listing_block_to_summary(listing_block)
+clean_blocks = remove_image_scales(blocks)
+```
+
+## Link integrity and UID transforms
+
+Nested block links are handled through:
+
+- `NestedBlockLinkRetriever.retrieveLinks(block)`
+
+The package also exposes serializer and deserializer base classes for nested blocks and preview-image UID resolution:
+
+- `NestedBlocksVisitor`
+- `NestedResolveUIDDeserializerBase`
+- `NestedResolveUIDSerializerBase`
+- `PreviewImageResolveUIDDeserializer`
+- `PreviewImageResolveUIDDeserializerRoot`
+- `PreviewImageResolveUIDSerializer`
+- `PreviewImageResolveUIDSerializerRoot`
+
+These classes are intended for integration with content serialization, deserialization, and link-integrity processing.
+
+```python
+from plone.volto.linkintegrity import NestedBlockLinkRetriever
+
+retriever = NestedBlockLinkRetriever()
+links = retriever.retrieveLinks(block)
+```
+
+## Setup and configuration helpers
+
+Installation and configuration support is provided by:
+
+- `post_install(context)`
+- `uninstall(context)`
+- `post_install_coresandbox(context)`
+- `post_install_multilingual(context)`
+
+The package also includes portal type and behavior helpers:
+
+- `enable_pam(portal)`
+- `ensure_pam_consistency(portal)`
+- `change_content_type_title(portal, old_name, new_name)`
+- `disable_content_type(portal, fti_id)`
+- `enable_content_type(portal, fti_id)`
+- `copy_content_type(portal, name, newid, newname)`
+- `add_catalog_indexes(context, wanted=None)`
+- `add_behavior(portal_type, behavior)`
+- `remove_behavior(portal_type, behavior)`
+
+Example:
+
+```python
+from plone.volto.setuphandlers import (
+    add_behavior,
+    add_catalog_indexes,
+    change_content_type_title,
+    enable_content_type,
+)
+
+enable_content_type(portal, "FolderishDocument")
+change_content_type_title(portal, "Document", "Document")
+add_behavior(portal_type, "some.behavior.interface")
+add_catalog_indexes(context, wanted=["block_types"])
+```
+
+`HiddenProfiles.getNonInstallableProfiles()` can be used to identify profiles that should not be presented as installable.
+
+## Upgrades
+
+Upgrade helpers cover content-class migration, listing migration, catalog indexing, image scales, distribution naming, robots configuration, and rich-text behavior cleanup:
+
+- `migrate_content_classes(context)`
+- `from12to13_migrate_listings(context)`
+- `remove_plone_richtext_behavior(context)`
+- `add_control_panel_classic_icon(context)`
+- `add_block_types_index(context)`
+- `rename_distribution(context)`
+- `update_robots_txt(context)`
+- `add_large_image_scales(context)`
+- `reindex_block_types(context)`
+
+Example:
+
+```python
+from plone.volto.upgrades import (
+    add_block_types_index,
+    reindex_block_types,
+)
+
+add_block_types_index(context)
+reindex_block_types(context)
+```
+
+## Localization
+
+Localization utilities include:
+
+- `get_i18ndude() -> Path`
+- `locale_folder_setup(domain: str)`
+- `update_locale()`
+
+```python
+from plone.volto.locales.update import locale_folder_setup, update_locale
+
+locale_folder_setup("my.addon")
+update_locale()
+```
+
+## Testing support
+
+The package provides fixtures and Plone test layers:
+
+- `BaseFixture`
+- `SandboxFixture`
+- `PloneVoltoCoreLayer`
+- `PloneVoltoCoreSandboxLayer`
+- `PloneVoltoMigrationLayer`
+
+`PloneVoltoCoreSandboxLayer` and `PloneVoltoMigrationLayer` customize Plone-site setup, while `PloneVoltoMigrationLayer` also customizes Zope setup.
+
+```python
+from plone.volto.testing import PloneVoltoMigrationLayer
+
+# Use this layer in the test configuration appropriate for the test runner.
+layer = PloneVoltoMigrationLayer
+```
+
+## Miscellaneous utilities
+
+### Module aliases
+
+```python
+from plone.volto.bbb import alias_module
+
+alias_module("old.package.name", "new.package.name")
+```
+
+### CSV and console output helpers
+
+```python
+from plone.volto.scripts.utils import print_error, print_info, print_ok, save_csv
+
+save_csv(data, "report.csv")
+print_info("Starting migration")
+print_ok("Migration completed")
+print_error("A migration step failed")
+```
+
+### Summary metadata
+
+`JSONSummarySerializerMetadata.default_metadata_fields()` provides metadata fields for JSON summary serialization.
+
+```python
+from plone.volto.summary import JSONSummarySerializerMetadata
+
+metadata = JSONSummarySerializerMetadata()
+fields = metadata.default_metadata_fields()
+```
+
+## Core sandbox examples
+
+The package includes an example schema and container:
+
+- `IExample`
+- `Example`
+
+It also exposes vocabulary factories:
+
+- `DocumentVocabularyFactory(context=None)`
+- `HugeVocabularyFactory(context=None)`
+
+```python
+from plone.volto.coresandbox.vocabularies import DocumentVocabularyFactory
+
+vocabulary = DocumentVocabularyFactory(context)
+```

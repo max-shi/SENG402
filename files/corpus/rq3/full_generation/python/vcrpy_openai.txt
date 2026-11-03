@@ -1,0 +1,440 @@
+# vcrpy
+
+`vcrpy` provides tools for capturing, storing, and replaying HTTP request/response interactions. Its API centers on **cassettes**: collections of recorded requests and responses that can be loaded, used while code runs, inspected, rewound, and persisted.
+
+The library includes:
+
+- A high-level `VCR` configuration object for cassette use and extension registration.
+- A `Cassette` API for recording, replaying, filtering, and inspecting interactions.
+- Request matching utilities for deciding whether two HTTP requests represent the same interaction.
+- Request and response filtering helpers for removing or replacing sensitive headers, query parameters, and POST data.
+- JSON and YAML serialization support.
+- Filesystem persistence and cassette migration utilities.
+- HTTP-client stubs and adapters for synchronous and asynchronous integrations.
+- `unittest` helpers.
+
+## Quick start
+
+Create a `VCR` instance and use a cassette around code that performs HTTP work:
+
+```python
+from vcr.config import VCR
+
+vcr = VCR()
+
+def fetch_account():
+    # Perform application HTTP work here.
+    # The configured VCR integration can record or replay the interaction.
+    ...
+
+with vcr.use_cassette("cassettes/account.yaml"):
+    account = fetch_account()
+```
+
+`use_cassette()` can also be used as a decorator:
+
+```python
+from vcr.config import VCR
+
+vcr = VCR()
+
+@vcr.use_cassette("cassettes/search.yaml")
+def test_search():
+    result = run_search()
+    assert result is not None
+```
+
+The cassette context/decorator interface is represented by `CassetteContextDecorator`, allowing the same cassette usage pattern to be applied around functions and code blocks.
+
+## Core concepts
+
+### `VCR`
+
+`VCR` is the primary configuration and integration entry point.
+
+```python
+from vcr.config import VCR
+
+vcr = VCR()
+```
+
+Key methods:
+
+| Method | Purpose |
+|---|---|
+| `use_cassette(path=None, **kwargs)` | Create a cassette context/decorator for a path and optional configuration. |
+| `get_merged_config(**kwargs)` | Obtain configuration after applying supplied overrides. |
+| `register_serializer(name, serializer)` | Register a cassette serializer by name. |
+| `register_matcher(name, matcher)` | Register a request matcher by name. |
+| `register_persister(persister)` | Register a cassette persistence implementation. |
+| `test_case(predicate=None)` | Produce test-case support using an optional method predicate. |
+| `ensure_suffix(suffix)` | Normalize or ensure a suffix value. |
+| `is_test_method(method_name, function)` | Determine whether a method/function is considered a test method. |
+
+A typical setup can register project-specific matching or serialization behavior before cassettes are used:
+
+```python
+from vcr.config import VCR
+
+vcr = VCR()
+
+def match_tenant_header(left, right):
+    return left.headers.get("X-Tenant") == right.headers.get("X-Tenant")
+
+vcr.register_matcher("tenant_header", match_tenant_header)
+```
+
+### `Cassette`
+
+A `Cassette` holds recorded interactions and provides replay-related operations.
+
+```python
+from vcr.cassette import Cassette
+
+cassette = Cassette.load(...)
+```
+
+Important cassette operations include:
+
+| Method | Purpose |
+|---|---|
+| `load(**kwargs)` | Load a cassette. |
+| `use(**kwargs)` | Use a cassette as a context/decorator-style operation. |
+| `append(request, response)` | Add a request/response interaction. |
+| `filter_request(request)` | Apply cassette request filtering. |
+| `can_play_response_for(request)` | Check whether the cassette can replay a response for a request. |
+| `play_response(request)` | Retrieve a replayable response for a request. |
+| `responses_of(request)` | Obtain responses associated with a request. |
+| `requests()` | Access recorded requests. |
+| `responses()` | Access recorded responses. |
+| `rewind()` | Reset cassette playback state. |
+| `play_count()` | Inspect playback count. |
+| `all_played()` | Check whether all recorded interactions have been played. |
+| `write_protected()` | Check whether writing is currently protected. |
+| `find_requests_with_most_matches(request)` | Find recorded requests that most closely match a supplied request. |
+
+For example, a test can assert that replay consumed the cassette as expected:
+
+```python
+from vcr.cassette import Cassette
+
+cassette = Cassette.load(...)
+
+with cassette.use(...):
+    run_workflow()
+
+assert cassette.all_played()
+assert cassette.play_count() > 0
+```
+
+## Request matching
+
+The `vcr.matchers` module contains reusable functions for comparing requests. Matchers cover common HTTP request components:
+
+```python
+from vcr import matchers
+```
+
+Available matchers include:
+
+- `method(r1, r2)`
+- `uri(r1, r2)`
+- `host(r1, r2)`
+- `scheme(r1, r2)`
+- `port(r1, r2)`
+- `path(r1, r2)`
+- `query(r1, r2)`
+- `raw_body(r1, r2)`
+- `body(r1, r2)`
+- `headers(r1, r2)`
+
+To evaluate a set of matchers:
+
+```python
+from vcr.matchers import requests_match, get_matchers_results
+
+matches = requests_match(request_a, request_b, [
+    "method",
+    "host",
+    "path",
+])
+
+details = get_matchers_results(request_a, request_b, [
+    "method",
+    "host",
+    "path",
+])
+```
+
+`get_assertion_message(assertion_details)` can turn matcher assertion details into a displayable message.
+
+## Request representation
+
+`Request` represents an HTTP request and exposes properties and helpers for its URL and components:
+
+```python
+from vcr.request import Request
+```
+
+A request can expose or update:
+
+- `uri`
+- `headers`
+- `body`
+
+It also provides helpers for derived URL information:
+
+- `scheme`
+- `host`
+- `port`
+- `path`
+- `query`
+- `url`
+- `protocol`
+
+Headers may be represented with `HeadersDict`, a case-insensitive dictionary type.
+
+```python
+from vcr.request import HeadersDict
+
+headers = HeadersDict()
+headers["Authorization"] = "Bearer redacted"
+
+# Case-insensitive header lookup
+assert headers["authorization"] == "Bearer redacted"
+```
+
+## Filtering sensitive data
+
+The `vcr.filters` module provides request and response transformation helpers. These are useful for removing credentials, tokens, private query values, or sensitive form data before a cassette is stored.
+
+```python
+from vcr.filters import (
+    remove_headers,
+    replace_headers,
+    remove_query_parameters,
+    replace_query_parameters,
+)
+```
+
+### Remove request headers
+
+```python
+from vcr.filters import remove_headers
+
+sanitized_request = remove_headers(
+    request,
+    headers_to_remove=["Authorization", "X-API-Key"],
+)
+```
+
+### Replace request headers
+
+```python
+from vcr.filters import replace_headers
+
+sanitized_request = replace_headers(
+    request,
+    replacements={
+        "Authorization": "Bearer <REDACTED>",
+    },
+)
+```
+
+### Remove or replace query parameters
+
+```python
+from vcr.filters import remove_query_parameters, replace_query_parameters
+
+request = remove_query_parameters(
+    request,
+    query_parameters_to_remove=["access_token", "api_key"],
+)
+
+request = replace_query_parameters(
+    request,
+    replacements={
+        "email": "<REDACTED>",
+    },
+)
+```
+
+### Filter POST data
+
+```python
+from vcr.filters import remove_post_data_parameters, replace_post_data_parameters
+
+request = remove_post_data_parameters(
+    request,
+    post_data_parameters_to_remove=["password"],
+)
+
+request = replace_post_data_parameters(
+    request,
+    replacements={
+        "token": "<REDACTED>",
+    },
+)
+```
+
+The module also includes response/body helpers:
+
+- `decode_response(response)`
+- `decompress_gzip(body)`
+- `decompress_deflate(body)`
+
+## Serialization and persistence
+
+Cassettes can be serialized and deserialized through the generic serialization helpers:
+
+```python
+from vcr.serialize import serialize, deserialize
+from vcr.serializers import jsonserializer
+
+cassette_text = serialize(cassette_dict, jsonserializer)
+cassette_dict = deserialize(cassette_text, jsonserializer)
+```
+
+Built-in serializer modules are available for JSON and YAML:
+
+```python
+from vcr.serializers import jsonserializer, yamlserializer
+
+json_text = jsonserializer.serialize(cassette_dict)
+json_data = jsonserializer.deserialize(json_text)
+
+yaml_text = yamlserializer.serialize(cassette_dict)
+yaml_data = yamlserializer.deserialize(yaml_text)
+```
+
+The YAML serializer also exposes `with_custom_tags(constructors)` for YAML handling with custom tag constructors.
+
+### Filesystem persistence
+
+`FilesystemPersister` loads and saves cassette dictionaries at filesystem paths.
+
+```python
+from vcr.persisters.filesystem import FilesystemPersister
+from vcr.serializers import yamlserializer
+
+cassette_data = FilesystemPersister.load_cassette(
+    "cassettes/example.yaml",
+    yamlserializer,
+)
+
+FilesystemPersister.save_cassette(
+    "cassettes/example.yaml",
+    cassette_data,
+    yamlserializer,
+)
+```
+
+Filesystem-specific errors include:
+
+- `CassetteNotFoundError`
+- `CassetteDecodeError`
+
+## Record mode validation
+
+`RecordMode` defines supported recording-mode values, while `validate_record_mode()` validates a selected mode.
+
+```python
+from vcr.record_mode import RecordMode, validate_record_mode
+
+mode = RecordMode(...)
+validate_record_mode(mode)
+```
+
+Use `validate_record_mode()` when accepting a recording mode from configuration, a command-line option, or another external source.
+
+## Migrating cassettes
+
+The migration API supports JSON and YAML cassette migration:
+
+```python
+from vcr.migration import migrate_json, migrate_yml, try_migrate
+
+with open("old.json", "r") as source, open("new.json", "w") as destination:
+    migrate_json(source, destination)
+
+try_migrate("cassettes/legacy.yaml")
+```
+
+Related helpers include:
+
+- `preprocess_yaml(cassette)`
+- `build_uri(**parts)`
+- `migrate(file_path, migration_fn)`
+- `main()`
+
+## Async support
+
+The library includes coroutine-aware handling through:
+
+```python
+from vcr._handle_coroutine import handle_coroutine
+```
+
+Async-oriented stubs include support types such as `MockStream` and `MockClientResponse`, plus helpers for playing and recording response sequences. The HTTPX adapter exposes separate handlers for synchronous and asynchronous requests:
+
+```python
+from vcr.stubs.httpx_stubs import (
+    vcr_handle_request,
+    vcr_handle_async_request,
+)
+```
+
+## Testing helpers
+
+For `unittest`-style test suites, use `VCRMixin` or `VCRTestCase`:
+
+```python
+from vcr.unittest import VCRTestCase
+
+class AccountTests(VCRTestCase):
+    def test_account_lookup(self):
+        with self.vcr.use_cassette("cassettes/account.yaml"):
+            result = lookup_account()
+
+        self.assertIsNotNone(result)
+```
+
+`VCRMixin.setUp()` provides test setup behavior, while `VCRTestCase` combines the mixin with `unittest.TestCase`.
+
+## Utilities
+
+`vcr.util` contains helpers that may be useful when extending the library:
+
+```python
+from vcr.util import CaseInsensitiveDict, compose, partition_dict
+```
+
+- `CaseInsensitiveDict` is a mutable mapping with case-insensitive key handling.
+- `partition_dict(predicate, dictionary)` divides dictionary entries according to a predicate.
+- `compose(*functions)` composes functions.
+- `read_body(request)` reads a request body.
+- `auto_decorate(decorator, predicate=...)` applies a decorator automatically to matching attributes.
+
+Example:
+
+```python
+from vcr.util import compose
+
+normalize = compose(str.strip, str.lower)
+
+assert normalize("  HELLO  ") == "hello"
+```
+
+## Exceptions
+
+Two primary exceptions are exposed:
+
+```python
+from vcr.errors import (
+    CannotOverwriteExistingCassetteException,
+    UnhandledHTTPRequestError,
+)
+```
+
+- `CannotOverwriteExistingCassetteException` indicates that an existing cassette cannot be overwritten.
+- `UnhandledHTTPRequestError` indicates that an HTTP request could not be handled, such as when no appropriate recorded interaction is available.

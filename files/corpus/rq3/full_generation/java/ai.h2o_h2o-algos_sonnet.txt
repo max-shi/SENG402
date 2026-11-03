@@ -1,0 +1,117 @@
+# h2o-algos
+
+`h2o-algos` is the algorithms module of the [H2O](https://h2o.ai) distributed machine learning platform. It provides a large collection of supervised and unsupervised machine learning algorithms — including tree ensembles, linear models, deep learning, dimensionality reduction, clustering, anomaly detection, and text embedding — built on top of H2O's distributed compute engine (`MRTask`, `Frame`, `Vec`, `Chunk`, `Key`/`Keyed`, and the `ModelBuilder`/`Model` abstractions).
+
+This module implements each algorithm as a `ModelBuilder` subclass that trains a corresponding `Model` subclass, exposes REST API schemas for the H2O web/API server, and produces MOJO/POJO artifacts for scoring outside of a running H2O cluster.
+
+## Key Concepts
+
+Every algorithm in this library follows a consistent pattern:
+
+- **`<Algo>` (extends `ModelBuilder`)** — the driver class that validates parameters, orchestrates training, and produces a trained model. Construct it with a `Parameters` object (and optionally a `Job` or destination `Key`), then call `.trainModel()` (inherited from `ModelBuilder`) to kick off training.
+- **`<Algo>Model` (extends `Model`)** — the trained model, holding the learned state, `Parameters`, and `Output`. Models expose scoring via `score()`/`score0()` and metric building via `makeMetricBuilder()`.
+- **`<Algo>MojoWriter` (extends `ModelMojoWriter`)** — serializes a trained model into a MOJO for portable scoring.
+- **`<Algo>ModelV3` / `<Algo>V3` (schemas)** — REST API representations used by the H2O server layer to expose each algorithm and model over HTTP.
+
+Supporting infrastructure shared across algorithms includes:
+
+- **`DataInfo`** — describes how a `Frame` is expanded into a numeric design matrix (categorical expansion, standardization, interactions, weights/offset/fold columns) and is used pervasively by GLM, GAM, HGLM, PSVM, GLRM, SVD, and Deep Learning.
+- **`FrameTask` / `FrameTask2`** — base classes (extending `MRTask`) for row-wise distributed processing of a `Frame` using a `DataInfo`.
+- **`Gram`** — accumulates and factorizes (via Cholesky/QR) the Gram matrix (X'X) used by GLM, GAM, and related regression algorithms.
+- **`hex.optimization.L_BFGS` / `hex.optimization.ADMM`** — general-purpose numerical optimizers used internally by GLM-family algorithms.
+- **`hex.tree.*`** — shared infrastructure for tree-based models (`DTree`, `DHistogram`, `CompressedTree`, `SharedTree`, `SharedTreeModel`) used by GBM, DRF, Isolation Forest, Uplift DRF, and the simple decision tree (`DT`).
+- **`hex.ensemble.*`** — support for Stacked Ensembles, including pluggable `Metalearner`s via `MetalearnerProvider`.
+
+## Algorithms Included
+
+| Category | Classes |
+|---|---|
+| Generalized Linear Models | `GLM` (`hex.glm`), `GAM`, `HGLM`, `ANOVAGLM`, `ModelSelectionModel` |
+| Tree Ensembles | `GBM`, `DRF`, `UpliftDRF`, `IsolationForest`, `ExtendedIsolationForest`, `DT` |
+| Deep Learning | `DeepLearning` |
+| Dimensionality Reduction | `PCA`, `SVD`, `GLRM`, `Aggregator` |
+| Clustering | `KMeans` |
+| Classification/Regression Utilities | `NaiveBayes`, `KNN`, `IsotonicRegression`, `CoxPH`, `PSVM`, `AdaBoost` |
+| Rule-Based Models | `RuleFit` |
+| Text/Embeddings | `Word2Vec` |
+| Ensembling | `StackedEnsembleModel` (via `hex.ensemble`) |
+| Model Import | `Generic` (import arbitrary MOJO/POJO models) |
+| Pattern Matching | `Grep` |
+
+## Usage Examples
+
+### Training a GBM Model
+
+```java
+GBMModel.GBMParameters params = new GBMModel.GBMParameters();
+params._train = trainFrame._key;
+params._response_column = "target";
+params._ntrees = 100;
+params._max_depth = 5;
+params._learn_rate = 0.1;
+
+GBM job = new GBM(params);
+GBMModel model = job.trainModel().get();
+
+Frame predictions = model.score(testFrame, "predictions", null, true, CFuncRef.NOP);
+```
+
+### Training a GLM Model and Scoring
+
+```java
+GLMModel.GLMParameters params = new GLMModel.GLMParameters();
+params._train = trainFrame._key;
+params._response_column = "y";
+params._family = GLMModel.GLMParameters.Family.binomial;
+
+GLM glmBuilder = new GLM(params);
+GLMModel glmModel = glmBuilder.trainModel().get();
+
+Frame scored = glmModel.score(testFrame, "glm_preds", null, true, CFuncRef.NOP);
+```
+
+### Running PCA on a Wide Dataset
+
+```java
+PCAModel.PCAParameters pcaParams = new PCAModel.PCAParameters();
+pcaParams._train = trainFrame._key;
+pcaParams._k = 5;
+pcaParams._transform = DataInfo.TransformType.STANDARDIZE;
+
+PCA pca = new PCA(pcaParams);
+pca.setWideDataset(true); // hint for wide (many-column) input
+PCAModel pcaModel = pca.trainModel().get();
+```
+
+### Importing an External MOJO/POJO Model
+
+```java
+GenericModel imported = Generic.importMojoModel("/path/to/model.zip", false);
+Frame preds = imported.score(testFrame, "generic_preds", null, true, CFuncRef.NOP);
+```
+
+### Building a Word2Vec Model and Finding Synonyms
+
+```java
+Word2VecModel.Word2VecParameters w2vParams = new Word2VecModel.Word2VecParameters();
+w2vParams._train = wordsFrame._key;
+
+Word2Vec w2v = new Word2Vec(w2vParams);
+Word2VecModel model = w2v.trainModel().get();
+
+Map<String, Float> synonyms = model.findSynonyms("river", 10);
+```
+
+### Converting a MOJO to a POJO from the Command Line
+
+```bash
+java water.tools.MojoConvertTool /path/to/model.zip /path/to/OutputModel.java
+```
+
+## REST API Integration
+
+Each algorithm registers its endpoints through `hex.api.RegisterAlgos`, exposing model builders and models via versioned schemas (e.g. `GBMModelV3`, `GLMModelV3`, `PCAModelV3`). Handlers such as `MakeGLMModelHandler`, `Word2VecHandler`, and `TreeHandler` expose specialized operations (custom GLM model construction, word vector lookup/synonym search, and tree structure inspection, respectively) over HTTP.
+
+## License
+
+See the main H2O project repository for licensing information.

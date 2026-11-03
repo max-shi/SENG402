@@ -5,7 +5,7 @@ snapshots after discovering that the ecosyste.ms API's sort by
 surfaced some packages on two consecutive pages, and the draw
 consequently contained a handful of duplicate names.
 
-Applies §7.6.3's reserve-promotion mechanism to remove duplicates
+Applies the reserve-promotion mechanism to remove duplicates
 and shift reserves into vacated primary slots. Logs every removal
 to exclusion_log.csv under stage=frame-dedup, filter_failed=DEDUP.
 
@@ -14,7 +14,7 @@ added to run_for_ecosystem), so this patch script does not need to
 be re-run for future freeze dates.
 
 Usage:
-    python3 src/corpus/dedup_manifest.py [--freeze-date YYYYMMDD]
+    python3 src/corpus/dedup_manifest.py [--freeze-date <name>]
 """
 
 from __future__ import annotations
@@ -28,8 +28,12 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
+import sys
+sys.path[:0] = [str(p) for p in Path(__file__).resolve().parents[1].iterdir() if p.is_dir()]
+from frame_config import load_n_target
+
 ROOT = Path(__file__).resolve().parents[2]
-N_TARGET = 200
+N_TARGET = 200  # overridden in main() from the frame's frame_metadata.json
 
 
 def main() -> None:
@@ -43,6 +47,9 @@ def main() -> None:
     frame_dir = ROOT / "files" / "corpus" / f"frame_{args.freeze_date}"
     manifest_path = frame_dir / "sample_manifest.csv"
     excl_path = frame_dir / "exclusion_log.csv"
+
+    global N_TARGET
+    N_TARGET = load_n_target(frame_dir)
 
     if not manifest_path.exists():
         raise SystemExit(f"manifest not found: {manifest_path}")
@@ -62,7 +69,9 @@ def main() -> None:
     new_rows: list[dict] = []
     new_excl = list(excl_rows)
 
-    for eco in ("python", "java"):
+    ecosystems = sorted({r["ecosystem"] for r in all_rows})
+
+    for eco in ecosystems:
         eco_rows = [r for r in all_rows if r["ecosystem"] == eco]
         eco_rows.sort(key=lambda r: int(r["draw_order"]))
         seen: set[str] = set()
@@ -111,7 +120,7 @@ def main() -> None:
     print(f"wrote {excl_path}  ({len(new_excl)} rows)")
 
     # Dedupe the frame snapshot files (keep first occurrence per name).
-    for eco in ("python", "java"):
+    for eco in ecosystems:
         src = frame_dir / f"frame_{eco}.jsonl.gz"
         if not src.exists():
             print(f"[{eco}] snapshot missing, skipping: {src}")
@@ -139,7 +148,7 @@ def main() -> None:
     per = Counter((r["ecosystem"], r["role"]) for r in rows)
     for k, v in sorted(per.items()):
         print(f"  {k}: {v}")
-    for eco in ("python", "java"):
+    for eco in ecosystems:
         names = [r["package_name"] for r in rows if r["ecosystem"] == eco]
         print(f"  {eco}: {len(names)} rows, {len(set(names))} unique names")
 

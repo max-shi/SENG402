@@ -1,0 +1,170 @@
+# pandapower
+
+**pandapower** is a Python library for modeling, analyzing, and optimizing electrical power systems. It provides a data structure for representing electrical grids (`pandapowerNet`), a rich set of functions to build networks element by element (buses, lines, transformers, generators, loads, etc.), and a collection of power system analysis tools including power flow, optimal power flow, state estimation, short-circuit calculation, time series simulation, and topological analysis.
+
+Grids in pandapower are represented as collections of pandas DataFrames (one per element type — buses, lines, loads, generators, etc.), which makes it straightforward to inspect, manipulate, and analyze network data using standard pandas tooling.
+
+## Key Features
+
+- **Network creation** — Programmatically build grids from buses, lines, transformers, generators, loads, storages, switches, FACTS devices (SVC, TCSC, VSC), and more.
+- **Power flow analysis** — AC power flow (`runpp`), DC power flow (`rundcpp`), unbalanced three-phase power flow (`runpp_3ph`), and optimal power flow (`runopp`, `rundcopp`, and PowerModels.jl-based solvers via `runpm*`).
+- **State estimation** — Weighted least squares and other estimators for estimating system state from measurements.
+- **Short-circuit calculation** — IEC-60909-based fault current computation (`calc_sc`).
+- **Contingency analysis** — N-1 and custom contingency screening (`run_contingency`).
+- **Time series simulation** — Run power flow over time-varying profiles with controllers (`run_timeseries`).
+- **Control framework** — Extensible controllers for transformer tap changers, shunts, distributed energy resources (DER), droop control, and custom logic.
+- **Topology analysis** — Graph-based analysis of network connectivity using NetworkX or igraph.
+- **Grid equivalents** — Reduce large networks to boundary-equivalent representations (REI, Ward equivalents).
+- **Plotting** — Matplotlib and Plotly-based visualization of network topology and power flow results.
+- **File I/O and converters** — Import/export to JSON, pickle, Excel, SQL, and conversion from/to formats such as MATPOWER (mpc), PYPOWER (ppc), CIM/CGMES, UCTE, PowerFactory, OpenDSS, and JAO.
+- **Diagnostics** — Automated checks for common modeling errors (`diagnostic`).
+
+## Installation
+
+```bash
+pip install pandapower
+```
+
+## Core Concepts
+
+### `pandapowerNet`
+
+The central data structure of the library. It behaves like a dictionary of pandas DataFrames, one per network element (`net.bus`, `net.line`, `net.load`, `net.gen`, `net.trafo`, etc.), plus result tables (`net.res_bus`, `net.res_line`, ...) that are populated after running a power flow or other analysis.
+
+Create an empty network with:
+
+```python
+import pandapower as pp
+
+net = pp.create_empty_network(name="my_grid", f_hz=50.0, sn_mva=100)
+```
+
+### Network Creation (`pandapower.create`)
+
+A family of `create_*` functions add elements to a `pandapowerNet`. Each element type typically has:
+
+- A singular function (e.g. `create_bus`, `create_line`) returning a single index.
+- A plural, vectorized function (e.g. `create_buses`, `create_lines`) for bulk creation, returning an array of indices.
+- "from_parameters" variants for defining electrical parameters directly instead of using a standard type (e.g. `create_line_from_parameters`, `create_transformer_from_parameters`).
+
+Supported elements include buses, DC buses, lines (AC and DC), transformers (2-winding and 3-winding), impedances, loads, static generators, generators, external grids, shunts, storages, wards/extended wards, switches (via FACTS-like devices: SVC, TCSC, SSC, VSC), measurements, motors, and cost functions for OPF.
+
+### Running Power Flow and Optimization
+
+- `pp.runpp(net, ...)` — Newton-Raphson (or other) AC power flow.
+- `pp.rundcpp(net, ...)` — DC power flow.
+- `pp.runopp(net, ...)` / `pp.rundcopp(net, ...)` — AC/DC optimal power flow.
+- `pp.runpm(net, ...)` and related `runpm_*` functions — Optimal power flow and other studies via PowerModels.jl.
+- `pandapower.shortcircuit.calc_sc(net, ...)` — Short-circuit current calculation.
+- `pandapower.estimation.estimate(net, ...)` — State estimation.
+
+Results are written back into `net.res_*` tables.
+
+### Control and Time Series
+
+The `pandapower.control` subpackage provides a `Controller` base class and concrete controllers (`ConstControl`, `ContinuousTapControl`, `DiscreteTapControl`, `DERController`, `BinarySearchControl`, `DroopControl`, etc.) that can be attached to a network and executed via `run_control(net)`. Combined with `DataSource`/`DFData` objects supplying time-varying profiles, `pandapower.timeseries.run_timeseries(net, ...)` executes multi-step simulations, logging results via an `OutputWriter`.
+
+### Topology and Grid Equivalents
+
+`pandapower.topology.create_nxgraph(net, ...)` converts a network into a NetworkX (or igraph-backed) graph for connectivity analysis, path finding, and identifying unsupplied or isolated buses. `pandapower.grid_equivalents.get_equivalent(net, ...)` computes reduced-order equivalents (REI, Ward, xWard) of external network parts relative to a set of boundary buses.
+
+### Diagnostics
+
+`pandapower.diagnostic(net, ...)` (and the more extensible `Diagnostic` class) run a suite of checks — invalid values, disconnected elements, missing external grids, wrong switch configurations, implausible impedances, and more — producing a structured report.
+
+### File I/O and Converters
+
+Networks can be persisted and restored with `to_json`/`from_json`, `to_pickle`/`from_pickle`, `to_excel`/`from_excel`, and SQL/PostgreSQL functions (`to_sql`, `from_sql`, `to_postgresql`, `from_postgresql`). Converters exist for MATPOWER (`from_mpc`, `to_mpc`), PYPOWER (`from_ppc`, `to_ppc`), CIM/CGMES (`from_cim`), UCTE (`from_ucte`), PowerFactory (`from_pf`, `from_pfd`), OpenDSS (`from_opendss`), and JAO Excel exports (`from_jao`).
+
+### Plotting
+
+`pandapower.plotting` offers Matplotlib-based (`simple_plot`, `create_bus_collection`, `create_line_collection`, ...) and Plotly-based (`simple_plotly`, `pf_res_plotly`, `vlevel_plotly`) visualization utilities for both network topology and power flow results.
+
+## Usage Examples
+
+### Building and Solving a Simple Network
+
+```python
+import pandapower as pp
+
+# Create an empty network
+net = pp.create_empty_network()
+
+# Create buses
+b1 = pp.create_bus(net, vn_kv=20.0, name="Bus 1")
+b2 = pp.create_bus(net, vn_kv=20.0, name="Bus 2")
+b3 = pp.create_bus(net, vn_kv=0.4, name="Bus 3 (LV)")
+
+# External grid feeding bus 1
+pp.create_ext_grid(net, bus=b1, vm_pu=1.02, name="Grid Connection")
+
+# Line between bus 1 and bus 2
+pp.create_line(net, from_bus=b1, to_bus=b2, length_km=2.5,
+                std_type="NAYY 4x150 SE", name="Line 1-2")
+
+# Transformer stepping down to LV bus
+pp.create_transformer(net, hv_bus=b2, lv_bus=b3, std_type="0.4 MVA 20/0.4 kV")
+
+# Load on the LV bus
+pp.create_load(net, bus=b3, p_mw=0.1, q_mvar=0.05, name="Load 1")
+
+# Run AC power flow
+pp.runpp(net)
+
+print(net.res_bus)
+print(net.res_line)
+```
+
+### Running Diagnostics Before Analysis
+
+```python
+from pandapower.diagnostic.diagnostic_helpers import diagnostic
+
+diagnostic(net, report_style="compact")
+```
+
+### Time Series Simulation with a Controller
+
+```python
+import pandas as pd
+from pandapower.timeseries import DFData, OutputWriter
+from pandapower.control import ConstControl
+from pandapower.timeseries.run_time_series import run_timeseries
+
+# Profile data: 24 time steps of active power for the load
+profile_df = pd.DataFrame({"load_p_mw": [0.08 + 0.001 * i for i in range(24)]})
+ds = DFData(profile_df)
+
+# Attach a controller that writes profile values into the load's p_mw column
+ConstControl(net, element="load", variable="p_mw", element_index=[0],
+             data_source=ds, profile_name=["load_p_mw"])
+
+# Configure output logging
+ow = OutputWriter(net, output_path="./results", output_file_type=".csv")
+ow.log_variable("res_bus", "vm_pu")
+ow.log_variable("res_line", "loading_percent")
+
+# Run the simulation over all time steps in the profile
+run_timeseries(net, time_steps=range(24))
+```
+
+### Short-Circuit Calculation
+
+```python
+from pandapower.shortcircuit.calc_sc import calc_sc
+
+calc_sc(net, bus=[b3], fault="3ph", case="max")
+print(net.res_bus_sc)
+```
+
+### Saving and Reloading a Network
+
+```python
+pp.create_empty_network  # (already imported as pp)
+net_json = pp.to_json(net)          # serialize to a JSON string
+net2 = pp.from_json(net_json)       # or from_json("net.json") for a file
+```
+
+## License
+
+See the `LICENSE` file in this repository for details.

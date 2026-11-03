@@ -1,0 +1,325 @@
+# web-fragments
+
+`web-fragments` provides building blocks for creating reusable HTML fragments together with the CSS, JavaScript, and other resources they require.
+
+It is designed for Django applications: fragments can be rendered as standalone HTML responses through `FragmentView`, or composed into larger pages while collecting their associated `<head>` and footer resources.
+
+## Concepts
+
+A `Fragment` represents a piece of web UI:
+
+- **Content** — HTML or other renderable content added to the fragment.
+- **Resources** — inline or URL-based CSS, JavaScript, and other resources.
+- **Resource placement** — resources can be assigned to a placement, allowing them to be rendered in the page head, body, or footer.
+- **Initialization JavaScript** — JavaScript function calls with optional JSON arguments.
+- **Serialization** — fragments can be converted to dictionaries and restored with `to_dict()` and `from_dict()`.
+
+`FragmentView` is a Django `View` base class for serving fragments. It can render a fragment directly or generate a standalone HTML document containing the fragment and its resources.
+
+## Main API
+
+### `Fragment`
+
+```python
+from web_fragments.fragment import Fragment
+```
+
+The central class for assembling content and resources.
+
+#### Content
+
+```python
+fragment = Fragment()
+fragment.add_content("<section>Hello!</section>")
+```
+
+Use `add_content()` to add content to a fragment. The rendered body content is available through:
+
+```python
+html = fragment.body_html()
+```
+
+#### Resources
+
+Resources may be inline text or external URLs.
+
+```python
+fragment.add_resource(
+    text="/* CSS content */",
+    mimetype="text/css",
+)
+
+fragment.add_resource_url(
+    url="https://cdn.example.test/widget.js",
+    mimetype="application/javascript",
+)
+```
+
+A resource may optionally specify a `placement`:
+
+```python
+fragment.add_resource(
+    text="console.log('loaded')",
+    mimetype="application/javascript",
+    placement="foot",
+)
+```
+
+Convenience methods are available for common CSS and JavaScript resources:
+
+```python
+fragment.add_css("""
+.widget {
+    border: 1px solid #ddd;
+    padding: 1rem;
+}
+""")
+
+fragment.add_css_url("https://cdn.example.test/widget.css")
+
+fragment.add_javascript("""
+console.log("Widget resources loaded");
+""")
+
+fragment.add_javascript_url("https://cdn.example.test/widget.js")
+```
+
+Render resources for a placement with:
+
+```python
+head = fragment.head_html()
+foot = fragment.foot_html()
+
+# Or render a specific placement directly.
+html = fragment.resources_to_html("head")
+```
+
+`resource_to_html()` can be used to render an individual resource object returned by the fragment’s resource collection.
+
+#### Composing fragments
+
+Fragments can collect the resources required by other fragments.
+
+```python
+page_fragment = Fragment()
+widget_fragment = Fragment()
+
+widget_fragment.add_css(".widget { color: rebeccapurple; }")
+widget_fragment.add_content('<div class="widget">A widget</div>')
+
+page_fragment.add_content("<main>")
+page_fragment.add_content(widget_fragment.body_html())
+page_fragment.add_content("</main>")
+
+page_fragment.add_fragment_resources(widget_fragment)
+```
+
+To collect resources from multiple fragments:
+
+```python
+page_fragment.add_resources([
+    header_fragment,
+    sidebar_fragment,
+    content_fragment,
+])
+```
+
+This makes it possible for a parent page to render all required styles and scripts in the appropriate document locations.
+
+#### JavaScript initialization
+
+Use `initialize_js()` to register a JavaScript function call for a fragment. Optional arguments can be supplied as JSON-compatible data.
+
+```python
+fragment.initialize_js(
+    "initializeWidget",
+    {
+        "elementId": "example-widget",
+        "theme": "dark",
+    },
+)
+```
+
+This is useful when a fragment’s markup requires client-side setup after it is included in a page.
+
+#### Serialization
+
+Fragments can be represented as dictionaries:
+
+```python
+data = fragment.to_dict()
+```
+
+They can be restored later:
+
+```python
+restored_fragment = Fragment.from_dict(data)
+```
+
+This is useful when fragment content and resources need to cross a process boundary or be stored in a JSON-compatible form.
+
+---
+
+### `FragmentView`
+
+```python
+from web_fragments.views import FragmentView
+```
+
+`FragmentView` is a Django class-based view for rendering `Fragment` instances.
+
+Its public rendering methods are:
+
+- `render_to_fragment(request, **kwargs)` — produce a `Fragment`.
+- `render_to_standalone_html(request, fragment, **kwargs)` — render a fragment as a complete HTML document.
+- `render_standalone_response(request, fragment, **kwargs)` — create a standalone Django response for a fragment.
+- `get(request, *args, **kwargs)` — handle HTTP GET requests.
+
+A typical integration subclasses `FragmentView` and implements `render_to_fragment()`.
+
+```python
+from web_fragments.fragment import Fragment
+from web_fragments.views import FragmentView
+
+
+class ProfileCardView(FragmentView):
+    def render_to_fragment(self, request, **kwargs):
+        fragment = Fragment()
+
+        fragment.add_css("""
+        .profile-card {
+            border: 1px solid #ddd;
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+        """)
+
+        fragment.add_content("""
+        <article class="profile-card">
+            <h2>Jane Doe</h2>
+            <p>Example profile content.</p>
+        </article>
+        """)
+
+        fragment.initialize_js(
+            "initializeProfileCard",
+            {"interactive": True},
+        )
+
+        return fragment
+```
+
+Register the view using Django’s URL configuration:
+
+```python
+from django.urls import path
+
+from .views import ProfileCardView
+
+
+urlpatterns = [
+    path("profile-card/", ProfileCardView.as_view(), name="profile-card"),
+]
+```
+
+When accessed through the configured URL, the view can render the fragment as standalone HTML, including the fragment’s collected resources.
+
+## Example: Building a standalone fragment
+
+```python
+from web_fragments.fragment import Fragment
+
+
+fragment = Fragment()
+
+fragment.add_css("""
+.notice {
+    padding: 1rem;
+    border-radius: 0.25rem;
+    background: #eef6ff;
+    color: #123;
+}
+""")
+
+fragment.add_javascript("""
+function dismissNotice(id) {
+    const element = document.getElementById(id);
+    if (element) {
+        element.remove();
+    }
+}
+""")
+
+fragment.add_content("""
+<div id="welcome-notice" class="notice">
+    Welcome to the application.
+    <button onclick="dismissNotice('welcome-notice')">Dismiss</button>
+</div>
+""")
+
+print(fragment.head_html())
+print(fragment.body_html())
+print(fragment.foot_html())
+```
+
+A host HTML page can place the generated pieces in its document structure:
+
+```html
+<!doctype html>
+<html>
+  <head>
+    <!-- fragment.head_html() -->
+  </head>
+  <body>
+    <!-- fragment.body_html() -->
+
+    <!-- fragment.foot_html() -->
+  </body>
+</html>
+```
+
+## Django integration
+
+The library includes a Django application configuration class:
+
+```python
+from web_fragments.apps import WebFragmentsConfig
+```
+
+In projects using explicit application configuration, add the application to `INSTALLED_APPS` as appropriate for the project’s Django setup.
+
+## API reference
+
+### `web_fragments.fragment.Fragment`
+
+```python
+class Fragment:
+    def resources(self):
+    def to_dict(self):
+    def from_dict(cls, pods):
+    def add_content(self, content):
+    def add_resource(self, text, mimetype, placement=None):
+    def add_resource_url(self, url, mimetype, placement=None):
+    def add_css(self, text):
+    def add_css_url(self, url):
+    def add_javascript(self, text):
+    def add_javascript_url(self, url):
+    def add_fragment_resources(self, fragment):
+    def add_resources(self, fragments):
+    def initialize_js(self, js_func, json_args=None):
+    def body_html(self):
+    def head_html(self):
+    def foot_html(self):
+    def resources_to_html(self, placement):
+    def resource_to_html(resource):
+```
+
+### `web_fragments.views.FragmentView`
+
+```python
+class FragmentView(View):
+    def get(self, request, *args, **kwargs):
+    def render_standalone_response(self, request, fragment, **kwargs):
+    def render_to_standalone_html(self, request, fragment, **kwargs):
+    def render_to_fragment(self, request, **kwargs):
+```

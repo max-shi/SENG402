@@ -1,0 +1,161 @@
+# jackson-databind
+
+**Data-binding for Jackson: convert between JSON (and other formats supported by Jackson's streaming API) and Java objects.**
+
+`jackson-databind` (packaged under `com.jwebmp.jackson.core:jackson-databind`, using the `tools.jackson.databind` namespace) is the core data-binding layer of the Jackson ecosystem. It builds on top of a streaming token API (`JsonParser` / `JsonGenerator`) to provide full object serialization and deserialization, a flexible tree model (`JsonNode`), and a rich set of configuration, introspection, and extension points for customizing how Java types map to and from structured data formats.
+
+This document gives an overview of the library's principal building blocks and shows common usage patterns.
+
+## What's inside
+
+- **A mapper/builder API** (`ObjectMapper`, `JsonMapper`, `MapperBuilder`) for configuring and running serialization/deserialization.
+- **A tree model** (`JsonNode` and its subclasses) for working with structured data without binding to POJOs.
+- **Serializers and deserializers** (`ValueSerializer`, `ValueDeserializer` and the many implementations under `ser` / `deser` packages) that define how individual types are converted.
+- **Introspection** (`BeanDescription`, `AnnotatedClass`, `BeanPropertyDefinition`, `AnnotationIntrospector`) that discovers a class's properties, constructors, and annotations.
+- **Type handling** (`JavaType`, `TypeFactory`-adjacent constructs, `TypeDeserializer`/`TypeSerializer`) supporting polymorphic and generic types.
+- **Modules** (`JacksonModule`, `SimpleModule`) as the extension mechanism for registering custom (de)serializers, type mappings, and mix-ins.
+- **Configuration objects** (`DeserializationConfig`, `SerializationConfig`, `MapperFeature`, `DeserializationFeature`, `SerializationFeature`, `CoercionConfigs`, `ConfigOverrides`) that control mapper behavior in detail.
+- **Extension modules for JDK/date-time/optional/XML types** (`ext.javatime`, `ext.jdk8`, `ext.sql`, `ext` packages) providing built-in support for `java.time`, `Optional`, `java.sql`, DOM, and `QName` types.
+
+## Core concepts
+
+### `ObjectMapper` / `JsonMapper` and `MapperBuilder`
+
+The mapper is the main entry point for reading and writing values. `JsonMapper` is the JSON-specific mapper implementation, constructed either directly or via its `Builder` (which extends `MapperBuilder`). The builder exposes a large fluent API for:
+
+- Enabling/disabling features (`MapperFeature`, `SerializationFeature`, `DeserializationFeature`, `DatatypeFeature`, `StreamReadFeature`, `StreamWriteFeature`).
+- Registering modules (`addModule`, `addModules`, `findAndAddModules`).
+- Customizing type resolution, naming strategies, visibility, coercions, and config overrides per-class.
+- Configuring polymorphic type handling (`activateDefaultTyping`, `registerSubtypes`).
+- Installing custom serializers/deserializers, injectable values, mix-ins, and abstract type resolvers.
+
+```java
+JsonMapper mapper = JsonMapper.builder()
+        .enable(SerializationFeature.INDENT_OUTPUT)
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .addModule(new SimpleModule("MyModule"))
+        .build();
+```
+
+### Reading and writing values
+
+Once built, an `ObjectMapper`/`JsonMapper` instance is used to convert between JSON text/streams and Java objects (POJOs, collections, `JsonNode` trees, etc.), and can produce `MappingIterator` instances for streaming sequences of values, or `SequenceWriter` for writing sequences.
+
+### The tree model: `JsonNode`
+
+`JsonNode` and its subclasses (`ObjectNode`, `ArrayNode`, `ValueNode`, `NumericNode`, `NullNode`, `MissingNode`, etc.) represent a mutable, format-agnostic tree representation of structured data. Nodes are created through a `JsonNodeFactory` (implementing `JsonNodeCreator`), and support rich navigational and conversion methods (`path`, `at`, `findValue`, `asInt`, `asString`, `asDecimalOpt`, etc.).
+
+```java
+JsonNode root = mapper.readTree(jsonInput);
+String name = root.path("user").path("name").asString();
+ArrayNode tags = root.withArray("tags");
+tags.add("new-tag");
+```
+
+### Modules: extending behavior
+
+`JacksonModule` is the base extension unit. `SimpleModule` provides a convenient way to register custom serializers, deserializers, key (de)serializers, abstract type mappings, value instantiators, and mix-ins without writing a full module implementation:
+
+```java
+SimpleModule module = new SimpleModule("CustomTypes", new Version(1, 0, 0, null, null, null))
+        .addSerializer(MyType.class, new MySerializer())
+        .addDeserializer(MyType.class, new MyDeserializer())
+        .addAbstractTypeMapping(MyInterface.class, MyImpl.class);
+
+JsonMapper mapper = JsonMapper.builder()
+        .addModule(module)
+        .build();
+```
+
+### Serializers and deserializers
+
+Custom conversion logic is implemented by extending base classes such as `StdSerializer`, `StdScalarSerializer`, `StdDeserializer` (referenced throughout `ser.std` / `deser.std`), or more specialized bases like `ReferenceTypeSerializer`/`ReferenceTypeDeserializer` for reference-like types (`Optional`, `AtomicReference`), and `FromStringDeserializer`/`ToStringSerializer` for types that round-trip through a string form. The library ships built-in implementations for JDK types (`StringSerializer`, `EnumSerializer`, `MapSerializer`, `CollectionDeserializer`, `EnumDeserializer`, etc.), `java.time` types (`LocalDateDeserializer`, `DurationSerializer`, `ZonedDateTimeSerializer`, ...), `java.util.Optional`/`OptionalInt`/`OptionalLong`/`OptionalDouble`, `java.sql` types, and W3C DOM/`QName`/`XMLGregorianCalendar` types.
+
+Serializer and deserializer factories (`SerializerFactory`, `DeserializerFactory`) and their configuration objects (`SerializerFactoryConfig`, `DeserializerFactoryConfig`) let modules and mappers register additional `Serializers`/`Deserializers`/`KeyDeserializers` providers and modifiers (`ValueSerializerModifier`, `ValueDeserializerModifier`) that can alter or replace the default handling for a type.
+
+### Introspection
+
+`BeanDescription` (with the concrete `BasicBeanDescription`) and `ClassIntrospector` (with `BasicClassIntrospector`) analyze a Java class to discover its properties, constructors, factory methods, and annotations, producing `BeanPropertyDefinition` instances for each detected property. `AnnotationIntrospector` is the pluggable interface that reads Jackson (and other) annotations off classes/members to answer questions like "what's the property name?", "is this ignorable?", "what's the type id for this subtype?", etc. `NopAnnotationIntrospector` is a no-op baseline, and multiple introspectors can be combined via `AnnotationIntrospector.pair(...)`.
+
+### Type system
+
+`JavaType` is the library's fully-resolved representation of a Java type (including generics, container element/key types, and handler attachments). Types are constructed through a mapper's configuration (`MapperConfig.constructType`) rather than directly. Polymorphic type handling is controlled by `TypeResolverBuilder` implementations (notably `StdTypeResolverBuilder` / `DefaultTypeResolverBuilder`), `TypeIdResolver` implementations (`ClassNameIdResolver`, `TypeNameIdResolver`, `SimpleNameIdResolver`), and `PolymorphicTypeValidator` (with `BasicPolymorphicTypeValidator` as the recommended safe default) to guard against unsafe deserialization of arbitrary classes.
+
+```java
+JsonMapper mapper = JsonMapper.builder()
+        .activateDefaultTyping(
+            BasicPolymorphicTypeValidator.builder()
+                .build(),
+            DefaultTyping.NON_FINAL)
+        .build();
+```
+
+### Configuration objects
+
+`DeserializationConfig` and `SerializationConfig` (both extending `MapperConfigBase`) hold the immutable, per-operation configuration snapshot used during a read or write — feature flags, coercion rules, date/time zone/locale defaults, mix-ins, and more. `ConfigOverrides`/`ConfigOverride`/`MutableConfigOverride` allow per-type overrides (e.g., a custom `JsonFormat.Value` or `JsonInclude.Value` for a specific class) to be registered on the builder via `withConfigOverride`.
+
+Numeric/textual coercion behavior (e.g., how an empty string coerces into a number) is governed by `CoercionConfigs`/`CoercionConfig`/`MutableCoercionConfig`, configurable per `LogicalType` or per `Class` via `MapperBuilder.withCoercionConfig`.
+
+### Error handling
+
+Deserialization problems (unknown properties, weird values, missing type ids, instantiation failures) are routed through `DeserializationProblemHandler`, which can be subclassed and registered via `MapperBuilder.addHandler` to customize recovery behavior instead of throwing. `CollectingProblemHandler` is a ready-made handler that collects problems (as `CollectedProblem`) instead of failing immediately. Binding failures surface as subclasses of `DatabindException`, including `InvalidFormatException`, `InvalidTypeIdException`, `MismatchedInputException`, `PropertyBindingException`, and `ValueInstantiationException`.
+
+## Example: end-to-end usage
+
+```java
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.module.SimpleModule;
+
+public class Example {
+
+    public static void main(String[] args) {
+        JsonMapper mapper = JsonMapper.builder()
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .addModule(new SimpleModule("Extras"))
+                .build();
+
+        // POJO <-> JSON
+        String json = mapper.writeValueAsString(new UserAccount("ada", 36));
+        UserAccount user = mapper.readValue(json, UserAccount.class);
+
+        // Tree model
+        JsonNode tree = mapper.readTree(json);
+        String name = tree.path("name").asString();
+
+        // Sequences
+        try (var seq = mapper.writer().writeValues(System.out)) {
+            seq.write(user);
+        }
+    }
+
+    static class UserAccount {
+        public String name;
+        public int age;
+
+        UserAccount() {}
+        UserAccount(String name, int age) {
+            this.name = name;
+            this.age = age;
+        }
+    }
+}
+```
+
+## Module registration example
+
+```java
+SimpleModule geoModule = new SimpleModule("GeoModule")
+        .addSerializer(LatLng.class, new LatLngSerializer())
+        .addDeserializer(LatLng.class, new LatLngDeserializer())
+        .setMixInAnnotation(ThirdPartyType.class, ThirdPartyTypeMixIn.class);
+
+JsonMapper mapper = JsonMapper.builder()
+        .addModule(geoModule)
+        .build();
+```
+
+## Summary
+
+`jackson-databind` provides the configuration surface, introspection machinery, and serializer/deserializer framework needed to bind arbitrary Java object graphs to and from JSON (or other Jackson-supported formats), while remaining extensible through modules, custom (de)serializers, naming strategies, and type-safety controls for polymorphic types.

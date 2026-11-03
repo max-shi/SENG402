@@ -1,0 +1,524 @@
+# py-cui
+
+`py-cui` is a Python library for building terminal-based user interfaces. Its API provides a grid-oriented application object, interactive widgets such as menus, buttons, text boxes, sliders, labels, and text blocks, plus popups for messages, confirmation, text input, menus, forms, loading progress, and file selection.
+
+Applications are organized around a `PyCUI` instance. Widgets are placed into rows and columns, can receive focus, and may be connected to keyboard, mouse, and selection callbacks.
+
+## Overview
+
+### Application: `PyCUI`
+
+`PyCUI` is the primary application interface. It manages:
+
+- Widget creation and layout
+- Focus and widget selection
+- Keyboard commands
+- Popups and dialogs
+- Status-bar and title text
+- Rendering configuration
+- Application lifecycle via `start()` and `stop()`
+
+Common application methods include:
+
+```python
+app.set_title("My Application")
+app.set_status_bar_text("Ready")
+app.start()
+```
+
+Widgets are added through methods such as:
+
+```python
+menu = app.add_scroll_menu("Items", row=0, column=0)
+button = app.add_button("Save", row=1, column=0)
+textbox = app.add_text_box("Name", row=0, column=1)
+slider = app.add_slider("Volume", row=1, column=1)
+```
+
+Each widget supports row/column placement along with optional `row_span`, `column_span`, `padx`, and `pady` values.
+
+### Widget sets: `WidgetSet`
+
+A `WidgetSet` is a collection of widgets that can be created and applied to an application:
+
+```python
+widget_set = app.create_new_widget_set(num_rows=2, num_cols=2)
+app.apply_widget_set(widget_set)
+```
+
+Like `PyCUI`, a `WidgetSet` can create menus, buttons, text boxes, labels, sliders, and custom widgets. This allows an application to define and switch between separate UI layouts.
+
+### Widgets
+
+All standard widgets derive from `Widget`, which itself is a `UIElement`.
+
+| Widget | Creation method | Purpose |
+|---|---|---|
+| `ScrollMenu` | `add_scroll_menu()` | Select one item from a scrollable list. |
+| `CheckBoxMenu` | `add_checkbox_menu()` | Maintain a list with checked and unchecked items. |
+| `TextBox` | `add_text_box()` | Edit a single line of text; supports password mode. |
+| `ScrollTextBlock` | `add_text_block()` | Display and edit or append larger blocks of text. |
+| `Label` | `add_label()` | Display a text label. |
+| `BlockLabel` | `add_block_label()` | Display label text in a block-style widget. |
+| `Button` | `add_button()` | Invoke a command when activated. |
+| `SliderWidget` | `add_slider()` | Choose a numeric value within a range. |
+| `Form` | `Form` | Collect and validate named form fields. |
+
+Widgets can also be created with `add_custom_widget()` when a custom widget class is available.
+
+### Shared widget capabilities
+
+`Widget` provides methods for input bindings, mouse bindings, selection, grid information, and text coloring:
+
+```python
+widget.add_key_command(key, command)
+widget.add_mouse_command(mouse_event, command)
+widget.set_selectable(True)
+widget.set_help_text("Helpful text")
+widget.set_color(color)
+widget.set_border_color(color)
+```
+
+Widgets can also add regex-based text color rules:
+
+```python
+widget.add_text_color_rule(
+    regex="ERROR",
+    color=1,
+    rule_type="...",
+)
+```
+
+The accepted `rule_type` and `match_type` values are determined by the renderer/color-rule configuration used by the application.
+
+## Menus
+
+`ScrollMenu` implements `MenuImplementation`, which provides operations for managing items and selection:
+
+```python
+menu.add_item("First item")
+menu.add_item_list(["Second item", "Third item"])
+
+selected = menu.get()
+selected_index = menu.get_selected_item_index()
+
+menu.set_selected_item("Second item")
+menu.remove_selected_item()
+menu.clear()
+```
+
+Menus may receive a callback whenever their selection changes:
+
+```python
+def on_selection_changed(item):
+    print("Selected:", item)
+
+menu.set_on_selection_change_event(on_selection_changed)
+```
+
+`CheckBoxMenu` extends the menu interface with checked-item operations:
+
+```python
+checks = app.add_checkbox_menu("Options", row=0, column=0)
+
+checks.add_item_list(["Enable logs", "Use cache", "Verbose output"])
+checks.mark_item_as_checked("Use cache")
+checks.toggle_item_checked("Verbose output")
+checks.mark_item_as_not_checked("Enable logs")
+```
+
+## Text input and text blocks
+
+`TextBox` implements the `TextBoxImplementation` interface:
+
+```python
+name = app.add_text_box("Name", row=0, column=0, initial_text="Guest")
+
+current_value = name.get()
+name.set_text("Ada")
+name.clear()
+```
+
+Password-style input is supported when adding a text box:
+
+```python
+password = app.add_text_box(
+    "Password",
+    row=1,
+    column=0,
+    password=True,
+)
+```
+
+`ScrollTextBlock` implements `TextBlockImplementation` and can hold multi-line text:
+
+```python
+output = app.add_text_block("Output", row=0, column=0, row_span=2)
+
+output.write("Starting task...\n")
+output.write("Task complete.\n")
+
+all_text = output.get()
+output.set_text("Replacement text")
+output.clear()
+```
+
+## Buttons and keyboard commands
+
+Buttons can receive a command at creation time:
+
+```python
+def save():
+    print("Saving")
+
+save_button = app.add_button(
+    "Save",
+    row=0,
+    column=0,
+    command=save,
+)
+```
+
+Global key commands can be registered on either `PyCUI` or a `WidgetSet`:
+
+```python
+from py_cui.keys import get_ascii_from_char
+
+app.add_key_command(get_ascii_from_char("q"), app.stop)
+```
+
+Widgets can define their own key commands:
+
+```python
+def clear_output():
+    output.clear()
+
+output.add_key_command(get_ascii_from_char("c"), clear_output)
+```
+
+The `get_ascii_from_char()` and `get_char_from_ascii()` helpers convert between characters and numeric key values.
+
+## Sliders
+
+Sliders are created with a minimum value, maximum value, step, and initial value:
+
+```python
+volume = app.add_slider(
+    "Volume",
+    row=0,
+    column=0,
+    min_val=0,
+    max_val=100,
+    step=5,
+    init_val=50,
+)
+
+current_volume = volume.get_slider_value()
+volume.set_slider_step(10)
+volume.set_bar_char("#")
+```
+
+`SliderWidget` also exposes display controls:
+
+```python
+volume.toggle_title()
+volume.toggle_border()
+volume.toggle_value()
+volume.align_to_middle()
+```
+
+## Popups and dialogs
+
+`PyCUI` can display several popup types.
+
+### Messages
+
+```python
+app.show_message_popup("Information", "The operation completed.")
+app.show_warning_popup("Warning", "This cannot be undone.")
+app.show_error_popup("Error", "The operation failed.")
+```
+
+### Yes/no confirmation
+
+```python
+def on_confirm(answer: bool):
+    if answer:
+        print("Confirmed")
+    else:
+        print("Cancelled")
+
+app.show_yes_no_popup("Continue?", on_confirm)
+```
+
+### Text input
+
+```python
+def on_name_entered(value: str):
+    print("Name:", value)
+
+app.show_text_box_popup(
+    "Enter a name",
+    on_name_entered,
+    initial_text="Guest",
+)
+```
+
+Password input is also available:
+
+```python
+app.show_text_box_popup(
+    "Enter password",
+    lambda value: print("Password received"),
+    password=True,
+)
+```
+
+### Menu popup
+
+```python
+def on_choice(choice: str):
+    print("Selected:", choice)
+
+app.show_menu_popup(
+    "Choose an action",
+    ["Open", "Save", "Quit"],
+    on_choice,
+)
+```
+
+### Loading popups
+
+```python
+app.show_loading_icon_popup(
+    "Working",
+    "Please wait...",
+    callback=lambda: print("Loading started"),
+)
+
+app.stop_loading_popup()
+```
+
+A loading bar can be displayed and incremented:
+
+```python
+app.show_loading_bar_popup(
+    "Processing",
+    num_items=[10],
+)
+
+for _ in range(10):
+    # Perform one unit of work.
+    app.increment_loading_bar()
+
+app.stop_loading_popup()
+```
+
+### Forms
+
+Forms can be displayed as a popup with field names, password fields, and required fields:
+
+```python
+def submitted():
+    print("Form submitted")
+
+app.show_form_popup(
+    "Account",
+    fields=["Username", "Email", "Password"],
+    passwd_fields=["Password"],
+    required=["Username", "Password"],
+    callback=submitted,
+)
+```
+
+A `Form` or `FormPopup` supports retrieving submitted values through `get()` and checking submission validity with `is_submission_valid()`.
+
+### File dialogs
+
+A file dialog popup can be shown for file selection:
+
+```python
+def on_file_selected():
+    print("File dialog completed")
+
+app.show_filedialog_popup(
+    popup_type="openfile",
+    initial_dir=".",
+    callback=on_file_selected,
+    ascii_icons=True,
+    limit_extensions=[".txt", ".md"],
+)
+```
+
+The `is_filepath_hidden(path)` helper can be used to determine whether a path is hidden.
+
+## Focus and selection
+
+Applications can inspect and change the focused widget:
+
+```python
+selected = app.get_selected_widget()
+
+app.set_selected_widget(widget_id=1)
+app.lose_focus()
+```
+
+Focus can also be moved directly to a widget:
+
+```python
+app.move_focus(menu)
+```
+
+A widget can be made selectable or non-selectable:
+
+```python
+menu.set_selectable(True)
+
+if menu.is_selectable():
+    print("The menu can receive focus")
+```
+
+## Application configuration
+
+### Title and status bar
+
+```python
+app.set_title("Project Manager")
+app.set_status_bar_text("Press q to quit")
+```
+
+The status bar exposes text, color, visibility, and height operations through `StatusBar`.
+
+### Borders
+
+Border styles can be changed globally:
+
+```python
+app.toggle_unicode_borders()
+
+app.set_widget_border_characters(
+    upper_left_corner="+",
+    upper_right_corner="+",
+    lower_left_corner="+",
+    lower_right_corner="+",
+    horizontal="-",
+    vertical="|",
+)
+```
+
+### Refresh and drawing callbacks
+
+```python
+app.set_refresh_timeout(100)
+
+def update_before_draw():
+    # Update displayed state before the next draw.
+    pass
+
+app.set_on_draw_update_func(update_before_draw)
+```
+
+### Logging and live debug
+
+```python
+app.enable_logging(
+    log_file_path="application.log",
+)
+
+app.set_toggle_live_debug_key(toggle_debug_key=4)
+```
+
+`PyCUILogger` provides `debug`, `info`, `warn`, `error`, and `critical` logging methods, along with controls for toggling and drawing live debug output.
+
+## Utility functions
+
+### `fit_text`
+
+`fit_text()` returns text fitted to a requested width:
+
+```python
+from py_cui import fit_text
+
+left_aligned = fit_text(20, "Hello")
+centered = fit_text(20, "Hello", center=True)
+```
+
+### Key conversion
+
+```python
+from py_cui.keys import get_ascii_from_char, get_char_from_ascii
+
+key_code = get_ascii_from_char("q")
+character = get_char_from_ascii(key_code)
+```
+
+## Example: small interactive screen
+
+The following function configures an existing `PyCUI` application with a menu, output area, button, and quit shortcut.
+
+```python
+from py_cui import PyCUI
+from py_cui.keys import get_ascii_from_char
+
+
+def configure_application(app: PyCUI) -> None:
+    app.set_title("Task Viewer")
+    app.set_status_bar_text("Select a task, then press Run. Press q to quit.")
+
+    tasks = app.add_scroll_menu(
+        "Tasks",
+        row=0,
+        column=0,
+        row_span=1,
+        column_span=1,
+    )
+    tasks.add_item_list([
+        "Build documentation",
+        "Run tests",
+        "Create release",
+    ])
+
+    output = app.add_text_block(
+        "Output",
+        row=0,
+        column=1,
+        row_span=2,
+        column_span=1,
+        initial_text="Waiting for a task...\n",
+    )
+
+    def show_current_task():
+        task = tasks.get()
+        if task is None:
+            output.write("No task selected.\n")
+        else:
+            output.write(f"Running: {task}\n")
+
+    app.add_button(
+        "Run",
+        row=1,
+        column=0,
+        command=show_current_task,
+    )
+
+    app.add_key_command(get_ascii_from_char("q"), app.stop)
+```
+
+After configuring the application, start its event loop:
+
+```python
+app.start()
+```
+
+## Error types
+
+The library defines several exception types for application and layout-related errors:
+
+- `PyCUIError`
+- `PyCUIOutOfBoundsError`
+- `PyCUIMissingParentError`
+- `PyCUIMissingChildError`
+- `PyCUIInvalidValue`
+- `DuplicateFormKeyError`
+
+These may be useful when validating layout operations, widget relationships, or form field definitions.

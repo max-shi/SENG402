@@ -1,0 +1,277 @@
+# S3 Core
+
+`org.eclipse.dataspaceconnector:s3-core` provides shared AWS client and credential-token abstractions for working with Amazon S3 and related AWS services.
+
+The library centers on `AwsClientProvider`, which creates AWS SDK clients for:
+
+- Amazon S3 (`S3Client` and `S3AsyncClient`)
+- AWS Identity and Access Management (`IamAsyncClient`)
+- AWS Security Token Service (`StsAsyncClient`)
+
+It also provides secret-token implementations for long-lived AWS credentials and temporary session credentials.
+
+## Main types
+
+### `AwsClientProvider`
+
+`AwsClientProvider` is the primary entry point for obtaining AWS service clients.
+
+```java
+public interface AwsClientProvider {
+    S3Client s3Client(String region, SecretToken secretToken);
+    S3Client s3Client(String region);
+    S3AsyncClient s3AsyncClient(String region);
+    IamAsyncClient iamAsyncClient();
+    StsAsyncClient stsAsyncClient(String region);
+    void shutdown();
+}
+```
+
+Use it to create clients for the AWS region in which an operation should run.
+
+| Method | Purpose |
+|---|---|
+| `s3Client(String region)` | Creates a synchronous S3 client using the provider's configured credentials. |
+| `s3Client(String region, SecretToken secretToken)` | Creates a synchronous S3 client using credentials supplied by a token. |
+| `s3AsyncClient(String region)` | Creates an asynchronous S3 client. |
+| `iamAsyncClient()` | Creates an asynchronous IAM client. |
+| `stsAsyncClient(String region)` | Creates an asynchronous STS client for a region. |
+| `shutdown()` | Shuts down resources held by the provider. Call this when the provider is no longer needed. |
+
+### `AwsClientProviderImpl`
+
+`AwsClientProviderImpl` is the provided implementation of `AwsClientProvider`.
+
+```java
+AwsClientProvider provider = new AwsClientProviderImpl(configuration);
+```
+
+It is constructed with an `AwsClientProviderConfiguration` instance.
+
+### `AwsClientProviderConfiguration`
+
+`AwsClientProviderConfiguration` exposes provider configuration values:
+
+```java
+public class AwsClientProviderConfiguration {
+    public AwsCredentialsProvider getCredentialsProvider();
+    public URI getEndpointOverride();
+    public int getThreadPoolSize();
+}
+```
+
+The available configuration values are:
+
+- `AwsCredentialsProvider`: AWS SDK credentials provider used by the client provider.
+- `URI endpointOverride`: an optional endpoint override.
+- `int threadPoolSize`: a thread-pool size setting, relevant when creating asynchronous clients.
+
+### `AwsSecretToken`
+
+`AwsSecretToken` represents AWS access-key credentials.
+
+```java
+AwsSecretToken token = new AwsSecretToken(
+    "access-key-id",
+    "secret-access-key"
+);
+```
+
+It implements `SecretToken` and provides access to:
+
+- Access key ID through `getAccessKeyId()`
+- Secret access key through `getSecretAccessKey()`
+- Expiration through `getExpiration()`
+- A map representation through `flatten()`
+
+```java
+String accessKeyId = token.getAccessKeyId();
+String secretAccessKey = token.getSecretAccessKey();
+long expiration = token.getExpiration();
+
+Map<String, ?> values = token.flatten();
+```
+
+### `AwsTemporarySecretToken`
+
+`AwsTemporarySecretToken` represents temporary AWS session credentials, including a session token and expiration value.
+
+```java
+AwsTemporarySecretToken temporaryToken = new AwsTemporarySecretToken(
+    "access-key-id",
+    "secret-access-key",
+    "session-token",
+    expiration
+);
+```
+
+In addition to the access key ID and secret access key, it exposes:
+
+```java
+String sessionToken = temporaryToken.getSessionToken();
+long expiration = temporaryToken.getExpiration();
+Map<String, ?> values = temporaryToken.flatten();
+```
+
+Use this token type when credentials include an AWS session token, such as credentials obtained through a temporary-credential workflow.
+
+### `S3CoreExtension`
+
+`S3CoreExtension` is a `ServiceExtension` that exposes an `AwsClientProvider`.
+
+```java
+public class S3CoreExtension implements ServiceExtension {
+    public String name();
+    public AwsClientProvider awsClientProvider(ServiceExtensionContext context);
+}
+```
+
+The extension can be used in environments that provide a `ServiceExtensionContext` to obtain an `AwsClientProvider` configured for that runtime.
+
+## Usage examples
+
+### Create an S3 client with configured credentials
+
+Use `s3Client(region)` when the provider's configured credentials should be used.
+
+```java
+import org.eclipse.dataspaceconnector.aws.s3.core.AwsClientProvider;
+
+import software.amazon.awssdk.services.s3.S3Client;
+
+public class BucketReader {
+    private final AwsClientProvider awsClientProvider;
+
+    public BucketReader(AwsClientProvider awsClientProvider) {
+        this.awsClientProvider = awsClientProvider;
+    }
+
+    public void listBuckets() {
+        S3Client s3 = awsClientProvider.s3Client("us-east-1");
+
+        var response = s3.listBuckets();
+        response.buckets().forEach(bucket ->
+                System.out.println(bucket.name())
+        );
+    }
+}
+```
+
+### Create an S3 client with explicit access-key credentials
+
+Use `s3Client(region, secretToken)` when credentials are available for a specific operation.
+
+```java
+import org.eclipse.dataspaceconnector.aws.s3.core.AwsClientProvider;
+import org.eclipse.dataspaceconnector.aws.s3.core.AwsSecretToken;
+
+import software.amazon.awssdk.services.s3.S3Client;
+
+public class ObjectUploader {
+    private final AwsClientProvider awsClientProvider;
+
+    public ObjectUploader(AwsClientProvider awsClientProvider) {
+        this.awsClientProvider = awsClientProvider;
+    }
+
+    public void upload(String bucketName, String key, byte[] content) {
+        var token = new AwsSecretToken(
+                "AKIA...",
+                "secret-access-key"
+        );
+
+        S3Client s3 = awsClientProvider.s3Client("eu-west-1", token);
+
+        s3.putObject(
+                request -> request.bucket(bucketName).key(key),
+                software.amazon.awssdk.core.sync.RequestBody.fromBytes(content)
+        );
+    }
+}
+```
+
+### Use temporary session credentials
+
+Temporary credentials require an access key ID, secret access key, session token, and expiration value.
+
+```java
+import org.eclipse.dataspaceconnector.aws.s3.core.AwsClientProvider;
+import org.eclipse.dataspaceconnector.aws.s3.core.AwsTemporarySecretToken;
+
+import software.amazon.awssdk.services.s3.S3Client;
+
+public class TemporaryCredentialReader {
+    private final AwsClientProvider awsClientProvider;
+
+    public TemporaryCredentialReader(AwsClientProvider awsClientProvider) {
+        this.awsClientProvider = awsClientProvider;
+    }
+
+    public void readObject() {
+        long expiration = System.currentTimeMillis() + 60 * 60 * 1000;
+
+        var token = new AwsTemporarySecretToken(
+                "temporary-access-key-id",
+                "temporary-secret-access-key",
+                "temporary-session-token",
+                expiration
+        );
+
+        S3Client s3 = awsClientProvider.s3Client("us-west-2", token);
+
+        var response = s3.getObject(
+                request -> request.bucket("example-bucket").key("example.txt")
+        );
+
+        // Consume the returned object content as appropriate for the application.
+        response.close();
+    }
+}
+```
+
+### Create asynchronous AWS clients
+
+Use asynchronous clients when application code is designed to work with asynchronous AWS SDK operations.
+
+```java
+import org.eclipse.dataspaceconnector.aws.s3.core.AwsClientProvider;
+
+import software.amazon.awssdk.services.s3.S3AsyncClient;
+import software.amazon.awssdk.services.sts.StsAsyncClient;
+
+public class AsyncAwsOperations {
+    private final AwsClientProvider awsClientProvider;
+
+    public AsyncAwsOperations(AwsClientProvider awsClientProvider) {
+        this.awsClientProvider = awsClientProvider;
+    }
+
+    public void listBucketsAsync() {
+        S3AsyncClient s3 = awsClientProvider.s3AsyncClient("ap-southeast-1");
+
+        s3.listBuckets()
+                .thenAccept(response -> response.buckets().forEach(bucket ->
+                        System.out.println(bucket.name())
+                ));
+    }
+
+    public void useStsAsync() {
+        StsAsyncClient sts = awsClientProvider.stsAsyncClient("ap-southeast-1");
+
+        sts.getCallerIdentity()
+                .thenAccept(identity ->
+                        System.out.println(identity.arn())
+                );
+    }
+}
+```
+
+## Lifecycle
+
+An `AwsClientProvider` may manage resources used by synchronous and asynchronous AWS clients. Shut it down when the application or owning component stops:
+
+```java
+awsClientProvider.shutdown();
+```
+
+Avoid creating additional clients from a provider after it has been shut down.

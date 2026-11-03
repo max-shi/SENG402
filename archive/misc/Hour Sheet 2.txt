@@ -1,0 +1,500 @@
+SENG402 Project Hours
+
+Week 3
+
+Monday 2 March
+Background Research 2h 10m (6:00 - 6:40pm) (7:00-8:30pm)
+
+Wednesday 4 March
+Background Research 4h (6:00 - 10:00pm)
+
+Thursday 5 March
+Meeting 30m (10:00-10:30am)
+
+Friday 6 March
+Research 1h 20m (10:30-11:50am)
+
+Saturday 7 March
+Research 25m (8:00-8:25pm)
+
+Sunday 8 March
+Research 1h 30m (7:30-9:00pm)
+
+Week 4
+
+Monday 9 March
+Research & Plan 1h 10m (2:00-3:10pm)
+More planning 3h (5pm-8pm)
+
+Tuesday 10 March
+Research (paper) 1h 25m (2:00-3:25pm)
+
+Wednesday 11 March
+Preparation for meeting 15m (8:00-8:15pm)
+Research paper 20m (9:00-9:20pm)
+
+Thursday 12 March
+Meeting 30m (10:00-10:30am)
+Meeting summary & next steps 25m (10:30am-10:55am)
+
+Friday 13 March
+Background Research 2h 20m (11am-1:20pm)
+
+Sunday 15 March
+Research paper 40m (2:20-3:00pm)
+Background research 25m (3:00pm-3:25pm)
+Background research 20m (7:10-7:30pm)
+
+Week 5
+
+Tuesday 17 March
+Research Paper reading (Research) 1h 20m (6-7:20pm)
+Report Writing 20m (7:20-7:40pm)
+
+Wednesday 18 March
+Report Writing 45m (2:00-2:45pm)
+Prepare for meeting 15m (7:00-7:15pm)
+
+Thursday 19 March
+Meeting 30m (10:00-10:30am)
+Meeting summary & Research 25m (10:30-10:55am)
+
+Friday 20 March
+Report Writing 1h (11am-12pm)
+Report Writing 5h (1-6pm)
+
+Week 6
+
+Monday 23 March
+Pipeline research and data collection research 1h (2-3pm)
+
+Tuesday 24 March
+Corpus Collection Tool Creation 1h (12-1pm)
+Crawler creation 1h (1-2pm)
+Work on crawler and preprocessing 1h 10m (9-10:10pm)
+
+Wednesday 25 March
+Preprocessor work 1h (10-11am)
+Background research (Misc - Coding) 2h (12-2pm)
+Research Paper (1h)
+
+Thursday 26 March
+Meeting 30m (10:00-10:30am)
+Background research (Misc - Coding) 2h (12-2pm)
+
+Friday 27 March
+Preprocessor work 2h (12-2pm)
+Data corpus investigation 1h 30m (2:30-4:00pm)
+
+<—> Term Break
+Background Research (Misc Coding/LIWC) 4h (week of April 1st)
+
+Monday 20 April
+Preprocessor work 3h (12-3pm)
+Research Paper 1h (3-4pm)
+
+Tuesday 21 April
+Visualisation work 1h (12-1pm)
+Looking into code (Investigation) 1h (2-3pm)
+
+Wednesday 22 April
+Tweaks to crawler / cloner 2h (12-2pm)
+Documentation 30m (2-2:30pm)
+
+Thursday 23 April
+Weekly Meeting 30m (10:00-10:30am)
+
+25 April
+LIWC License Obtained
+LIWC investigation 1h (12-1pm)
+Understanding LIWC (including tutorials) 3h (2pm-5pm)
+Understanding LIWC more.. 1h (9pm-10pm)
+
+Monday 26 April
+LIWC Research Paper 2h (2-4pm)
+
+Tuesday 27 April
+Running LIWC with different parameters 1h (12-1pm)
+Work on crawler / cloner 1h (1-2pm)
+
+Wednesday 28 April
+Visualiser 3h (6pm-9pm)
+
+Thursday 29 April
+Weekly Meeting 30m (10:00-10:30am)
+
+Monday 4 May
+LIWC dimension research 4h (6-10pm)
+
+Tuesday 5 May
+LIWC dimension research 3h (8-11pm)
+Research Paper searching 1h (12-1pm)
+
+Wednesday 6 May
+Research Paper 1h (8-9pm)
+Tweaks to pre-processor, documentation of LIWC dimensions (9-10pm)
+
+Thursday 7 May
+Weekly Meeting 30m (10-10:30)
+Determining dimensions 3h (7pm-10pm)
+Documentation 30m (10-10:30pm)
+
+Monday 11 May
+Running Cloner / Crawler 5h (2pm-7pm)
+Dimension Processing / Statistical Analysis 2h (8pm-10pm)
+
+Tuesday 12 May
+Research Paper 1h (8-9pm)
+Research into statistical processes 1h (9-10pm)
+Work on processing pipeline 2h (10pm-12am)
+
+Wednesday 13 May
+Determining what LIWC dimensions to take 3h (8-11pm)
+
+Thursday 14 May
+Weekly Meeting 30m (10:00-10:30am)
+
+Friday 15 May
+Switching Java pipeline to also use a cloner, not a crawler 4h (6-10pm)
+Delving into code 1h (10pm-11pm)
+
+Monday 18 May
+Statistical Analysis 3h (8-11pm)
+Background Research (Stats) 1h (11pm-12am)
+
+Tuesday 19 May
+Statistical Analysis 2h (9pm-11pm)
+
+Wednesday 20 May
+Finalising dimensions 1h (10-11pm)
+Dimension documentation 3h (11pm-2am)
+
+Thursday 21 May
+Weekly meeting 30m (10-10:30am)
+Dimension analysis (in code!) 1h (12-1pm)
+
+Friday 22 May
+Interim Presentation Preparation Slides 1h 30m (12-1:30pm)
+Documentation and Preparation 4h (5pm-9pm)
+
+Monday 25 May
+Interim Presentation Preparation Slides 1h (12-1pm)
+Interim Presentation Preparation Script 2h (2-4pm)
+
+Tuesday 26 May
+Interim Presentation Preparation Slides 4h (6pm-10pm)
+Interim Presentation Preparation Script 1h (10pm-11pm)
+Interim Presentation Preparation Slides 2h (11pm-1am)
+
+Week 16
+
+Monday 1 June
+Review of pilot statistical results 1h (2-3pm)
+
+Wednesday 3 June
+Review of LIWC dimensions and construct-validity findings 1h (7-8pm)
+
+Thursday 4 June
+Weekly Meeting 30m (10-10:30am)
+Background Research & confirmatory study planning 1h (2-3pm)
+
+
+Week 17
+
+Tueday 9 June
+Research into statistical procedures 1h (2-3pm)
+
+Thursday 11 June
+Weekly Meeting 30m (10-10:30am)
+
+Saturday 13 June
+Tweaks to liwc_stats.py 1h (2-3pm)
+Review of analysis outputs & next steps 45m (10-10:45pm)
+
+Week 18
+
+Tuesday 16 June
+Research Paper reading (Sampling methods) 1h (7-8pm)
+
+Week 19
+
+Monday 22 June
+Background Research (Package registries & documentation sources) 1h (2-3pm)
+
+Thursday 25 June
+Weekly Meeting (10-10:30am)
+Planning reproducible sampling and collection approaches 1h (7-8pm)
+
+Week 20
+
+Wednesday 1 July
+Review of corpus collection and preprocessing requirements 1h (1-2am)
+Planning documentation eligibility filters 45m (10-10:45pm)
+
+Week 21
+
+Monday 6 July
+Confirmatory sampling design (PyPI, Maven Central & ecosyste.ms) 2h (2-4pm)
+Research into reproducible seeded sampling 1h (7-8pm)
+
+Tuesday 7 July
+Definition of corpus inclusion filters F1-F7 2h 30m (6-8:30pm)
+
+Wednesday 8 July
+Cloning and preprocessing corpus an reserve pool 1h 30pm (6-9pm) <-- 
+
+Thursday 9 July
+Weekly Meeeeting 30m (10-10:30am)
+
+Sunday 12 July
+Domain tagging of libraries 30m (2-2:30pm)
+Finalising and freezing sampling frame. Documenting removal of JavaScript from confirmatory scope 1h (3-4pm)
+
+Week 22
+
+Manual review of stubs, forks and mirrors 1h 20m (2-3:20pm)
+Review of functional-domain tags 1h (7-8pm)
+Preparation of libraries.csv and LIWC input 2h 15m (8-10:15pm)
+
+Wednesday 15 July
+Running confirmatory corpus through LIWC-22 1h (9-10am)
+Confirmatory RQ1 statistical analysis 1h 15m (2-3:15pm)
+Validity checking of emo_anger result 30m (7-7:30pm)
+
+Thursday 16 July
+Meeting 30m (10-10:30am)
+RQ2 domain-stratified analysis & matched-domain follow-up 2h 30m (2-4:30pm)
+Preparation of coding-agent brief for expanded sampling frame 1h 30m (7-8:30pm)
+
+Friday 17 July
+PCA, pairwise scatter plots (java + python dist.) 1h 30m (2-3:30pm)
+Documentation of ecosyste.ms provenance caveat 30m (3:30-4pm)
+
+Week 23
+
+Monday 20 July
+Review of expanded sampling approach 1h (2-3pm)
+RQ3 planning 2h 30m (7-9:30pm)
+
+Tuesday 21 July
+Review of expanded frame and corpus collection progress 20m (9-9:20pm)
+
+Wednesday 22 July
+Fixing word-count filter and corrupted extracted text 5h (2-7pm)
+Re-running RQ1 statistics on n=1000 corpus 2h (7-9pm)
+
+Thursday 23 July
+Preparation for meeting 30m (9:30-10am)
+Meeting 30m (10-10:30am)
+Meeting summary & next steps 1h (10:30-11:30am)
+Comparison of n=200 and n=1000 results 1h (2-3pm)
+
+Friday 24 July
+RQ3 pilot concatenation work 1h (2-3pm)
+
+Week 24
+
+Monday 27 July
+Re-cloning libraries 2h (10am-12pm)
+Prompt-sensitivity testing across prompt variants and models 1h 20m (4-5:20pm)
+Figure revisions given feedback 1h (7-8pm)
+
+Tuesday 28 July
+Python API-surface extractor work (Monorepo & namespace scoping) 2h (2-4pm)
+Overlap and contamination-checker development 1h (7-8pm)
+
+Wednesday 29 July
+Python API-surface extractor fixes & output checking 2h (2-4pm)
+Review of pilot generations and possible memorised library knowledge 2h (7-9pm)
+
+Thursday 30 July
+Meeting (different time) 30m (1-1:30pm)
+Prompt-sensitivity run 1h 10m (2-3:10pm)
+
+Friday 31 July
+Visualisation tweaks and documentation of two-model RQ3 scope 1h (2-3pm)
+
+Week 25
+
+Monday 3 August
+Tutorial-vs-reference genre investigation 1h (9-10pm) <-- didnt work
+
+Tuesday 4 August
+Haskell comparison-frame development 1h 30m (2-3:30pm)
+Haskell statistical analysis & sample-size investigation 1h (7-8pm) <-- didnt work
+
+Wednesday 5 August
+Investigation of monorepo duplication defect (29/400 duplicate libraries) 1h 30m (2-3:30pm)
+Fixing the error (detection work) 1h 45m (7-8:45pm)
+
+Thursday 6 August
+// No meeting this week
+
+Friday 7 August
+Building deduplication-check frame and corrected comparison corpus 1h (2-3pm)
+Re-running RQ1 on corrected corpus 30m (3-3:30pm)
+Documentation of unchanged results and canonical corpus decision 1h (7-8pm)
+Reorganisation of scripts/ 45m (10-10:45pm)
+Pipeline documentation 30m (11:30-12am)
+
+Week 26
+
+Monday 10 August
+Java API-surface extractor development 4h (10-2am)
+
+Tuesday 11 August
+Investigation of oversized Java API extraction 1h (2-3pm)
+Fixing README-search gating and whole-repository fallback 2h (9-11pm)
+
+Wednesday 12 August
+Artifact-based scoping, monorepo detection & extraction word cap 1h (10-11am)
+Java eligibility review 2h (2-4pm)
+Running and checking model generations 2h (7-9pm)
+
+Thursday 13 August
+Meeting 30m (10-10:30am)
+Preparation of generated documentation for LIWC analysis 1h (2-3pm)
+
+Friday 14 August
+Documentation URL investigation 1h (2-3pm)
+Tutorial-crawling pilot 1h (3-4pm) <-- also didnt work
+
+Week 27
+
+Monday 17 August
+RQ3 LIWC statistical analysis 2h (2-4pm)
+RQ3 variance testing 1h (10-11pm)
+
+Tuesday 18 August
+Construct-validity investigation of emotion, emo_neg and emo_sad 2h (9-11pm)
+
+Wednesday 19 August
+Corpus-normalisation investigation & token checks (what drives what) 2h 30m (2-4:30pm)
+Processing generated documentation through prose extraction m 1h 45m (10-10:45am)
+
+Thursday 20 August
+Preparation for meeting 1h (9-10am)
+Meeting 30m (10-10:30am)
+Meeting summary & corrected-results documentation 30m (10:30-11am)
+
+Friday 21 August
+Re-running LIWC and statistical tests on prose-only generated documentation 30mh (2-2:30pm)
+
+<—> Term Break
+22 August - 6 September
+
+Week 30
+
+Monday 7 September
+Review of corrected RQ3 results 30m (6-6:30pm)
+
+Tuesday 8 September
+Planning RQ4 classification and validation procedures 1h 20m (7-8:20pm)
+
+Wednesday 9 September
+Literature-search preparation 2h (2-4pm)
+
+Thursday 10 September
+// No meeting today
+
+Friday 11 September
+Review of domain-label completeness, evidence & report structure 1h (2-3pm)
+
+Week 31
+
+Monday 14 September
+RQ4 classifier development 2h (2-4pm)
+Investigation of missing domain tags and grouping issues 1h (7-8pm)
+
+Tuesday 15 September
+Literature-search prep 1h (2-3pm)
+Research into external domain validation 1h (3-4pm)
+Lit search triage dev 1h (7-8pm)
+
+Wednesday 16 September
+RQ4 classifier evaluation (and some testing (leakage)) 2h (10am-12pm)
+Scopus literature search (16 search strings) 2h (6-8pm)
+RQ2 variance decomposition & RQ3 edit-distance analysis 2h (10-12am)
+
+Thursday 17 September
+Preparation for meeting 15m (9:45-10am)
+Meeting 30m (10-10:30am)
+RQ1 equivalence checking 1h (2-3pm)
+Research-question wording & report interpretation corrections 1h (3-4pm)
+
+Friday 18 September
+Literature triage and preparation of records for manual screening 1h (2-3pm)
+Final evidence snapshot 1h (3-4pm)
+
+Sunday 20 September
+Documentation of before-and-after defect comparisons 1h (7-8pm)
+
+Week 32
+
+Monday 21 September
+Authorship-detector development 3h (2-5pm)
+
+Tuesday 22 September
+Sentence-length outlier investigation 3h (2-5pm)
+Rebuilding Java candidate pool and fixing multi-module detection 2h (7-9pm)
+
+Wednesday 23 September
+Java candidate review & clean-subset selection 2h (10am-12pm)
+Running and checking regenerated documentation outputs 2h (2-4pm)
+LIWC reprocessing & clean-corpus statistical analysis 2h (7-9pm)
+
+Thursday 24 September
+Meeting 30m (10-10:30am)
+Review of corrected RQ3 findings and retraction of earlier ipron result 1h (2-3pm)
+Detector re-evaluation and external validation 45m (7-7:45pm)
+
+Friday 25 September
+Edit-distance sensitivity analysis 1h (2-3pm)
+
+Week 33
+
+Monday 28 September
+Review of corrected RQ1-RQ4 findings 2h (2-4pm)
+
+Tuesday 29 September
+Organisation of final evidence and analysis outputs 1h (2-3pm)
+Report Writing (Methods & analysis procedures) 1h 30m (7-8:30pm)
+
+Wednesday 30 September
+Report Writing (Research-question explanations) 1h (2-3pm)
+Documentation of limitations and pipeline defects 2h (7-9pm)
+
+Thursday 1 October
+// No meeting this week
+Documentation of corrective actions and interpretation changes 1h (2-3pm)
+
+Friday 2 October
+Review of figures and references  (REport WRiting) 25m (6-6:25pm)
+
+Sunday 4 October
+Report Writing 1h (7-8pm)
+
+Week 34
+
+Monday 5 October
+Report Writing 1h (2-3pm)
+
+Tuesday 6 October
+Rewriting RQ summaries and explanations of findings 2h (2-4pm)
+RQ1 confirmatory forest plot & PR/ROC figures 1h 50m (10-11:50pm)
+
+Wednesday 7 October
+Report Writing (Full draft) 3h (2-5pm)
+Plain-text exports, terminology corrections & showcase abstract 1h (7-8pm)
+
+Thursday 8 October
+Meeting (10-10:30am)
+Report audits 2h (2-4pm)
+RQ3 violin-figure revisions 1h (7-8pm)
+
+Saturday 10 October
+Report changes after feedback 3h (2-5pm)
+Methods and numerical consistency checks 1h (7-8pm)
+
+Sunday 11 October
+Last minute push for the report! 6h (12-6pm) 

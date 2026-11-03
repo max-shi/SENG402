@@ -1,0 +1,339 @@
+# fj-doc-mod-fop
+
+`org.fugerit.java:fj-doc-mod-fop` provides Java integration points for producing documents through Apache FOP-style `FopFactory` configuration and document type handlers.
+
+The library includes:
+
+- `FopConfig` implementations for creating `FopFactory` instances.
+- Document handlers that combine FreeMarker-oriented document processing with FOP processing.
+- PDF-oriented FOP handlers, including an accessibility-related variant.
+- Resource resolver wrappers for FOP configuration resources.
+- Initialization and utility APIs.
+
+## Dependency
+
+```xml
+<dependency>
+    <groupId>org.fugerit.java</groupId>
+    <artifactId>fj-doc-mod-fop</artifactId>
+    <version><!-- version --></version>
+</dependency>
+```
+
+## Core concepts
+
+### `FopConfig`
+
+`FopConfig` is the central configuration abstraction:
+
+```java
+public interface FopConfig extends Serializable {
+    FopFactory newFactory() throws ConfigException;
+}
+```
+
+Use it when a component needs to create a configured Apache FOP `FopFactory`.
+
+Available implementations include:
+
+- `FopConfigDefault` — creates a default `FopFactory`.
+- `FopConfigClassLoaderWrapper` — creates a factory using FOP configuration identified by a path or preloaded byte content, optionally with a custom `ResourceResolver`.
+
+### FOP document handlers
+
+The handler hierarchy is centered around `FreeMarkerFopTypeHandler`:
+
+- `FreeMarkerFopTypeHandler` extends `DocTypeHandlerDefault` and processes a `DocInput` into a `DocOutput`.
+- `FreeMarkerFopTypeHandlerUTF8` is a decorator-oriented UTF-8 handler.
+- `PdfFopTypeHandler` extends `FreeMarkerFopTypeHandler` and adds PDF/FOP configuration and options.
+- `PdfFopNoAccessibilityTypeHandler` is a specialized PDF handler variant.
+
+All document handlers expose:
+
+```java
+void handle(DocInput docInput, DocOutput docOutput) throws Exception;
+```
+
+This makes them suitable for use wherever the surrounding document framework supplies a `DocInput` and `DocOutput`.
+
+### Resource resolvers
+
+FOP configuration may require resolving resources identified by `URI`s. The library provides:
+
+- `ResourceResolverWrapper` — wraps an existing `ResourceResolver`, or can be constructed without one and configured later.
+- `ClassLoaderResourceResolverWrapper` — a resolver wrapper with class-loader-oriented resource handling.
+
+`ResourceResolverWrapper` also exposes:
+
+```java
+public static ResourceResolver getResolver(String type) throws IOException;
+```
+
+Use this method when a resolver is selected by a string type understood by the application.
+
+### Initialization and utilities
+
+- `InitFopHandler.initDoc()` initializes document/FOP support and returns whether initialization completed successfully.
+- `InitFopHandler.initDocAsync()` starts initialization asynchronously.
+- `ApacheFopUtils.getApacheFOPVersion()` returns the Apache FOP version as a string.
+- `PoolUtils.handleFopWrap(...)` supports management of a pool of `FopConfigWrap` instances.
+
+## Usage
+
+### Create a default FOP factory
+
+Use `FopConfigDefault` when no custom FOP configuration is required.
+
+```java
+import org.apache.fop.apps.FopFactory;
+import org.fugerit.java.doc.mod.fop.FopConfig;
+import org.fugerit.java.doc.mod.fop.FopConfigDefault;
+
+FopConfig fopConfig = new FopConfigDefault();
+
+FopFactory fopFactory = fopConfig.newFactory();
+```
+
+`newFactory()` can throw `ConfigException`, so applications should handle or declare that exception.
+
+```java
+import org.apache.fop.apps.FopFactory;
+import org.fugerit.java.core.cfg.ConfigException;
+import org.fugerit.java.doc.mod.fop.FopConfigDefault;
+
+public FopFactory createFopFactory() throws ConfigException {
+    return new FopConfigDefault().newFactory();
+}
+```
+
+### Configure FOP from a configuration path
+
+`FopConfigClassLoaderWrapper` accepts a FOP configuration path and can optionally receive a custom `ResourceResolver`.
+
+```java
+import org.apache.fop.apps.FopFactory;
+import org.fugerit.java.doc.mod.fop.config.FopConfigClassLoaderWrapper;
+
+FopConfigClassLoaderWrapper fopConfig =
+        new FopConfigClassLoaderWrapper("fop-config.xml");
+
+FopFactory fopFactory = fopConfig.newFactory();
+```
+
+Inspect the configured values when needed:
+
+```java
+String configPath = fopConfig.getFopConfigPath();
+```
+
+### Configure FOP from preloaded configuration data
+
+If configuration data is already available as bytes, use the byte-array constructor.
+
+```java
+import java.nio.charset.StandardCharsets;
+
+import org.apache.fop.apps.FopFactory;
+import org.fugerit.java.doc.mod.fop.config.FopConfigClassLoaderWrapper;
+
+byte[] configData = """
+        <fop/>
+        """.getBytes(StandardCharsets.UTF_8);
+
+FopConfigClassLoaderWrapper fopConfig =
+        new FopConfigClassLoaderWrapper(configData, null);
+
+FopFactory fopFactory = fopConfig.newFactory();
+```
+
+### Supply a custom resource resolver
+
+Use `ResourceResolverWrapper` when FOP resources must be delegated to another resolver.
+
+```java
+import org.apache.xmlgraphics.io.ResourceResolver;
+import org.fugerit.java.doc.mod.fop.config.FopConfigClassLoaderWrapper;
+import org.fugerit.java.doc.mod.fop.config.ResourceResolverWrapper;
+
+ResourceResolver delegate = ResourceResolverWrapper.getResolver("custom");
+
+ResourceResolverWrapper resolver = new ResourceResolverWrapper(delegate);
+
+FopConfigClassLoaderWrapper fopConfig =
+        new FopConfigClassLoaderWrapper("fop-config.xml", resolver);
+```
+
+A wrapper can also be configured after construction:
+
+```java
+import org.apache.xmlgraphics.io.ResourceResolver;
+import org.fugerit.java.doc.mod.fop.config.ResourceResolverWrapper;
+
+ResourceResolverWrapper resolver = new ResourceResolverWrapper();
+
+ResourceResolver delegate = ResourceResolverWrapper.getResolver("custom");
+resolver.wrap(delegate);
+
+ResourceResolver currentDelegate = resolver.unwrap();
+```
+
+For class-loader-oriented resource handling:
+
+```java
+import org.fugerit.java.doc.mod.fop.config.ClassLoaderResourceResolverWrapper;
+
+ClassLoaderResourceResolverWrapper resolver =
+        new ClassLoaderResourceResolverWrapper();
+```
+
+The class-loader resolver provides:
+
+```java
+boolean supported = resolver.canHandle("some-resource-uri");
+```
+
+and implements standard resource operations:
+
+```java
+Resource resource = resolver.getResource(uri);
+OutputStream output = resolver.getOutputStream(uri);
+```
+
+### Process a document with the PDF handler
+
+`PdfFopTypeHandler` accepts a `FopConfig` and can be configured with accessibility and empty-tag behavior.
+
+```java
+import java.nio.charset.StandardCharsets;
+
+import org.fugerit.java.doc.mod.fop.FopConfig;
+import org.fugerit.java.doc.mod.fop.FopConfigDefault;
+import org.fugerit.java.doc.mod.fop.PdfFopTypeHandler;
+
+FopConfig fopConfig = new FopConfigDefault();
+
+PdfFopTypeHandler pdfHandler = new PdfFopTypeHandler(
+        StandardCharsets.UTF_8,
+        fopConfig,
+        true,
+        false
+);
+```
+
+Use the handler with document input and output values provided by the document-processing application:
+
+```java
+import org.fugerit.java.core.doc.DocInput;
+import org.fugerit.java.core.doc.DocOutput;
+
+// docInput and docOutput are supplied by the calling application.
+DocInput docInput = /* ... */;
+DocOutput docOutput = /* ... */;
+
+pdfHandler.handle(docInput, docOutput);
+```
+
+A handler can also receive its configuration after construction:
+
+```java
+import org.fugerit.java.doc.mod.fop.PdfFopTypeHandler;
+
+PdfFopTypeHandler pdfHandler = new PdfFopTypeHandler();
+
+pdfHandler.setFopConfig(new FopConfigDefault());
+
+FopConfig configured = pdfHandler.getFopConfig();
+```
+
+For the specialized no-accessibility variant:
+
+```java
+import org.fugerit.java.doc.mod.fop.PdfFopNoAccessibilityTypeHandler;
+
+PdfFopNoAccessibilityTypeHandler pdfHandler =
+        new PdfFopNoAccessibilityTypeHandler();
+```
+
+### Use the generic FreeMarker/FOP handler
+
+For document flows that use the generic FreeMarker/FOP handler rather than the PDF-specific type:
+
+```java
+import java.nio.charset.StandardCharsets;
+
+import org.fugerit.java.doc.mod.fop.FreeMarkerFopTypeHandler;
+
+FreeMarkerFopTypeHandler handler =
+        new FreeMarkerFopTypeHandler("fop", StandardCharsets.UTF_8);
+
+// handler.handle(docInput, docOutput);
+```
+
+Convenience constructors are also available:
+
+```java
+new FreeMarkerFopTypeHandler();
+new FreeMarkerFopTypeHandler(StandardCharsets.UTF_8);
+new FreeMarkerFopTypeHandler("fop");
+```
+
+For the UTF-8 decorator variant:
+
+```java
+import org.fugerit.java.doc.mod.fop.FreeMarkerFopTypeHandlerUTF8;
+
+FreeMarkerFopTypeHandlerUTF8 handler =
+        new FreeMarkerFopTypeHandlerUTF8();
+```
+
+## Initialization
+
+Initialize FOP/document support during application startup when appropriate:
+
+```java
+import org.fugerit.java.doc.mod.fop.InitFopHandler;
+
+boolean initialized = InitFopHandler.initDoc();
+```
+
+Or request asynchronous initialization:
+
+```java
+import org.fugerit.java.doc.mod.fop.InitFopHandler;
+
+InitFopHandler.initDocAsync();
+```
+
+## Diagnostics
+
+Retrieve the Apache FOP version visible to the application:
+
+```java
+import org.fugerit.java.doc.mod.fop.utils.ApacheFopUtils;
+
+String fopVersion = ApacheFopUtils.getApacheFOPVersion();
+System.out.println("Apache FOP version: " + fopVersion);
+```
+
+## Pool support
+
+`PoolUtils.handleFopWrap(...)` supports lifecycle and pool management for `FopConfigWrap` values.
+
+```java
+FopConfigWrap next = PoolUtils.handleFopWrap(
+        current,
+        pool,
+        poolMin,
+        poolMax,
+        supplier
+);
+```
+
+The method accepts:
+
+- a `FopConfigWrap` instance to release or replace,
+- a mutable `List<FopConfigWrap>` pool,
+- minimum and maximum pool sizes,
+- an `UnsafeSupplier<FopConfigWrap, ConfigException>` used to obtain instances.
+
+It returns the selected `FopConfigWrap` and may throw `ConfigException`.

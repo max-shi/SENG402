@@ -1,0 +1,266 @@
+# Atlas JSON Model
+
+`io.atlasmap:atlas-json-model` provides Java model types for representing JSON-oriented documents, fields, data sources, and inspection requests/responses.
+
+The library is centered around a set of serializable POJOs that can be used to build or exchange JSON mapping metadata:
+
+- JSON documents and data sources
+- Primitive and complex JSON fields
+- Enumeration metadata
+- JSON inspection request and response payloads
+- Factory and copy helpers for common model operations
+
+## Dependency
+
+```xml
+<dependency>
+  <groupId>io.atlasmap</groupId>
+  <artifactId>atlas-json-model</artifactId>
+</dependency>
+```
+
+## Core types
+
+### `AtlasJsonModelFactory`
+
+`AtlasJsonModelFactory` contains static helpers for creating and copying model objects.
+
+| Method | Description |
+|---|---|
+| `createJsonDocument()` | Creates a new `JsonDocument`. |
+| `createJsonField()` | Creates a new `JsonField`. |
+| `toString(JsonField)` | Produces a string representation of a JSON field. |
+| `cloneField(JsonField, boolean)` | Clones a JSON field, optionally including actions. |
+| `cloneFieldGroup(FieldGroup)` | Clones a field group. |
+| `copyField(Field, Field, boolean)` | Copies field data from one field to another, optionally including actions. |
+
+`JsonField`, `Field`, and `FieldGroup` participate in a shared field model. `JsonField` extends `Field`, while `JsonComplexType` extends `JsonField`.
+
+### `JsonDocument`
+
+`JsonDocument` extends `Document` and represents a JSON document model.
+
+```java
+JsonDocument document = AtlasJsonModelFactory.createJsonDocument();
+```
+
+### `JsonField`
+
+`JsonField` represents a JSON field and adds JSON-specific attributes to the inherited `Field` model.
+
+| Property | Accessors | Purpose |
+|---|---|---|
+| Primitive | `isPrimitive()`, `setPrimitive(Boolean)` | Indicates whether the field is primitive. |
+| Type name | `getTypeName()`, `setTypeName(String)` | Stores the field type name. |
+| User-created | `isUserCreated()`, `setUserCreated(Boolean)` | Marks whether the field was created by a user. |
+
+### `JsonComplexType`
+
+`JsonComplexType` is a specialized `JsonField` for fields that contain nested JSON fields or enum fields.
+
+| Property | Accessors |
+|---|---|
+| Nested fields | `getJsonFields()`, `setJsonFields(JsonFields)` |
+| Enum fields | `getJsonEnumFields()`, `setJsonEnumFields(JsonEnumFields)` |
+| Enumeration flag | `isEnumeration()`, `setEnumeration(Boolean)` |
+| URI | `getUri()`, `setUri(String)` |
+
+### `JsonFields`
+
+`JsonFields` is a container for `JsonField` instances.
+
+```java
+JsonFields fields = new JsonFields();
+fields.getJsonField().add(AtlasJsonModelFactory.createJsonField());
+```
+
+### `JsonEnumField` and `JsonEnumFields`
+
+`JsonEnumField` represents an enumeration-related field. It provides:
+
+- `ordinal`
+- `typeName`
+- `userCreated`
+
+`JsonEnumFields` is a container for `JsonEnumField` values.
+
+```java
+JsonEnumField status = new JsonEnumField();
+status.setOrdinal(0);
+status.setTypeName("Status");
+status.setUserCreated(Boolean.TRUE);
+
+JsonEnumFields enumFields = new JsonEnumFields();
+enumFields.getJsonEnumField().add(status);
+```
+
+### `JsonDataSource`
+
+`JsonDataSource` extends `DataSource` and adds a JSON template property.
+
+```java
+JsonDataSource dataSource = new JsonDataSource();
+dataSource.setTemplate("{\"name\":\"example\"}");
+```
+
+### JSON inspection models
+
+`JsonInspectionRequest` and `JsonInspectionResponse` represent input and output for a JSON inspection operation.
+
+#### `JsonInspectionRequest`
+
+A request can contain:
+
+- Raw JSON data (`jsonData`)
+- A URI (`uri`)
+- An inspection type (`type`)
+- Field-name, type-name, and namespace exclusions
+
+#### `JsonInspectionResponse`
+
+A response can contain:
+
+- An inspected `JsonDocument`
+- An error message
+- Execution time
+
+### `InspectionType`
+
+`InspectionType` selects the scope or mode of inspection.
+
+```java
+InspectionType.ALL
+InspectionType.INSTANCE
+InspectionType.SCHEMA
+InspectionType.NONE
+```
+
+The enum also supports string conversion:
+
+```java
+String value = InspectionType.INSTANCE.value();
+InspectionType type = InspectionType.fromValue(value);
+```
+
+## Usage examples
+
+### Create JSON fields and a complex type
+
+The following example creates a simple primitive field and adds it to a complex JSON type.
+
+```java
+import io.atlasmap.json.v2.AtlasJsonModelFactory;
+import io.atlasmap.json.v2.JsonComplexType;
+import io.atlasmap.json.v2.JsonField;
+import io.atlasmap.json.v2.JsonFields;
+
+JsonField nameField = AtlasJsonModelFactory.createJsonField();
+nameField.setPrimitive(Boolean.TRUE);
+nameField.setTypeName("String");
+nameField.setUserCreated(Boolean.TRUE);
+
+JsonFields nestedFields = new JsonFields();
+nestedFields.getJsonField().add(nameField);
+
+JsonComplexType customer = new JsonComplexType();
+customer.setTypeName("Customer");
+customer.setPrimitive(Boolean.FALSE);
+customer.setJsonFields(nestedFields);
+customer.setUri("example:Customer");
+```
+
+### Define enum metadata
+
+```java
+import io.atlasmap.json.v2.JsonComplexType;
+import io.atlasmap.json.v2.JsonEnumField;
+import io.atlasmap.json.v2.JsonEnumFields;
+
+JsonEnumField active = new JsonEnumField();
+active.setOrdinal(0);
+active.setTypeName("ACTIVE");
+active.setUserCreated(Boolean.TRUE);
+
+JsonEnumField inactive = new JsonEnumField();
+inactive.setOrdinal(1);
+inactive.setTypeName("INACTIVE");
+inactive.setUserCreated(Boolean.TRUE);
+
+JsonEnumFields values = new JsonEnumFields();
+values.getJsonEnumField().add(active);
+values.getJsonEnumField().add(inactive);
+
+JsonComplexType status = new JsonComplexType();
+status.setTypeName("Status");
+status.setEnumeration(Boolean.TRUE);
+status.setJsonEnumFields(values);
+```
+
+### Prepare an inspection request
+
+A caller can prepare a request containing JSON input and an inspection mode.
+
+```java
+import io.atlasmap.json.v2.InspectionType;
+import io.atlasmap.json.v2.JsonInspectionRequest;
+
+JsonInspectionRequest request = new JsonInspectionRequest();
+request.setType(InspectionType.INSTANCE);
+request.setUri("file:///tmp/customer.json");
+request.setJsonData("""
+    {
+      "id": 42,
+      "name": "Ada"
+    }
+    """);
+```
+
+The request can also carry exclusions through its `StringList` properties:
+
+```java
+// request.setFieldNameExclusions(...);
+// request.setTypeNameExclusions(...);
+// request.setNamespaceExclusions(...);
+```
+
+### Handle an inspection response
+
+```java
+import io.atlasmap.json.v2.JsonInspectionResponse;
+
+JsonInspectionResponse response = new JsonInspectionResponse();
+
+if (response.getErrorMessage() != null) {
+    System.err.println("Inspection failed: " + response.getErrorMessage());
+} else {
+    JsonDocument document = response.getJsonDocument();
+    Long executionTime = response.getExecutionTime();
+
+    System.out.println("Inspection completed in " + executionTime + " ms");
+    System.out.println("Document: " + document);
+}
+```
+
+### Clone or copy fields
+
+Use the factory helpers when a field must be duplicated or copied into another field instance.
+
+```java
+import io.atlasmap.json.v2.AtlasJsonModelFactory;
+import io.atlasmap.json.v2.JsonField;
+
+JsonField original = AtlasJsonModelFactory.createJsonField();
+original.setPrimitive(Boolean.TRUE);
+original.setTypeName("String");
+
+JsonField clone = AtlasJsonModelFactory.cloneField(original, true);
+
+JsonField target = AtlasJsonModelFactory.createJsonField();
+AtlasJsonModelFactory.copyField(original, target, false);
+```
+
+The boolean argument on `cloneField` and `copyField` controls whether actions are included in the operation.
+
+## Equality and serialization
+
+All JSON model classes in this library implement `Serializable` and provide `equals(Object)` and `hashCode()` implementations. This makes them suitable for use in collections, comparisons, and serialization-oriented workflows.

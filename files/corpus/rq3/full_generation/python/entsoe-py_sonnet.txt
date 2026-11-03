@@ -1,0 +1,182 @@
+# entsoe-py
+
+A Python client for the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu/) API. `entsoe-py` provides programmatic access to European electricity market data, including day-ahead and intraday prices, load, generation, cross-border flows, transfer capacities, balancing energy, imbalance prices/volumes, and unavailability of generation, production, and transmission assets.
+
+The library ships two complementary client layers:
+
+- **`EntsoeRawClient`** — a thin wrapper around the ENTSO-E REST API that returns raw XML (`str`) or ZIP (`bytes`) payloads exactly as received from the server.
+- **`EntsoePandasClient`** — a subclass of `EntsoeRawClient` that parses those raw responses into ready-to-use `pandas.Series` and `pandas.DataFrame` objects, with proper datetime indexing and time zone handling.
+
+In addition, an `EntsoeFileClient` is provided for browsing and downloading bulk data files, and a set of mapping, parsing, and helper utilities support the clients internally but can also be used directly.
+
+## Installation
+
+```bash
+pip install entsoe-py
+```
+
+## Authentication
+
+All clients require an ENTSO-E API security token, obtainable by registering on the Transparency Platform and requesting API access.
+
+```python
+from entsoe import EntsoePandasClient
+
+client = EntsoePandasClient(api_key='<YOUR_API_KEY>')
+```
+
+## Core Concepts
+
+### Areas
+
+Most query methods accept a `country_code` (or `country_code_from`/`country_code_to` for cross-border queries) parameter, which can be either:
+
+- a member of the `Area` enum (from `entsoe.mappings`), or
+- a plain string bidding zone/EIC code.
+
+The `Area` enum exposes helper properties/methods:
+
+```python
+from entsoe.mappings import Area, lookup_area
+
+Area.DE_LU.tz          # timezone associated with the area
+Area.DE_LU.meaning()   # human-readable description
+Area.DE_LU.code()      # the EIC/area code string
+Area.has_code('10Y1001A1001A83F')  # check if a code is known
+lookup_area('DE_LU')   # resolve a string to an Area member
+```
+
+### Timestamps
+
+`start` and `end` parameters are `pandas.Timestamp` objects, typically timezone-aware, matching the local time zone of the area(s) being queried.
+
+## Main Classes
+
+### `EntsoeRawClient`
+
+Use this if you want raw XML/ZIP responses (e.g., to cache them, parse them yourself, or feed them to the standalone functions in `entsoe.parsers`). Covers the same set of endpoints as `EntsoePandasClient`, including:
+
+- Day-ahead / intraday prices, net positions, aggregated bids
+- Load and load forecasts
+- Generation, generation forecasts, wind & solar forecasts, installed capacity (aggregate and per-unit/per-plant)
+- Cross-border physical flows, scheduled exchanges, net transfer capacities (day/week/month/year-ahead), offered capacities
+- Balancing energy, balancing energy prices, procured balancing capacity, contracted reserves
+- Imbalance prices and volumes, current balancing state
+- Unavailability of generation units, production units, transmission, and offshore grid
+
+### `EntsoePandasClient`
+
+Extends `EntsoeRawClient` with the same method names, but returns parsed pandas objects. This is the recommended entry point for most use cases. Notable extras compared to the raw client:
+
+- `query_load_and_forecast` — combines actual and forecast load into a single DataFrame.
+- `query_day_ahead_prices_local` — day-ahead prices at a chosen resolution (`60min`, `30min`, `15min`).
+- `query_generation_per_plant` — per-unit generation, optionally including EIC codes.
+- `query_physical_crossborder_allborders`, `query_import`, `query_generation_import` — aggregate cross-border/import views built by combining flows across all neighboring borders.
+- `nett` flags on generation-related queries to net generation/consumption.
+
+### `EntsoeFileClient`
+
+A client for listing and downloading bulk files (rather than time-series API queries):
+
+```python
+from entsoe.files.entsoe_files import EntsoeFileClient
+
+file_client = EntsoeFileClient(api_key='<YOUR_API_KEY>')
+
+folder_contents = file_client.list_folder('some/folder')
+df = file_client.download_single_file('some/folder', 'some_file.csv')
+raw_bytes = file_client.download_single_file_raw('some/folder', 'some_file.csv')
+
+combined_df = file_client.download_multiple_files(['file_id_1', 'file_id_2'])
+```
+
+## Parsers and Helpers
+
+The `entsoe.parsers` module contains the functions used internally by `EntsoePandasClient` to turn raw XML/ZIP payloads into DataFrames/Series (e.g., `parse_prices`, `parse_generation`, `parse_imbalance_prices`, `parse_unavailabilities`). These are exposed publicly so you can reuse them if you already have raw responses (e.g., from `EntsoeRawClient` or cached files).
+
+`entsoe.misc` provides date-chunking helpers (`year_blocks`, `month_blocks`, `day_blocks`, `pairwise`) used to split long queries into API-compliant sub-requests — the library applies these automatically via the `paginated`, `year_limited`, and `day_limited` decorators in `entsoe.decorators`.
+
+`entsoe.exceptions` defines the error types you may encounter:
+
+- `NoMatchingDataError` — the API returned no data for the given query.
+- `PaginationError` — an issue occurred while paginating a large request.
+- `InvalidPSRTypeError`, `InvalidBusinessParameterError`, `InvalidParameterError` — invalid parameters were passed to a query.
+
+## Usage Examples
+
+### Day-ahead prices
+
+```python
+import pandas as pd
+from entsoe import EntsoePandasClient
+
+client = EntsoePandasClient(api_key='<YOUR_API_KEY>')
+
+start = pd.Timestamp('2023-01-01', tz='Europe/Brussels')
+end = pd.Timestamp('2023-01-08', tz='Europe/Brussels')
+
+prices = client.query_day_ahead_prices('BE', start=start, end=end)
+print(prices.head())
+```
+
+### Load and generation
+
+```python
+country_code = 'DE_LU'
+
+load = client.query_load(country_code, start=start, end=end)
+load_forecast = client.query_load_forecast(country_code, start=start, end=end)
+load_and_forecast = client.query_load_and_forecast(country_code, start=start, end=end)
+
+generation = client.query_generation(country_code, start=start, end=end, psr_type=None)
+wind_solar = client.query_wind_and_solar_forecast(country_code, start=start, end=end)
+```
+
+### Cross-border flows and transfer capacity
+
+```python
+flows = client.query_crossborder_flows(
+    country_code_from='FR', country_code_to='DE_LU', start=start, end=end
+)
+
+ntc_day_ahead = client.query_net_transfer_capacity_dayahead(
+    country_code_from='FR', country_code_to='DE_LU', start=start, end=end
+)
+```
+
+### Imbalance data
+
+```python
+imbalance_prices = client.query_imbalance_prices('NL', start=start, end=end)
+imbalance_volumes = client.query_imbalance_volumes('NL', start=start, end=end)
+```
+
+### Using the raw client with standalone parsers
+
+```python
+from entsoe import EntsoeRawClient
+from entsoe.parsers import parse_prices
+
+raw_client = EntsoeRawClient(api_key='<YOUR_API_KEY>')
+xml_text = raw_client.query_day_ahead_prices('BE', start=start, end=end)
+prices_series = parse_prices(xml_text)
+```
+
+### Handling errors
+
+```python
+from entsoe.exceptions import NoMatchingDataError
+
+try:
+    df = client.query_generation('FR', start=start, end=end)
+except NoMatchingDataError:
+    print('No data available for this period.')
+```
+
+## Notes on Pagination and Rate Limits
+
+Many underlying API endpoints impose limits on the time span or number of documents returned per request. The library transparently handles this via internal decorators (`retry`, `paginated`, `documents_limited`, `deduplicate_documents_limited`, `year_limited`, `day_limited`) so that callers can request arbitrarily long `start`–`end` ranges without manually chunking requests.
+
+## License
+
+See the `LICENSE` file in this repository for details.

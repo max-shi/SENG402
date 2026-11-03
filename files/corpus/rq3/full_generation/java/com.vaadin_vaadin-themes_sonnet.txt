@@ -1,0 +1,84 @@
+# vaadin-themes
+
+Vaadin theme integration utilities for OSGi environments.
+
+## Overview
+
+`com.vaadin:vaadin-themes` provides OSGi-compatible wrappers for Vaadin's built-in themes, allowing them to be registered and discovered as services within an OSGi runtime. This enables Vaadin applications running in modular OSGi environments to properly locate and apply themes that are packaged as separate bundles.
+
+The library exposes theme implementations that conform to the `OsgiVaadinTheme` contract (from the Vaadin OSGi integration API), making themes available to the OSGi service registry so that Vaadin's runtime can discover and use them dynamically.
+
+## Main Classes
+
+### `ValoThemeContribution`
+
+`ValoThemeContribution` is an implementation of `OsgiVaadinTheme` that contributes the Valo theme — Vaadin's standard, customizable base theme — to the OSGi service registry.
+
+```java
+public class ValoThemeContribution implements OsgiVaadinTheme {
+    public String getName();
+}
+```
+
+- **`getName()`** — Returns the name identifying this theme contribution (the Valo theme). This name is used by the Vaadin OSGi runtime to reference and select the theme when rendering UI components.
+
+By implementing `OsgiVaadinTheme`, `ValoThemeContribution` integrates with whatever OSGi service-based discovery mechanism Vaadin uses to locate available themes at runtime, removing the need for manual classpath-based theme configuration in modular deployments.
+
+## Usage
+
+### Registering the theme as an OSGi service
+
+In a typical OSGi environment (e.g., using Declarative Services, Blueprint, or manual `BundleActivator` registration), you register `ValoThemeContribution` as a service implementing `OsgiVaadinTheme`:
+
+```java
+import com.vaadin.osgi.themes.ValoThemeContribution;
+import org.osgi.framework.BundleActivator;
+import org.osgi.framework.BundleContext;
+
+public class ThemeActivator implements BundleActivator {
+
+    @Override
+    public void start(BundleContext context) {
+        context.registerService(
+            OsgiVaadinTheme.class,
+            new ValoThemeContribution(),
+            null
+        );
+    }
+
+    @Override
+    public void stop(BundleContext context) {
+        // Service is automatically unregistered when the bundle stops
+    }
+}
+```
+
+### Declarative Services example
+
+If you are using OSGi Declarative Services (DS), you can annotate a component that provides `ValoThemeContribution` as an `OsgiVaadinTheme` service:
+
+```java
+import com.vaadin.osgi.themes.ValoThemeContribution;
+import org.osgi.service.component.annotations.Component;
+
+@Component(service = OsgiVaadinTheme.class)
+public class ValoThemeComponent extends ValoThemeContribution {
+    // No additional implementation needed —
+    // the parent class handles theme identification
+}
+```
+
+### Querying the theme name
+
+Once you have an instance of `ValoThemeContribution`, you can retrieve its identifying name, for example to log it or match it against a requested theme:
+
+```java
+ValoThemeContribution theme = new ValoThemeContribution();
+String themeName = theme.getName();
+System.out.println("Registered theme: " + themeName);
+```
+
+## Notes
+
+- This module is intended for use in OSGi-based Vaadin deployments. In standard (non-OSGi) Vaadin applications, themes are typically referenced directly via `@Theme` annotations and do not require this integration layer.
+- Ensure your OSGi runtime has the necessary Vaadin OSGi support bundles installed so that `OsgiVaadinTheme` services registered by this library are properly picked up.

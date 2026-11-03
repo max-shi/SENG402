@@ -1,0 +1,449 @@
+# Java Faker
+
+`com.github.javafaker:javafaker` is a Java library for generating realistic-looking sample data. It provides a central `Faker` entry point with generators for names, addresses, internet values, dates, finance, text, products, entertainment franchises, and many other domains.
+
+Use it to populate test fixtures, demos, prototypes, seed data, or mock responses without manually maintaining example values.
+
+## Quick start
+
+```java
+import com.github.javafaker.Faker;
+
+public class Example {
+    public static void main(String[] args) {
+        Faker faker = new Faker();
+
+        System.out.println(faker.name().fullName());
+        System.out.println(faker.internet().emailAddress());
+        System.out.println(faker.address().fullAddress());
+        System.out.println(faker.company().name());
+    }
+}
+```
+
+A `Faker` instance is the main API gateway. Domain methods such as `name()`, `address()`, and `internet()` return specialized generator objects.
+
+## Creating a `Faker`
+
+```java
+import com.github.javafaker.Faker;
+
+import java.util.Locale;
+import java.util.Random;
+
+// Default configuration
+Faker faker = new Faker();
+
+// Locale-aware data source
+Faker localizedFaker = new Faker(Locale.US);
+
+// Supply a Random instance
+Faker deterministicSource = new Faker(new Random(42L));
+
+// Locale and Random together
+Faker configured = new Faker(Locale.US, new Random(42L));
+```
+
+Factory alternatives are also available:
+
+```java
+Faker faker = Faker.instance();
+Faker localized = Faker.instance(Locale.US);
+Faker seeded = Faker.instance(new Random(42L));
+```
+
+## Core API
+
+### Names, people, and contact details
+
+```java
+Faker faker = new Faker();
+
+String firstName = faker.name().firstName();
+String lastName = faker.name().lastName();
+String fullName = faker.name().fullName();
+String username = faker.name().username();
+
+String phone = faker.phoneNumber().phoneNumber();
+String cellPhone = faker.phoneNumber().cellPhone();
+
+String email = faker.internet().emailAddress();
+String safeEmail = faker.internet().safeEmailAddress("sample.user");
+```
+
+Useful people-related generators include:
+
+- `name()` — names, prefixes, suffixes, titles, usernames, and blood groups.
+- `gender()` — gender type labels.
+- `demographic()` — race, educational attainment, demonym, sex, and marital status.
+- `relationships()` — direct, extended, in-law, spouse, parent, and sibling relationships.
+- `job()` — fields, seniority, positions, skills, and titles.
+- `idNumber()` — valid and invalid identifier values, including SSN-related methods.
+
+### Addresses and location data
+
+```java
+Faker faker = new Faker();
+
+String street = faker.address().streetAddress();
+String streetWithUnit = faker.address().streetAddress(true);
+String city = faker.address().city();
+String state = faker.address().state();
+String postalCode = faker.address().zipCode();
+String country = faker.address().country();
+
+String fullAddress = faker.address().fullAddress();
+String latitude = faker.address().latitude();
+String longitude = faker.address().longitude();
+```
+
+The `address()` generator also provides street names, building numbers, secondary addresses, county lookup by ZIP/postal code, state abbreviations, country codes, and time zones.
+
+For country-oriented values, use:
+
+```java
+String countryName = faker.country().name();
+String code2 = faker.country().countryCode2();
+String code3 = faker.country().countryCode3();
+String capital = faker.country().capital();
+String currencyCode = faker.country().currencyCode();
+
+String nationality = faker.nation().nationality();
+String language = faker.nation().language();
+```
+
+### Internet and identifiers
+
+```java
+Faker faker = new Faker();
+
+String domain = faker.internet().domainName();
+String url = faker.internet().url();
+String password = faker.internet().password(12, 20, true, true, true);
+
+String ipv4 = faker.internet().ipV4Address();
+String privateIpv4 = faker.internet().privateIpV4Address();
+String ipv6 = faker.internet().ipV6Address();
+String uuid = faker.internet().uuid();
+String macAddress = faker.internet().macAddress();
+
+String isbn13 = faker.code().isbn13(true);
+String imei = faker.code().imei();
+String ean13 = faker.code().ean13();
+
+String extension = faker.file().extension();
+String fileName = faker.file().fileName();
+```
+
+`Internet` also supports image URLs, avatars, slugs, CIDR blocks, domain suffixes, user agents, and configurable password generation.
+
+### Numbers, booleans, and selections
+
+```java
+Faker faker = new Faker();
+
+boolean enabled = faker.bool().bool();
+
+int digit = faker.number().randomDigit();
+int nonZeroDigit = faker.number().randomDigitNotZero();
+int count = faker.number().numberBetween(1, 100);
+long identifier = faker.number().randomNumber(12, true);
+double amount = faker.number().randomDouble(2, 10, 500);
+
+String digits = faker.number().digits(6);
+String singleDigit = faker.number().digit();
+
+String selected = faker.options().option("small", "medium", "large");
+```
+
+Choose from an enum, array, or list:
+
+```java
+CreditCardType type = faker.options().option(CreditCardType.class);
+```
+
+### Text and templates
+
+```java
+Faker faker = new Faker();
+
+String word = faker.lorem().word();
+String sentence = faker.lorem().sentence();
+String paragraph = faker.lorem().paragraph();
+String fixed = faker.lorem().fixedString(32);
+
+String numericTemplate = faker.numerify("INV-####");
+String alphabeticTemplate = faker.letterify("???");
+String mixedTemplate = faker.bothify("item-??##");
+String regexValue = faker.regexify("[A-Z]{3}-[0-9]{4}");
+```
+
+`Lorem` supports random characters, words, sentences, paragraphs, and fixed-length strings. Character generation can optionally include uppercase letters and digits.
+
+The `Faker` template methods are:
+
+- `numerify(String)` — replaces numeric placeholders.
+- `letterify(String)` — replaces letter placeholders.
+- `bothify(String)` — handles mixed letter and numeric placeholders.
+- `regexify(String)` — generates a value matching a regular-expression string.
+- `resolve(String)` and `expression(String)` — resolve values by key or expression.
+
+## Practical example: generating a sample customer
+
+```java
+import com.github.javafaker.Faker;
+
+public class CustomerFixture {
+    public static void main(String[] args) {
+        Faker faker = new Faker();
+
+        String customerId = faker.bothify("CUS-????-####", true);
+        String name = faker.name().fullName();
+        String email = faker.internet().emailAddress();
+        String company = faker.company().name();
+        String phone = faker.phoneNumber().phoneNumber();
+
+        String address = faker.address().streetAddress(true);
+        String city = faker.address().city();
+        String state = faker.address().stateAbbr();
+        String zip = faker.address().zipCode();
+
+        System.out.println("id: " + customerId);
+        System.out.println("name: " + name);
+        System.out.println("email: " + email);
+        System.out.println("company: " + company);
+        System.out.println("phone: " + phone);
+        System.out.println("address: " + address);
+        System.out.println("city/state/zip: " + city + ", " + state + " " + zip);
+    }
+}
+```
+
+## Practical example: generating an order-like record
+
+```java
+import com.github.javafaker.Faker;
+
+public class OrderFixture {
+    public static void main(String[] args) {
+        Faker faker = new Faker();
+
+        String orderNumber = faker.numerify("ORD-########");
+        String product = faker.commerce().productName();
+        String department = faker.commerce().department();
+        String material = faker.commerce().material();
+        String price = faker.commerce().price(10.00, 250.00);
+        String promotionCode = faker.commerce().promotionCode(8);
+
+        String cardType = faker.business().creditCardType();
+        String cardNumber = faker.finance().creditCard();
+        String iban = faker.finance().iban();
+        String currency = faker.currency().code();
+
+        System.out.println(orderNumber);
+        System.out.println(product + " / " + department + " / " + material);
+        System.out.println("price: " + price + " " + currency);
+        System.out.println("promotion: " + promotionCode);
+        System.out.println("payment type: " + cardType);
+        System.out.println("payment number: " + cardNumber);
+        System.out.println("IBAN: " + iban);
+    }
+}
+```
+
+## Date and time generation
+
+Use `date()` to generate `Date` values relative to now or another reference date.
+
+```java
+import com.github.javafaker.Faker;
+
+import java.util.Date;
+import java.util.concurrent.TimeUnit;
+
+Faker faker = new Faker();
+
+Date tomorrowOrSooner = faker.date().future(1, TimeUnit.DAYS);
+Date recent = faker.date().past(30, TimeUnit.DAYS);
+
+Date from = new Date();
+Date to = faker.date().future(90, TimeUnit.DAYS);
+Date scheduled = faker.date().between(from, to);
+
+Date birthday = faker.date().birthday();
+Date adultBirthday = faker.date().birthday(18, 70);
+```
+
+## Domain generators
+
+`Faker` exposes domain-specific generators through concise accessor methods.
+
+### Business, commerce, and finance
+
+| Accessor | Example capabilities |
+|---|---|
+| `company()` | company names, industries, professions, slogans, logos, URLs |
+| `business()` | credit-card number, type, expiry |
+| `commerce()` | products, departments, materials, prices, promotion codes |
+| `finance()` | credit cards, BICs, IBANs |
+| `currency()` | currency names and codes |
+| `stock()` | NASDAQ and NYSE symbols |
+| `app()` | application name, version, author |
+
+Finance card generation can target a specific `CreditCardType`:
+
+```java
+String visa = faker.finance().creditCard(CreditCardType.VISA);
+String anyCard = faker.finance().creditCard();
+```
+
+### Food, animals, nature, and science
+
+| Accessor | Example capabilities |
+|---|---|
+| `food()` | ingredients, spices, dishes, fruit, vegetables, sushi |
+| `beer()` | beer names, styles, hops, yeast, malt |
+| `animal()` | animal names |
+| `cat()` | cat names, breeds, registries |
+| `dog()` | dog names, breeds, sounds, age, gender, size |
+| `mountain()` | mountain names and ranges |
+| `space()` | planets, moons, galaxies, stars, agencies, spacecraft |
+| `weather()` | descriptions and Celsius/Fahrenheit temperatures |
+| `medical()` | medicines, diseases, hospitals, symptoms |
+| `disease()` | disease categories and specialties |
+| `color()` | color names and hexadecimal values |
+
+```java
+String color = faker.color().hex(true);
+String meal = faker.food().dish();
+String temperature = faker.weather().temperatureCelsius(-5, 30);
+String dog = faker.dog().name();
+```
+
+### Technology and media-related data
+
+| Accessor | Example capabilities |
+|---|---|
+| `hacker()` | abbreviations, adjectives, nouns, verbs |
+| `programmingLanguage()` | language names and creators |
+| `crypto()` | MD5, SHA-1, SHA-256, and SHA-512 strings |
+| `barcode()` | barcode type and data |
+| `aviation()` | aircraft, airports, METAR values |
+| `photography()` | cameras, lenses, terms, aperture, shutter, ISO |
+| `sip()` | SIP methods, content types, response codes, message bodies |
+| `music()` | instruments, keys, chords, genres |
+
+```java
+String language = faker.programmingLanguage().name();
+String checksum = faker.crypto().sha256();
+String barcode = faker.barcode().typeAndData();
+String camera = faker.photography().camera();
+```
+
+### Sports, games, and entertainment
+
+The library includes focused generators for sports, games, fiction, television, films, and other themed data.
+
+Sports and games include:
+
+- `basketball()`
+- `englandfootball()`
+- `esports()`
+- `team()`
+- `leagueOfLegends()`
+- `overwatch()`
+- `pokemon()`
+- `starCraft()`
+- `zelda()`
+
+Entertainment and fictional sources include:
+
+- `ancient()`, `elderScrolls()`, `gameOfThrones()`, `harryPotter()`
+- `lordOfTheRings()`, `hobbit()`, `witcher()`, `dune()`
+- `dragonBall()`, `starTrek()`, `rickAndMorty()`, `backToTheFuture()`
+- `friends()`, `howIMetYourMother()`, `twinPeaks()`, `bojackHorseman()`
+- `buffy()`, `aquaTeenHungerForce()`, `kaamelott()`, `lebowski()`
+- `hitchhikersGuideToTheGalaxy()`, `princessBride()`, `robin()`
+- `rockBand()`, `matz()`, `yoda()`, `shakespeare()`
+- `superhero()`, `funnyName()`, `chuckNorris()`
+
+For example:
+
+```java
+Faker faker = new Faker();
+
+String character = faker.harryPotter().character();
+String spell = faker.harryPotter().spell();
+
+String hero = faker.overwatch().hero();
+String quote = faker.starTrek().klingon();
+
+String team = faker.basketball().teams();
+String esportsPlayer = faker.esports().player();
+```
+
+## Utility services
+
+Most applications should work through `Faker`, but several public utility classes are also available.
+
+### `RandomService`
+
+`RandomService` exposes low-level random primitives and can be provided when constructing `Faker`.
+
+```java
+import com.github.javafaker.service.RandomService;
+
+RandomService random = new RandomService();
+
+int value = random.nextInt(10);
+long bounded = random.nextLong(1_000L);
+double fraction = random.nextDouble();
+Boolean flag = random.nextBoolean();
+String hex = random.hex(16);
+```
+
+### `FakeValuesService`
+
+`FakeValuesService` supports fetching and transforming values by key.
+
+```java
+import com.github.javafaker.service.FakeValuesService;
+
+// A FakeValuesService is supplied to a Faker constructor together with RandomService.
+String value = service.fetchString("some.key");
+String fallback = service.safeFetch("some.key", "default-value");
+String formatted = service.numerify("###-##");
+```
+
+### `FakerIDN`
+
+Use `FakerIDN.toASCII` to convert a string to an ASCII representation.
+
+```java
+import com.github.javafaker.service.FakerIDN;
+
+String ascii = FakerIDN.toASCII("example");
+```
+
+## API structure
+
+The library centers on `Faker`:
+
+```java
+Faker faker = new Faker();
+
+String name = faker.name().name();
+String city = faker.address().city();
+String quote = faker.yoda().quote();
+String product = faker.commerce().productName();
+```
+
+Each accessor returns a generator dedicated to a data category. Most generator methods return `String`; notable exceptions include:
+
+- `Bool.bool()` returns `boolean`.
+- `Number` returns numeric primitive values for its numeric methods.
+- `DateAndTime` returns `java.util.Date`.
+- `Lorem` returns `char`, `String`, or `List<String>` depending on the method.
+- `Options` returns an element of the selected generic type.
+- `Sip` includes integer response-code and port methods, plus `byte[] bodyBytes()`.
+- `RandomService` provides primitive random values.

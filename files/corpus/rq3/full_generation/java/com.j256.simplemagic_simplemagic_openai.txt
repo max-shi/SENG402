@@ -1,0 +1,436 @@
+# simplemagic
+
+`com.j256.simplemagic:simplemagic` is a Java library for identifying content types.
+
+It can inspect files, paths, byte arrays, and input streams and return a `ContentInfo` result containing a detected name, MIME type, message, associated file extensions, and whether the result is partial. The library also provides lookup utilities for known MIME types and file extensions through the `ContentType` enum.
+
+## Installation
+
+Add the library using the following Maven coordinates:
+
+```xml
+<dependency>
+    <groupId>com.j256.simplemagic</groupId>
+    <artifactId>simplemagic</artifactId>
+    <version><!-- version --></version>
+</dependency>
+```
+
+## Quick start
+
+Use `ContentInfoUtil` to inspect bytes, a file, or a file path.
+
+```java
+import com.j256.simplemagic.ContentInfo;
+import com.j256.simplemagic.ContentInfoUtil;
+
+import java.io.File;
+
+ContentInfoUtil util = new ContentInfoUtil();
+
+ContentInfo info = util.findMatch(new File("upload.bin"));
+if (info != null) {
+    System.out.println("Name: " + info.getName());
+    System.out.println("MIME type: " + info.getMimeType());
+    System.out.println("Description: " + info.getMessage());
+    System.out.println("Partial match: " + info.isPartial());
+}
+```
+
+## Core API
+
+### `ContentInfoUtil`
+
+`ContentInfoUtil` is the primary entry point for content detection.
+
+```java
+ContentInfoUtil util = new ContentInfoUtil();
+```
+
+It supports several input forms:
+
+```java
+ContentInfo fromPath = util.findMatch("/tmp/example.dat");
+
+ContentInfo fromFile = util.findMatch(new File("/tmp/example.dat"));
+
+byte[] bytes = getBytesSomehow();
+ContentInfo fromBytes = util.findMatch(bytes);
+
+InputStream stream = getInputStreamSomehow();
+ContentInfo fromStream = util.findMatch(stream);
+```
+
+Methods that work with paths, files, readers, or streams may throw `IOException`.
+
+### Configuring read size
+
+For file-based matching, configure the amount of file data made available to the matcher:
+
+```java
+ContentInfoUtil util = new ContentInfoUtil();
+util.setFileReadSize(16 * 1024);
+
+ContentInfo info = util.findMatch(new File("large-upload.dat"));
+```
+
+### Custom definition sources
+
+In addition to the default constructor, `ContentInfoUtil` can be created from a path, `File`, or `Reader`. These constructors are useful when supplying a custom content-definition source.
+
+```java
+import com.j256.simplemagic.ContentInfoUtil;
+
+import java.io.File;
+import java.io.Reader;
+
+ContentInfoUtil fromPath = new ContentInfoUtil("definitions.txt");
+ContentInfoUtil fromFile = new ContentInfoUtil(new File("definitions.txt"));
+
+Reader reader = getDefinitionsReaderSomehow();
+ContentInfoUtil fromReader = new ContentInfoUtil(reader);
+```
+
+Constructors accepting an `ErrorCallBack` can be used where diagnostic handling is needed:
+
+```java
+ContentInfoUtil util = new ContentInfoUtil(errorCallBack);
+util.setErrorCallBack(errorCallBack);
+```
+
+## Reading detection results
+
+A `ContentInfo` represents a match result.
+
+```java
+ContentInfo info = util.findMatch(bytes);
+
+if (info != null) {
+    String name = info.getName();
+    String mimeType = info.getMimeType();
+    String message = info.getMessage();
+    String[] extensions = info.getFileExtensions();
+    boolean partial = info.isPartial();
+
+    System.out.println(info);
+}
+```
+
+`ContentInfo` exposes:
+
+| Method | Description |
+|---|---|
+| `getContentType()` | Returns the associated `ContentType`, when available. |
+| `getName()` | Returns the content type name. |
+| `getMimeType()` | Returns the MIME type. |
+| `getMessage()` | Returns a descriptive match message. |
+| `getFileExtensions()` | Returns associated file extensions. |
+| `isPartial()` | Indicates that the match is partial. |
+| `toString()` | Returns a string representation of the result. |
+
+You can also construct a result directly:
+
+```java
+import com.j256.simplemagic.ContentInfo;
+import com.j256.simplemagic.ContentType;
+
+ContentInfo pdfInfo = new ContentInfo(ContentType.PDF);
+
+ContentInfo customInfo = new ContentInfo(
+        "Example content",
+        "application/example",
+        "Example content data",
+        false
+);
+```
+
+## Looking up types by extension or MIME type
+
+`ContentInfoUtil` provides static convenience lookups:
+
+```java
+import com.j256.simplemagic.ContentInfo;
+import com.j256.simplemagic.ContentInfoUtil;
+
+ContentInfo jsonByExtension = ContentInfoUtil.findExtensionMatch("json");
+ContentInfo jsonByMimeType = ContentInfoUtil.findMimeTypeMatch("application/json");
+```
+
+For type-level lookups, use `ContentType`:
+
+```java
+import com.j256.simplemagic.ContentType;
+
+ContentType imageType = ContentType.fromFileExtension("png");
+ContentType documentType = ContentType.fromMimeType("application/pdf");
+
+if (imageType != null) {
+    System.out.println(imageType.getSimpleName());
+    System.out.println(imageType.getMimeType());
+
+    for (String extension : imageType.getFileExtensions()) {
+        System.out.println(extension);
+    }
+}
+```
+
+`ContentType` contains a large catalog of content types, including common formats such as `PDF`, `PNG`, `JPEG`, `GIF`, `ZIP`, `GZIP`, `JSON`, `XML`, `HTML`, `MP3`-related audio types, Microsoft Office types, OpenDocument types, fonts, archives, images, and video formats. It also includes `EMPTY` and `OTHER`.
+
+A `ContentType` can provide related reference information:
+
+```java
+ContentType type = ContentType.PDF;
+
+System.out.println(type.getSimpleName());
+System.out.println(type.getMimeType());
+System.out.println(type.getReferences());
+System.out.println(type.getReferenceUrls());
+```
+
+## Matching an input stream while reading
+
+`ContentInfoInputStreamWrapper` wraps an `InputStream` and provides a `findMatch()` method.
+
+```java
+import com.j256.simplemagic.ContentInfo;
+import com.j256.simplemagic.ContentInfoInputStreamWrapper;
+import com.j256.simplemagic.ContentInfoUtil;
+
+import java.io.InputStream;
+
+InputStream source = getInputStreamSomehow();
+ContentInfoUtil util = new ContentInfoUtil();
+
+ContentInfoInputStreamWrapper stream =
+        new ContentInfoInputStreamWrapper(source, util);
+
+byte[] buffer = new byte[4096];
+while (stream.read(buffer) != -1) {
+    // Process stream data.
+}
+
+ContentInfo info = stream.findMatch();
+if (info != null) {
+    System.out.println(info.getMimeType());
+}
+
+stream.close();
+```
+
+The wrapper supports the standard `InputStream` operations:
+
+- `read()`
+- `read(byte[], int, int)`
+- `available()`
+- `skip(long)`
+- `close()`
+- `mark(int)`
+- `reset()`
+- `markSupported()`
+
+A convenience constructor creates a wrapper without explicitly supplying a `ContentInfoUtil`:
+
+```java
+ContentInfoInputStreamWrapper stream =
+        new ContentInfoInputStreamWrapper(source);
+```
+
+## MIME registration metadata
+
+The `entries` package includes types for working with MIME registration-style metadata.
+
+```java
+import com.j256.simplemagic.entries.IanaEntries;
+import com.j256.simplemagic.entries.IanaEntry;
+
+IanaEntries entries = new IanaEntries();
+IanaEntry entry = entries.lookupByMimeType("application/pdf");
+
+if (entry != null) {
+    System.out.println(entry.getName());
+    System.out.println(entry.getMimeType());
+    System.out.println(entry.getMimeTypeUrl());
+    System.out.println(entry.getReferences());
+    System.out.println(entry.getReferenceUrls());
+}
+```
+
+## Magic-entry APIs
+
+The library exposes APIs for reading and evaluating magic-style matching entries:
+
+- `MagicEntries` reads entries and finds matches against byte arrays.
+- `MagicEntryParser` parses individual entry lines.
+- `MagicEntry` represents a parsed entry.
+- `MagicType` identifies supported value types.
+- `MagicMatcher` is the matching interface implemented by the supported type handlers.
+- `MagicFormatter` and `PercentExpression` support match-message formatting.
+
+Example of using `MagicEntries`:
+
+```java
+import com.j256.simplemagic.ContentInfo;
+import com.j256.simplemagic.entries.MagicEntries;
+
+import java.io.BufferedReader;
+
+BufferedReader reader = getMagicEntryReaderSomehow();
+
+MagicEntries entries = new MagicEntries();
+entries.readEntries(reader, errorCallBack);
+entries.optimizeFirstBytes();
+
+ContentInfo info = entries.findMatch(bytes);
+```
+
+The type system includes numeric, string, regular-expression, search, date, and endian-aware matchers. `MagicType` includes values such as:
+
+- `BYTE`, `SHORT`, `INTEGER`, `QUAD`
+- `FLOAT`, `DOUBLE`
+- `STRING`, `PSTRING`
+- `DATE`, `LONG_DATE`, `LOCAL_DATE`, `LONG_LOCAL_DATE`
+- `REGEX`, `SEARCH`
+- big-endian, little-endian, and middle-endian variants
+
+## Endian conversion utilities
+
+The `endian` package provides converters for binary formats.
+
+```java
+import com.j256.simplemagic.endian.EndianConverter;
+import com.j256.simplemagic.endian.EndianType;
+
+EndianConverter bigEndian = EndianType.BIG.getConverter();
+Long number = bigEndian.convertNumber(0, bytes, 4);
+
+byte[] encoded = bigEndian.convertToByteArray(12345L, 4);
+```
+
+Available endian types are:
+
+- `EndianType.BIG`
+- `EndianType.LITTLE`
+- `EndianType.MIDDLE`
+- `EndianType.NATIVE`
+
+Concrete converters are also available:
+
+- `BigEndianConverter`
+- `LittleEndianConverter`
+- `MiddleEndianConverter`
+
+## Logging
+
+The library includes a standalone logging abstraction under `com.j256.simplemagic.logger`.
+
+Create a logger through `LoggerFactory`:
+
+```java
+import com.j256.simplemagic.logger.Logger;
+import com.j256.simplemagic.logger.LoggerFactory;
+
+Logger logger = LoggerFactory.getLogger(MyClass.class);
+
+logger.info("Checking file {}", fileName);
+logger.warn("Unable to identify {}", fileName);
+logger.error(exception, "Could not read {}", fileName);
+```
+
+Supported levels are:
+
+```java
+import com.j256.simplemagic.logger.Level;
+
+Level.TRACE
+Level.DEBUG
+Level.INFO
+Level.WARNING
+Level.ERROR
+Level.FATAL
+Level.OFF
+```
+
+Set the global logging level:
+
+```java
+import com.j256.simplemagic.logger.BaseLogger;
+import com.j256.simplemagic.logger.Level;
+
+BaseLogger.setGlobalLogLevel(Level.INFO);
+```
+
+### Fluent logging
+
+For deferred or fluent log construction, use `FluentLogger`:
+
+```java
+import com.j256.simplemagic.logger.FluentLogger;
+import com.j256.simplemagic.logger.LoggerFactory;
+
+FluentLogger logger = LoggerFactory.getFluentLogger(MyClass.class);
+
+logger.atInfo()
+        .msg("Detected content type {} for {}")
+        .arg(contentType)
+        .arg(fileName)
+        .log();
+```
+
+### Logging backends
+
+Logging uses the `LogBackend` interface and can be selected through `LoggerFactory`:
+
+```java
+import com.j256.simplemagic.logger.LogBackendType;
+import com.j256.simplemagic.logger.LoggerFactory;
+
+LoggerFactory.setLogBackendType(LogBackendType.CONSOLE);
+```
+
+Available backend types include:
+
+- `ANDROID`
+- `LOGBACK`
+- `LOG4J2`
+- `SLF4J`
+- `LOG4J`
+- `LAMBDA`
+- `COMMONS_LOGGING`
+- `LOCAL`
+- `CONSOLE`
+- `JAVA_UTIL`
+- `NULL`
+
+A custom backend can implement `LogBackendFactory`:
+
+```java
+import com.j256.simplemagic.logger.LogBackend;
+import com.j256.simplemagic.logger.LogBackendFactory;
+
+public class MyBackendFactory implements LogBackendFactory {
+    @Override
+    public boolean isAvailable() {
+        return true;
+    }
+
+    @Override
+    public LogBackend createLogBackend(String classLabel) {
+        return new MyLogBackend(classLabel);
+    }
+}
+
+LoggerFactory.setLogBackendFactory(new MyBackendFactory());
+```
+
+## API structure
+
+| Area | Primary types |
+|---|---|
+| Content detection | `ContentInfoUtil`, `ContentInfo`, `ContentInfoInputStreamWrapper` |
+| Type catalog | `ContentType` |
+| MIME metadata | `IanaEntries`, `IanaEntry` |
+| Magic-entry parsing and matching | `MagicEntries`, `MagicEntryParser`, `MagicType`, `MagicMatcher` |
+| Binary value handling | `EndianType`, `EndianConverter`, numeric and string types |
+| Logging | `Logger`, `FluentLogger`, `LoggerFactory`, `LogBackendType` |
+
+For most applications, start with `ContentInfoUtil` and inspect the returned `ContentInfo`.

@@ -1,0 +1,185 @@
+# msoffcrypto-tool
+
+**msoffcrypto-tool** is a Python library for decrypting (and, for some formats, encrypting) password-protected and DRM-encrypted Microsoft Office files. It supports both legacy binary Office formats (Word 97-2003 `.doc`, Excel 97-2003 `.xls`, PowerPoint 97-2003 `.ppt`) and modern OOXML-based formats (`.docx`, `.xlsx`, `.pptx`), including files encrypted with the ECMA-376 Standard and Agile encryption schemes.
+
+It exposes a simple high-level API for opening a file, loading the decryption key (from a password or, for some formats, a private key/secret key), and writing out the decrypted content — while also providing lower-level building blocks for anyone who needs to work directly with the underlying cryptographic containers.
+
+## Installation
+
+```bash
+pip install msoffcrypto-tool
+```
+
+## Quick Start
+
+The most common entry point is `msoffcrypto.OfficeFile`, a factory function that inspects a file-like object and returns an appropriate file handler (`OOXMLFile`, `Doc97File`, `Xls97File`, or `Ppt97File`) implementing a common interface.
+
+```python
+import msoffcrypto
+
+with open("encrypted.docx", "rb") as f:
+    office_file = msoffcrypto.OfficeFile(f)
+
+    if office_file.is_encrypted():
+        office_file.load_key(password="my-password")
+
+        with open("decrypted.docx", "wb") as out:
+            office_file.decrypt(out)
+```
+
+## Core Concepts
+
+### `msoffcrypto.OfficeFile(file)`
+
+Detects the format of a given file object and returns a concrete `BaseOfficeFile` subclass instance ready for key loading and decryption. This is the recommended way to work with the library — most consumers never need to instantiate format classes directly.
+
+### `BaseOfficeFile` and its subclasses
+
+All format-specific handlers implement the same abstract interface:
+
+- `is_encrypted() -> bool` — checks whether the file is encrypted.
+- `load_key(...)` — derives or loads the decryption key, typically from a password.
+- `decrypt(outfile)` — writes decrypted content to a file-like object.
+
+Format implementations:
+
+| Class | Format | Notes |
+|---|---|---|
+| `OOXMLFile` | `.docx`, `.xlsx`, `.pptx` (OOXML/OPC) | Supports password, private key, and secret key based decryption; can verify passwords and integrity; also supports `encrypt()` to produce a new encrypted file. |
+| `Doc97File` | Word 97-2003 (`.doc`) | Password-based decryption for the legacy binary format. |
+| `Xls97File` | Excel 97-2003 (`.xls`) | Password-based decryption for the legacy binary format. |
+| `Ppt97File` | PowerPoint 97-2003 (`.ppt`) | Password-based decryption for the legacy binary format. |
+
+### `OOXMLFile` specifics
+
+```python
+office_file.load_key(
+    password=None,
+    private_key=None,
+    secret_key=None,
+    verify_password=False,
+)
+office_file.decrypt(outfile, verify_integrity=False)
+office_file.encrypt(password, outfile)
+```
+
+- `load_key` supports multiple key-derivation strategies used by ECMA-376 Standard/Agile encryption: a plain password, an RSA private key (for certificate-protected files), or a raw secret key.
+- Setting `verify_password=True` validates the password against the file's stored verifier before proceeding.
+- `decrypt(outfile, verify_integrity=False)` can optionally verify the HMAC integrity check defined by the ECMA-376 Agile scheme before writing output.
+- `encrypt(password, outfile)` creates a new password-encrypted OOXML file (ECMA-376 Agile) from a plaintext input.
+
+## Exceptions
+
+All exceptions live under `msoffcrypto.exceptions`:
+
+- `FileFormatError` — the file format could not be recognized or is unsupported.
+- `ParseError` — a container or structure could not be parsed.
+- `DecryptionError` — decryption failed.
+- `InvalidKeyError` — raised (a subclass of `DecryptionError`) when the supplied password/key is incorrect.
+- `EncryptionError` — encryption failed.
+
+```python
+import msoffcrypto
+from msoffcrypto.exceptions import InvalidKeyError
+
+with open("secret.xlsx", "rb") as f:
+    office_file = msoffcrypto.OfficeFile(f)
+    try:
+        office_file.load_key(password="wrong-password", verify_password=True)
+    except InvalidKeyError:
+        print("Incorrect password")
+```
+
+## Command-Line Usage
+
+The library also ships a CLI, available via `msoffcrypto-tool` or `python -m msoffcrypto`:
+
+```bash
+msoffcrypto-tool encrypted.xlsx decrypted.xlsx -p my-password
+```
+
+Internally this CLI relies on helpers such as `is_encrypted(file)` (a module-level convenience check) and `ifWIN32SetBinary(io)` (ensures binary-safe stdout/stdin handling on Windows), wired together in `main()`.
+
+## Advanced / Low-Level API
+
+For advanced use cases — building custom tooling, inspecting encryption metadata, or implementing new format support — the library exposes the cryptographic and container-level primitives it uses internally.
+
+### ECMA-376 encryption methods
+
+- **`ECMA376Standard`** — implements the legacy ECMA-376 "Standard" encryption scheme:
+  - `makekey_from_password(password, algId, algIdHash, providerType, keySize, saltSize, salt)`
+  - `verifykey(key, encryptedVerifier, encryptedVerifierHash)`
+  - `decrypt(key, ibuf)`
+
+- **`ECMA376Agile`** — implements the ECMA-376 "Agile" encryption scheme used by modern OOXML files, supporting both decryption and encryption:
+  - `makekey_from_password(...)` / `makekey_from_privkey(privkey, encryptedKeyValue)` — derive the intermediate key.
+  - `verify_password(...)` — validate a password against stored verifier hashes.
+  - `decrypt(key, keyDataSalt, hashAlgorithm, ibuf)` — decrypt the encrypted package stream.
+  - `verify_integrity(...)` — validate the HMAC-based integrity check.
+  - `generate_encryption_parameters(key, salt_value=None, spin_count=100000)`, `encrypt_payload(...)`, `generate_integrity_parameter(...)`, `get_encryption_information(...)`, `encrypt(key, ibuf, salt_value=None, spin_count=100000)` — build a new encrypted package and its accompanying `EncryptionInfo` descriptor.
+
+- **`ECMA376Extensible`** — placeholder/support for the ECMA-376 Extensible encryption scheme.
+
+- **`ECMA376AgileEncryptionInfo`** and **`ECMA376AgileCipherParams`** — data structures representing the parsed/generated `EncryptionInfo` stream and cipher parameters (algorithm, key bits, salt, spin count, etc.) used by `ECMA376Agile`. `ECMA376AgileEncryptionInfo.getEncryptionDescriptorHeader()` and `.toEncryptionDescriptor()` serialize this metadata back into the binary descriptor format Office expects.
+
+### Legacy binary cipher methods
+
+Used internally by `Doc97File`, `Xls97File`, and `Ppt97File`:
+
+- **`DocumentRC4`** — classic RC4-based document encryption (`verifypw`, `decrypt`).
+- **`DocumentRC4CryptoAPI`** — RC4 as used via CryptoAPI, with algorithm/block parameters (`verifypw`, `decrypt`).
+- **`DocumentXOR`** — the older XOR-obfuscation scheme used in some legacy binary documents, including helpers for key/array generation (`create_xor_key_method1`, `create_xor_array_method1`), bit rotation (`ror`, `rol`, `xor_ror`), password verification (`verifypw`), and stream decryption (`decrypt`).
+
+### Compound File / container construction
+
+- **`ECMA376EncryptedLayout`** and **`ECMA376Encrypted`** (in the encrypted-container module) model and construct the OLE/CFB-style compound file container (FAT, MiniFAT, directory entries, sectors) used to store `EncryptionInfo` and `EncryptedPackage` streams when producing an encrypted OOXML file via `OOXMLFile.encrypt`.
+- **`Header`** and **`DirectoryEntry`** represent low-level compound file structures (header sector layout, directory entries with name/CLSID/sibling/child pointers) that get serialized (`write_to`, `write_header_to`, `write_filetime`) when building the container.
+- **`construct_persistobjectdirectory(data)`** (in the PPT97 format module) parses the persist object directory structure used internally by legacy PowerPoint files during decryption.
+
+These low-level components are primarily intended for internal use by the format and method modules, but are exposed for advanced scenarios such as custom container manipulation or research/debugging of the Office encryption formats.
+
+## Typical Workflows
+
+**Decrypt a password-protected OOXML file, verifying the password first:**
+
+```python
+import msoffcrypto
+from msoffcrypto.exceptions import InvalidKeyError
+
+with open("protected.pptx", "rb") as f:
+    office_file = msoffcrypto.OfficeFile(f)
+    try:
+        office_file.load_key(password="my-password", verify_password=True)
+    except InvalidKeyError:
+        raise SystemExit("Wrong password")
+
+    with open("output.pptx", "wb") as out:
+        office_file.decrypt(out, verify_integrity=True)
+```
+
+**Encrypt a plaintext OOXML file:**
+
+```python
+import msoffcrypto
+
+with open("plain.xlsx", "rb") as f, open("encrypted.xlsx", "wb") as out:
+    office_file = msoffcrypto.OfficeFile(f)
+    office_file.encrypt("new-password", out)
+```
+
+**Decrypt a legacy Word 97-2003 document:**
+
+```python
+import msoffcrypto
+
+with open("legacy.doc", "rb") as f:
+    office_file = msoffcrypto.OfficeFile(f)
+    if office_file.is_encrypted():
+        office_file.load_key(password="old-password")
+        with open("legacy_decrypted.doc", "wb") as out:
+            office_file.decrypt(out)
+```
+
+## License
+
+See the `LICENSE` file in this repository for details.

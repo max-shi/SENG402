@@ -1,0 +1,429 @@
+# shandy-sqlfmt
+
+`shandy-sqlfmt` is a Python library for formatting SQL. Its API indicates support for parsing SQL into tokens, nodes, lines, segments, and queries; applying formatting decisions such as line splitting and merging; preserving and rendering comments; and handling Jinja-style template constructs alongside SQL.
+
+The library also provides file-oriented formatting, result reporting, caching, dialect support, configuration loading, and Click-based command-line integration.
+
+## Quick start
+
+Format a SQL string with `format_string`:
+
+```python
+from sqlfmt.api import format_string
+from sqlfmt.mode import Mode
+
+
+def format_sql(sql: str, mode: Mode) -> str:
+    return format_string(sql, mode)
+```
+
+`Mode` controls formatting behavior and output options, including whether color output is enabled through `Mode.color()`.
+
+Because the public API does not define `Mode` construction parameters, applications should create or obtain a `Mode` instance according to their integration’s configuration needs and pass it to formatting functions.
+
+## Format files
+
+Use `run` to process a collection of paths:
+
+```python
+from pathlib import Path
+
+from sqlfmt.api import run
+from sqlfmt.mode import Mode
+
+
+def format_files(files: list[Path], mode: Mode) -> None:
+    report = run(files, mode)
+    report.display_report()
+
+    print(f"Changed: {report.number_changed()}")
+    print(f"Unchanged: {report.number_unchanged()}")
+    print(f"Errors: {report.number_errored()}")
+```
+
+The returned `Report` can also be inspected in more detail:
+
+```python
+report = run(files, mode)
+
+for result in report.changed_results():
+    result.maybe_print_to_stdout()
+
+for result in report.errored_results():
+    result.maybe_print_to_stdout()
+```
+
+## Discover matching paths
+
+`get_matching_paths` can be used before formatting to resolve the paths applicable to a mode:
+
+```python
+from pathlib import Path
+
+from sqlfmt.api import get_matching_paths
+from sqlfmt.mode import Mode
+
+
+def discover_sql_files(paths: list[Path], mode: Mode) -> set[Path]:
+    return get_matching_paths(paths, mode)
+```
+
+This is useful when building editor integrations, pre-commit hooks, or repository-wide formatting tools.
+
+## Configuration
+
+Load configuration associated with a set of files with `load_config_file`:
+
+```python
+from pathlib import Path
+
+from sqlfmt.config import load_config_file
+
+
+def load_project_config(files: list[Path], config_path: Path | None):
+    return load_config_file(files, config_path)
+```
+
+Configuration-related failures may be represented by `SqlfmtConfigError`.
+
+## Main API
+
+### High-level formatting
+
+| API | Purpose |
+| --- | --- |
+| `format_string(source_string, mode)` | Format SQL source provided as a string. |
+| `run(files, mode, callback=None)` | Format a collection of files and return a `Report`. |
+| `get_matching_paths(paths, mode)` | Resolve matching paths for formatting. |
+| `initialize_progress_bar(total, mode, force_progress_bar=False)` | Create a progress bar and a callback suitable for formatting results. |
+
+### Results and reporting
+
+`SqlFormatResult` represents an individual formatting outcome.
+
+```python
+from sqlfmt.report import SqlFormatResult
+
+def inspect_result(result: SqlFormatResult) -> None:
+    if result.has_error():
+        result.maybe_print_to_stdout()
+    elif result.has_changed():
+        result.maybe_print_to_stdout()
+```
+
+`Report` groups formatting results and provides summary methods:
+
+- `changed_results()`
+- `unchanged_results()`
+- `errored_results()`
+- `number_changed()`
+- `number_unchanged()`
+- `number_errored()`
+- `display_report()`
+
+The `report` module also exposes output helpers:
+
+- `style_output(...)`
+- `unstyle_output(...)`
+- `display_output(...)`
+
+## Parsing and formatting model
+
+The library’s lower-level API exposes the stages involved in formatting.
+
+```text
+SQL source
+  -> Analyzer
+  -> Query
+  -> QueryFormatter
+  -> formatted Query / rendered output
+```
+
+### `Analyzer`
+
+`Analyzer` parses source text into a `Query`.
+
+```python
+from sqlfmt.analyzer import Analyzer
+from sqlfmt.query import Query
+
+
+def parse_sql(analyzer: Analyzer, source: str) -> Query:
+    return analyzer.parse_query(source)
+```
+
+Its API includes methods for lexing, rule management, buffer management, and token-termination searches:
+
+- `parse_query(source_string)`
+- `lex(source_string, eof_pos=-1)`
+- `lex_one(source_string)`
+- `push_rules(new_rules)`
+- `pop_rules()`
+- `get_rule(rule_name)`
+- `search_for_terminating_token(...)`
+
+### Dialects
+
+`Dialect` is an abstract formatting and parsing dialect interface.
+
+```python
+from sqlfmt.dialect import Dialect
+from sqlfmt.query import Query
+
+
+def parse_with_dialect(dialect: Dialect, source: str, line_length: int) -> Query:
+    analyzer = dialect.initialize_analyzer(line_length)
+    return analyzer.parse_query(source)
+```
+
+Available dialect classes include:
+
+- `Dialect`
+- `Polyglot`
+- `ClickHouse`
+
+A dialect supplies parsing rules through `get_rules()` and can initialize an analyzer through `initialize_analyzer(line_length)`.
+
+### `Query` and `QueryFormatter`
+
+A `Query` exposes its parsed representation:
+
+```python
+from sqlfmt.query import Query
+
+
+def inspect_query(query: Query) -> None:
+    tokens = query.tokens()
+    nodes = query.nodes()
+
+    print(f"Token count: {len(tokens)}")
+    print(f"Node count: {len(nodes)}")
+```
+
+`QueryFormatter` provides the formatting stage:
+
+```python
+from sqlfmt.query import Query
+from sqlfmt.query_formatter import QueryFormatter
+
+
+def format_query(formatter: QueryFormatter, query: Query) -> Query:
+    return formatter.format(query)
+```
+
+## SQL structure types
+
+The formatter’s internal public model is built from several related types.
+
+### Tokens
+
+`Token` represents a lexed token, while `TokenType` categorizes token behavior.
+
+```python
+from sqlfmt.tokens import Token, TokenType
+```
+
+`TokenType` provides classification helpers such as:
+
+- `is_jinja_statement()`
+- `is_jinja()`
+- `is_opening_bracket()`
+- `divides_queries()`
+- `is_always_operator()`
+- `is_possible_name()`
+- `is_always_lowercased()`
+- `is_equivalent_in_output()`
+
+`Token.from_match(source_string, match, token_type)` creates a token from a regular-expression match.
+
+### Nodes
+
+A `Node` adds structural context to tokens, including nesting and operator behavior.
+
+Useful node predicates include:
+
+- `depth()`
+- `is_comma()`
+- `is_operator()`
+- `is_boolean_operator()`
+- `is_opening_bracket()`
+- `is_closing_bracket()`
+- `is_opening_jinja_block()`
+- `is_closing_jinja_block()`
+- `is_jinja_statement()`
+- `divides_queries()`
+
+Use `get_previous_token(prev_node)` when working with a node sequence and its preceding token.
+
+### Lines and segments
+
+`Line` represents a formatted line composed from nodes and comments.
+
+```python
+from sqlfmt.line import Line
+
+
+def render_line(line: Line, max_length: int) -> str:
+    return line.render_with_comments(max_length)
+```
+
+`Line` can be created from parsed content with:
+
+```python
+Line.from_nodes(previous_node, nodes, comments)
+```
+
+It provides helpers for detecting common formatting conditions, including whether a line:
+
+- is blank,
+- starts with an operator or comma,
+- contains Jinja syntax,
+- exceeds a maximum length,
+- opens or closes brackets,
+- opens or closes Jinja blocks.
+
+`Segment` is a list-like grouping of `Line` values. Use `create_segments_from_lines(lines)` to build segments from a line sequence.
+
+## Comments and templating
+
+### Comments
+
+`Comment` supports several SQL-comment-related decisions and render paths:
+
+- `is_multiline()`
+- `is_c_style()`
+- `is_databricks_query_hint()`
+- `is_inline()`
+- `body()`
+- `formatting_disabled()`
+- `should_preserve_indentation()`
+- `render_inline()`
+- `render_standalone(max_length, prefix)`
+
+### Jinja support
+
+The API includes support for formatting Jinja-style SQL templates.
+
+- `JinjaTag` represents a template tag and can be created with `JinjaTag.from_string(...)`.
+- `JinjaFormatter.format_line(line)` formats a line containing Jinja content.
+- `BlackWrapper.format_string(source_string, max_length)` formats a source string and returns a tuple containing formatted output and a status flag.
+
+`JinjaTag` also provides helpers for determining whether a tag is multiline or macro-like and for calculating an available code length.
+
+## Line splitting and merging
+
+Formatting decisions are exposed through two main classes:
+
+- `LineSplitter` splits lines where necessary.
+- `LineMerger` attempts to merge compatible lines.
+
+```python
+from sqlfmt.line import Line
+from sqlfmt.merger import LineMerger
+from sqlfmt.splitter import LineSplitter
+
+
+def adjust_line_layout(
+    line: Line,
+    splitter: LineSplitter,
+    merger: LineMerger,
+) -> list[Line]:
+    split_lines = splitter.maybe_split(line)
+    return merger.maybe_merge_lines(split_lines)
+```
+
+`LineSplitter` also exposes lower-level split decisions such as:
+
+- `maybe_split_before(node)`
+- `maybe_split_between_brackets(node)`
+- `maybe_split_after(node)`
+- `split_at_index(...)`
+
+`LineMerger` provides:
+
+- `maybe_merge_lines(lines)`
+- `safe_create_merged_line(lines)`
+- `create_merged_line(lines)`
+
+## Caching
+
+The cache API supports reusing work across file-formatting runs.
+
+```python
+from pathlib import Path
+
+from sqlfmt.cache import check_cache, load_cache
+
+
+def needs_formatting(path: Path) -> bool:
+    cache = load_cache()
+    return not check_cache(cache, path)
+```
+
+Available cache functions:
+
+- `get_cache_file()`
+- `load_cache()`
+- `check_cache(cache, path)`
+- `write_cache(cache, results, mode)`
+- `clear_cache()`
+
+## Errors
+
+All SQL formatting errors derive from `SqlfmtError`, which is a `ValueError`.
+
+Available error classes include:
+
+- `SqlfmtConfigError`
+- `SqlfmtUnicodeError`
+- `SqlfmtParsingError`
+- `SqlfmtBracketError`
+- `SqlfmtSegmentError`
+- `SqlfmtEquivalenceError`
+
+The library also defines control-flow exceptions:
+
+- `SqlfmtControlFlowException`
+- `StopRulesetLexing`
+- `CannotMergeException`
+
+Applications that invoke parsing or formatting programmatically can catch `SqlfmtError` to handle formatting failures consistently:
+
+```python
+from sqlfmt.api import format_string
+from sqlfmt.exception import SqlfmtError
+from sqlfmt.mode import Mode
+
+
+def safely_format(source: str, mode: Mode) -> str | None:
+    try:
+        return format_string(source, mode)
+    except SqlfmtError as exc:
+        print(f"Unable to format SQL: {exc}")
+        return None
+```
+
+## Command-line integration
+
+The library exposes a Click command function named `sqlfmt` and a `show_welcome_message()` helper.
+
+```python
+from sqlfmt.cli import show_welcome_message
+
+show_welcome_message()
+```
+
+The `sqlfmt` command accepts a Click context, a list of file paths, an optional configuration path, and additional keyword arguments. This makes it suitable for integration into a larger Click-based command-line application.
+
+## Primer utilities
+
+`shandy-sqlfmt` also exposes project-oriented primer utilities:
+
+- `SQLProject`
+- `get_projects()`
+- `get_project_source_tree(...)`
+- `clone_and_checkout(...)`
+- `clear_sqlfmt_cache()`
+- `sqlfmt_primer(...)`
+
+These APIs support working with collections of SQL projects, retrieving source trees, and managing formatter cache state for broader compatibility or regression workflows.

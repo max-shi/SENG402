@@ -1,0 +1,322 @@
+# bitcoin-s-async-utils
+
+`bitcoin-s-async-utils` provides Java bindings for secp256k1 cryptographic operations. Its API exposes functionality for:
+
+- ECDSA-style signing and signature verification
+- Secret-key and public-key validation
+- Public-key derivation and decompression
+- ECDH shared-secret creation
+- Private- and public-key tweak operations
+- Public-key combination
+- Schnorr signing and verification
+- Adaptor-signature workflows
+- Context lifecycle and randomization controls
+
+The primary entry point is `org.bitcoin.NativeSecp256k1`.
+
+## API overview
+
+### `NativeSecp256k1`
+
+`NativeSecp256k1` contains static methods for secp256k1 operations. Most inputs and outputs are represented as `byte[]`.
+
+#### ECDSA operations
+
+```java
+public static boolean verify(byte[] data, byte[] signature, byte[] pub);
+public static byte[] sign(byte[] data, byte[] seckey) throws AssertFailException;
+public static byte[] signWithEntropy(byte[] data, byte[] seckey, byte[] entropy)
+    throws AssertFailException;
+```
+
+- `sign` creates a signature using `data` and a secret key.
+- `signWithEntropy` additionally accepts caller-provided entropy.
+- `verify` checks a signature against data and a public key.
+
+#### Key validation and public-key derivation
+
+```java
+public static boolean secKeyVerify(byte[] seckey);
+public static byte[] computePubkey(byte[] seckey, boolean compressed)
+    throws AssertFailException;
+public static boolean isValidPubKey(byte[] pubkey);
+public static byte[] decompress(byte[] pubkey) throws AssertFailException;
+```
+
+- `secKeyVerify` validates a secret-key byte representation.
+- `computePubkey` derives a public key from a secret key.
+- `isValidPubKey` validates a public-key byte representation.
+- `decompress` converts a public key to its decompressed form.
+- Methods accepting `compressed` allow callers to select the desired public-key representation.
+
+#### Key tweaking and combination
+
+```java
+public static byte[] privKeyTweakMul(byte[] seckey, byte[] tweak)
+    throws AssertFailException;
+public static byte[] privKeyTweakAdd(byte[] seckey, byte[] tweak)
+    throws AssertFailException;
+
+public static byte[] pubKeyTweakAdd(byte[] pubkey, byte[] tweak, boolean compressed)
+    throws AssertFailException;
+public static byte[] pubKeyTweakMul(byte[] pubkey, byte[] tweak, boolean compressed)
+    throws AssertFailException;
+
+public static byte[] pubKeyCombine(byte[][] pubkeys, boolean compressed)
+    throws AssertFailException;
+```
+
+These methods support transformations commonly used in derived-key and multi-party public-key workflows:
+
+- Add or multiply a private key by a tweak.
+- Add or multiply a public key by a tweak.
+- Combine multiple public keys into one public key.
+
+#### ECDH
+
+```java
+public static byte[] createECDHSecret(byte[] seckey, byte[] pubkey)
+    throws AssertFailException;
+```
+
+`createECDHSecret` derives a shared secret from a local secret key and another party’s public key.
+
+#### Schnorr signatures
+
+```java
+public static byte[] schnorrSign(byte[] data, byte[] secKey, byte[] auxRand)
+    throws AssertFailException;
+
+public static byte[] schnorrSignWithNonce(byte[] data, byte[] secKey, byte[] nonce)
+    throws AssertFailException;
+
+public static boolean schnorrVerify(byte[] sig, byte[] data, byte[] pubx)
+    throws AssertFailException;
+```
+
+- `schnorrSign` signs data with a secret key and auxiliary randomness.
+- `schnorrSignWithNonce` signs data using an explicitly supplied nonce.
+- `schnorrVerify` verifies a Schnorr signature using `pubx`.
+
+#### Adaptor signatures
+
+```java
+public static byte[] adaptorSign(
+    byte[] seckey,
+    byte[] adaptorPoint,
+    byte[] data,
+    byte[] auxRand) throws AssertFailException;
+
+public static boolean adaptorVerify(
+    byte[] adaptorSig,
+    byte[] pubKey,
+    byte[] data,
+    byte[] adaptorPoint) throws AssertFailException;
+
+public static byte[] adaptorAdapt(byte[] adaptorSec, byte[] adaptorSig)
+    throws AssertFailException;
+
+public static byte[] adaptorExtractSecret(
+    byte[] sig,
+    byte[] adaptorSig,
+    byte[] adaptor) throws AssertFailException;
+```
+
+The adaptor-signature API supports:
+
+1. Creating an adaptor signature with `adaptorSign`.
+2. Verifying it with `adaptorVerify`.
+3. Adapting it into a signature with `adaptorAdapt`.
+4. Extracting an adaptor secret with `adaptorExtractSecret`.
+
+#### Context management
+
+```java
+public static synchronized void cleanup();
+public static long cloneContext();
+public static synchronized boolean randomize(byte[] seed)
+    throws AssertFailException;
+```
+
+- `cleanup` releases or resets library state associated with the context.
+- `cloneContext` returns a context handle.
+- `randomize` updates context randomization using the supplied seed.
+
+### `Secp256k1Context`
+
+```java
+public class Secp256k1Context {
+    public static boolean isEnabled();
+    public static long getContext();
+}
+```
+
+`Secp256k1Context` exposes the availability and current handle of the secp256k1 context.
+
+Use `isEnabled()` before depending on cryptographic operations when an application needs to detect whether the context is available.
+
+### `NativeSecp256k1Util`
+
+```java
+public class NativeSecp256k1Util {
+    public static void assertEquals(int val, int val2, String message)
+        throws AssertFailException;
+
+    public static void assertEquals(boolean val, boolean val2, String message)
+        throws AssertFailException;
+
+    public static void assertEquals(String val, String val2, String message)
+        throws AssertFailException;
+
+    public static void checkArgument(boolean expression);
+}
+```
+
+`NativeSecp256k1Util` provides small validation and assertion helpers:
+
+- `assertEquals` is available for `int`, `boolean`, and `String` values.
+- `checkArgument` checks a boolean precondition.
+
+## Usage examples
+
+### Derive a public key, sign data, and verify the signature
+
+```java
+import org.bitcoin.NativeSecp256k1;
+import org.bitcoin.Secp256k1Context;
+
+public class SigningExample {
+
+    public static void main(String[] args) throws Exception {
+        if (!Secp256k1Context.isEnabled()) {
+            throw new IllegalStateException("secp256k1 context is not enabled");
+        }
+
+        byte[] secretKey = loadSecretKey();
+        byte[] data = loadDataToSign();
+
+        if (!NativeSecp256k1.secKeyVerify(secretKey)) {
+            throw new IllegalArgumentException("Invalid secret key");
+        }
+
+        byte[] publicKey = NativeSecp256k1.computePubkey(secretKey, true);
+        byte[] signature = NativeSecp256k1.sign(data, secretKey);
+
+        boolean valid = NativeSecp256k1.verify(data, signature, publicKey);
+
+        if (!valid) {
+            throw new IllegalStateException("Signature verification failed");
+        }
+    }
+
+    private static byte[] loadSecretKey() {
+        // Obtain key bytes from your application's secure key storage.
+        throw new UnsupportedOperationException("Provide secret key bytes");
+    }
+
+    private static byte[] loadDataToSign() {
+        // Provide the data bytes expected by your signing workflow.
+        throw new UnsupportedOperationException("Provide data bytes");
+    }
+}
+```
+
+### Validate and transform a public key
+
+```java
+import org.bitcoin.NativeSecp256k1;
+
+public class PublicKeyExample {
+
+    public static byte[] deriveTweakedPublicKey(
+            byte[] publicKey,
+            byte[] tweak) throws Exception {
+
+        if (!NativeSecp256k1.isValidPubKey(publicKey)) {
+            throw new IllegalArgumentException("Invalid public key");
+        }
+
+        return NativeSecp256k1.pubKeyTweakAdd(
+            publicKey,
+            tweak,
+            true
+        );
+    }
+
+    public static byte[] toUncompressed(byte[] publicKey) throws Exception {
+        if (!NativeSecp256k1.isValidPubKey(publicKey)) {
+            throw new IllegalArgumentException("Invalid public key");
+        }
+
+        return NativeSecp256k1.decompress(publicKey);
+    }
+}
+```
+
+### Create an ECDH shared secret
+
+```java
+import org.bitcoin.NativeSecp256k1;
+
+public class EcdhExample {
+
+    public static byte[] createSharedSecret(
+            byte[] localSecretKey,
+            byte[] remotePublicKey) throws Exception {
+
+        if (!NativeSecp256k1.secKeyVerify(localSecretKey)) {
+            throw new IllegalArgumentException("Invalid local secret key");
+        }
+
+        if (!NativeSecp256k1.isValidPubKey(remotePublicKey)) {
+            throw new IllegalArgumentException("Invalid remote public key");
+        }
+
+        return NativeSecp256k1.createECDHSecret(
+            localSecretKey,
+            remotePublicKey
+        );
+    }
+}
+```
+
+### Sign and verify with Schnorr methods
+
+```java
+import org.bitcoin.NativeSecp256k1;
+
+public class SchnorrExample {
+
+    public static boolean signAndVerify(
+            byte[] data,
+            byte[] secretKey,
+            byte[] auxiliaryRandomness,
+            byte[] xOnlyPublicKey) throws Exception {
+
+        byte[] signature = NativeSecp256k1.schnorrSign(
+            data,
+            secretKey,
+            auxiliaryRandomness
+        );
+
+        return NativeSecp256k1.schnorrVerify(
+            signature,
+            data,
+            xOnlyPublicKey
+        );
+    }
+}
+```
+
+## Input handling
+
+The API uses `byte[]` for keys, signatures, nonces, tweaks, public-key representations, and data. Callers are responsible for supplying byte arrays in the representation expected by the operation being used.
+
+Before performing key-dependent operations, validate externally supplied keys where appropriate:
+
+```java
+boolean secretKeyIsValid = NativeSecp256k1.secKeyVerify(secretKey);
+boolean publicKeyIsValid = NativeSecp256k1.isValidPubKey(publicKey);
+```
+
+Treat secret keys, nonces, entropy, adaptor secrets, and ECDH output as sensitive material. Avoid logging them, retain them only as long as necessary, and use appropriate application-level secure storage and memory-handling practices.

@@ -1,0 +1,243 @@
+# tryceratops
+
+**tryceratops** is a static analysis tool for Python that inspects your source code for
+anti-patterns and bad practices in exception handling — `try`/`except`/`raise`/`else` blocks,
+error logging, and related conditional logic. It walks your codebase's AST, flags violations
+against a set of built-in analyzers, reports them in a readable format, and can optionally
+autofix some of them.
+
+It ships as:
+
+- A standalone command-line tool (`tryceratops`)
+- A `flake8` plugin, so violations show up alongside your other lint output
+
+## Why use it?
+
+Exception handling in Python is easy to get subtly wrong: swallowing errors silently, raising
+vanilla `Exception`, re-raising without preserving the original traceback (`raise ... from ...`),
+logging exceptions incorrectly, or writing `try`/`except` blocks that don't actually need to
+exist. tryceratops encodes these best practices as automated checks so they can be caught in CI
+or a pre-commit hook instead of code review.
+
+## How it works
+
+At a high level, running tryceratops does the following:
+
+1. **Configuration** is loaded from `pyproject.toml` (via `find_pyproject_toml` /
+   `load_config`) and merged with any CLI flags into a `GlobalSettings` object.
+2. **File discovery** (`FileDiscovery`, `find_files`, `is_python_file`) walks the given
+   directories, respecting excludes, and yields Python files.
+3. **Parsing** (`parse_file`, `parse_tree`, `parse_ignore_comments_from_file`) turns each file
+   into an `ast.AST` plus a `FileFilter` that knows about inline `# noqa`-style ignore
+   comments (`IgnoreViolation`).
+4. **Analysis** (`Runner`, `BaseAnalyzer` subclasses obtained via `get_analyzer_chain`) visits
+   the AST of each file and produces a list of `Violation` objects.
+5. **Fixing** (optional) — `BaseFixer` subclasses obtained via `get_fixers_chain` can rewrite
+   offending lines for a subset of violation types.
+6. **Reporting** — `CliInterface` / `present_violation` prints results and sets the process
+   exit code (`ExitCodes`).
+
+## Core building blocks
+
+### Settings
+
+- **`GlobalSettings`** — the central configuration object. Built from a `PyprojectConfig`
+  (`GlobalSettings.create_from_config`) and then optionally overridden by CLI arguments via
+  `overwrite_from_cli` (experimental checks, ignored violation codes, excluded directories,
+  autofix on/off). Exposes helper predicates such as `exclude_experimental`,
+  `should_run_processor`, and `should_skip_file`.
+- **`FileFilter`** / **`IgnoreViolation`** — represent per-file and per-line ignore rules parsed
+  from comments in source files, used to suppress specific violations.
+
+### File discovery & parsing
+
+- **`find_files`**, **`is_python_file`** — locate candidate `.py` files under a directory.
+- **`FileDiscovery`** — orchestrates discovery and parsing of multiple files, tracks failures
+  (`FileParseFailed`) via `had_issues`, and exposes `parse_python_files` to get parsed ASTs.
+- **`parse_file`**, **`parse_tree`** — parse a single file's contents into an `ast.AST` and its
+  associated `FileFilter`.
+- **`find_project_root`**, **`find_pyproject_toml`**, **`load_config`** — locate and load
+  project configuration from `pyproject.toml`.
+
+### Analyzers
+
+All checks are implemented as **`BaseAnalyzer`** subclasses, each an `ast.NodeVisitor` that
+walks a tree and calls `check(tree, filename)` to produce a list of `Violation`s. Analyzers are
+grouped by the kind of AST node they focus on:
+
+- **Call-related** (`call.py`): `CallTooManyAnalyzer`, `CallRaiseVanillaAnalyzer`,
+  `CallRaiseLongArgsAnalyzer`, `CallAvoidCheckingToContinueAnalyzer` — flag things like raising
+  bare `Exception`, raise calls with too many/long arguments, and code that uses exceptions to
+  control flow.
+- **Class definitions** (`classdefs.py`): `NonPickableAnalyzer`, `InheritFromBaseAnalyzer` —
+  check custom exception classes for pickle-safety and correct base classes.
+- **Conditionals** (`conditional.py`): `PreferTypeErrorAnalyzer` — suggests `TypeError` over
+  other exceptions in certain `if` patterns.
+- **Exception blocks** (`exception_block.py`): `ExceptReraiseWithoutCauseAnalyzer`,
+  `ExceptVerboseReraiseAnalyzer`, `ExceptBroadPassAnalyzer`, `LogErrorAnalyzer`,
+  `LogObjectAnalyzer`, `UselessTryExceptAnalyzer` — check `except` handlers for missing
+  `raise ... from ...`, overly verbose re-raises, silent `except: pass`, incorrect logging
+  calls, and no-op try/except blocks.
+- **Try blocks** (`try_block.py`): `TryConsiderElseAnalyzer`, `TryShouldntRaiseAnalyzer` —
+  suggest using `try`/`else` and flag `try` blocks that raise instead of handling errors.
+
+Analyzers that specifically inspect `raise` statements share behavior via
+**`BaseRaiseCallableAnalyzer`**, which implements `visit_Raise`.
+
+Use **`get_analyzer_chain(global_settings)`** to get the full, settings-aware set of analyzers
+to run (it filters out analyzers disabled by config, experimental flags, or ignore lists).
+
+### Violations
+
+- **`Violation`** — base data object representing a single detected issue (built via
+  `Violation.build(filename, vio_details, node, ...)`), carrying enough context (filename, node
+  location, violation code/message) to be reported or fixed.
+- **`VerboseReraiseViolation`**, **`RaiseWithoutCauseViolation`**,
+  **`InheritFromNonBaseViolation`** — specialized violations carrying extra context (e.g. the
+  exception name, the associated `except` node, or the disallowed base classes) needed by
+  fixers or richer reporting.
+
+### Fixers
+
+- **`BaseFixer`** — abstract base for autofixers. Given a list of source lines and a violation,
+  `perform_fix` returns updated lines; `fix(violations)` applies fixes for a batch of
+  violations.
+- **`FileFixerHandler`** — reads a file's lines (`read_lines`) and writes back fixed content
+  (`write_fix`).
+- Concrete fixers: **`VerboseReraiseFixer`**, **`RaiseWithoutCauseFixer`**,
+  **`LoggerErrorFixer`** — each knows how to rewrite the specific violation type it targets.
+- **`get_fixers_chain(global_settings)`** — returns the set of fixers enabled for the current
+  configuration.
+
+### Running & reporting
+
+- **`Runner`** — ties analyzers together: `analyze(trees, global_settings)` runs the enabled
+  analyzer chain over parsed files and returns all `Violation`s found. `had_issues()` and
+  `any_violation()` report whether problems occurred during parsing or analysis.
+- **`CliInterface`** — collects results and calls `present_and_exit()` to print output and exit
+  with the appropriate `ExitCodes` value.
+- **`present_violation(violation)`** — formats a single `Violation` as a human-readable string.
+
+### Entry points
+
+- **`entrypoint(dir, experimental, ignore, exclude, verbose, autofix)`** and **`main()`** — the
+  CLI command implementation, wiring together configuration loading, file discovery, analysis,
+  optional autofixing, and reporting.
+- **`TryceratopsAdapterPlugin`** — adapts tryceratops' analysis into the `flake8` plugin
+  interface, exposing a `run()` generator that yields flake8-compatible violation tuples.
+
+## Installation
+
+```bash
+pip install tryceratops
+```
+
+## Usage
+
+### Command line
+
+```bash
+# Analyze the current directory
+tryceratops .
+
+# Analyze specific directories/files
+tryceratops src/ tests/
+
+# Include experimental checks
+tryceratops src/ --experimental
+
+# Ignore specific violation codes
+tryceratops src/ --ignore TRY002 --ignore TRY301
+
+# Exclude directories from analysis
+tryceratops src/ --exclude migrations --exclude vendor
+
+# Automatically apply fixes where possible
+tryceratops src/ --autofix
+
+# Verbose output
+tryceratops src/ --verbose
+```
+
+Configuration can also be provided in `pyproject.toml`:
+
+```toml
+[tool.tryceratops]
+experimental = false
+ignore = ["TRY002"]
+exclude = ["migrations", "build"]
+```
+
+### As a flake8 plugin
+
+Once installed, tryceratops' checks run automatically as part of `flake8`:
+
+```bash
+flake8 src/
+```
+
+Violations are reported with the flake8 error format alongside your other linters.
+
+### Programmatic usage
+
+```python
+from tryceratops.files.discovery import load_config, FileDiscovery
+from tryceratops.settings import GlobalSettings
+from tryceratops.runners import Runner
+from tryceratops.interfaces import present_violation
+
+# Load config (or fall back to defaults)
+config = load_config(["src"])
+settings = GlobalSettings.create_from_config(config) if config else GlobalSettings()
+settings.overwrite_from_cli(
+    include_experimental=False,
+    ignore_violations=[],
+    exclude_dirs=["migrations"],
+    autofix=False,
+)
+
+# Discover and parse files
+discovery = FileDiscovery()
+parsed_files = dict(discovery.parse_python_files(["src/app.py", "src/utils.py"]))
+
+if discovery.had_issues():
+    raise SystemExit("Some files failed to parse")
+
+# Run the analysis
+runner = Runner()
+violations = runner.analyze(parsed_files, settings)
+
+for violation in violations:
+    print(present_violation(violation))
+
+if runner.any_violation():
+    raise SystemExit(1)
+```
+
+### Example violations
+
+```python
+# Raising a vanilla Exception (flagged by CallRaiseVanillaAnalyzer)
+def do_work():
+    if not valid():
+        raise Exception("something went wrong")  # TRY002
+
+# Re-raising without preserving the cause (flagged by ExceptReraiseWithoutCauseAnalyzer)
+try:
+    do_work()
+except ValueError as exc:
+    raise RuntimeError("failed")  # should be: raise RuntimeError("failed") from exc
+
+# Swallowing an exception (flagged by ExceptBroadPassAnalyzer)
+try:
+    do_work()
+except Exception:
+    pass
+```
+
+Running `tryceratops --autofix` on the second example above will invoke
+`RaiseWithoutCauseFixer` to rewrite the `raise` statement to include `from exc` automatically.
+
+## License
+
+See the `LICENSE` file in this repository for details.

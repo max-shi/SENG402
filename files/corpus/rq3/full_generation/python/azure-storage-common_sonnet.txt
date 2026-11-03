@@ -1,0 +1,157 @@
+# azure-storage-common
+
+Common infrastructure and shared utilities for the Azure Storage Python client libraries (blob, queue, and file services). This package provides the foundational building blocks used by the higher-level `azure-storage-blob`, `azure-storage-queue`, and `azure-storage-file` packages, including account-level credential and connection management, retry policies, shared access signature (SAS) generation, and common data models describing storage service configuration and status.
+
+You typically won't need to work directly with most of this package if you're using one of the higher-level storage libraries — but it's the layer that powers authentication, retries, and account-wide operations across all of them.
+
+## Overview
+
+### `CloudStorageAccount`
+
+The main entry point for working with an Azure Storage account. Given account credentials (account name and key, SAS token, etc., depending on how it's constructed), a `CloudStorageAccount` instance can create fully-configured service clients for each storage service:
+
+- `create_block_blob_service()`
+- `create_page_blob_service()`
+- `create_append_blob_service()`
+- `create_queue_service()`
+- `create_file_service()`
+
+It can also generate an account-level Shared Access Signature (SAS) via `generate_shared_access_signature()`, which delegates to `SharedAccessSignature.generate_account()`.
+
+### `SharedAccessSignature`
+
+Generates SAS tokens for an account. `generate_account()` builds a signature string that grants scoped access to one or more services (`Services`), resource types (`ResourceTypes`), permissions (`AccountPermissions`), and an expiry/start time window, optionally restricted by IP range (`ip`) and required transport `protocol` (`Protocol`).
+
+### `StorageClient`
+
+The base class underlying all storage service clients (block blob, queue, file, etc.). It manages:
+
+- `socket_timeout` — the timeout used for socket operations.
+- `protocol` — the transport protocol (`http`/`https`) used when building request URLs.
+- `request_session` — the underlying `requests` session used to send HTTP calls, allowing connection pooling/reuse.
+- `set_proxy()` — configure an HTTP proxy (with optional authentication) for outgoing requests.
+- `extract_date_and_request_id()` — a static/utility hook used by the retry pipeline to pull diagnostic information (date and request ID) out of a response for logging/troubleshooting.
+
+### Retry policies (`retry.py`)
+
+Pluggable retry strategies that can be attached to a `StorageClient` (or subclass) to control how failed requests are retried:
+
+- `ExponentialRetry` — retries with exponentially increasing backoff.
+- `LinearRetry` — retries with a fixed backoff interval.
+- `no_retry` — a no-op retry function that disables retries entirely.
+
+Each retry policy's `retry(context)` method is called with a `RetryContext`, which carries information about the failed request/response (used to decide whether and how long to wait before retrying).
+
+### `TokenCredential`
+
+Represents a credential based on a bearer token (e.g., an OAuth token from Azure Active Directory), rather than an account key or SAS. `signed_session()` returns a `requests` session pre-configured with the appropriate `Authorization` header. The `token` property allows the underlying token value to be refreshed/rotated over the credential's lifetime.
+
+### Models (`models.py`)
+
+Data classes describing storage account configuration, service behavior, and results returned by service-level operations:
+
+- `ListGenerator` — an iterable wrapper used to lazily page through list results returned by storage APIs.
+- `RetryContext` — context object passed to retry policies, describing the failed request/response and retry count.
+- `LocationMode` — enumerates primary/secondary endpoint location preferences (used with geo-redundant accounts).
+- `RetentionPolicy` — describes how long logs/metrics data should be retained.
+- `Logging` — configuration for storage analytics logging.
+- `Metrics` — configuration for storage analytics metrics.
+- `CorsRule` — a single CORS rule for a storage service.
+- `DeleteRetentionPolicy` — soft-delete retention configuration for blobs.
+- `StaticWebsite` — static website hosting configuration for a storage account.
+- `ServiceProperties` — aggregate object combining `Logging`, `Metrics`, `CorsRule`s, and other service-level settings.
+- `ServiceStats` — service statistics, including `GeoReplication` status.
+- `GeoReplication` — geo-replication status/details for a storage account.
+- `AccessPolicy` — a stored access policy definition (permissions + time window) usable with a SAS.
+- `Protocol` — enumerates allowed transport protocols (`https`, `http,https`) for SAS tokens.
+- `ResourceTypes` — enumerates SAS-eligible resource types (service, container, object).
+- `Services` — enumerates storage services (blob, queue, file, table) a SAS applies to.
+- `AccountPermissions` — enumerates account-level SAS permissions (read, write, delete, list, etc.).
+
+### Errors and low-level HTTP
+
+- `AzureSigningError` — raised when request signing fails (e.g., invalid credentials).
+- `HTTPRequest` / `HTTPResponse` / `HTTPError` — low-level representations of HTTP requests, responses, and error conditions used internally by the request pipeline.
+
+## Usage Examples
+
+### Creating service clients from an account
+
+```python
+from azure.storage.common import CloudStorageAccount
+
+account = CloudStorageAccount(
+    account_name='mystorageaccount',
+    account_key='<account-key>'
+)
+
+block_blob_service = account.create_block_blob_service()
+queue_service = account.create_queue_service()
+file_service = account.create_file_service()
+```
+
+### Generating an account-level SAS
+
+```python
+from datetime import datetime, timedelta
+from azure.storage.common import CloudStorageAccount
+from azure.storage.common.models import Services, ResourceTypes, AccountPermissions, Protocol
+
+account = CloudStorageAccount(
+    account_name='mystorageaccount',
+    account_key='<account-key>'
+)
+
+sas_token = account.generate_shared_access_signature(
+    services=Services.BLOB,
+    resource_types=ResourceTypes.CONTAINER,
+    permission=AccountPermissions.READ,
+    expiry=datetime.utcnow() + timedelta(hours=1),
+    protocol=Protocol.HTTPS,
+)
+
+print(sas_token)
+```
+
+### Configuring retries on a service client
+
+```python
+from azure.storage.common.retry import ExponentialRetry, LinearRetry, no_retry
+
+block_blob_service = account.create_block_blob_service()
+
+# Retry up to 5 times with exponential backoff
+block_blob_service.retry = ExponentialRetry(max_attempts=5).retry
+
+# Or use fixed-interval retries
+block_blob_service.retry = LinearRetry(backoff=2, max_attempts=3).retry
+
+# Or disable retries entirely
+block_blob_service.retry = no_retry
+```
+
+### Setting a proxy and socket timeout
+
+```python
+block_blob_service = account.create_block_blob_service()
+
+block_blob_service.set_proxy(host='proxy.example.com', port=8080, user='proxyuser', password='proxypass')
+block_blob_service.socket_timeout = 30
+```
+
+### Authenticating with a token credential
+
+```python
+from azure.storage.common.tokencredential import TokenCredential
+
+credential = TokenCredential(initial_value='<oauth-token>')
+
+session = credential.signed_session()
+
+# Rotate/refresh the token later
+credential.token = '<new-oauth-token>'
+```
+
+## License
+
+This project is licensed under the MIT License.

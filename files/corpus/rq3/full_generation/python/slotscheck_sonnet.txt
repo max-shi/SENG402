@@ -1,0 +1,175 @@
+# slotscheck
+
+`slotscheck` is a static analysis tool for Python codebases that use `__slots__`. It scans your modules and classes to catch common mistakes that silently break the memory-saving benefits of slots — or introduce subtle bugs — such as:
+
+- Classes that should define `__slots__` but don't (causing an unexpected `__dict__` on instances).
+- Slots that overlap with slots defined on a superclass (wasting memory).
+- Duplicate slot names within the same class.
+- Slots that inherit incorrectly relative to base/subclasses.
+- Slots that are declared but never actually used/assigned.
+
+It's designed to be run both as a **command-line tool** over your project's files/modules, and as a **library** you can use to build your own checks or tooling.
+
+## Installation
+
+```bash
+pip install slotscheck
+```
+
+## Command-line usage
+
+The primary entry point is the `slotscheck` command (backed by `slotscheck.cli.root`):
+
+```bash
+slotscheck mypackage
+```
+
+You can pass individual files, module names, or directories:
+
+```bash
+slotscheck --module mypackage.models --module mypackage.views
+```
+
+Common flags (all correspond to parameters on `root`):
+
+- `--require-superclass` / `--no-require-superclass`
+- `--require-subclass` / `--no-require-subclass`
+- `--strict-imports` / `--no-strict-imports`
+- `--include-classes` / `--exclude-classes` (regex filters on class names)
+- `--include-modules` / `--exclude-modules` (regex filters on module names)
+- `--exclude-slots` (regex filter on slot names, e.g. to ignore dunder attributes)
+- `--verbose` for more detailed diagnostic output
+- `--settings` to point at a specific configuration file
+
+Configuration can also be stored in a project config file (e.g. `pyproject.toml`) and will be merged with CLI options — see **Configuration** below.
+
+## Configuration
+
+`slotscheck.config` handles loading and merging settings from a config file with values passed on the command line.
+
+- `PartialConfig.load(path)` — loads a partial configuration from a file (only the keys explicitly present are populated).
+- `Config` — a fully-resolved configuration, with `apply(other)` used to layer a `PartialConfig` (e.g. CLI arguments) on top of a base `Config` (e.g. from a file).
+- `collect(from_cli, cwd, config)` — the high-level helper used by the CLI to find a config file (if not given explicitly), load it, and merge it with CLI-supplied options into a final `Config`.
+- `find_config_file(path)` — searches upward from `path` for a recognized configuration file.
+- `InvalidKeys` / `InvalidValueType` — exceptions raised when a config file contains unknown keys or malformed values.
+
+This layer is mostly used internally by the CLI, but is exposed for tools that want to reuse `slotscheck`'s configuration discovery/merging logic.
+
+## Discovering modules and classes
+
+`slotscheck.discovery` implements the logic for turning file paths/module names into importable module trees, and then extracting the classes defined within them.
+
+- `Module` and `Package` — represent nodes in a tree of discovered modules (a `Package` has submodules; a `Module` is a leaf). Both support:
+  - `.display()` — a human-readable representation (e.g. dotted path).
+  - `.filtername(pred, prefix="")` — prune the tree to only nodes whose (prefixed) name matches `pred`.
+  - `.merge(other)` — merge two module trees rooted at the same location.
+- `FailedImport` — represents a module that could not be imported, retained in the tree so failures can be reported rather than silently ignored.
+- `UnexpectedImportLocation` — raised when an imported module's location doesn't match what was expected on disk (helps catch shadowed/duplicate packages).
+- `module_tree(module, expected_location)` — imports a module by name and builds a `ModuleTree` (`Module`/`Package`) or returns a `FailedImport`.
+- `walk_classes(tree, prefix="")` — walks a module tree and yields either a `FailedImport` or a `FrozenSet[type]` of classes found in each module.
+- `consolidate(trees)` — merges/deduplicates a collection of module trees (e.g. when the same package is reached via multiple file arguments).
+- `find_modules(path)` — given a file or directory path, discovers importable modules and yields `ModuleLocated` entries (module name + file path pairs).
+- `ModuleLocated` — a `NamedTuple` pairing a discovered module name with its file location.
+- `FileNotInSysPathError` — raised when a given file path cannot be resolved to an importable module because it isn't reachable from `sys.path`.
+
+## Checking classes
+
+`slotscheck.checks` contains the core, low-level checks performed against an individual class. These are pure functions operating on `type` objects — handy if you want to write your own analysis on top of `slotscheck`.
+
+```python
+from slotscheck.checks import (
+    slots,
+    defines_slots,
+    unused_slots,
+    is_abstract,
+    has_implicit_dunder_dict,
+    causes_dunder_dict,
+    slots_overlap,
+    has_duplicate_slots,
+)
+
+class Point:
+    __slots__ = ("x", "y")
+
+slots(Point)             # -> ('x', 'y')
+defines_slots(Point)     # -> True
+slots_overlap(Point)     # -> False
+has_duplicate_slots(Point)  # -> False
+```
+
+- `slots(c)` — returns the slot names declared directly on `c`, or `None` if `c` doesn't define `__slots__`.
+- `defines_slots(c)` — whether `c` itself defines `__slots__`.
+- `unused_slots(c)` — slot names declared on `c`'s MRO that don't appear to be used anywhere, mapped to the class that declares them.
+- `is_abstract(c)` — whether `c` looks like an abstract base class (and is therefore exempt from some slot requirements).
+- `has_implicit_dunder_dict(c)` — whether instances of `c` get a `__dict__` even though it wasn't explicitly requested (e.g. because a base class lacks `__slots__`).
+- `causes_dunder_dict(c)` — whether `c` itself is the reason instances end up with a `__dict__`.
+- `slots_overlap(c)` — whether `c`'s slots overlap with slots already defined by a superclass.
+- `has_duplicate_slots(c)` — whether `c` declares the same slot name more than once (including via multiple base classes).
+
+## Assembling diagnostics
+
+`slotscheck.cli` builds on `checks` and `discovery` to produce user-facing diagnostics.
+
+- `slot_messages(c, require_superclass, require_subclass, detect_unused_slots, exclude_slots_pattern)` — runs the relevant checks against class `c` and yields `Notice` instances describing any problems found.
+- `Notice` — abstract base for a single diagnostic finding; subclasses implement `for_display(verbose)` to render a human-readable line.
+  - `ModuleSkipped` — a module could not be analyzed (e.g. failed import).
+  - `OverlappingSlots` — corresponds to `slots_overlap`.
+  - `DuplicateSlots` — corresponds to `has_duplicate_slots`.
+  - `BadSlotInheritance` — a class's slot inheritance is inconsistent with its bases/subclasses.
+  - `ShouldHaveSlots` — a class doesn't define `__slots__` but is expected to.
+  - `UnusedSlots` — corresponds to `unused_slots`.
+- `Message` — a wrapper/aggregate around notices (or a plain message) with its own `for_display(verbose)`.
+- `ModulesReport` — aggregates the results of checking a whole set of modules, used to build the final CLI output and exit status.
+
+## Utilities
+
+`slotscheck.common` provides small generic helpers used throughout the codebase, useful in their own right:
+
+- `unique(iterable)` — yields items from `iterable`, skipping duplicates.
+- `groupby(it, key=...)` — groups items of `it` into a mapping keyed by `key`.
+- `compose` — callable composition helper (chain functions together).
+- `both(a, b)` — combine two predicates into one that requires both to hold.
+- `map_optional(f, it)` — map `f` over `it`, dropping results that are `None`.
+- `is_protocol(t)` — whether `t` is a `typing.Protocol` class.
+- `add_slots(cls)` — a class decorator that adds `__slots__` to a class based on its annotations (useful for retrofitting slots onto existing classes, e.g. dataclasses).
+
+## Example: writing a custom checker script
+
+```python
+from slotscheck.discovery import module_tree, walk_classes, FailedImport
+from slotscheck.checks import defines_slots, slots_overlap, is_abstract
+
+tree = module_tree("mypackage", expected_location=None)
+
+if isinstance(tree, FailedImport):
+    raise SystemExit(f"Could not import module: {tree}")
+
+for result in walk_classes(tree):
+    if isinstance(result, FailedImport):
+        print(f"Skipped: {result}")
+        continue
+    for cls in result:
+        if is_abstract(cls):
+            continue
+        if not defines_slots(cls):
+            print(f"{cls.__module__}.{cls.__qualname__} has no __slots__")
+        elif slots_overlap(cls):
+            print(f"{cls.__module__}.{cls.__qualname__} has overlapping slots")
+```
+
+## Example: using `add_slots` as a decorator
+
+```python
+from dataclasses import dataclass
+from slotscheck.common import add_slots
+
+@add_slots
+@dataclass
+class Point:
+    x: int
+    y: int
+```
+
+## License
+
+See `LICENSE` for details.

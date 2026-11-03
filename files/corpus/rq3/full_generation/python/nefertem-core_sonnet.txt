@@ -1,0 +1,288 @@
+# nefertem-core
+
+**nefertem-core** is a framework for running data quality operations — validation, profiling, metrics, and schema inference — against tabular and file-based data resources, using a pluggable backend architecture. It provides the core orchestration (clients, runs, stores, plugins) that individual framework-specific plugins (Frictionless, Evidently, ydata-profiling, SQLAlchemy, DuckDB) build upon.
+
+The core library itself is framework-agnostic: it defines *how* a run is configured, executed, and its results persisted, while the actual "heavy lifting" (validating a dataframe, profiling a file, inferring a schema) is delegated to plugins that implement a common `Plugin` interface.
+
+## Concepts
+
+At a high level, using nefertem-core involves:
+
+1. Creating a **Client**, which manages input/output **Stores**.
+2. Registering **DataResource** objects describing the data you want to operate on.
+3. Creating a **Run** via the client, configured with an `ExecConfig`/`RunConfig` describing which operation and framework to use.
+4. Executing the run, which internally builds and runs **Plugins** through a **RunHandler**.
+5. Persisting results (reports, metrics, schemas, profiles) to an **OutputStore**, and reading metadata back through `NefertemBaseReport`-derived classes.
+
+## Core Components
+
+### Client
+
+```python
+from nefertem_core.client.builder import create_client
+```
+
+`create_client(output_path=None, stores=None)` builds a `Client` instance, optionally wiring it to an output path and a list of input/output store configurations.
+
+`Client` methods:
+- `add_store(config)` — register an additional input store (e.g. local filesystem, S3, SQL, remote URL) at runtime.
+- `create_run(resources, run_config, experiment=None, run_id=None, overwrite=False)` — creates a `Run` object bound to the given resources and configuration. This is the main entry point for executing an operation.
+
+Internally, `Client.create_run` delegates to `RunBuilder.create_run`, which resolves stores, generates run identifiers (via `build_uuid`), and instantiates the correct `Run` subclass.
+
+### Resources
+
+```python
+from nefertem_core.resources.data_resource import DataResource
+```
+
+A `DataResource` is a Pydantic model describing a single data source (e.g. a file path, table, or URL) that a run operates over. Resources are passed as dictionaries to `create_run` and validated into `DataResource` instances.
+
+### Run Configuration
+
+```python
+from nefertem_core.run.config import ExecConfig, RunConfig
+```
+
+`RunConfig` (composed of one or more `ExecConfig` entries) declares which framework/library to invoke and with what parameters (e.g. `"library": "frictionless"`, execution arguments, constraints, metrics, etc.). This configuration is what `builder_factory` uses to decide which `PluginBuilder` to instantiate.
+
+### Runs
+
+```python
+from nefertem_core.run.run import Run
+```
+
+`Run` is the base class returned by `create_run`. Operation-specific subclasses extend it with domain methods:
+
+- `RunValidation` — `validate()`, `validate_framework()`, `validate_nefertem()`, `log_report()`, `persist_report()`
+- `RunProfiling` — `profile()`, `profile_framework()`, `profile_nefertem()`, `log_profile()`, `persist_profile()`
+- `RunMetric` — `metric()`, `metric_framework()`, `metric_nefertem()`, `log_metric()`, `persist_metric()`
+- `RunInference` — `infer()`, `infer_framework()`, `infer_nefertem()`, `log_schema()`, `persist_schema()`
+
+Each of these follows the same pattern: a `*_framework()` method returns raw results from the underlying library, a `*_nefertem()` method converts them into standardized `NefertemBaseReport` subclasses (`NefertemReport`, `NefertemProfile`, `NefertemMetricReport`, `NefertemSchema`), and `log_*`/`persist_*` methods write metadata and artifacts to the configured `OutputStore`.
+
+`Run.persist_data()` handles persisting the resources/inputs associated with the run.
+
+`RunStatus` enumerates the lifecycle states a run can be in.
+
+### Run Execution Internals
+
+```python
+from nefertem_core.run.handler import RunHandler
+```
+
+`RunHandler` orchestrates plugin execution:
+- `run(*args, **kwargs)` — executes all built plugins.
+- `get_item(item_type)` — retrieves collected results by type (e.g. reports, artifacts).
+- `get_libraries()` — reports which frameworks/libraries were used and their versions.
+
+`RunInfo.to_dict()` produces a serializable summary of a run's metadata (timing, environment, status, etc.).
+
+### Plugins
+
+```python
+from nefertem_core.plugins.plugin import Plugin
+from nefertem_core.plugins.builder import PluginBuilder
+from nefertem_core.plugins.factory import builder_factory
+```
+
+A `Plugin` wraps a single framework-specific operation on a single resource:
+- `setup(*args, **kwargs)` — configure the plugin with a resource, reader, and operation parameters.
+- `execute()` — run the operation and return a result dictionary.
+- `render_nefertem(obj)` / `render_artifact(obj)` — convert a raw `Result` into standardized metadata / artifacts.
+- `framework_name()` / `framework_version()` / `get_framework()` — introspection about the underlying library used.
+
+`PluginBuilder.build(*args, **kwargs)` constructs a list of `Plugin` instances for a set of resources and configuration (e.g. constraints, metrics). Each operation module (`nefertem_validation`, `nefertem_profiling`, `nefertem_metric`, `nefertem_inference`) provides its own `*PluginBuilder` subclass, and each concrete backend plugin package (Frictionless, Evidently, DuckDB, SQLAlchemy, ydata-profiling) provides its own `Plugin` and `PluginBuilder` implementations.
+
+`builder_factory(config, stores)` inspects a `RunConfig` and returns the appropriate list of `PluginBuilder` instances/plugins for the requested libraries.
+
+`exec_decorator` wraps plugin execution to produce a standardized `Result` object, tagging it with an `ExecutionStatus` and `ResultType`.
+
+### Stores
+
+```python
+from nefertem_core.stores.builder import StoreBuilder, get_input_store, get_all_input_stores, get_output_store
+```
+
+Stores abstract over where data comes from and where results go.
+
+- **Input stores** (`InputStore` and subclasses `LocalInputStore`, `RemoteInputStore`, `S3InputStore`, `SQLInputStore`, `DummyInputStore`) fetch data via `fetch_file()` / `fetch_native()`, backed by a `StoreConfig`/`StoreParameters`.
+- **Output stores** (`OutputStore` and subclasses `LocalOutputStore`, `DummyOutputStore`) persist run metadata and artifacts via `init_run()`, `log_metadata()`, `persist_artifact()`, `get_run_path()`.
+
+`StoreBuilder` builds and manages both kinds of stores for a run; module-level helpers `get_input_store`, `get_all_input_stores`, `get_output_store` provide access to the currently configured stores without needing to hold a reference to the builder.
+
+`StoreKinds` enumerates supported store backends (local, remote, S3, SQL, dummy).
+
+### Readers
+
+```python
+from nefertem_core.readers.builder import build_reader
+```
+
+Readers fetch actual data given a resource path/URI and a store. `build_reader(reader_type, store, **kwargs)` returns a `DataReader` (or subclass such as `FileReader`, `NativeReader`) appropriate for the requested type. Backend plugin packages provide specialized readers (`PandasDataFrameDuckDBReader`, `PandasDataFrameSQLReader`, `PandasDataFrameFileReader`) that return pandas DataFrames rather than raw files.
+
+### Metadata
+
+```python
+from nefertem_core.metadata.blob import Blob
+from nefertem_core.metadata.env import Env
+from nefertem_core.metadata.report import NefertemBaseReport
+```
+
+`Blob` and `Env` capture generic run metadata (`Env.round_ram()` reports rounded memory usage). `NefertemBaseReport` is the base class for all standardized report types (`NefertemReport`, `NefertemProfile`, `NefertemMetricReport`, `NefertemSchema`), each exposing `to_dict()`.
+
+### Utilities & Errors
+
+`nefertem_core.utils.utils` provides small helpers: `build_uuid()`, `flatten_list()`, `listify()`, `get_time()`.
+
+`nefertem_core.utils.io_utils` provides `write_bytesio()`, `write_bytes()`, `write_object()`, `write_json()` for artifact persistence.
+
+`NefertemError`, `StoreError`, `RunError` (and, in the validation module, `ValidationError`) form the exception hierarchy used throughout the library.
+
+## Operation Modules
+
+Built on top of `nefertem-core`, four operation modules define standardized workflows:
+
+| Module | Run class | Purpose |
+|---|---|---|
+| `nefertem_validation` | `RunValidation` | Validate resources against constraints |
+| `nefertem_profiling` | `RunProfiling` | Profile resources (statistics, structure) |
+| `nefertem_metric` | `RunMetric` | Compute custom metrics over resources |
+| `nefertem_inference` | `RunInference` | Infer schemas from resources |
+
+Each module defines its own `Constraint`/`Metric` model, `PluginBuilder` subclass, `Plugin` subclass, and `NefertemBaseReport` subclass, following the same conventions as the core.
+
+## Backend Plugins
+
+Concrete implementations plug frameworks into the operation modules:
+
+| Plugin package | Operation | Backend |
+|---|---|---|
+| `nefertem_validation_frictionless` | Validation | Frictionless |
+| `nefertem_validation_evidently` | Validation | Evidently |
+| `nefertem_validation_duckdb` | Validation | DuckDB |
+| `nefertem_validation_sqlalchemy` | Validation | SQLAlchemy |
+| `nefertem_profiling_frictionless` | Profiling | Frictionless |
+| `nefertem_profiling_ydata_profiling` | Profiling | ydata-profiling |
+| `nefertem_metric_evidently` | Metric | Evidently |
+| `nefertem_inference_frictionless` | Inference | Frictionless |
+
+Each provides a `*Builder` (subclass of the relevant `*PluginBuilder`) and a `*Plugin` (subclass of the relevant operation `Plugin`) implementing `setup()`, the operation method (`validate()`/`profile()`/`measure()`/`infer()`), `render_nefertem()`, `render_artifact()`, and `framework_name()`/`framework_version()`.
+
+## Installation
+
+```bash
+pip install nefertem-core
+# plus whichever backend plugins you need, e.g.:
+pip install nefertem-validation-frictionless
+pip install nefertem-profiling-ydata-profiling
+```
+
+## Usage
+
+### Basic validation run
+
+```python
+from nefertem_core.client.builder import create_client
+
+# Create a client with a local output store
+client = create_client(output_path="./nefertem_runs")
+
+# Register an input store for local files
+client.add_store({
+    "name": "local",
+    "type": "local",
+})
+
+# Describe the resource(s) to validate
+resources = [
+    {
+        "name": "customers",
+        "path": "./data/customers.csv",
+        "store": "local",
+    }
+]
+
+# Configure the run: use the Frictionless validation backend
+run_config = {
+    "operation": "validation",
+    "exec_config": [
+        {
+            "library": "frictionless",
+            "exec_args": {},
+        }
+    ],
+}
+
+constraints = [
+    {
+        "name": "not-null-id",
+        "resource": "customers",
+        "field": "id",
+        "expect": "empty",
+        "value": False,
+    }
+]
+
+run = client.create_run(resources, run_config, experiment="customer-checks")
+
+# Execute validation against the given constraints
+report = run.validate(constraints, error_report="partial")
+
+# Persist results
+run.log_report()
+run.persist_report()
+run.persist_data()
+```
+
+### Profiling a resource
+
+```python
+from nefertem_core.client.builder import create_client
+
+client = create_client(output_path="./nefertem_runs")
+client.add_store({"name": "local", "type": "local"})
+
+resources = [{"name": "orders", "path": "./data/orders.csv", "store": "local"}]
+
+run_config = {
+    "operation": "profiling",
+    "exec_config": [{"library": "ydata_profiling", "exec_args": {}}],
+}
+
+run = client.create_run(resources, run_config, experiment="order-profiling")
+
+framework_profiles, nefertem_profiles = run.profile()
+
+run.log_profile()
+run.persist_profile()
+```
+
+### Inferring a schema
+
+```python
+run_config = {
+    "operation": "inference",
+    "exec_config": [{"library": "frictionless", "exec_args": {}}],
+}
+
+run = client.create_run(resources, run_config, experiment="schema-inference")
+
+framework_schemas, nefertem_schemas = run.infer()
+
+run.log_schema()
+run.persist_schema()
+```
+
+### Inspecting run metadata
+
+```python
+libraries_used = run.get_item("libraries") if hasattr(run, "get_item") else None
+info = run.__dict__.get("run_info")  # RunInfo, if exposed by the Run subclass
+if info is not None:
+    print(info.to_dict())
+```
+
+## License
+
+See the repository's `LICENSE` file for details.

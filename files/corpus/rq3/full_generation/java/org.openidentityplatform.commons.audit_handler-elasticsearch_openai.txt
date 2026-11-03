@@ -1,0 +1,211 @@
+# Elasticsearch Audit Event Handler
+
+`org.openidentityplatform.commons.audit:handler-elasticsearch` provides an audit event handler backed by Elasticsearch. It is designed to publish audit events to topic-based storage, retrieve individual events, and query events through the audit framework’s asynchronous resource APIs.
+
+The handler also supports batch-oriented publishing through the `BatchConsumer` interface.
+
+## Main Types
+
+### `ElasticsearchAuditEventHandler`
+
+```java
+public class ElasticsearchAuditEventHandler
+        extends AuditEventHandlerBase
+        implements BatchConsumer
+```
+
+The main entry point for interacting with Elasticsearch-backed audit events.
+
+Construct it with:
+
+- an `ElasticsearchAuditEventHandlerConfiguration`;
+- `EventTopicsMetaData` describing the available audit topics;
+- an Elasticsearch `Client`.
+
+```java
+ElasticsearchAuditEventHandler(
+    ElasticsearchAuditEventHandlerConfiguration configuration,
+    EventTopicsMetaData eventTopicsMetaData,
+    Client client)
+```
+
+Its primary operations are:
+
+| Method | Purpose |
+|---|---|
+| `startup()` | Starts the handler and prepares it for use. |
+| `shutdown()` | Stops the handler and releases resources. |
+| `publishEvent(...)` | Publishes one JSON audit event to a topic. |
+| `readEvent(...)` | Reads one event by topic and resource ID. |
+| `queryEvents(...)` | Queries events for a topic. |
+| `addToBatch(...)` | Adds an event to a batch payload. |
+| `publishBatch(...)` | Publishes a prepared batch payload. |
+
+All event read, query, and publish operations return `Promise` instances, allowing callers to handle successful and failed asynchronous results.
+
+---
+
+### `ElasticsearchAuditEventHandlerConfiguration`
+
+```java
+public class ElasticsearchAuditEventHandlerConfiguration
+        extends EventHandlerConfiguration
+```
+
+Configuration for an `ElasticsearchAuditEventHandler`.
+
+It exposes three configuration areas:
+
+| Method | Configuration area |
+|---|---|
+| `getConnection()` / `setConnection(...)` | Elasticsearch connection settings. |
+| `getIndexMapping()` / `setIndexMapping(...)` | Index mapping settings. |
+| `getBuffering()` / `setBuffering(...)` | Event buffering settings. |
+
+The `isUsableForQueries()` method indicates whether the configuration can be used for event-query operations.
+
+```java
+boolean canQuery = configuration.isUsableForQueries();
+```
+
+---
+
+## Lifecycle
+
+Create the handler, start it before processing events, and shut it down when the application stops.
+
+```java
+ElasticsearchAuditEventHandlerConfiguration configuration =
+        new ElasticsearchAuditEventHandlerConfiguration();
+
+// Obtain and configure these values in application-specific setup.
+ConnectionConfiguration connection = /* connection settings */;
+IndexMappingConfiguration indexMapping = /* index mapping settings */;
+EventBufferingConfiguration buffering = /* buffering settings */;
+EventTopicsMetaData eventTopicsMetaData = /* topic metadata */;
+Client client = /* Elasticsearch client */;
+
+configuration.setConnection(connection);
+configuration.setIndexMapping(indexMapping);
+configuration.setBuffering(buffering);
+
+ElasticsearchAuditEventHandler auditHandler =
+        new ElasticsearchAuditEventHandler(configuration, eventTopicsMetaData, client);
+
+try {
+    auditHandler.startup();
+
+    // The handler can now publish, read, and query audit events.
+} catch (ResourceException e) {
+    // Handle startup failure.
+} finally {
+    try {
+        auditHandler.shutdown();
+    } catch (ResourceException e) {
+        // Handle shutdown failure.
+    }
+}
+```
+
+## Publishing an Event
+
+Use `publishEvent` to send a JSON event to an audit topic.
+
+```java
+Context context = /* request or application context */;
+String topic = "access";
+JsonValue event = /* JSON audit event */;
+
+Promise<ResourceResponse, ResourceException> result =
+        auditHandler.publishEvent(context, topic, event);
+```
+
+The returned promise resolves to a `ResourceResponse` when publishing succeeds, or fails with a `ResourceException`.
+
+```java
+auditHandler.publishEvent(context, topic, event)
+        .then(
+            response -> {
+                // Event published successfully.
+                return response;
+            },
+            error -> {
+                // Handle publish failure.
+                throw error;
+            });
+```
+
+## Reading an Event
+
+Use `readEvent` when the topic and event resource ID are known.
+
+```java
+Context context = /* request or application context */;
+String topic = "access";
+String resourceId = "event-id";
+
+Promise<ResourceResponse, ResourceException> result =
+        auditHandler.readEvent(context, topic, resourceId);
+```
+
+A successful result provides a `ResourceResponse` for the requested event.
+
+## Querying Events
+
+Use `queryEvents` to query audit events in a topic.
+
+```java
+Context context = /* request or application context */;
+String topic = "access";
+QueryRequest query = /* query request */;
+QueryResourceHandler queryHandler = /* receives query results */;
+
+Promise<QueryResponse, ResourceException> result =
+        auditHandler.queryEvents(context, topic, query, queryHandler);
+```
+
+Before enabling query functionality, check that the handler configuration supports it:
+
+```java
+if (configuration.isUsableForQueries()) {
+    auditHandler.queryEvents(context, topic, query, queryHandler);
+} else {
+    // Querying is not available for the current configuration.
+}
+```
+
+## Batch Publishing
+
+For batch-oriented workflows, construct a payload with `addToBatch` and submit it with `publishBatch`.
+
+```java
+String topic = "access";
+JsonValue firstEvent = /* first JSON event */;
+JsonValue secondEvent = /* second JSON event */;
+
+StringBuilder payload = new StringBuilder();
+
+try {
+    auditHandler.addToBatch(topic, firstEvent, payload);
+    auditHandler.addToBatch(topic, secondEvent, payload);
+
+    Promise<Void, BatchException> publishResult =
+            auditHandler.publishBatch(payload.toString());
+
+} catch (BatchException e) {
+    // Handle an error while adding events to the batch.
+}
+```
+
+`addToBatch` can throw `BatchException` while building the payload. `publishBatch` returns a `Promise<Void, BatchException>`, which completes when the payload has been published or fails if the batch cannot be processed.
+
+## Typical Integration Flow
+
+A typical application integration follows this sequence:
+
+1. Create and populate `ElasticsearchAuditEventHandlerConfiguration`.
+2. Create the handler with configuration, topic metadata, and an Elasticsearch `Client`.
+3. Call `startup()`.
+4. Publish individual events with `publishEvent`, or prepare and submit batches with `addToBatch` and `publishBatch`.
+5. Use `readEvent` and `queryEvents` when event retrieval is required.
+6. Call `shutdown()` during application shutdown.

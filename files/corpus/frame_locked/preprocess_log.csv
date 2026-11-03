@@ -1,0 +1,594 @@
+timestamp,package_name,ecosystem,safe_name,n_prose_files,raw_char_count,word_count_post_clean,word_capped,english_fraction,paragraphs_checked,status,reason
+2026-07-14T00:44:27.818541+00:00,pylibjpeg-rle,python,pylibjpeg-rle,8,3474,475,false,0.0,0,F5_fail,word_count_post_clean=475 < 500
+2026-07-14T00:44:28.061225+00:00,cobra,python,cobra,1,2937,451,false,0.0,0,F5_fail,word_count_post_clean=451 < 500
+2026-07-14T00:44:28.083364+00:00,webresource,python,webresource,4,4723,699,false,1.0,36,ready,
+2026-07-14T00:44:28.294309+00:00,textalloc,python,textalloc,1,3312,515,false,1.0,16,ready,
+2026-07-14T00:44:28.327861+00:00,outdated,python,outdated,1,2515,426,false,0.0,0,F5_fail,word_count_post_clean=426 < 500
+2026-07-14T00:48:42.964982+00:00,pylibjpeg-rle,python,pylibjpeg-rle,8,3474,475,false,0.0,0,F5_fail,word_count_post_clean=475 < 500
+2026-07-14T00:48:43.083155+00:00,cobra,python,cobra,1,2937,451,false,0.0,0,F5_fail,word_count_post_clean=451 < 500
+2026-07-14T00:48:43.102077+00:00,outdated,python,outdated,1,2515,426,false,0.0,0,F5_fail,word_count_post_clean=426 < 500
+2026-07-14T00:48:43.106994+00:00,quri-parts-circuit,python,quri-parts-circuit,44,81794,12724,false,0.946,112,ready,
+2026-07-14T00:48:43.581314+00:00,opentelemetry-instrumentation-falcon,python,opentelemetry-instrumentation-falcon,140,61396,7425,false,0.952,63,ready,
+2026-07-14T00:55:05.283208+00:00,pylibjpeg-rle,python,pylibjpeg-rle,8,3474,475,false,0.0,0,F5_fail,word_count_post_clean=475 < 500
+2026-07-14T00:55:05.408549+00:00,cobra,python,cobra,19,45246,7410,false,0.943,157,ready,
+2026-07-14T00:55:05.828579+00:00,outdated,python,outdated,1,2515,426,false,0.0,0,F5_fail,word_count_post_clean=426 < 500
+2026-07-14T00:55:05.833385+00:00,reuse,python,reuse,12,19360,2970,false,0.949,118,ready,
+2026-07-14T00:55:06.076787+00:00,vermils,python,vermils,17,3864,632,false,0.963,54,ready,
+2026-07-14T00:55:50.462839+00:00,pylibjpeg-rle,python,pylibjpeg-rle,8,3474,475,false,0.0,0,F5_fail,word_count_post_clean=475 < 500
+2026-07-14T00:55:50.585922+00:00,outdated,python,outdated,1,2515,426,false,0.0,0,F5_fail,word_count_post_clean=426 < 500
+2026-07-14T00:55:50.590472+00:00,tensorflow-probability,python,tensorflow-probability,16,27298,4136,false,0.984,125,ready,
+2026-07-14T00:55:50.977431+00:00,email-reply-parser,python,email-reply-parser,1,748,125,false,0.0,0,F5_fail,word_count_post_clean=125 < 500
+2026-07-14T00:55:50.982115+00:00,aedev-git-repo-manager,python,aedev-git-repo-manager,1,839,118,false,0.0,0,F5_fail,word_count_post_clean=118 < 500
+2026-07-14T00:55:50.986930+00:00,pydataset,python,pydataset,1,1574,255,false,0.0,0,F5_fail,word_count_post_clean=255 < 500
+2026-07-14T00:55:50.992534+00:00,stochastic,python,stochastic,11,63957,2959,false,0.98,49,ready,
+2026-07-14T00:55:51.144881+00:00,pydotplus,python,pydotplus,3,1201,162,false,0.0,0,F5_fail,word_count_post_clean=162 < 500
+2026-07-14T00:55:51.166892+00:00,edt,python,edt,1,14420,2363,false,0.964,56,ready,
+2026-07-14T00:55:51.280331+00:00,webdataset,python,webdataset,7,51996,8143,false,0.968,155,ready,
+2026-07-14T00:55:51.630239+00:00,ete3,python,ete3,2,1843,232,false,0.0,0,F5_fail,word_count_post_clean=232 < 500
+2026-07-14T00:55:51.667784+00:00,web-fragments,python,web-fragments,6,4165,633,false,0.966,29,ready,
+2026-07-14T00:55:51.757025+00:00,invenio-userprofiles,python,invenio-userprofiles,6,797,104,false,0.0,0,F5_fail,word_count_post_clean=104 < 500
+2026-07-14T00:55:51.778314+00:00,cmeel-urdfdom,python,cmeel-urdfdom,1,56,7,false,0.0,0,F5_fail,word_count_post_clean=7 < 500
+2026-07-14T00:55:51.781133+00:00,django-vite,python,django-vite,1,8211,1366,false,0.987,75,ready,
+2026-07-14T00:55:51.912909+00:00,sly,python,sly,3,40516,6778,false,1.0,160,ready,
+2026-07-14T00:55:52.163968+00:00,pydot-ng,python,pydot-ng,2,1755,321,false,0.0,0,F5_fail,word_count_post_clean=321 < 500
+2026-07-14T00:55:52.177939+00:00,a-pandas-ex-df-to-string,python,a-pandas-ex-df-to-string,1,19,2,false,0.0,0,F5_fail,word_count_post_clean=2 < 500
+2026-07-14T00:55:52.180956+00:00,djangocms-style,python,djangocms-style,1,1951,299,false,0.0,0,F5_fail,word_count_post_clean=299 < 500
+2026-07-14T00:55:52.204620+00:00,svgelements,python,svgelements,1,25592,4230,false,0.966,119,ready,
+2026-07-14T00:55:52.403944+00:00,lazy-loader,python,lazy-loader,1,2408,386,false,0.0,0,F5_fail,word_count_post_clean=386 < 500
+2026-07-14T00:55:52.410865+00:00,ismember,python,ismember,33,31474,4752,false,0.889,90,ready,
+2026-07-14T00:55:52.688327+00:00,odoo11-addon-l10n-es-aeat,python,odoo11-addon-l10n-es-aeat,28,94110,13924,false,0.279,104,F6_fail,english_fraction=0.28 < 0.5
+2026-07-14T00:55:53.402394+00:00,python-json-logger,python,python-json-logger,5,14210,2060,false,0.974,115,ready,
+2026-07-14T00:55:53.633243+00:00,selinux,python,selinux,1,499,82,false,0.0,0,F5_fail,word_count_post_clean=82 < 500
+2026-07-14T00:55:53.639207+00:00,dagster-graphql,python,dagster-graphql,944,1364712,100000,true,1.0,1,ready,
+2026-07-14T00:55:56.006615+00:00,apache-airflow-providers-docker,python,apache-airflow-providers-docker,1569,1352334,100000,true,1.0,1,ready,
+2026-07-14T00:55:59.486444+00:00,rfc6266,python,rfc6266,2,2049,257,false,0.0,0,F5_fail,word_count_post_clean=257 < 500
+2026-07-14T00:55:59.493268+00:00,matplotlib-venn,python,matplotlib-venn,1,4546,679,false,0.941,34,ready,
+2026-07-14T00:55:59.555572+00:00,keras-core,python,keras-core,1,2612,429,false,0.0,0,F5_fail,word_count_post_clean=429 < 500
+2026-07-14T00:55:59.586228+00:00,voluptuous-serialize,python,voluptuous-serialize,1,342,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-07-14T00:55:59.590178+00:00,odoo-addon-auth-jwt,python,odoo-addon-auth-jwt,27,53829,8108,false,0.889,108,ready,
+2026-07-14T00:56:00.074263+00:00,releasecmd,python,releasecmd,1,1130,168,false,0.0,0,F5_fail,word_count_post_clean=168 < 500
+2026-07-14T00:56:00.085660+00:00,google-cloud-securitycenter,python,google-cloud-securitycenter,5117,1419095,100000,true,1.0,1,ready,
+2026-07-14T00:56:08.395065+00:00,lion-pytorch,python,lion-pytorch,1,2945,497,false,0.0,0,F5_fail,word_count_post_clean=497 < 500
+2026-07-14T00:56:08.400999+00:00,torch-sparse,python,torch-sparse,2,5043,792,false,1.0,47,ready,
+2026-07-14T00:56:08.498982+00:00,sqlvalidator,python,sqlvalidator,1,1790,277,false,0.0,0,F5_fail,word_count_post_clean=277 < 500
+2026-07-14T00:56:08.505877+00:00,typepy,python,typepy,26,38660,2555,false,0.967,91,ready,
+2026-07-14T00:56:08.760906+00:00,folia,python,folia,6,34109,5154,false,0.986,145,ready,
+2026-07-14T00:56:09.027215+00:00,drf-jwt,python,drf-jwt,2,15050,2531,false,0.965,115,ready,
+2026-07-14T00:56:09.234098+00:00,panoptes-client,python,panoptes-client,5,15623,2371,false,0.99,96,ready,
+2026-07-14T00:56:09.395866+00:00,rjieba,python,rjieba,4,839,74,false,0.0,0,F5_fail,word_count_post_clean=74 < 500
+2026-07-14T00:56:09.403467+00:00,ftd2xx,python,ftd2xx,2,735,112,false,0.0,0,F5_fail,word_count_post_clean=112 < 500
+2026-07-14T00:56:09.411841+00:00,pause,python,pause,1,2105,346,false,0.0,0,F5_fail,word_count_post_clean=346 < 500
+2026-07-14T00:56:09.420407+00:00,grimoire-elk,python,grimoire-elk,3,15793,2532,false,0.973,112,ready,
+2026-07-14T00:56:09.692302+00:00,django-ratelimit,python,django-ratelimit,11,19682,3045,false,0.983,119,ready,
+2026-07-14T00:56:09.992342+00:00,google-cloud-kms,python,google-cloud-kms,5117,1419095,100000,true,1.0,1,ready,
+2026-07-14T00:56:18.673801+00:00,flet-core,python,flet-core,23,24109,3498,false,0.957,46,ready,
+2026-07-14T00:56:19.006635+00:00,odoo-addon-l10n-it-fatturapa-out,python,odoo-addon-l10n-it-fatturapa-out,35,133461,18926,false,0.513,113,ready,
+2026-07-14T00:56:19.731026+00:00,azure-mgmt-containerregistry,python,azure-mgmt-containerregistry,649,1326255,100000,true,1.0,1,ready,
+2026-07-14T00:56:23.715926+00:00,grpcio-reflection,python,grpcio-reflection,138,349855,54381,false,0.939,99,ready,
+2026-07-14T00:56:25.086306+00:00,dict2xml,python,dict2xml,1,3732,618,false,0.86,50,ready,
+2026-07-14T00:56:25.233241+00:00,teaxyzzzz,python,teaxyzzzz,1,1935,273,false,0.0,0,F5_fail,word_count_post_clean=273 < 500
+2026-07-14T00:56:25.241889+00:00,scikit-umfpack,python,scikit-umfpack,8,4701,728,false,0.955,44,ready,
+2026-07-14T00:56:25.453387+00:00,odoo13-addon-web-widget-x2many-2d-matrix,python,odoo13-addon-web-widget-x2many-2d-matrix,61,117862,17987,false,0.77,100,ready,
+2026-07-14T00:56:26.531180+00:00,websockets,python,websockets,67,192110,27840,false,0.976,126,ready,
+2026-07-14T00:56:27.304219+00:00,mmcv-full,python,mmcv-full,55,155886,20761,false,0.842,57,ready,
+2026-07-14T00:56:27.812975+00:00,deepl,python,deepl,1,21035,3384,false,0.993,136,ready,
+2026-07-14T00:56:28.092462+00:00,py-trello,python,py-trello,4,2455,334,false,0.0,0,F5_fail,word_count_post_clean=334 < 500
+2026-07-14T00:56:28.111292+00:00,fastuuid,python,fastuuid,1,5655,418,false,0.0,0,F5_fail,word_count_post_clean=418 < 500
+2026-07-14T00:56:28.181182+00:00,treon,python,treon,1,2677,444,false,0.0,0,F5_fail,word_count_post_clean=444 < 500
+2026-07-14T00:56:28.190020+00:00,codespell,python,codespell,1,9753,1563,false,0.986,73,ready,
+2026-07-14T00:56:28.353804+00:00,event-model,python,event-model,21,29457,4541,false,0.975,122,ready,
+2026-07-14T00:56:28.679029+00:00,flake8-rst,python,flake8-rst,1,2595,414,false,0.0,0,F5_fail,word_count_post_clean=414 < 500
+2026-07-14T00:56:28.689887+00:00,openexr,python,openexr,7,31428,4494,false,0.933,120,ready,
+2026-07-14T00:56:29.001046+00:00,python-gitlab,python,python-gitlab,86,115460,12774,false,0.91,67,ready,
+2026-07-14T00:56:29.924185+00:00,pyscss,python,pyscss,6,24693,3849,false,0.952,126,ready,
+2026-07-14T00:56:30.289473+00:00,zipfile36,python,zipfile36,1,124,18,false,0.0,0,F5_fail,word_count_post_clean=18 < 500
+2026-07-14T00:56:30.293572+00:00,tensorflow,python,tensorflow,199,538116,83846,false,0.957,117,ready,
+2026-07-14T00:56:32.736008+00:00,xclim,python,xclim,35,113937,17630,false,0.885,139,ready,
+2026-07-14T00:56:33.209523+00:00,odoo-addon-date-range,python,odoo-addon-date-range,35,73120,11225,false,0.844,109,ready,
+2026-07-14T00:56:33.888778+00:00,soupsieve,python,soupsieve,17,70092,10805,false,0.974,77,ready,
+2026-07-14T00:56:34.162448+00:00,neurdflib,python,neurdflib,30,70891,10379,false,0.971,102,ready,
+2026-07-14T00:56:34.800303+00:00,django-colorfield,python,django-colorfield,2,2395,391,false,0.0,0,F5_fail,word_count_post_clean=391 < 500
+2026-07-14T00:56:34.811871+00:00,db-sqlite3,python,db-sqlite3,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-07-14T00:56:34.815028+00:00,zdaemon,python,zdaemon,2,11771,1897,false,0.962,105,ready,
+2026-07-14T00:56:35.050609+00:00,token-utils,python,token-utils,15,37241,5317,false,0.952,125,ready,
+2026-07-14T00:56:35.337251+00:00,peewee-migrate,python,peewee-migrate,1,1161,148,false,0.0,0,F5_fail,word_count_post_clean=148 < 500
+2026-07-14T00:56:35.353858+00:00,randomgen,python,randomgen,52,63421,8078,false,0.94,50,ready,
+2026-07-14T00:56:35.720321+00:00,apache-airflow-providers-imap,python,apache-airflow-providers-imap,1569,1352334,100000,true,1.0,1,ready,
+2026-07-14T00:56:39.365876+00:00,seqeval,python,seqeval,1,1675,243,false,0.0,0,F5_fail,word_count_post_clean=243 < 500
+2026-07-14T00:56:39.371450+00:00,prefetch-generator,python,prefetch-generator,1,1316,182,false,0.0,0,F5_fail,word_count_post_clean=182 < 500
+2026-07-14T00:56:39.375961+00:00,z3c.form,python,z3c.form,56,8566,1282,false,0.985,67,ready,
+2026-07-14T00:56:39.614725+00:00,simple-pid,python,simple-pid,5,4162,732,false,1.0,24,ready,
+2026-07-14T00:56:39.655549+00:00,xskillscore,python,xskillscore,57,11075,1542,false,0.955,89,ready,
+2026-07-14T00:56:39.963430+00:00,odoo13-addon-component,python,odoo13-addon-component,23,34109,4923,false,0.948,97,ready,
+2026-07-14T00:56:40.315746+00:00,django-iban,python,django-iban,1,1425,204,false,0.0,0,F5_fail,word_count_post_clean=204 < 500
+2026-07-14T00:56:40.325056+00:00,python-undefined,python,python-undefined,74,7748,1093,false,0.741,54,ready,
+2026-07-14T00:56:40.552109+00:00,panphon,python,panphon,2,17454,2615,false,1.0,111,ready,
+2026-07-14T00:56:40.737040+00:00,ae-kivy,python,ae-kivy,1,728,106,false,0.0,0,F5_fail,word_count_post_clean=106 < 500
+2026-07-14T00:56:40.741700+00:00,edx-celeryutils,python,edx-celeryutils,5,1999,310,false,0.0,0,F5_fail,word_count_post_clean=310 < 500
+2026-07-14T00:56:40.762737+00:00,odoo14-addon-sale-exception,python,odoo14-addon-sale-exception,155,278755,42464,false,0.89,100,ready,
+2026-07-14T00:56:42.784208+00:00,orator,python,orator,1,9892,1616,false,0.965,85,ready,
+2026-07-14T00:56:42.986836+00:00,exhale,python,exhale,26,68947,10431,false,0.966,116,ready,
+2026-07-14T00:56:43.404217+00:00,notebook,python,notebook,35,76003,11994,false,0.954,130,ready,
+2026-07-14T00:56:43.686934+00:00,dramatiq,python,dramatiq,15,36537,5748,false,0.968,94,ready,
+2026-07-14T00:56:43.984526+00:00,httplib2,python,httplib2,10,39879,5868,false,0.967,90,ready,
+2026-07-14T00:56:44.169132+00:00,pyramid-mako,python,pyramid-mako,4,11394,1652,false,0.984,61,ready,
+2026-07-14T00:56:44.317610+00:00,flake518,python,flake518,1,1331,218,false,0.0,0,F5_fail,word_count_post_clean=218 < 500
+2026-07-14T00:56:44.321746+00:00,num2words,python,num2words,2,4278,672,false,1.0,30,ready,
+2026-07-14T00:56:44.387169+00:00,arq,python,arq,4,7556,1158,false,0.981,53,ready,
+2026-07-14T00:56:44.510660+00:00,rundoc,python,rundoc,1,9293,1637,false,0.957,70,ready,
+2026-07-14T00:56:44.623918+00:00,odoo14-addon-l10n-br-base,python,odoo14-addon-l10n-br-base,39,136701,20258,false,0.394,94,F6_fail,english_fraction=0.39 < 0.5
+2026-07-14T00:56:45.393019+00:00,py-cui,python,py-cui,25,144478,21139,false,0.959,49,ready,
+2026-07-14T00:56:45.773540+00:00,pytest-pspec,python,pytest-pspec,1,438,71,false,0.0,0,F5_fail,word_count_post_clean=71 < 500
+2026-07-14T00:56:45.782708+00:00,zope.traversing,python,zope.traversing,10,568,67,false,0.0,0,F5_fail,word_count_post_clean=67 < 500
+2026-07-14T00:56:45.806034+00:00,madmom,python,madmom,45,16218,2463,false,0.969,98,ready,
+2026-07-14T00:56:46.110274+00:00,plone.volto,python,plone.volto,2,5835,808,false,1.0,37,ready,
+2026-07-14T00:56:46.186887+00:00,django-qr-code,python,django-qr-code,6,21583,3694,false,0.943,140,ready,
+2026-07-14T00:56:46.503760+00:00,pytest-flakes,python,pytest-flakes,1,4027,587,false,0.889,45,ready,
+2026-07-14T00:56:46.628154+00:00,dbt-extractor,python,dbt-extractor,3,5356,863,false,1.0,38,ready,
+2026-07-14T00:56:46.692336+00:00,pywavelets,python,pywavelets,82,128844,19916,false,0.938,130,ready,
+2026-07-14T00:56:47.342399+00:00,cupy-cuda90,python,cupy-cuda90,61,80878,11981,false,0.945,109,ready,
+2026-07-14T00:56:47.832347+00:00,boto,python,boto,166,234932,32824,false,0.981,108,ready,
+2026-07-14T00:56:48.987241+00:00,azure-storage-common,python,azure-storage-common,30,27973,4023,false,0.919,86,ready,
+2026-07-14T00:56:49.320352+00:00,bw2calc,python,bw2calc,1,413,60,false,0.0,0,F5_fail,word_count_post_clean=60 < 500
+2026-07-14T00:56:49.328405+00:00,entsoe-py,python,entsoe-py,2,3463,530,false,1.0,26,ready,
+2026-07-14T00:56:49.382224+00:00,jupyter-server,python,jupyter-server,50,56746,8283,false,0.974,115,ready,
+2026-07-14T00:56:49.787215+00:00,argon2,python,argon2,2,1355,123,false,0.0,0,F5_fail,word_count_post_clean=123 < 500
+2026-07-14T00:56:49.792998+00:00,invenio-upgrader,python,invenio-upgrader,2,288,29,false,0.0,0,F5_fail,word_count_post_clean=29 < 500
+2026-07-14T00:56:49.805005+00:00,readerwriterlock,python,readerwriterlock,1,1513,218,false,0.0,0,F5_fail,word_count_post_clean=218 < 500
+2026-07-14T00:56:49.811981+00:00,prettyprinter,python,prettyprinter,4,4687,709,false,0.905,42,ready,
+2026-07-14T00:56:49.939620+00:00,djangorestframework-simplejwt,python,djangorestframework-simplejwt,11,18952,2848,false,0.98,100,ready,
+2026-07-14T00:56:50.129339+00:00,swagger-ui-bundle,python,swagger-ui-bundle,1,1048,156,false,0.0,0,F5_fail,word_count_post_clean=156 < 500
+2026-07-14T00:56:50.136873+00:00,django-autoslug,python,django-autoslug,5,1820,262,false,0.0,0,F5_fail,word_count_post_clean=262 < 500
+2026-07-14T00:56:50.152429+00:00,shareplum,python,shareplum,8,5400,877,false,0.977,43,ready,
+2026-07-14T00:56:50.245759+00:00,msoffcrypto-tool,python,msoffcrypto-tool,10,9354,971,false,0.787,47,ready,
+2026-07-14T00:56:50.399843+00:00,textx,python,textx,33,139489,22536,false,0.981,155,ready,
+2026-07-14T00:56:50.849944+00:00,adafruit-circuitpython-ble,python,adafruit-circuitpython-ble,11,1706,213,false,0.0,0,F5_fail,word_count_post_clean=213 < 500
+2026-07-14T00:56:50.877310+00:00,pyrubberband,python,pyrubberband,4,739,106,false,0.0,0,F5_fail,word_count_post_clean=106 < 500
+2026-07-14T00:56:50.886890+00:00,promise,python,promise,2,7983,1292,false,1.0,58,ready,
+2026-07-14T00:56:50.969110+00:00,nipy,python,nipy,96,207642,34389,false,0.965,57,ready,
+2026-07-14T00:56:51.582774+00:00,semverit,python,semverit,8,1072,170,false,0.0,0,F5_fail,word_count_post_clean=170 < 500
+2026-07-14T00:56:51.643259+00:00,extruct,python,extruct,1,3389,518,false,0.958,24,ready,
+2026-07-14T00:56:51.700741+00:00,google-cloud-runtimeconfig,python,google-cloud-runtimeconfig,5117,1419095,100000,true,1.0,1,ready,
+2026-07-14T00:56:59.911711+00:00,lapx,python,lapx,1,9554,1035,false,0.911,45,ready,
+2026-07-14T00:57:00.100883+00:00,asreview,python,asreview,35,90042,13762,false,0.974,115,ready,
+2026-07-14T00:57:00.520841+00:00,mcap,python,mcap,45,67936,10854,false,1.0,80,ready,
+2026-07-14T00:57:00.846391+00:00,qcodes,python,qcodes,268,575410,88804,false,0.968,125,ready,
+2026-07-14T00:57:02.154999+00:00,odoo14-addon-stock-quant-package-dimension,python,odoo14-addon-stock-quant-package-dimension,102,188235,28284,false,0.856,104,ready,
+2026-07-14T00:57:03.535046+00:00,fastapi-websocket-pubsub,python,fastapi-websocket-pubsub,1,3364,464,false,0.0,0,F5_fail,word_count_post_clean=464 < 500
+2026-07-14T00:57:03.542899+00:00,itk-elastix,python,itk-elastix,7,8875,1152,false,0.978,45,ready,
+2026-07-14T00:57:03.696432+00:00,opentelemetry-instrumentation-kafka-python,python,opentelemetry-instrumentation-kafka-python,139,62027,7477,false,0.86,57,ready,
+2026-07-14T00:57:04.346410+00:00,agate,python,agate,45,31019,4834,false,0.969,64,ready,
+2026-07-14T00:57:04.661801+00:00,hypy-utils,python,hypy-utils,1,281,39,false,0.0,0,F5_fail,word_count_post_clean=39 < 500
+2026-07-14T00:57:04.666139+00:00,edxml,python,edxml,19,69443,10544,false,0.991,114,ready,
+2026-07-14T00:57:04.980113+00:00,multi-agent-ale-py,python,multi-agent-ale-py,1,343,57,false,0.0,0,F5_fail,word_count_post_clean=57 < 500
+2026-07-14T00:57:05.020151+00:00,honcho,python,honcho,5,9396,1490,false,1.0,62,ready,
+2026-07-14T00:57:05.147723+00:00,inspire-utils,python,inspire-utils,1,210,35,false,0.0,0,F5_fail,word_count_post_clean=35 < 500
+2026-07-14T00:57:05.152153+00:00,webull,python,webull,1,1876,269,false,0.0,0,F5_fail,word_count_post_clean=269 < 500
+2026-07-14T00:57:05.157177+00:00,hypothesis-geometry,python,hypothesis-geometry,3,1651,242,false,0.0,0,F5_fail,word_count_post_clean=242 < 500
+2026-07-14T00:57:05.171638+00:00,tryceratops,python,tryceratops,17,7065,1216,false,0.985,68,ready,
+2026-07-14T00:57:05.309152+00:00,odoo14-addon-configuration-helper,python,odoo14-addon-configuration-helper,56,132491,20066,false,0.842,114,ready,
+2026-07-14T00:57:06.269230+00:00,google-pasta,python,google-pasta,1,1719,270,false,0.0,0,F5_fail,word_count_post_clean=270 < 500
+2026-07-14T00:57:06.285823+00:00,sphinx-remove-toctrees,python,sphinx-remove-toctrees,6,2865,495,false,0.0,0,F5_fail,word_count_post_clean=495 < 500
+2026-07-14T00:57:06.294002+00:00,numpyro,python,numpyro,18,39808,5633,false,0.932,59,ready,
+2026-07-14T00:57:06.631393+00:00,djhtml,python,djhtml,1,3682,600,false,1.0,45,ready,
+2026-07-14T00:57:06.723862+00:00,opentelemetry-instrumentation-starlette,python,opentelemetry-instrumentation-starlette,139,62027,7477,false,0.86,57,ready,
+2026-07-14T00:57:07.372520+00:00,sphinxcontrib-devhelp,python,sphinxcontrib-devhelp,1,228,24,false,0.0,0,F5_fail,word_count_post_clean=24 < 500
+2026-07-14T00:57:07.386005+00:00,beaker,python,beaker,20,24136,3652,false,0.971,137,ready,
+2026-07-14T00:57:07.675590+00:00,pysdl2,python,pysdl2,44,104185,14428,false,0.961,102,ready,
+2026-07-14T00:57:08.177279+00:00,reprounzip,python,reprounzip,24,89631,13955,false,1.0,121,ready,
+2026-07-14T00:57:08.647032+00:00,texsoup,python,texsoup,18,9672,1525,false,0.832,107,ready,
+2026-07-14T00:57:08.986582+00:00,minilog,python,minilog,6,2715,414,false,0.0,0,F5_fail,word_count_post_clean=414 < 500
+2026-07-14T00:57:08.999817+00:00,whitebox,python,whitebox,5,7200,963,false,1.0,42,ready,
+2026-07-14T00:57:09.107898+00:00,mygene,python,mygene,4,2554,326,false,0.0,0,F5_fail,word_count_post_clean=326 < 500
+2026-07-14T00:57:09.127183+00:00,wincertstore,python,wincertstore,1,2273,195,false,0.0,0,F5_fail,word_count_post_clean=195 < 500
+2026-07-14T00:57:09.130088+00:00,langdetect,python,langdetect,1,1872,253,false,0.0,0,F5_fail,word_count_post_clean=253 < 500
+2026-07-14T00:57:09.138046+00:00,timeloop,python,timeloop,1,688,115,false,0.0,0,F5_fail,word_count_post_clean=115 < 500
+2026-07-14T00:57:09.141523+00:00,structlog-sentry,python,structlog-sentry,1,2802,463,false,0.0,0,F5_fail,word_count_post_clean=463 < 500
+2026-07-14T00:57:09.149665+00:00,hspylib-clitt,python,hspylib-clitt,279,442652,56873,false,0.8,35,ready,
+2026-07-14T00:57:16.683086+00:00,progressbar2,python,progressbar2,21,5266,705,false,0.889,36,ready,
+2026-07-14T00:57:16.834901+00:00,misaka,python,misaka,1,187,32,false,0.0,0,F5_fail,word_count_post_clean=32 < 500
+2026-07-14T00:57:16.839200+00:00,queuelib,python,queuelib,1,2235,330,false,0.0,0,F5_fail,word_count_post_clean=330 < 500
+2026-07-14T00:57:16.849362+00:00,py-multibase,python,py-multibase,6,2864,442,false,0.0,0,F5_fail,word_count_post_clean=442 < 500
+2026-07-14T00:57:16.869545+00:00,prov,python,prov,31,204244,32219,false,0.911,124,ready,
+2026-07-14T00:57:17.405605+00:00,nefertem-core,python,nefertem-core,9,12686,1999,false,0.982,113,ready,
+2026-07-14T00:57:17.641426+00:00,pympler,python,pympler,26,31077,4920,false,1.0,119,ready,
+2026-07-14T00:57:17.869725+00:00,graphene-sqlalchemy,python,graphene-sqlalchemy,7,3618,569,false,1.0,41,ready,
+2026-07-14T00:57:17.950769+00:00,darglint,python,darglint,2,11728,1896,false,0.939,98,ready,
+2026-07-14T00:57:18.141276+00:00,cupy-cuda100,python,cupy-cuda100,65,103300,15158,false,0.948,116,ready,
+2026-07-14T00:57:18.938842+00:00,lumibot,python,lumibot,118,938802,100000,true,1.0,1,ready,
+2026-07-14T00:57:20.093968+00:00,bw-processing,python,bw-processing,5,10278,1658,false,0.984,62,ready,
+2026-07-14T00:57:20.199726+00:00,pylint-flask,python,pylint-flask,1,1042,146,false,0.0,0,F5_fail,word_count_post_clean=146 < 500
+2026-07-14T00:57:20.205187+00:00,svn,python,svn,2,6630,932,false,0.96,50,ready,
+2026-07-14T00:57:20.295122+00:00,matplotx,python,matplotx,1,2638,414,false,0.0,0,F5_fail,word_count_post_clean=414 < 500
+2026-07-14T00:57:20.307410+00:00,tableprint,python,tableprint,2,3589,572,false,1.0,24,ready,
+2026-07-14T00:57:20.363282+00:00,odoo14-addon-account-tax-balance,python,odoo14-addon-account-tax-balance,8,17773,2605,false,0.714,105,ready,
+2026-07-14T00:57:20.706668+00:00,zope.principalannotation,python,zope.principalannotation,6,3871,522,false,1.0,29,ready,
+2026-07-14T00:57:20.768458+00:00,bitlist,python,bitlist,5,3738,563,false,1.0,20,ready,
+2026-07-14T00:57:20.844382+00:00,pygame,python,pygame,128,507250,81521,false,0.622,74,ready,
+2026-07-14T00:57:22.112197+00:00,grokcore.component,python,grokcore.component,1,4548,698,false,1.0,22,ready,
+2026-07-14T00:57:22.157427+00:00,pgsanity,python,pgsanity,2,2792,489,false,0.0,0,F5_fail,word_count_post_clean=489 < 500
+2026-07-14T00:57:22.163289+00:00,org.webjars.npm:mout,java,org.webjars.npm_mout,13,53834,8056,false,0.941,85,ready,
+2026-07-14T00:57:22.435846+00:00,com.mindoo.domino:domino-jna,java,com.mindoo.domino_domino-jna,4,18526,2811,false,0.979,144,ready,
+2026-07-14T00:57:22.767976+00:00,org.netbeans.api:org-netbeans-api-web-webmodule,java,org.netbeans.api_org-netbeans-api-web-webmodule,1,292,40,false,0.0,0,F5_fail,word_count_post_clean=40 < 500
+2026-07-14T00:57:22.771638+00:00,org.apache.shardingsphere.elasticjob:elasticjob-api,java,org.apache.shardingsphere.elasticjob_elasticjob-api,213,195872,27920,false,0.703,64,ready,
+2026-07-14T00:57:23.459749+00:00,org.sonatype.nexus:nexus-swagger,java,org.sonatype.nexus_nexus-swagger,18,8895,1310,false,1.0,76,ready,
+2026-07-14T00:57:24.115626+00:00,org.nutz:nutz-integration-jedis,java,org.nutz_nutz-integration-jedis,73,41730,2650,false,0.222,9,F6_fail,english_fraction=0.22 < 0.5
+2026-07-14T00:57:24.741663+00:00,org.neo4j:neo4j-schema,java,org.neo4j_neo4j-schema,21,22548,3434,false,0.949,138,ready,
+2026-07-14T00:57:25.699662+00:00,io.circe:circe-fs2_2.13,java,io.circe_circe-fs2_2.13,1,1687,273,false,0.0,0,F5_fail,word_count_post_clean=273 < 500
+2026-07-14T00:57:25.707384+00:00,ch.acra:acra-core,java,ch.acra_acra-core,1,2837,444,false,0.0,0,F5_fail,word_count_post_clean=444 < 500
+2026-07-14T00:57:26.603838+00:00,org.typelevel:log4cats-slf4j_3,java,org.typelevel_log4cats-slf4j_3,4,9481,1437,false,0.983,60,ready,
+2026-07-14T00:57:26.731200+00:00,org.uberfire:uberfire-project-backend,java,org.uberfire_uberfire-project-backend,1,124,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-07-14T00:57:26.734355+00:00,io.arrow-kt:arrow-mtl,java,io.arrow-kt_arrow-mtl,21,26596,4043,false,0.982,109,ready,
+2026-07-14T00:57:26.970600+00:00,io.fabric8:crd-generator-apt,java,io.fabric8_crd-generator-apt,26,114081,17410,false,0.908,109,ready,
+2026-07-14T00:57:27.904554+00:00,org.apache.camel.quarkus:camel-quarkus-file,java,org.apache.camel.quarkus_camel-quarkus-file,605,911635,97347,false,0.925,161,ready,
+2026-07-14T00:57:29.604466+00:00,org.webjars.npm:enhanced-resolve,java,org.webjars.npm_enhanced-resolve,2,22457,3774,false,0.985,131,ready,
+2026-07-14T00:57:30.086756+00:00,com.microsoft.azure:azure-keyvault-secrets-spring-boot-starter,java,com.microsoft.azure_azure-keyvault-secrets-spring-boot-starter,664,1439119,100000,true,1.0,1,ready,
+2026-07-14T00:57:37.386159+00:00,de.julielab:jcore-xml-db-reader,java,de.julielab_jcore-xml-db-reader,81,149084,21662,false,1.0,31,ready,
+2026-07-14T00:57:37.920708+00:00,org.uberfire:uberfire-metadata-commons-io,java,org.uberfire_uberfire-metadata-commons-io,1,124,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-07-14T00:57:37.925296+00:00,ai.h2o:h2o-algos,java,ai.h2o_h2o-algos,47,159378,25554,false,0.975,122,ready,
+2026-07-14T00:57:38.727912+00:00,org.scala-native:test-interface_native0.4_2.11,java,org.scala-native_test-interface_native0.4_2.11,41,144186,19768,false,0.952,62,ready,
+2026-07-14T00:57:39.445491+00:00,org.jboss.weld.environment:weld-environment-common,java,org.jboss.weld.environment_weld-environment-common,31,363413,42728,false,0.948,173,ready,
+2026-07-14T00:57:40.152000+00:00,com.sksamuel.scrimage:scrimage-core,java,com.sksamuel.scrimage_scrimage-core,40,31960,5400,false,1.0,84,ready,
+2026-07-14T00:57:40.464355+00:00,com.applovin.mediation:facebook-adapter,java,com.applovin.mediation_facebook-adapter,24,2799,450,false,0.0,0,F5_fail,word_count_post_clean=450 < 500
+2026-07-14T00:57:40.504204+00:00,org.apereo.cas:cas-server-support-webauthn,java,org.apereo.cas_cas-server-support-webauthn,785,1332263,100000,true,1.0,1,ready,
+2026-07-14T00:57:43.135082+00:00,org.infinispan:infinispan-spring5-common,java,org.infinispan_infinispan-spring5-common,707,1219210,100000,true,1.0,1,ready,
+2026-07-14T00:57:43.858290+00:00,io.vlingo.xoom:xoom-streams,java,io.vlingo.xoom_xoom-streams,1,440,65,false,0.0,0,F5_fail,word_count_post_clean=65 < 500
+2026-07-14T00:57:43.866921+00:00,io.openliberty.features:openidConnectServer-1.0,java,io.openliberty.features_openidConnectServer-1.0,122,182901,24597,false,0.972,144,ready,
+2026-07-14T00:57:51.903388+00:00,edu.byu.hbll:config,java,edu.byu.hbll_config,1,1683,266,false,0.0,0,F5_fail,word_count_post_clean=266 < 500
+2026-07-14T00:57:51.908781+00:00,org.openhubframework:openhub-core-api,java,org.openhubframework_openhub-core-api,9,6725,1023,false,0.945,55,ready,
+2026-07-14T00:57:52.103485+00:00,io.projectreactor.kafka:reactor-kafka,java,io.projectreactor.kafka_reactor-kafka,8,62973,7534,false,0.951,144,ready,
+2026-07-14T00:57:52.454291+00:00,org.openurp.platform.security:openurp-platform-security-core,java,org.openurp.platform.security_openurp-platform-security-core,1,672,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-07-14T00:57:52.457602+00:00,li.strolch:li.strolch.model,java,li.strolch_li.strolch.model,15,10107,1461,false,0.955,67,ready,
+2026-07-14T00:57:52.672343+00:00,de.adorsys:datasafe-inbox-api,java,de.adorsys_datasafe-inbox-api,55,45494,6473,false,0.957,70,ready,
+2026-07-14T00:57:52.954275+00:00,org.sonatype.p2.bridge:p2-runtime,java,org.sonatype.p2.bridge_p2-runtime,1,1117,169,false,0.0,0,F5_fail,word_count_post_clean=169 < 500
+2026-07-14T00:57:52.975097+00:00,io.vertx:vertx-mongo-service,java,io.vertx_vertx-mongo-service,1,652,95,false,0.0,0,F5_fail,word_count_post_clean=95 < 500
+2026-07-14T00:57:52.978341+00:00,io.openliberty.features:io.openliberty.openidConnectServer1.0.internal.ee-6.0,java,io.openliberty.features_io.openliberty.openidConnectServer1.0.internal.ee-6.0,122,182901,24597,false,0.972,144,ready,
+2026-07-14T00:58:00.913365+00:00,org.jboss.as:jboss-as-clustering-api,java,org.jboss.as_jboss-as-clustering-api,8,16065,2179,false,0.973,110,ready,
+2026-07-14T00:58:01.681988+00:00,com.github.emc-mongoose:mongoose-storage-driver-net-http,java,com.github.emc-mongoose_mongoose-storage-driver-net-http,1,3897,620,false,0.971,35,ready,
+2026-07-14T00:58:01.799624+00:00,me.shadaj:slinky-core_sjs1_2.12,java,me.shadaj_slinky-core_sjs1_2.12,20,33875,5500,false,0.99,96,ready,
+2026-07-14T00:58:01.967238+00:00,com.twitter:scalding-core_2.9.3,java,com.twitter_scalding-core_2.9.3,7,9252,1377,false,0.971,68,ready,
+2026-07-14T00:58:02.093064+00:00,org.jsr107.ri:cache-ri-impl,java,org.jsr107.ri_cache-ri-impl,1,753,124,false,0.0,0,F5_fail,word_count_post_clean=124 < 500
+2026-07-14T00:58:02.103203+00:00,org.commonjava.aprox:aprox-filer-default,java,org.commonjava.aprox_aprox-filer-default,10,10080,1558,false,0.987,76,ready,
+2026-07-14T00:58:02.405512+00:00,com.thoughtworks.dsl:keywords-return_sjs0.6_2.11,java,com.thoughtworks.dsl_keywords-return_sjs0.6_2.11,1,3812,598,false,1.0,31,ready,
+2026-07-14T00:58:02.481817+00:00,org.springframework.vault:spring-vault-core,java,org.springframework.vault_spring-vault-core,2,12487,1706,false,0.909,66,ready,
+2026-07-14T00:58:02.677196+00:00,io.gravitee.am.plugins.handlers:gravitee-am-plugins-handlers-api,java,io.gravitee.am.plugins.handlers_gravitee-am-plugins-handlers-api,36,92685,11318,false,0.986,70,ready,
+2026-07-14T00:58:03.236650+00:00,com.moz.fiji.mapreduce:cdh5-mrbridge,java,com.moz.fiji.mapreduce_cdh5-mrbridge,27,35663,5561,false,0.969,127,ready,
+2026-07-14T00:58:03.650715+00:00,io.fabric8:volumesnapshot-server-mock,java,io.fabric8_volumesnapshot-server-mock,11,74781,12077,false,0.939,33,ready,
+2026-07-14T00:58:04.267814+00:00,com.huaweicloud:spring-cloud-starter-huawei-router,java,com.huaweicloud_spring-cloud-starter-huawei-router,34,27018,2447,false,0.816,38,ready,
+2026-07-14T00:58:04.469273+00:00,io.micronaut.testresources:micronaut-test-resources-r2dbc-core,java,io.micronaut.testresources_micronaut-test-resources-r2dbc-core,34,38428,5255,false,0.962,186,ready,
+2026-07-14T00:58:04.952084+00:00,org.neo4j:neo4j-cypher-commons,java,org.neo4j_neo4j-cypher-commons,311,435845,62329,false,0.873,142,ready,
+2026-07-14T00:58:05.808504+00:00,org.zalando:problem-spring-webflux,java,org.zalando_problem-spring-webflux,3,5927,911,false,0.969,64,ready,
+2026-07-14T00:58:05.970510+00:00,org.everit.osgi:org.everit.osgi.querydsl.support,java,org.everit.osgi_org.everit.osgi.querydsl.support,1,100,12,false,0.0,0,F5_fail,word_count_post_clean=12 < 500
+2026-07-14T00:58:05.973804+00:00,com.vladsch.flexmark:flexmark,java,com.vladsch.flexmark_flexmark,2,22676,3369,false,0.922,64,ready,
+2026-07-14T00:58:06.287722+00:00,com.github.julien-truffaut:monocle-macro_sjs0.6_2.13,java,com.github.julien-truffaut_monocle-macro_sjs0.6_2.13,33,37499,5647,false,0.863,102,ready,
+2026-07-14T00:58:06.660869+00:00,com.wordnik:swagger-jaxrs_2.11,java,com.wordnik_swagger-jaxrs_2.11,5,7608,1091,false,0.967,60,ready,
+2026-07-14T00:58:06.819458+00:00,org.osgi:org.osgi.util.pushstream,java,org.osgi_org.osgi.util.pushstream,54,228305,33149,false,0.926,121,ready,
+2026-07-14T00:58:07.650434+00:00,com.ardikars.common:common-util,java,com.ardikars.common_common-util,2,1223,152,false,0.0,0,F5_fail,word_count_post_clean=152 < 500
+2026-07-14T00:58:07.669502+00:00,org.slinkyframework:slinky-service-http,java,org.slinkyframework_slinky-service-http,5,5194,760,false,0.902,51,ready,
+2026-07-14T00:58:07.834006+00:00,com.slack.api:slack-api-model,java,com.slack.api_slack-api-model,55,150421,20402,false,0.651,106,ready,
+2026-07-14T00:58:08.355548+00:00,org.jgrapht:jgrapht,java,org.jgrapht_jgrapht,21,74748,11934,false,0.965,114,ready,
+2026-07-14T00:58:08.651066+00:00,com.wizzdi:flexicore-file-model,java,com.wizzdi_flexicore-file-model,22,17982,2453,false,0.934,106,ready,
+2026-07-14T00:58:09.038572+00:00,org.openidentityplatform.commons.audit:handler-elasticsearch,java,org.openidentityplatform.commons.audit_handler-elasticsearch,63,273525,41048,false,0.951,122,ready,
+2026-07-14T00:58:09.786070+00:00,cafe.adriel.voyager:voyager-navigator-desktop,java,cafe.adriel.voyager_voyager-navigator-desktop,1,978,131,false,0.0,0,F5_fail,word_count_post_clean=131 < 500
+2026-07-14T00:58:09.828591+00:00,io.atlasmap:atlas-json-model,java,io.atlasmap_atlas-json-model,60,156608,23180,false,0.808,130,ready,
+2026-07-14T00:58:10.387112+00:00,org.glassfish.main.jdbc.jdbc-ra.jdbc-ra-distribution:jdbc-ra,java,org.glassfish.main.jdbc.jdbc-ra.jdbc-ra-distribution_jdbc-ra,571,1560946,100000,true,1.0,1,ready,
+2026-07-14T00:58:12.308143+00:00,dev.zio:zio-test-sbt_native0.4_2.11,java,dev.zio_zio-test-sbt_native0.4_2.11,296,852212,100000,true,1.0,1,ready,
+2026-07-14T00:58:13.307231+00:00,net.sf.m-m-m:mmm-util-pojo,java,net.sf.m-m-m_mmm-util-pojo,31,10610,1631,false,0.987,79,ready,
+2026-07-14T00:58:13.549637+00:00,org.wso2.carbon.metrics:org.wso2.carbon.metrics.core.feature,java,org.wso2.carbon.metrics_org.wso2.carbon.metrics.core.feature,1,2787,422,false,0.0,0,F5_fail,word_count_post_clean=422 < 500
+2026-07-14T00:58:13.575504+00:00,io.kotest:kotest-property-tvossimulatorarm64,java,io.kotest_kotest-property-tvossimulatorarm64,1321,1213666,100000,true,1.0,1,ready,
+2026-07-14T00:58:15.439888+00:00,com.buschmais.xo:xo.test,java,com.buschmais.xo_xo.test,3,17801,2418,false,0.939,98,ready,
+2026-07-14T00:58:15.679894+00:00,com.buschmais.jqassistant.plugin:jpa2,java,com.buschmais.jqassistant.plugin_jpa2,1,331,59,false,0.0,0,F5_fail,word_count_post_clean=59 < 500
+2026-07-14T00:58:15.686873+00:00,org.locationtech.geomesa:geomesa-feature-common_2.12,java,org.locationtech.geomesa_geomesa-feature-common_2.12,257,778831,100000,true,1.0,1,ready,
+2026-07-14T00:58:17.891748+00:00,org.kie.kogito:kogito-drools-model,java,org.kie.kogito_kogito-drools-model,31,51503,6936,false,0.959,74,ready,
+2026-07-14T00:58:18.473076+00:00,org.springframework.cloud:spring-cloud-stream-schema,java,org.springframework.cloud_spring-cloud-stream-schema,7,164658,21094,false,0.97,166,ready,
+2026-07-14T00:58:18.834868+00:00,uk.co.real-logic:Agrona,java,uk.co.real-logic_Agrona,1,2069,312,false,0.0,0,F5_fail,word_count_post_clean=312 < 500
+2026-07-14T00:58:18.845223+00:00,org.apache.tika:tika-app,java,org.apache.tika_tika-app,6,7326,1060,false,0.949,59,ready,
+2026-07-14T00:58:19.210187+00:00,org.scalameta:munit_sjs1_3.0.0-RC1,java,org.scalameta_munit_sjs1_3.0.0-RC1,11,20959,3103,false,0.904,136,ready,
+2026-07-14T00:58:19.573678+00:00,de.adorsys.xs2a.adapter:xs2a-adapter-service-api,java,de.adorsys.xs2a.adapter_xs2a-adapter-service-api,77,111420,15653,false,0.958,144,ready,
+2026-07-14T00:58:20.009949+00:00,org.apache.camel.quarkus:camel-quarkus-jgroups-raft,java,org.apache.camel.quarkus_camel-quarkus-jgroups-raft,608,917252,98010,false,0.911,146,ready,
+2026-07-14T00:58:21.845746+00:00,tech.mlsql:streamingpro-dsl-2.4_2.11,java,tech.mlsql_streamingpro-dsl-2.4_2.11,239,461154,61600,false,0.96,75,ready,
+2026-07-14T00:58:22.710400+00:00,com.telenav.mesakit:mesakit-map-road-model,java,com.telenav.mesakit_mesakit-map-road-model,46,56497,4796,false,1.0,22,ready,
+2026-07-14T00:58:23.143821+00:00,com.rometools:rome,java,com.rometools_rome,1,627,97,false,0.0,0,F5_fail,word_count_post_clean=97 < 500
+2026-07-14T00:58:23.189417+00:00,com.google.code.flexlib:flexlib,java,com.google.code.flexlib_flexlib,2,243,34,false,0.0,0,F5_fail,word_count_post_clean=34 < 500
+2026-07-14T00:58:23.212020+00:00,com.github.jknack:handlebars-jackson2,java,com.github.jknack_handlebars-jackson2,4,15174,2259,false,0.957,92,ready,
+2026-07-14T00:58:23.473197+00:00,com.helger.ubl:ph-ubl22,java,com.helger.ubl_ph-ubl22,5,60040,8548,false,0.963,136,ready,
+2026-07-14T00:58:23.816119+00:00,io.datakernel:datakernel-common,java,io.datakernel_datakernel-common,32,9768,1555,false,0.728,103,ready,
+2026-07-14T00:58:24.199955+00:00,com.att.research.xacml:xacml,java,com.att.research.xacml_xacml,1,1646,256,false,0.0,0,F5_fail,word_count_post_clean=256 < 500
+2026-07-14T00:58:24.278045+00:00,org.apache.drill:drill-logical,java,org.apache.drill_drill-logical,79,257110,40405,false,0.982,113,ready,
+2026-07-14T00:58:25.012850+00:00,com.bkahlert.kommons:kommons-text,java,com.bkahlert.kommons_kommons-text,18,25670,3938,false,0.933,89,ready,
+2026-07-14T00:58:25.280749+00:00,org.apache.camel.quarkus:camel-quarkus-etcd3,java,org.apache.camel.quarkus_camel-quarkus-etcd3,559,836941,89612,false,0.945,163,ready,
+2026-07-14T00:58:26.989961+00:00,org.sonarsource.sonarqube:sonar-plugin-api,java,org.sonarsource.sonarqube_sonar-plugin-api,13,11895,1897,false,0.972,107,ready,
+2026-07-14T00:58:27.778734+00:00,com.typesafe.zinc:zinc,java,com.typesafe.zinc_zinc,1,5478,860,false,0.974,39,ready,
+2026-07-14T00:58:27.852583+00:00,org.eclipse.che.core:che-core-commons-test,java,org.eclipse.che.core_che-core-commons-test,12,22290,3552,false,0.946,130,ready,
+2026-07-14T00:58:28.497147+00:00,be.atbash.json:octopus-jwt-support,java,be.atbash.json_octopus-jwt-support,2,28665,4060,false,0.946,129,ready,
+2026-07-14T00:58:28.755184+00:00,org.xipki:password,java,org.xipki_password,39,1553420,100000,true,1.0,1,ready,
+2026-07-14T00:58:28.920978+00:00,org.spark-project.akka:akka-actor_2.10,java,org.spark-project.akka_akka-actor_2.10,3,4942,760,false,1.0,30,ready,
+2026-07-14T00:58:29.226548+00:00,org.flowable:flowable-form-spring-configurator,java,org.flowable_flowable-form-spring-configurator,490,1736142,100000,true,1.0,1,ready,
+2026-07-14T00:58:33.304234+00:00,com.oracle.oci.sdk:oci-java-sdk-datascience,java,com.oracle.oci.sdk_oci-java-sdk-datascience,10,18185,2854,false,0.951,143,ready,
+2026-07-14T00:58:35.140894+00:00,io.github.crac:org-crac,java,io.github.crac_org-crac,1,744,102,false,0.0,0,F5_fail,word_count_post_clean=102 < 500
+2026-07-14T00:58:35.145987+00:00,io.vertx:vertx-zipkin,java,io.vertx_vertx-zipkin,1,206,27,false,0.0,0,F5_fail,word_count_post_clean=27 < 500
+2026-07-14T00:58:35.154972+00:00,com.chuusai:shapeless_2.13.0-M1,java,com.chuusai_shapeless_2.13.0-M1,1,9141,1066,false,0.95,20,ready,
+2026-07-14T00:58:35.224634+00:00,org.atmosphere.samples:atmosphere-jquery-pubsub,java,org.atmosphere.samples_atmosphere-jquery-pubsub,64,290805,43391,false,0.936,94,ready,
+2026-07-14T00:58:36.066549+00:00,org.mapstruct:mapstruct-processor,java,org.mapstruct_mapstruct-processor,16,174780,22169,false,0.912,160,ready,
+2026-07-14T00:58:36.703784+00:00,io.github.soc:directories,java,io.github.soc_directories,1,8512,1309,false,0.951,82,ready,
+2026-07-14T00:58:36.898622+00:00,ch.epfl.bluebrain.nexus:delta-sdk_2.13,java,ch.epfl.bluebrain.nexus_delta-sdk_2.13,87,398813,63150,false,0.967,120,ready,
+2026-07-14T00:58:37.643307+00:00,io.backchat.inflector:scala-inflector_2.10,java,io.backchat.inflector_scala-inflector_2.10,1,487,78,false,0.0,0,F5_fail,word_count_post_clean=78 < 500
+2026-07-14T00:58:37.647842+00:00,net.openhft:assertions-disabled,java,net.openhft_assertions-disabled,4,8740,1252,false,0.957,46,ready,
+2026-07-14T00:58:37.732100+00:00,org.apache.aries.cdi:org.apache.aries.cdi.extension.spi,java,org.apache.aries.cdi_org.apache.aries.cdi.extension.spi,1,13127,2127,false,0.99,102,ready,
+2026-07-14T00:58:37.922356+00:00,org.locationtech.geotrellis:geotrellis-s3_2.11,java,org.locationtech.geotrellis_geotrellis-s3_2.11,46,284207,45293,false,0.96,124,ready,
+2026-07-14T00:58:38.992659+00:00,org.keycloak:keycloak-model-legacy-services,java,org.keycloak_keycloak-model-legacy-services,533,1439935,100000,true,1.0,1,ready,
+2026-07-14T00:58:39.731452+00:00,io.zeebe:zeebe-protocol,java,io.zeebe_zeebe-protocol,20,27837,4578,false,0.975,121,ready,
+2026-07-14T00:58:40.129417+00:00,org.guvnor:guvnor-inbox-api,java,org.guvnor_guvnor-inbox-api,3,44071,6175,false,0.883,154,ready,
+2026-07-14T00:58:40.540971+00:00,org.odpi.egeria:basic-file-connector,java,org.odpi.egeria_basic-file-connector,590,644673,95303,false,0.994,155,ready,
+2026-07-14T00:58:41.983700+00:00,com.github.shepherdviolet.glacimon:glacispring-common,java,com.github.shepherdviolet.glacimon_glacispring-common,43,54452,5008,false,0.763,38,ready,
+2026-07-14T00:58:42.310220+00:00,org.zalando:tracer-core,java,org.zalando_tracer-core,2,5538,847,false,0.981,52,ready,
+2026-07-14T00:58:42.431712+00:00,org.camunda.bpm.model:camunda-dmn-model,java,org.camunda.bpm.model_camunda-dmn-model,43,59385,8963,false,0.939,115,ready,
+2026-07-14T00:58:43.568932+00:00,org.teiid.connectors:document-api,java,org.teiid.connectors_document-api,44,72314,9748,false,0.907,172,ready,
+2026-07-14T00:58:44.236829+00:00,com.lyncode:builder-commons,java,com.lyncode_builder-commons,1,32,3,false,0.0,0,F5_fail,word_count_post_clean=3 < 500
+2026-07-14T00:58:44.240201+00:00,net.redpipe:redpipe-engine,java,net.redpipe_redpipe-engine,38,42315,5818,false,0.9,100,ready,
+2026-07-14T00:58:44.526316+00:00,net.codingwell:scala-guice_2.11,java,net.codingwell_scala-guice_2.11,1,1751,294,false,0.0,0,F5_fail,word_count_post_clean=294 < 500
+2026-07-14T00:58:44.554162+00:00,software.amazon.awssdk:iot,java,software.amazon.awssdk_iot,57,205805,30477,false,0.95,119,ready,
+2026-07-14T00:58:45.988966+00:00,net.databinder:unfiltered-netty-server_2.9.1,java,net.databinder_unfiltered-netty-server_2.9.1,32,45400,7228,false,0.984,129,ready,
+2026-07-14T00:58:46.243459+00:00,org.catools:common.utils,java,org.catools_common.utils,1,756,115,false,0.0,0,F5_fail,word_count_post_clean=115 < 500
+2026-07-14T00:58:46.294351+00:00,org.springframework.roo:org.springframework.roo.addon.configurable,java,org.springframework.roo_org.springframework.roo.addon.configurable,5,6727,1034,false,1.0,38,ready,
+2026-07-14T00:58:46.483539+00:00,org.specs2:specs2-scalacheck_2.13.0-M5,java,org.specs2_specs2-scalacheck_2.13.0-M5,1,263,40,false,0.0,0,F5_fail,word_count_post_clean=40 < 500
+2026-07-14T00:58:46.557463+00:00,org.eclipse.xtext:org.eclipse.xtext.builder.standalone,java,org.eclipse.xtext_org.eclipse.xtext.builder.standalone,8,4893,723,false,0.973,37,ready,
+2026-07-14T00:58:47.633232+00:00,org.webjars:emberjs,java,org.webjars_emberjs,1,46,5,false,0.0,0,F5_fail,word_count_post_clean=5 < 500
+2026-07-14T00:58:47.635989+00:00,io.snamp.instrumentation:core,java,io.snamp.instrumentation_core,46,218773,31634,false,0.966,88,ready,
+2026-07-14T00:58:48.210640+00:00,jakarta.nosql.tck.mapping:mapping-tck-column,java,jakarta.nosql.tck.mapping_mapping-tck-column,3,9798,1221,false,0.857,77,ready,
+2026-07-14T00:58:48.477980+00:00,com.softwaremill.magnolia:magnolia-core_2.12,java,com.softwaremill.magnolia_magnolia-core_2.12,1,3327,498,false,0.0,0,F5_fail,word_count_post_clean=498 < 500
+2026-07-14T00:58:48.486090+00:00,com.rethinkdb:rethinkdb-driver,java,com.rethinkdb_rethinkdb-driver,1,3412,580,false,1.0,29,ready,
+2026-07-14T00:58:48.549429+00:00,com.helger.photon:ph-oton-audit,java,com.helger.photon_ph-oton-audit,10,22174,3541,false,0.973,149,ready,
+2026-07-14T00:58:48.992373+00:00,org.webjars.npm:picomatch,java,org.webjars.npm_picomatch,1,14406,2165,false,0.912,80,ready,
+2026-07-14T00:58:49.175625+00:00,org.apereo.cas:cas-server-support-ws-idp-api,java,org.apereo.cas_cas-server-support-ws-idp-api,785,1332263,100000,true,1.0,1,ready,
+2026-07-14T00:58:51.838996+00:00,com.google.api.grpc:grpc-google-cloud-orgpolicy-v2,java,com.google.api.grpc_grpc-google-cloud-orgpolicy-v2,288,1173656,100000,true,1.0,1,ready,
+2026-07-14T00:59:00.813226+00:00,org.webjars.bowergithub.vaadin:vaadin-notification,java,org.webjars.bowergithub.vaadin_vaadin-notification,1,2374,348,false,0.0,0,F5_fail,word_count_post_clean=348 < 500
+2026-07-14T00:59:00.822795+00:00,love.forte.simple-robot:serialization-json-core,java,love.forte.simple-robot_serialization-json-core,16,3914,249,false,0.0,0,F5_fail,word_count_post_clean=249 < 500
+2026-07-14T00:59:00.864858+00:00,com.typesafe.akka:akka-persistence_2.12.0-RC1,java,com.typesafe.akka_akka-persistence_2.12.0-RC1,17,34449,5205,false,0.993,142,ready,
+2026-07-14T00:59:01.313250+00:00,org.julienrf:endpoints-algebra-circe_2.12,java,org.julienrf_endpoints-algebra-circe_2.12,1,68,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-07-14T00:59:01.315908+00:00,org.apache.shardingsphere:shardingsphere-infra-context,java,org.apache.shardingsphere_shardingsphere-infra-context,1044,1460313,100000,true,1.0,1,ready,
+2026-07-14T00:59:03.796085+00:00,org.webjars.npm:algolia__transporter,java,org.webjars.npm_algolia__transporter,3,2613,404,false,0.0,0,F5_fail,word_count_post_clean=404 < 500
+2026-07-14T00:59:03.826016+00:00,org.jboss.windup.reporting:windup-reporting,java,org.jboss.windup.reporting_windup-reporting,9,3977,605,false,0.969,32,ready,
+2026-07-14T00:59:04.070531+00:00,org.webjars.npm:has-symbols,java,org.webjars.npm_has-symbols,1,226,33,false,0.0,0,F5_fail,word_count_post_clean=33 < 500
+2026-07-14T00:59:04.075688+00:00,com.github.davide-maestroni:jroutine-object,java,com.github.davide-maestroni_jroutine-object,23,49883,7087,false,0.817,115,ready,
+2026-07-14T00:59:04.432413+00:00,org.beangle.security:beangle-security-web_2.13,java,org.beangle.security_beangle-security-web_2.13,1,672,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-07-14T00:59:04.436152+00:00,org.webjars.npm:rxjs,java,org.webjars.npm_rxjs,89,133317,20688,false,0.926,122,ready,
+2026-07-14T00:59:04.888454+00:00,org.apache.servicecomb:foundation-common,java,org.apache.servicecomb_foundation-common,10,7805,1095,false,0.892,37,ready,
+2026-07-14T00:59:05.266589+00:00,org.apache.shardingsphere:shardingsphere-transaction-core,java,org.apache.shardingsphere_shardingsphere-transaction-core,1044,1460313,100000,true,1.0,1,ready,
+2026-07-14T00:59:07.668274+00:00,org.switchyard.components:switchyard-component-test-mixin-naming,java,org.switchyard.components_switchyard-component-test-mixin-naming,5,8240,1196,false,1.0,46,ready,
+2026-07-14T00:59:07.966048+00:00,org.copper-engine:copper-coreengine,java,org.copper-engine_copper-coreengine,9,33568,3996,false,0.967,120,ready,
+2026-07-14T00:59:08.249061+00:00,org.webjars.npm:util.promisify,java,org.webjars.npm_util.promisify,1,521,79,false,0.0,0,F5_fail,word_count_post_clean=79 < 500
+2026-07-14T00:59:08.252425+00:00,io.arrow-kt:arrow-core-js,java,io.arrow-kt_arrow-core-js,7,19337,3357,false,0.99,96,ready,
+2026-07-14T00:59:08.462853+00:00,org.sonatype.nexus.plugins:nexus-rapture-plugin,java,org.sonatype.nexus.plugins_nexus-rapture-plugin,18,9753,1427,false,1.0,78,ready,
+2026-07-14T00:59:09.013185+00:00,org.apache.camel:camel-scheduler,java,org.apache.camel_camel-scheduler,1,2547,423,false,0.0,0,F5_fail,word_count_post_clean=423 < 500
+2026-07-14T00:59:09.018769+00:00,app.cash.sqldelight:runtime-tvosarm64,java,app.cash.sqldelight_runtime-tvosarm64,136,43844,6080,false,0.943,87,ready,
+2026-07-14T00:59:09.456838+00:00,org.wicketstuff:prototype,java,org.wicketstuff_prototype,42,51400,7617,false,0.976,124,ready,
+2026-07-14T00:59:10.213532+00:00,org.apache.camel.quarkus:camel-quarkus-jooq-deployment,java,org.apache.camel.quarkus_camel-quarkus-jooq-deployment,608,917252,98010,false,0.911,146,ready,
+2026-07-14T00:59:11.867747+00:00,org.hswebframework.web:hsweb-commons-utils,java,org.hswebframework.web_hsweb-commons-utils,10,4021,347,false,0.0,0,F5_fail,word_count_post_clean=347 < 500
+2026-07-14T00:59:11.940378+00:00,com.google.appengine:appengine-api-stubs,java,com.google.appengine_appengine-api-stubs,5,11060,1695,false,0.948,77,ready,
+2026-07-14T00:59:12.313145+00:00,org.openurp.platform.api:openurp-platform-api-cas,java,org.openurp.platform.api_openurp-platform-api-cas,1,672,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-07-14T00:59:12.315989+00:00,me.madhead.aws-junit5:common-v2,java,me.madhead.aws-junit5_common-v2,5,7709,797,false,0.897,29,ready,
+2026-07-14T00:59:12.399575+00:00,org.apache.logging.log4j:log4j-jpa,java,org.apache.logging.log4j_log4j-jpa,2,2954,386,false,0.0,0,F5_fail,word_count_post_clean=386 < 500
+2026-07-14T00:59:12.673545+00:00,org.dspace.modules:additions,java,org.dspace.modules_additions,11,36735,5340,false,0.986,147,ready,
+2026-07-14T00:59:13.135581+00:00,org.bdgenomics.adam:adam-apis_2.11,java,org.bdgenomics.adam_adam-apis_2.11,38,123407,19552,false,0.978,90,ready,
+2026-07-14T00:59:13.543603+00:00,org.hibernate:hibernate-search-orm,java,org.hibernate_hibernate-search-orm,22,439484,57645,false,0.983,176,ready,
+2026-07-14T00:59:14.094081+00:00,io.netty:netty5-handler,java,io.netty_netty5-handler,9,11299,1863,false,0.956,90,ready,
+2026-07-14T00:59:14.527578+00:00,org.wso2.extension.siddhi.store.hbase:siddhi-store-hbase,java,org.wso2.extension.siddhi.store.hbase_siddhi-store-hbase,23,34034,5326,false,1.0,50,ready,
+2026-07-14T00:59:14.649820+00:00,com.github.waikato:jclasslocator,java,com.github.waikato_jclasslocator,1,2334,377,false,0.0,0,F5_fail,word_count_post_clean=377 < 500
+2026-07-14T00:59:14.659865+00:00,org.locationtech.geotrellis:geotrellis-vector_2.13,java,org.locationtech.geotrellis_geotrellis-vector_2.13,45,282605,45063,false,0.955,134,ready,
+2026-07-14T00:59:15.458029+00:00,org.jboss.weld:weld-core-test,java,org.jboss.weld_weld-core-test,32,369383,43407,false,0.916,178,ready,
+2026-07-14T00:59:16.133190+00:00,org.apache.camel.quarkus:camel-quarkus-protobuf,java,org.apache.camel.quarkus_camel-quarkus-protobuf,605,911635,97347,false,0.925,161,ready,
+2026-07-14T00:59:17.830687+00:00,com.palantir.config.crypto:encrypted-config-value-module,java,com.palantir.config.crypto_encrypted-config-value-module,1,1551,225,false,0.0,0,F5_fail,word_count_post_clean=225 < 500
+2026-07-14T00:59:17.842386+00:00,software.amazon.konstruk:core,java,software.amazon.konstruk_core,258,1268108,100000,true,1.0,1,ready,
+2026-07-14T00:59:18.271084+00:00,io.kotest:kotest-framework-discovery-jvm,java,io.kotest_kotest-framework-discovery-jvm,1096,1209053,100000,true,1.0,1,ready,
+2026-07-14T00:59:20.061601+00:00,org.webjars.bower:github-com-polymerelements-iron-icons,java,org.webjars.bower_github-com-polymerelements-iron-icons,1,641,107,false,0.0,0,F5_fail,word_count_post_clean=107 < 500
+2026-07-14T00:59:20.065520+00:00,org.neo4j:neo4j-consistency-check,java,org.neo4j_neo4j-consistency-check,21,22548,3434,false,0.949,138,ready,
+2026-07-14T00:59:20.980916+00:00,org.kie.server:kie-server-services-dmn,java,org.kie.server_kie-server-services-dmn,18,42710,5862,false,0.91,78,ready,
+2026-07-14T00:59:21.543339+00:00,dev.zio:zio-streams_sjs0.6_2.12,java,dev.zio_zio-streams_sjs0.6_2.12,49,63256,9595,false,0.919,135,ready,
+2026-07-14T00:59:21.911331+00:00,org.jboss.cdi.tck:cdi-tck-api,java,org.jboss.cdi.tck_cdi-tck-api,14,72826,10516,false,0.928,152,ready,
+2026-07-14T00:59:22.394570+00:00,com.networknt:ldap-util,java,com.networknt_ldap-util,9,16382,2381,false,0.984,125,ready,
+2026-07-14T00:59:22.767428+00:00,ru.sbtqa.tag.datajack:datajack-api,java,ru.sbtqa.tag.datajack_datajack-api,2,1479,214,false,0.0,0,F5_fail,word_count_post_clean=214 < 500
+2026-07-14T00:59:22.781176+00:00,org.springframework.social:spring-social-linkedin,java,org.springframework.social_spring-social-linkedin,2,9173,1041,false,0.906,53,ready,
+2026-07-14T00:59:22.926756+00:00,org.apache.camel:camel-core,java,org.apache.camel_camel-core,1,2547,423,false,0.0,0,F5_fail,word_count_post_clean=423 < 500
+2026-07-14T00:59:22.932669+00:00,com.jpmorgan.quorum:tessera-partyinfo,java,com.jpmorgan.quorum_tessera-partyinfo,9,10412,1615,false,0.961,76,ready,
+2026-07-14T00:59:23.207635+00:00,me.him188:kotlin-jvm-blocking-bridge-runtime-jvm,java,me.him188_kotlin-jvm-blocking-bridge-runtime-jvm,2,7979,1012,false,0.754,65,ready,
+2026-07-14T00:59:23.379235+00:00,org.springframework.cloud.stream.app:gpfdist-app-dependencies,java,org.springframework.cloud.stream.app_gpfdist-app-dependencies,8,10985,1536,false,0.875,48,ready,
+2026-07-14T00:59:23.505173+00:00,com.symphony.oss.commons:commons-dom-jackson,java,com.symphony.oss.commons_commons-dom-jackson,1,50,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-07-14T00:59:23.518307+00:00,org.apache.tez:tez-mapreduce,java,org.apache.tez_tez-mapreduce,1,2547,423,false,0.0,0,F5_fail,word_count_post_clean=423 < 500
+2026-07-14T00:59:23.525075+00:00,co.fs2:fs2-core_sjs1_2.12,java,co.fs2_fs2-core_sjs1_2.12,5,23245,3953,false,1.0,115,ready,
+2026-07-14T00:59:23.737793+00:00,io.jooby:jooby,java,io.jooby_jooby,105,467740,54596,false,0.841,145,ready,
+2026-07-14T00:59:24.357657+00:00,de.wayofquality.blended:blended.util_2.12,java,de.wayofquality.blended_blended.util_2.12,23,37315,5325,false,0.868,129,ready,
+2026-07-14T00:59:24.679585+00:00,org.wso2.carbon.analytics-common:org.wso2.carbon.databridge.core,java,org.wso2.carbon.analytics-common_org.wso2.carbon.databridge.core,1,471,62,false,0.0,0,F5_fail,word_count_post_clean=62 < 500
+2026-07-14T00:59:24.716660+00:00,io.quarkus:quarkus-resteasy-common,java,io.quarkus_quarkus-resteasy-common,395,1629074,100000,true,1.0,1,ready,
+2026-07-14T00:59:27.310962+00:00,org.orbisgis:cts,java,org.orbisgis_cts,2,2624,393,false,0.0,0,F5_fail,word_count_post_clean=393 < 500
+2026-07-14T00:59:27.328889+00:00,org.apereo.cas:cas-server-core-authentication-mfa,java,org.apereo.cas_cas-server-core-authentication-mfa,785,1332263,100000,true,1.0,1,ready,
+2026-07-14T00:59:29.642920+00:00,org.apache.camel.quarkus:camel-quarkus-kudu-deployment,java,org.apache.camel.quarkus_camel-quarkus-kudu-deployment,608,917252,98010,false,0.911,146,ready,
+2026-07-14T00:59:31.474593+00:00,org.graalvm.regex:regex,java,org.graalvm.regex_regex,284,1301049,100000,true,1.0,1,ready,
+2026-07-14T00:59:33.538895+00:00,com.networknt:json-schema-validator,java,com.networknt_json-schema-validator,31,112032,17872,false,0.973,73,ready,
+2026-07-14T00:59:33.898123+00:00,io.openliberty.features:io.openliberty.jakarta.activation-2.0,java,io.openliberty.features_io.openliberty.jakarta.activation-2.0,122,182901,24597,false,0.972,144,ready,
+2026-07-14T00:59:41.916673+00:00,org.scalatest:scalatest-funsuite_sjs1_2.12,java,org.scalatest_scalatest-funsuite_sjs1_2.12,2,2781,408,false,0.0,0,F5_fail,word_count_post_clean=408 < 500
+2026-07-14T03:02:47.571898+00:00,versioningit,python,versioningit,11,42778,6602,false,0.991,110,ready,
+2026-07-14T03:02:48.224837+00:00,discord.py,python,discord.py,25,265230,32015,false,0.991,113,ready,
+2026-07-14T03:02:49.929826+00:00,odoo14-addon-account-asset-management,python,odoo14-addon-account-asset-management,41,85000,12919,false,0.895,114,ready,
+2026-07-14T03:02:50.722788+00:00,logbook,python,logbook,25,66966,7708,false,0.993,138,ready,
+2026-07-14T03:02:51.082023+00:00,pygelf,python,pygelf,1,4662,731,false,0.974,39,ready,
+2026-07-14T03:02:51.181936+00:00,tkinterweb,python,tkinterweb,20,30168,4333,false,0.986,140,ready,
+2026-07-14T03:02:51.561165+00:00,vcrpy,python,vcrpy,9,18353,2902,false,0.985,136,ready,
+2026-07-14T03:02:51.829992+00:00,odoo11-addon-quality-control,python,odoo11-addon-quality-control,55,97991,14831,false,0.884,112,ready,
+2026-07-14T03:02:52.760767+00:00,sphinx-carousel,python,sphinx-carousel,7,4064,539,false,1.0,33,ready,
+2026-07-14T03:02:52.850048+00:00,pyjokes,python,pyjokes,1,1337,213,false,0.0,0,F5_fail,word_count_post_clean=213 < 500
+2026-07-14T03:02:52.856818+00:00,sty,python,sty,1,1907,283,false,0.0,0,F5_fail,word_count_post_clean=283 < 500
+2026-07-14T03:02:52.875652+00:00,wheel,python,wheel,15,33053,4899,false,0.976,126,ready,
+2026-07-14T03:02:53.532584+00:00,sqlalchemy-trino,python,sqlalchemy-trino,1,1183,180,false,0.0,0,F5_fail,word_count_post_clean=180 < 500
+2026-07-14T03:02:53.542049+00:00,azure-mgmt-authorization,python,azure-mgmt-authorization,649,1326250,100000,true,1.0,1,ready,
+2026-07-14T03:02:57.953616+00:00,memoization,python,memoization,1,6940,1101,false,0.983,58,ready,
+2026-07-14T03:02:58.107391+00:00,pylxd,python,pylxd,17,28389,4391,false,0.941,153,ready,
+2026-07-14T03:02:58.477078+00:00,pyxlsb,python,pyxlsb,1,756,113,false,0.0,0,F5_fail,word_count_post_clean=113 < 500
+2026-07-14T03:02:58.485722+00:00,logmuse,python,logmuse,1,1959,320,false,0.0,0,F5_fail,word_count_post_clean=320 < 500
+2026-07-14T03:02:58.494247+00:00,py7zr,python,py7zr,8,39699,6039,false,0.918,73,ready,
+2026-07-14T03:02:58.810973+00:00,moat-kv,python,moat-kv,269,413583,66794,false,0.954,109,ready,
+2026-07-14T03:03:00.572782+00:00,pymisp,python,pymisp,12,22161,3604,false,0.99,103,ready,
+2026-07-14T03:03:00.920470+00:00,edit-distance,python,edit-distance,2,2629,391,false,0.0,0,F5_fail,word_count_post_clean=391 < 500
+2026-07-14T03:03:00.934023+00:00,priority,python,priority,7,9705,1518,false,1.0,50,ready,
+2026-07-14T03:03:01.043323+00:00,jproperties,python,jproperties,1,4797,767,false,0.972,36,ready,
+2026-07-14T03:03:01.129251+00:00,shandy-sqlfmt,python,shandy-sqlfmt,1,8349,1407,false,0.983,60,ready,
+2026-07-14T03:03:01.310188+00:00,absl-py,python,absl-py,3,1151,164,false,0.0,0,F5_fail,word_count_post_clean=164 < 500
+2026-07-14T03:03:01.324115+00:00,saspy,python,saspy,11,133915,22610,false,0.993,143,ready,
+2026-07-14T03:03:01.795543+00:00,pynapple,python,pynapple,38,134907,16277,false,0.917,132,ready,
+2026-07-14T03:03:02.386877+00:00,uniparser-morph,python,uniparser-morph,39,129277,19908,false,0.89,100,ready,
+2026-07-14T03:03:02.734875+00:00,oauth2client,python,oauth2client,29,4408,578,false,0.968,31,ready,
+2026-07-14T03:03:02.856174+00:00,types-cachetools,python,types-cachetools,2,6122,1020,false,1.0,31,ready,
+2026-07-14T03:03:03.188416+00:00,bluetooth-data-tools,python,bluetooth-data-tools,4,1280,177,false,0.0,0,F5_fail,word_count_post_clean=177 < 500
+2026-07-14T03:03:03.200868+00:00,stable-ts,python,stable-ts,1,94689,12118,false,0.984,124,ready,
+2026-07-14T03:03:03.579663+00:00,grpc-interceptor,python,grpc-interceptor,4,9492,1515,false,1.0,57,ready,
+2026-07-14T03:03:03.723365+00:00,layoutparser,python,layoutparser,14,18034,2632,false,1.0,91,ready,
+2026-07-14T03:03:03.979011+00:00,mplhep,python,mplhep,36,25781,3268,false,0.932,73,ready,
+2026-07-14T03:03:04.269198+00:00,mdtraj,python,mdtraj,35,52202,7807,false,0.937,126,ready,
+2026-07-14T03:03:04.739602+00:00,odoo14-addon-intrastat-product,python,odoo14-addon-intrastat-product,7,13995,2037,false,0.879,107,ready,
+2026-07-14T03:03:05.233060+00:00,nvitop,python,nvitop,16,17112,2676,false,1.0,98,ready,
+2026-07-14T03:03:05.748035+00:00,allianceauth-app-utils,python,allianceauth-app-utils,6,1149,152,false,0.0,0,F5_fail,word_count_post_clean=152 < 500
+2026-07-14T03:03:05.802583+00:00,flask-assets,python,flask-assets,2,5906,856,false,0.975,40,ready,
+2026-07-14T03:03:05.901662+00:00,bilibili-api-python,python,bilibili-api-python,1,1304,30,false,0.0,0,F5_fail,word_count_post_clean=30 < 500
+2026-07-14T03:03:05.906147+00:00,statannotations,python,statannotations,9,5395,677,false,0.974,38,ready,
+2026-07-14T03:03:06.028963+00:00,vsdehalo,python,vsdehalo,1,284,29,false,0.0,0,F5_fail,word_count_post_clean=29 < 500
+2026-07-14T03:03:06.033186+00:00,pyrebase,python,pyrebase,1,4667,771,false,1.0,54,ready,
+2026-07-14T03:03:06.145108+00:00,beziers,python,beziers,5,1049,123,false,0.0,0,F5_fail,word_count_post_clean=123 < 500
+2026-07-14T03:03:06.167491+00:00,vsexprtools,python,vsexprtools,1,292,29,false,0.0,0,F5_fail,word_count_post_clean=29 < 500
+2026-07-14T03:03:06.170933+00:00,rfc3986,python,rfc3986,34,15096,2307,false,0.983,117,ready,
+2026-07-14T03:03:06.534436+00:00,ipynbname,python,ipynbname,1,970,176,false,0.0,0,F5_fail,word_count_post_clean=176 < 500
+2026-07-14T03:03:06.539760+00:00,coverage-lcov,python,coverage-lcov,1,418,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-07-14T03:03:06.548843+00:00,jobflow,python,jobflow,23,31306,5122,false,1.0,134,ready,
+2026-07-14T03:03:06.915375+00:00,mistletoe,python,mistletoe,2,4708,735,false,0.927,41,ready,
+2026-07-14T03:03:07.055103+00:00,pytest-emoji,python,pytest-emoji,2,2453,391,false,0.0,0,F5_fail,word_count_post_clean=391 < 500
+2026-07-14T03:03:07.062220+00:00,flaat,python,flaat,12,5184,760,false,0.978,46,ready,
+2026-07-14T03:03:07.261083+00:00,pyface,python,pyface,17,80569,11317,false,0.986,140,ready,
+2026-07-14T03:03:07.720920+00:00,pyudev,python,pyudev,18,17094,2493,false,0.967,123,ready,
+2026-07-14T03:03:08.116691+00:00,snakemake,python,snakemake,40,291944,45549,false,0.974,152,ready,
+2026-07-14T03:03:09.301361+00:00,openeo,python,openeo,34,175067,21200,false,0.959,123,ready,
+2026-07-14T03:03:10.097326+00:00,pyxattr,python,pyxattr,5,12062,1852,false,1.0,89,ready,
+2026-07-14T03:03:10.318265+00:00,toposort,python,toposort,1,2355,406,false,0.0,0,F5_fail,word_count_post_clean=406 < 500
+2026-07-14T03:03:10.326105+00:00,odoo14-addon-l10n-it-fatturapa-out,python,odoo14-addon-l10n-it-fatturapa-out,35,133461,18926,false,0.513,113,ready,
+2026-07-14T03:03:11.342698+00:00,dragonfly-core,python,dragonfly-core,8,3700,531,false,0.69,29,ready,
+2026-07-14T03:03:11.526336+00:00,odoo-addon-mgmtsystem-nonconformity,python,odoo-addon-mgmtsystem-nonconformity,34,56846,8065,false,0.771,105,ready,
+2026-07-14T03:03:13.187808+00:00,limits,python,limits,10,18881,2810,false,0.976,84,ready,
+2026-07-14T03:03:13.480462+00:00,commonroad-io,python,commonroad-io,13,19946,2373,false,0.925,53,ready,
+2026-07-14T03:03:13.770987+00:00,pyspellchecker,python,pyspellchecker,5,7947,1273,false,1.0,65,ready,
+2026-07-14T03:03:13.909948+00:00,tortoise-orm,python,tortoise-orm,48,46968,6789,false,0.93,100,ready,
+2026-07-14T03:03:14.457822+00:00,pandapower,python,pandapower,121,155384,24344,false,0.974,38,ready,
+2026-07-14T03:03:15.618089+00:00,yamlordereddictloader,python,yamlordereddictloader,1,1277,167,false,0.0,0,F5_fail,word_count_post_clean=167 < 500
+2026-07-14T03:03:15.626196+00:00,py-tlsh,python,py-tlsh,13,26096,3988,false,0.992,131,ready,
+2026-07-14T03:03:15.951492+00:00,jaraco.timing,python,jaraco.timing,2,104,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-07-14T03:03:15.963875+00:00,zepben.auth,python,zepben.auth,1,308,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-07-14T03:03:15.969492+00:00,org.netbeans.modules:org-netbeans-modules-j2ee-common,java,org.netbeans.modules_org-netbeans-modules-j2ee-common,1,292,40,false,0.0,0,F5_fail,word_count_post_clean=40 < 500
+2026-07-14T03:03:15.977210+00:00,org.wso2.carbon.commons:org.wso2.carbon.event.ws,java,org.wso2.carbon.commons_org.wso2.carbon.event.ws,21,58811,9098,false,0.971,137,ready,
+2026-07-14T03:03:16.458756+00:00,org.webjars.npm:is-callable,java,org.webjars.npm_is-callable,1,1293,220,false,0.0,0,F5_fail,word_count_post_clean=220 < 500
+2026-07-14T03:03:16.464349+00:00,org.bitstrings.test:junit-clptr,java,org.bitstrings.test_junit-clptr,1,837,128,false,0.0,0,F5_fail,word_count_post_clean=128 < 500
+2026-07-14T03:03:16.470036+00:00,com.github.romix.akka:akka-kryo-serialization_2.12,java,com.github.romix.akka_akka-kryo-serialization_2.12,1,8772,1461,false,0.984,62,ready,
+2026-07-14T03:03:16.624544+00:00,org.eclipse.platform:org.eclipse.equinox.event,java,org.eclipse.platform_org.eclipse.equinox.event,35,121659,17414,false,0.949,98,ready,
+2026-07-14T03:03:17.446996+00:00,se.fortnox.reactivewizard:reactivewizard-server,java,se.fortnox.reactivewizard_reactivewizard-server,16,17082,2750,false,1.0,121,ready,
+2026-07-14T03:03:17.713712+00:00,com.io7m.jintegers:io7m-jintegers-core,java,com.io7m.jintegers_io7m-jintegers-core,1,1115,157,false,0.0,0,F5_fail,word_count_post_clean=157 < 500
+2026-07-14T03:03:17.724247+00:00,com.almende.eve:eve-transport-common,java,com.almende.eve_eve-transport-common,1,848,115,false,0.0,0,F5_fail,word_count_post_clean=115 < 500
+2026-07-14T03:03:17.727764+00:00,io.arrow-kt:arrow-effects,java,io.arrow-kt_arrow-effects,152,328875,48061,false,0.938,130,ready,
+2026-07-14T03:03:19.109102+00:00,com.hedera.hashgraph:hedera-protobuf-java-api,java,com.hedera.hashgraph_hedera-protobuf-java-api,193,1222590,100000,true,1.0,1,ready,
+2026-07-14T03:03:20.895346+00:00,org.tpolecat:doobie-core_3.0.0-RC2,java,org.tpolecat_doobie-core_3.0.0-RC2,23,69129,10448,false,0.929,113,ready,
+2026-07-14T03:03:21.259322+00:00,com.zegreatrob.testmints:dependency-bom,java,com.zegreatrob.testmints_dependency-bom,4,5514,953,false,0.974,38,ready,
+2026-07-14T03:03:21.362768+00:00,org.webjars.npm:utf8,java,org.webjars.npm_utf8,1,2167,360,false,0.0,0,F5_fail,word_count_post_clean=360 < 500
+2026-07-14T03:03:21.368346+00:00,de.tudarmstadt.ukp.dkpro.core:de.tudarmstadt.ukp.dkpro.core.opennlp-asl,java,de.tudarmstadt.ukp.dkpro.core_de.tudarmstadt.ukp.dkpro.core.opennlp-asl,5,3538,571,false,0.929,28,ready,
+2026-07-14T03:03:21.666879+00:00,com.github.intel-hadoop:gearpump-core_2.11,java,com.github.intel-hadoop_gearpump-core_2.11,49,114291,17375,false,0.974,116,ready,
+2026-07-14T03:03:22.093983+00:00,io.ebean:ebean-test,java,io.ebean_ebean-test,29,123292,18976,false,0.975,119,ready,
+2026-07-14T03:03:22.790818+00:00,io.data2viz.d2v:d2v-core,java,io.data2viz.d2v_d2v-core,9,14442,2322,false,0.962,133,ready,
+2026-07-14T03:03:23.135944+00:00,org.webjars.npm:lodash._bindcallback,java,org.webjars.npm_lodash._bindcallback,2,75337,12510,false,0.971,102,ready,
+2026-07-14T03:03:23.573824+00:00,cn.dev33:sa-token-dao-redis-jackson,java,cn.dev33_sa-token-dao-redis-jackson,9,7618,659,false,0.158,19,F6_fail,english_fraction=0.16 < 0.5
+2026-07-14T03:03:23.746026+00:00,org.kasource.kaevent:ka-event-annotations,java,org.kasource.kaevent_ka-event-annotations,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-07-14T03:03:23.788101+00:00,org.codehaus.groovy:groovy-eclipse-batch,java,org.codehaus.groovy_groovy-eclipse-batch,18,42381,5498,false,0.977,132,ready,
+2026-07-14T03:03:24.945341+00:00,org.eclipse.che.plugin:org.eclipse.core.filebuffers,java,org.eclipse.che.plugin_org.eclipse.core.filebuffers,30,44306,7055,false,0.975,119,ready,
+2026-07-14T03:03:26.219214+00:00,io.featurehub.sdk.composites:sdk-composite-test,java,io.featurehub.sdk.composites_sdk-composite-test,9,58241,7670,false,0.955,155,ready,
+2026-07-14T03:03:26.608339+00:00,org.gephi:preview-api,java,org.gephi_preview-api,4,6502,1005,false,0.917,48,ready,
+2026-07-14T03:03:27.038157+00:00,com.ea.orbit:orbit-actors-client,java,com.ea.orbit_orbit-actors-client,1,93,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-07-14T03:03:27.041855+00:00,com.github.adminfaces:admin-template,java,com.github.adminfaces_admin-template,1,22597,2338,false,0.821,117,ready,
+2026-07-14T03:03:27.426105+00:00,com.davfx.ninio:ninio-core,java,com.davfx.ninio_ninio-core,14,204,24,false,0.0,0,F5_fail,word_count_post_clean=24 < 500
+2026-07-14T03:03:27.466701+00:00,org.eclipse.scout.sdk:org.eclipse.scout.sdk.core,java,org.eclipse.scout.sdk_org.eclipse.scout.sdk.core,1,71,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-07-14T03:03:27.586026+00:00,net.nemerosa.ontrack:ontrack-extension-casc,java,net.nemerosa.ontrack_ontrack-extension-casc,138,353428,48237,false,0.963,160,ready,
+2026-07-14T03:03:28.213044+00:00,dev.hnaderi:scala-k8s-objects_sjs1_3,java,dev.hnaderi_scala-k8s-objects_sjs1_3,5,12725,1400,false,0.814,70,ready,
+2026-07-14T03:03:28.520023+00:00,com.google.api.grpc:proto-google-cloud-networkconnectivity-v1alpha1,java,com.google.api.grpc_proto-google-cloud-networkconnectivity-v1alpha1,58,152356,23977,false,0.963,136,ready,
+2026-07-14T03:03:29.509051+00:00,com.github.japgolly.scalacss:ext-react_sjs0.6_2.12,java,com.github.japgolly.scalacss_ext-react_sjs0.6_2.12,31,30563,4865,false,0.947,113,ready,
+2026-07-14T03:03:30.322561+00:00,com.github.philcali:lmxml-core_2.8.1,java,com.github.philcali_lmxml-core_2.8.1,2,2304,378,false,0.0,0,F5_fail,word_count_post_clean=378 < 500
+2026-07-14T03:03:30.335155+00:00,li.strolch:li.strolch.privilege,java,li.strolch_li.strolch.privilege,15,10107,1461,false,0.955,67,ready,
+2026-07-14T03:03:30.576617+00:00,org.apache.camel:camel-robotframework,java,org.apache.camel_camel-robotframework,1,2547,423,false,0.0,0,F5_fail,word_count_post_clean=423 < 500
+2026-07-14T03:03:30.582473+00:00,org.specs2:specs2-cats_2.12,java,org.specs2_specs2-cats_2.12,1,263,40,false,0.0,0,F5_fail,word_count_post_clean=40 < 500
+2026-07-14T03:03:30.632261+00:00,com.farao-community.farao:farao-crac-creator-cse,java,com.farao-community.farao_farao-crac-creator-cse,1,2416,364,false,0.0,0,F5_fail,word_count_post_clean=364 < 500
+2026-07-14T03:03:30.717093+00:00,org.glassfish.main.common:container-common,java,org.glassfish.main.common_container-common,568,1613183,100000,true,1.0,1,ready,
+2026-07-14T03:03:32.675764+00:00,org.webjars.npm:two-product,java,org.webjars.npm_two-product,1,754,116,false,0.0,0,F5_fail,word_count_post_clean=116 < 500
+2026-07-14T03:03:32.680495+00:00,com.julianpeeters:avrohugger-core_2.13,java,com.julianpeeters_avrohugger-core_2.13,1,8333,1230,false,0.979,48,ready,
+2026-07-14T03:03:32.861053+00:00,org.daisy.pipeline.modules.braille:css-core,java,org.daisy.pipeline.modules.braille_css-core,38,11829,1818,false,0.987,77,ready,
+2026-07-14T03:03:33.076455+00:00,ca.uhn.hapi.fhir:org.hl7.fhir.r4b,java,ca.uhn.hapi.fhir_org.hl7.fhir.r4b,108,424577,65160,false,0.99,103,ready,
+2026-07-14T03:03:34.340353+00:00,io.trino.hadoop:hadoop-apache,java,io.trino.hadoop_hadoop-apache,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-07-14T03:03:34.344349+00:00,com.lihaoyi:ammonite-ops_2.11,java,com.lihaoyi_ammonite-ops_2.11,1,6857,1095,false,1.0,54,ready,
+2026-07-14T03:03:34.447489+00:00,com.manyangled:coulomb-si-units_sjs1_2.13,java,com.manyangled_coulomb-si-units_sjs1_2.13,12,29167,4477,false,0.944,125,ready,
+2026-07-14T03:03:34.756131+00:00,com.fasterxml.jackson.jr:jackson-jr-all,java,com.fasterxml.jackson.jr_jackson-jr-all,2932,1747137,100000,true,1.0,1,ready,
+2026-07-14T03:03:40.372835+00:00,org.webjars.bower:paper-styles,java,org.webjars.bower_paper-styles,1,750,112,false,0.0,0,F5_fail,word_count_post_clean=112 < 500
+2026-07-14T03:03:40.377687+00:00,io.kubernetes:client-java-cert-manager-models,java,io.kubernetes_client-java-cert-manager-models,791,1600656,100000,true,1.0,1,ready,
+2026-07-14T03:03:42.633706+00:00,org.typelevel:cats-parse_2.13,java,org.typelevel_cats-parse_2.13,2,21116,3026,false,0.776,116,ready,
+2026-07-14T03:03:43.030748+00:00,org.springframework.cloud.stream.app:httpclient-app-starters-test-support,java,org.springframework.cloud.stream.app_httpclient-app-starters-test-support,4,11611,1140,false,0.892,65,ready,
+2026-07-14T03:03:43.252122+00:00,com.immomo.cosmos:cvcenter,java,com.immomo.cosmos_cvcenter,1,347,49,false,0.0,0,F5_fail,word_count_post_clean=49 < 500
+2026-07-14T03:09:46.220101+00:00,xsdata,python,xsdata,29,31664,4231,false,0.952,62,ready,
+2026-07-14T03:09:46.815311+00:00,pdocs,python,pdocs,7,9259,1467,false,0.952,62,ready,
+2026-07-14T03:09:47.066540+00:00,hdfs,python,hdfs,6,9734,1467,false,0.985,67,ready,
+2026-07-14T03:09:47.433308+00:00,chainer,python,chainer,95,316363,46456,false,0.932,118,ready,
+2026-07-14T03:09:49.138722+00:00,wisepy2,python,wisepy2,1,1096,174,false,0.0,0,F5_fail,word_count_post_clean=174 < 500
+2026-07-14T03:09:49.173904+00:00,pulp-glue,python,pulp-glue,23,19505,2994,false,0.99,102,ready,
+2026-07-14T03:09:49.879666+00:00,datumaro,python,datumaro,107,203646,30647,false,0.945,109,ready,
+2026-07-14T03:09:51.671625+00:00,tiktoken,python,tiktoken,1,2530,436,false,0.0,0,F5_fail,word_count_post_clean=436 < 500
+2026-07-14T03:09:51.681997+00:00,slotscheck,python,slotscheck,8,7486,1186,false,1.0,53,ready,
+2026-07-14T03:09:51.909204+00:00,branca,python,branca,4,404,39,false,0.0,0,F5_fail,word_count_post_clean=39 < 500
+2026-07-14T03:09:51.924716+00:00,tsai,python,tsai,1,6084,899,false,0.75,68,ready,
+2026-07-14T03:09:52.264565+00:00,aiosonic,python,aiosonic,1,2390,340,false,0.0,0,F5_fail,word_count_post_clean=340 < 500
+2026-07-14T03:09:52.285417+00:00,vendorize,python,vendorize,1,1191,179,false,0.0,0,F5_fail,word_count_post_clean=179 < 500
+2026-07-14T03:09:52.298151+00:00,finitelycomputable-tests,python,finitelycomputable-tests,42,13200,1648,false,0.986,69,ready,
+2026-07-14T03:09:52.704699+00:00,dockerpty,python,dockerpty,1,3695,605,false,1.0,19,ready,
+2026-07-14T03:09:52.759072+00:00,iso8601,python,iso8601,3,4436,611,false,0.925,40,ready,
+2026-07-14T03:09:52.901190+00:00,spatialmath-python,python,spatialmath-python,54,32815,5091,false,0.959,74,ready,
+2026-07-14T03:09:53.334507+00:00,types-decorator,python,types-decorator,2,6122,1020,false,1.0,31,ready,
+2026-07-14T03:09:53.673422+00:00,pyprctl,python,pyprctl,3,3227,468,false,0.0,0,F5_fail,word_count_post_clean=468 < 500
+2026-07-14T03:09:53.688523+00:00,gammarers.aws-secure-bucket,python,gammarers.aws-secure-bucket,1,1763,257,false,0.0,0,F5_fail,word_count_post_clean=257 < 500
+2026-07-14T03:09:53.699734+00:00,com.github.angry1980:audio-fingerprint,java,com.github.angry1980_audio-fingerprint,2,261,16,false,0.0,0,F5_fail,word_count_post_clean=16 < 500
+2026-07-14T03:09:53.710557+00:00,net.databinder:dispatch-mime_2.9.1,java,net.databinder_dispatch-mime_2.9.1,14,24659,4099,false,0.991,107,ready,
+2026-07-14T03:09:53.929157+00:00,ch.tutteli.atrium:atrium-core-js,java,ch.tutteli.atrium_atrium-core-js,1,56096,9154,false,0.984,124,ready,
+2026-07-14T03:09:54.318074+00:00,com.gwtplatform:gwtp-dispatch-server-guice,java,com.gwtplatform_gwtp-dispatch-server-guice,1,1405,196,false,0.0,0,F5_fail,word_count_post_clean=196 < 500
+2026-07-14T03:09:54.376414+00:00,co.cask.cdap:hydrator-test,java,co.cask.cdap_hydrator-test,19,36085,5530,false,0.993,140,ready,
+2026-07-14T03:09:55.618451+00:00,org.opencypher:okapi-api,java,org.opencypher_okapi-api,41,75537,11086,false,0.956,136,ready,
+2026-07-14T03:09:56.234297+00:00,it.bz.opendatahub.alpinebits:alpinebits-xml-impl,java,it.bz.opendatahub.alpinebits_alpinebits-xml-impl,1,7413,1127,false,0.973,73,ready,
+2026-07-14T03:09:56.787531+00:00,org.wildfly:wildfly-webservices-server-integration,java,org.wildfly_wildfly-webservices-server-integration,265,1796150,100000,true,1.0,1,ready,
+2026-07-14T03:09:58.552558+00:00,org.liveontologies:puli,java,org.liveontologies_puli,2,1170,172,false,0.0,0,F5_fail,word_count_post_clean=172 < 500
+2026-07-14T03:09:58.583980+00:00,org.apache.camel:camel-quartz2,java,org.apache.camel_camel-quartz2,1,2547,423,false,0.0,0,F5_fail,word_count_post_clean=423 < 500
+2026-07-14T03:09:58.596132+00:00,org.scalacheck:scalacheck_0.27,java,org.scalacheck_scalacheck_0.27,3,21723,3627,false,1.0,129,ready,
+2026-07-14T03:09:59.027565+00:00,org.seleniumhq.selenium:selenium-safari-driver,java,org.seleniumhq.selenium_selenium-safari-driver,29,42289,6336,false,0.989,89,ready,
+2026-07-14T03:10:00.188151+00:00,org.openbase:jps,java,org.openbase_jps,132,191956,21171,false,1.0,27,ready,
+2026-07-14T03:10:01.568977+00:00,org.apache.isis.core:isis-schema,java,org.apache.isis.core_isis-schema,46,80979,11157,false,0.963,107,ready,
+2026-07-14T03:10:03.053583+00:00,io.snappydata:snappy-spark-tags_2.11,java,io.snappydata_snappy-spark-tags_2.11,361,948626,100000,true,1.0,1,ready,
+2026-07-14T03:10:05.480233+00:00,org.coodex:concrete-core-spring,java,org.coodex_concrete-core-spring,90,69909,5133,false,0.464,28,F6_fail,english_fraction=0.46 < 0.5
+2026-07-14T03:10:06.341313+00:00,com.technophobia.substeps:substeps-runner-common,java,com.technophobia.substeps_substeps-runner-common,24,29130,4241,false,0.987,79,ready,
+2026-07-14T03:10:06.752317+00:00,com.intuit.wasabi:wasabi-experiment-objects,java,com.intuit.wasabi_wasabi-experiment-objects,17,56438,9296,false,0.947,114,ready,
+2026-07-14T03:10:07.601589+00:00,io.javaoperatorsdk:operator-framework-samples-common,java,io.javaoperatorsdk_operator-framework-samples-common,25,31269,4921,false,0.922,128,ready,
+2026-07-14T03:11:08.514756+00:00,pdm,python,pdm,26,91485,14635,false,0.958,142,ready,
+2026-07-14T03:11:09.122861+00:00,wakeonlan,python,wakeonlan,3,1003,179,false,0.0,0,F5_fail,word_count_post_clean=179 < 500
+2026-07-14T03:11:09.270046+00:00,mat-data,python,mat-data,11,4061,585,false,1.0,34,ready,
+2026-07-14T03:11:09.381016+00:00,ipydatagrid,python,ipydatagrid,1,2212,323,false,0.0,0,F5_fail,word_count_post_clean=323 < 500
+2026-07-14T03:11:09.397493+00:00,trame-vuetify,python,trame-vuetify,9,7202,1044,false,0.977,43,ready,
+2026-07-14T03:11:09.554067+00:00,nteract-scrapbook,python,nteract-scrapbook,16,19956,3075,false,0.961,129,ready,
+2026-07-14T03:11:10.096068+00:00,scikit-base,python,scikit-base,38,37312,5601,false,0.991,111,ready,
+2026-07-14T03:11:10.548994+00:00,com.stanfy.enroscar:enroscar-sdk-dep,java,com.stanfy.enroscar_enroscar-sdk-dep,9,3587,578,false,1.0,34,ready,
+2026-07-14T03:11:10.649955+00:00,org.apereo.cas:cas-server-support-throttle,java,org.apereo.cas_cas-server-support-throttle,785,1332263,100000,true,1.0,1,ready,
+2026-07-14T03:11:13.578701+00:00,org.openidentityplatform.openam:openam-cli-definitions,java,org.openidentityplatform.openam_openam-cli-definitions,60,229454,31793,false,0.979,143,ready,
+2026-07-14T03:11:15.006887+00:00,com.weicoder:socket,java,com.weicoder_socket,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-07-14T03:11:15.057091+00:00,com.github.eagle6688:devutility.internal,java,com.github.eagle6688_devutility.internal,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-07-14T03:11:34.233148+00:00,fairlearn,python,fairlearn,66,210618,31396,false,0.987,77,ready,
+2026-07-14T03:11:35.840956+00:00,prometheus-async,python,prometheus-async,5,4051,633,false,1.0,32,ready,
+2026-07-14T03:11:35.947630+00:00,net.jangaroo:jangaroo-compiler-api,java,net.jangaroo_jangaroo-compiler-api,1,52,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-07-14T03:11:36.009624+00:00,com.fizzed:blaze-vagrant,java,com.fizzed_blaze-vagrant,9,20238,3342,false,0.962,133,ready,
+2026-07-14T03:11:52.805479+00:00,io.zeebe:zeebe-bom,java,io.zeebe_zeebe-bom,20,27837,4578,false,0.975,121,ready,
+2026-07-14T05:56:32.260179+00:00,com.amazonaws:aws-java-sdk-costandusagereport,java,com.amazonaws_aws-java-sdk-costandusagereport,1,3269,551,false,0.889,27,ready,
+2026-07-14T05:56:37.164602+00:00,com.github.rocketraman.cfg4k:cfg4k-core,java,com.github.rocketraman.cfg4k_cfg4k-core,2,1671,262,false,0.0,0,F5_fail,word_count_post_clean=262 < 500
+2026-07-14T05:56:37.182260+00:00,io.github.cjkent.osiris:osiris-core,java,io.github.cjkent.osiris_osiris-core,1,816,152,false,0.0,0,F5_fail,word_count_post_clean=152 < 500
+2026-07-14T05:57:20.026542+00:00,software.amazon.awssdk:aws-sdk-java,java,software.amazon.awssdk_aws-sdk-java,59,212833,31380,false,0.956,113,ready,
+2026-07-14T05:57:21.717268+00:00,org.apache.flink:flink-streaming-scala_2.11,java,org.apache.flink_flink-streaming-scala_2.11,757,1422178,100000,true,1.0,1,ready,

@@ -1,0 +1,689 @@
+# panphon
+
+`panphon` is a Python library for working with phonetic segments and feature representations. Its API supports:
+
+- Tokenizing and validating IPA-like strings into segments
+- Looking up feature specifications for individual segments
+- Representing segments as mappings and numeric vectors
+- Matching feature masks and feature-based patterns
+- Computing edit distances and error rates between phonetic strings
+- Converting X-SAMPA input
+- Estimating sonority
+- Encoding and decoding feature-vector representations
+- Generating, sorting, and validating segment inventories through command-line-oriented helpers
+
+The library centers on **feature tables**: objects that map segment strings to feature descriptions. Those descriptions can be used for comparison, searching, vectorization, and distance calculations.
+
+## Quick example
+
+```python
+from panphon.featuretable import FeatureTable
+from panphon.distance import Distance
+
+ft = FeatureTable()
+dist = Distance()
+
+word = "pata"
+
+# Split a word into recognized IPA segments.
+segments = ft.ipa_segs(word)
+print(segments)
+
+# Obtain feature mappings for each segment.
+features = ft.word_fts(word)
+for segment, segment_features in zip(segments, features):
+    print(segment, segment_features)
+
+# Compare two forms using several distance measures.
+print(dist.levenshtein_distance("pata", "pada"))
+print(dist.feature_edit_distance("pata", "pada"))
+print(dist.hamming_feature_edit_distance("pata", "pada"))
+```
+
+## Core concepts
+
+### Segments
+
+A phonetic segment is represented by `Segment`, a mapping from feature names to integer values.
+
+```python
+from panphon.featuretable import FeatureTable
+
+ft = FeatureTable()
+
+p = ft.fts("p")
+
+print(p.items())       # feature/value pairs
+print(p.numeric())     # numeric feature values
+print(p.strings())     # string feature values
+print(p.specified())   # explicitly specified features
+```
+
+`Segment` instances can be compared directly:
+
+```python
+p = ft.fts("p")
+b = ft.fts("b")
+
+print(p.distance(b))
+print(p.norm_distance(b))
+
+print(p.hamming_distance(b))
+print(p.norm_hamming_distance(b))
+
+print(p.weighted_distance(b))
+print(p.norm_weighted_distance(b))
+
+print(p.differing_specs(b))
+```
+
+A `Segment` can also test whether it matches a feature mask and can compute its feature intersection with another segment.
+
+```python
+mask = dict(list(p.items())[:2])
+
+print(p.match(mask))
+print(p.intersection(b))
+```
+
+## Feature tables
+
+Two feature-table APIs are available.
+
+- `panphon.featuretable.FeatureTable` returns `Segment` objects with integer-valued feature mappings.
+- `panphon._panphon.FeatureTable` provides a tuple/set-oriented API, where feature values are represented as `(name, value)` tuples.
+
+For most new code, the `panphon.featuretable.FeatureTable` API is the more direct choice because it works with `Segment` objects.
+
+### Constructing a feature table
+
+```python
+from panphon.featuretable import FeatureTable
+
+ft = FeatureTable()
+```
+
+### Normalization and validation
+
+Feature tables can normalize input and determine whether a word is composed of known segments.
+
+```python
+word = "pata"
+
+normalized = ft.normalize(word)
+is_valid = ft.validate_word(word)
+
+print(normalized)
+print(is_valid)
+```
+
+Several methods accept a `normalize` argument, allowing callers to control whether normalization occurs before processing.
+
+```python
+segment = ft.fts("p", normalize=True)
+segments = ft.ipa_segs("pata", normalize=True)
+```
+
+### Segmenting words
+
+Use `ipa_segs()` to tokenize a string into IPA segments.
+
+```python
+segments = ft.ipa_segs("pata")
+print(segments)
+```
+
+Related methods include:
+
+```python
+# Find the longest recognized segment at the beginning of a string.
+prefix = ft.longest_one_seg_prefix("pata")
+
+# Check whether one segment is known.
+known = ft.seg_known("p")
+
+# Retain only recognized segments.
+safe_segments = ft.segs_safe("pata")
+
+# Filter a segment list or a string.
+filtered_segments = ft.filter_segs(["p", "a"])
+filtered_word = ft.filter_string("pata")
+```
+
+### Looking up features for a word
+
+```python
+word_features = ft.word_fts("pata")
+
+for segment_features in word_features:
+    print(segment_features)
+```
+
+A feature table can convert selected named features into a NumPy array:
+
+```python
+feature_names = ["voice", "continuant"]
+
+array = ft.word_array(feature_names, "pata")
+print(array)
+```
+
+To obtain an aggregate feature representation for a word:
+
+```python
+bag = ft.bag_of_features("pata")
+print(bag)
+```
+
+### Feature intersections and inventories
+
+Find the feature intersection shared by a list of segments:
+
+```python
+shared = ft.fts_intersection(["p", "t", "k"])
+print(shared)
+```
+
+Search an inventory using a feature mask:
+
+```python
+p = ft.fts("p")
+mask = dict(list(p.items())[:2])
+
+matching_segments = ft.all_segs_matching_fts(mask)
+print(matching_segments)
+```
+
+## Feature matching and patterns
+
+The feature-table API includes helpers for evaluating feature conditions over collections of segments.
+
+```python
+ft = FeatureTable()
+
+p = ft.fts("p")
+mask = dict(list(p.items())[:2])
+
+inventory = ["p", "b", "t", "a"]
+
+print(ft.fts_match_all(mask, inventory))
+print(ft.fts_match_any(mask, inventory))
+print(ft.fts_count(mask, inventory))
+```
+
+`fts_contrast()` tests whether an inventory contains contrast with respect to a named feature.
+
+```python
+has_contrast = ft.fts_contrast(mask, "voice", ["p", "b"])
+print(has_contrast)
+```
+
+Feature masks can also be used as patterns.
+
+```python
+pattern = [mask]
+
+match = ft.match_pattern(pattern, "pata")
+if match is not None:
+    print(match)
+```
+
+For sequential matching, use `match_pattern_seq()`.
+
+```python
+result = ft.match_pattern_seq(pattern, ["p", "a", "t", "a"])
+print(result)
+```
+
+The `compile_regex_from_str()` method provides a way to build a regular-expression-like matcher from a feature-pattern string.
+
+```python
+compiled = ft.compile_regex_from_str("...")
+```
+
+The exact string format accepted by `compile_regex_from_str()` depends on the feature-pattern syntax used by the library.
+
+## Vector representations
+
+Feature tables can convert segments and words into vector representations.
+
+```python
+ft = FeatureTable()
+
+segment_vector = ft.segment_to_vector("p")
+word_vectors = ft.word_to_vector_list("pata")
+
+print(segment_vector)
+print(word_vectors)
+```
+
+Request numeric vectors when needed:
+
+```python
+numeric_vectors = ft.word_to_vector_list("pata", numeric=True)
+print(numeric_vectors)
+```
+
+The same method can accept X-SAMPA input:
+
+```python
+vectors = ft.word_to_vector_list("...", xsampa=True)
+```
+
+Tone symbols can be standardized during word vectorization:
+
+```python
+standardized = ft.standardize_tones("...")
+print(standardized)
+```
+
+A vector sequence can be converted back into a word:
+
+```python
+reconstructed = ft.vector_list_to_word(word_vectors)
+print(reconstructed)
+```
+
+For approximate reconstruction, enable fuzzy searching:
+
+```python
+reconstructed = ft.vector_list_to_word(word_vectors, fuzzy_search=True)
+```
+
+## Distance and similarity
+
+`Distance` provides string-, category-, and feature-based distance functions.
+
+```python
+from panphon.distance import Distance
+
+dist = Distance()
+
+source = "pata"
+target = "pada"
+
+print(dist.levenshtein_distance(source, target))
+print(dist.fast_levenshtein_distance(source, target))
+print(dist.fast_levenshtein_distance_div_maxlen(source, target))
+```
+
+### Category-based distance
+
+```python
+print(dist.dolgo_prime_distance(source, target))
+print(dist.dolgo_prime_distance_div_maxlen(source, target))
+```
+
+`map_to_dolgo_prime()` maps a string to its corresponding representation for this distance family.
+
+```python
+mapped = dist.map_to_dolgo_prime("pata")
+print(mapped)
+```
+
+### Feature edit distance
+
+Feature edit distance compares words through their segment feature vectors.
+
+```python
+print(dist.feature_edit_distance(source, target))
+print(dist.feature_edit_distance_div_maxlen(source, target))
+
+print(dist.jt_feature_edit_distance(source, target))
+print(dist.jt_feature_edit_distance_div_maxlen(source, target))
+```
+
+### Hamming-style feature distance
+
+```python
+print(dist.hamming_feature_edit_distance(source, target))
+print(dist.hamming_feature_edit_distance_div_maxlen(source, target))
+
+print(dist.jt_hamming_feature_edit_distance(source, target))
+print(dist.jt_hamming_feature_edit_distance_div_maxlen(source, target))
+```
+
+### Weighted feature distance
+
+```python
+print(dist.weighted_feature_edit_distance(source, target))
+print(dist.weighted_feature_edit_distance_div_maxlen(source, target))
+
+print(dist.jt_weighted_feature_edit_distance(source, target))
+print(dist.jt_weighted_feature_edit_distance_div_maxlen(source, target))
+```
+
+### Partial Hamming distance
+
+```python
+print(dist.partial_hamming_feature_edit_distance(source, target))
+print(dist.partial_hamming_feature_edit_distance_div_maxlen(source, target))
+```
+
+### Error rates
+
+```python
+phoneme_error_rate = dist.phoneme_error_rate(hyp="pada", ref="pata")
+feature_error_rate = dist.feature_error_rate(hyp="pada", ref="pata")
+
+print(phoneme_error_rate)
+print(feature_error_rate)
+```
+
+### X-SAMPA distance input
+
+Several distance methods accept `xsampa=True`.
+
+```python
+value = dist.feature_edit_distance("...", "...", xsampa=True)
+print(value)
+```
+
+## X-SAMPA conversion
+
+Use `XSampa` to convert X-SAMPA input.
+
+```python
+from panphon.xsampa import XSampa
+
+converter = XSampa()
+
+ipa = converter.convert("...")
+print(ipa)
+```
+
+`read_xsampa_table()` reloads or reads the conversion table used by the converter.
+
+```python
+converter.read_xsampa_table()
+```
+
+## Tokenization
+
+`Tokenizer` exposes prefix-oriented tokenization operations.
+
+```python
+from panphon.tokenizer import Tokenizer
+
+tokenizer = Tokenizer()
+
+prefixes = tokenizer.prefixes("pata")
+longest = tokenizer.longest_prefix("pata")
+tokens = tokenizer.tokenize("pata")
+
+print(prefixes)
+print(longest)
+print(tokens)
+```
+
+This API is useful when an application needs explicit control over matching candidate prefixes before tokenizing a full string.
+
+## Sonority
+
+`Sonority` derives a sonority value from a segment or its feature representation.
+
+```python
+from panphon.featuretable import FeatureTable
+from panphon.sonority import Sonority
+
+ft = FeatureTable()
+sonority = Sonority()
+
+segment = ft.fts("p")
+
+print(sonority.sonority_from_fts(segment))
+print(sonority.sonority("p"))
+```
+
+`BoolTree` is a related utility with a `get_value()` method.
+
+```python
+from panphon.sonority import BoolTree
+
+tree = BoolTree()
+value = tree.get_value()
+```
+
+## Feature-vector encoding and decoding
+
+`panphonvec` provides a vector-oriented interface for feature inventories and phoneme reconstruction.
+
+```python
+from panphon.panphonvec import encode, decode, hamming_distance
+
+matrix = encode("pata")
+print(matrix)
+
+reconstructed = decode(matrix)
+print(reconstructed)
+
+distance = hamming_distance(matrix[0], matrix[1])
+print(distance)
+```
+
+Additional helpers include:
+
+```python
+from panphon.panphonvec import (
+    add_and_get_new_phoneme,
+    add_and_get_new_vector,
+    build_segment_re,
+    generate_feature_vectors,
+    generate_modifiers,
+    get_features,
+    get_modifiers,
+    get_segment_re,
+    vector_to_tuple,
+)
+
+feature_vectors = generate_feature_vectors()
+modifiers = generate_modifiers()
+
+features = get_features()
+modifier_data = get_modifiers()
+
+segment_re = build_segment_re()
+segment_re = get_segment_re()
+
+vector = add_and_get_new_vector("p")
+vector_key = vector_to_tuple(vector)
+
+possible_segments = add_and_get_new_phoneme(vector)
+```
+
+`FeatureVectors` and `Modifiers` are named-tuple types used by the vector-generation helpers.
+
+## Permissive feature tables
+
+`PermissiveFeatureTable` extends the tuple/set-oriented feature-table API and is intended for more permissive segment processing.
+
+```python
+from panphon.permissive import PermissiveFeatureTable
+
+ft = PermissiveFeatureTable()
+
+features = ft.fts("p")
+segments = ft.segment_word_segments("pata")
+known = ft.seg_known("p")
+
+print(features)
+print(segments)
+print(known)
+```
+
+It also provides feature matching and inventory search methods:
+
+```python
+matches = ft.all_segs_matching_fts()
+print(matches)
+```
+
+The module additionally exposes `flip()` and `update_ft_set()` utilities.
+
+```python
+from panphon.permissive import flip, update_ft_set
+
+print(flip("+"))
+updated = update_ft_set(set(), None)
+```
+
+## Tuple/set-oriented feature-table API
+
+The `panphon._panphon` API represents feature specifications as sets and lists of `(feature_name, value)` tuples.
+
+```python
+from panphon._panphon import FeatureTable, fts, pat, segment_text
+
+ft = FeatureTable()
+
+segments = list(segment_text("pata"))
+segment_features = fts("p")
+pattern = pat("...")
+
+print(segments)
+print(segment_features)
+print(pattern)
+```
+
+Word-level feature arrays can be constructed with `word2array()`.
+
+```python
+from panphon._panphon import word2array
+
+feature_names = ["voice", "continuant"]
+word_features = ft.word_fts("pata")
+
+array = word2array(feature_names, word_features)
+print(array)
+```
+
+## Collapsing strings
+
+`Collapser` exposes a `collapse()` method for transforming a string into a collapsed representation.
+
+```python
+from panphon.collapse import Collapser
+
+collapser = Collapser()
+
+result = collapser.collapse("pata")
+print(result)
+```
+
+## Trie support
+
+`TrieNode` provides insertion and serialization operations for trie-like data structures.
+
+```python
+from panphon.trie import TrieNode
+
+trie = TrieNode()
+
+trie.insert("pata")
+trie.insert("pada")
+
+trie.serialize("trie.dat")
+
+loaded = TrieNode.deserialize("trie.dat")
+```
+
+## Segment inventory generation and validation utilities
+
+The library includes helper APIs for creating and validating segment inventories.
+
+### Segment generation
+
+```python
+from panphon.bin.generate_ipa_all import (
+    Combination,
+    Diacritic,
+    Segment,
+    parse_dia_defs,
+    read_ipa_bases,
+    sort_all_segments,
+    write_ipa_all,
+)
+
+bases = read_ipa_bases("...")
+diacritics = parse_dia_defs("...")
+
+sort_all_segments("...", bases)
+write_ipa_all("...", "...", bases, "...")
+```
+
+`Segment.feature_vector()` returns a vector using a supplied ordered feature-name list.
+
+```python
+segment = Segment()
+vector = segment.feature_vector(["voice", "continuant"])
+```
+
+`Diacritic.match()` tests whether a diacritic applies to a segment, while `Diacritic.apply()` and `Combination.apply()` apply transformations.
+
+```python
+diacritic = Diacritic()
+combination = Combination()
+
+if diacritic.match(segment):
+    modified = diacritic.apply(segment)
+
+modified = combination.apply(segment)
+```
+
+### Validation
+
+```python
+from panphon.bin.validate_ipa import Validator
+
+validator = Validator()
+validator.validate_line("pata")
+```
+
+## Word-list alignment helpers
+
+`panphon.bin.align_wordlists` contains functions for constructing and scoring word-list alignments with multiple distance functions.
+
+```python
+from panphon.bin.align_wordlists import (
+    construct_cost_matrix,
+    dogol_leven_dist,
+    feature_hamming_dist,
+    feature_weighted_dist,
+    levenshtein_dist,
+    score,
+)
+
+words_a = ["pata", "kasa"]
+words_b = ["pada", "kaza"]
+
+matrix = construct_cost_matrix(words_a, words_b, levenshtein_dist)
+print(matrix)
+```
+
+Alternative distance functions include:
+
+- `levenshtein_dist`
+- `dogol_leven_dist`
+- `feature_hamming_dist`
+- `feature_weighted_dist`
+
+Use `score()` to score alignment indices:
+
+```python
+alignment_score = score([(0, 0), (1, 1)])
+print(alignment_score)
+```
+
+## Errors
+
+`SegmentError` is the library-specific exception type for segment-related failures.
+
+```python
+from panphon.errors import SegmentError
+
+try:
+    # Segment-processing operation
+    pass
+except SegmentError as error:
+    print(error)
+```

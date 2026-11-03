@@ -1,0 +1,225 @@
+# panoptes-client
+
+`panoptes-client` is a Python client library for interacting with the
+Zooniverse Panoptes API — the platform that powers Zooniverse citizen
+science projects. It provides an object-oriented interface for managing
+projects, workflows, subjects, subject sets, collections, classifications,
+and users, as well as integrations with Caesar (the Zooniverse
+reduction/aggregation service) and iNaturalist imports.
+
+The library handles authentication, HTTP requests, pagination, and
+linking between related resources, so you can work with Panoptes
+resources as native Python objects rather than raw JSON/HTTP calls.
+
+## Installation
+
+```bash
+pip install panoptes-client
+```
+
+## Getting Started: Authentication
+
+Most operations require an authenticated session. The `Panoptes` class
+manages connections and credentials for all other classes.
+
+```python
+from panoptes_client import Panoptes
+
+# Log in with username/password
+Panoptes.connect(username='my-user', password='my-password')
+
+# Or log in interactively (prompts for credentials)
+Panoptes.client().interactive_login()
+```
+
+Once connected, the global `Panoptes` client is used implicitly by all
+other classes in the library.
+
+## Core Concepts
+
+### PanoptesObject
+
+`PanoptesObject` is the base class for nearly every resource in the
+library (`Project`, `Workflow`, `Subject`, `SubjectSet`, `Collection`,
+`Classification`, `User`, etc.). It provides shared behavior:
+
+- `find(id)` — fetch a single object by ID.
+- `where(**kwargs)` — query for a collection of objects matching filters.
+- `save()` — persist changes (create or update).
+- `reload()` — refresh local state from the API.
+- `delete()` — delete the object.
+
+Because these methods are inherited, the same patterns apply across
+resource types.
+
+### Exportable
+
+`Exportable` is a mixin (used by `Project`, `Workflow`, and
+`SubjectSet`) that adds support for the Panoptes data export system:
+
+- `generate_export(export_type)` — request a new export.
+- `get_export(export_type, generate=False, wait=False, wait_timeout=None)` — fetch (and optionally generate/wait for) an export.
+- `wait_export(export_type, timeout=None)` — block until an export finishes.
+- `describe_export(export_type)` — get metadata about an export type.
+
+### Main Resource Classes
+
+- **`Project`** — represents a Zooniverse project. Supports managing
+  subject sets, workflows, collaborators, and attached images, and can
+  be copied via `copy()`.
+- **`Workflow`** — represents a classification workflow within a
+  project. Supports subject retirement, linking subject sets, querying
+  subject status, and rich integration with Caesar for extraction and
+  reduction configuration (including a convenience pipeline for
+  "Alice" style aggregation via `configure_for_alice()`).
+- **`SubjectSet`** and **`SetMemberSubject`** — represents a set of
+  subjects and their membership records; supports adding/removing
+  subjects and checking workflow status per subject.
+- **`Subject`** — represents an individual subject (an item to be
+  classified), including media attachment via `add_location()` and
+  asynchronous save support.
+- **`Collection`** and **`CollectionRole`** — user-curated groupings of
+  subjects, with role-based permissions.
+- **`Classification`** — represents a volunteer's classification of a
+  subject; queryable via `where()`.
+- **`User`** — represents a Panoptes user account, with `User.me()` for
+  the currently authenticated user.
+- **`Organization`** — groups multiple projects together.
+- **`ProjectPreferences`** and **`ProjectRole`** — per-user project
+  settings and role assignments.
+- **`SubjectWorkflowStatus`** — tracks a subject's retirement/status
+  within a specific workflow.
+- **`WorkflowVersion`** — represents a historical version of a
+  workflow's configuration.
+- **`Aggregation`** — represents aggregation results for a workflow.
+
+### Caesar Integration
+
+The **`Caesar`** class and the Caesar-related methods on `Workflow`
+(`save_to_caesar`, `add_caesar_extractor`, `add_caesar_reducer`,
+`add_caesar_rule`, `add_caesar_rule_effect`,
+`import_caesar_data_extracts`, `run_aggregation`, etc.) let you
+configure and interact with the Caesar reduction engine directly from
+workflow objects, without manually issuing HTTP requests.
+
+### Talk
+
+The **`Talk`** class provides low-level access to the Zooniverse Talk
+(discussion) API via `http_get`/`http_post`/`http_put`/`http_delete`
+and higher-level `get_data_request`/`post_data_request` helpers.
+
+### Inaturalist
+
+The **`Inaturalist`** class provides a single helper,
+`inat_import(taxon_id, subject_set_id, updated_since=None)`, for
+importing iNaturalist observations into a Panoptes subject set.
+
+### Utilities
+
+`panoptes_client.utils` provides small helpers used throughout the
+library and available for client code:
+
+- `isiterable(v)` — check whether a value is iterable.
+- `split(to_batch, batch_size)` — split a list into batches.
+- `batchable(func=None, batch_size=100)` — decorator to automatically
+  batch calls to functions that accept large lists of arguments (used
+  internally by methods like `SubjectSet.add`).
+
+## Usage Examples
+
+### Creating a project, subject set, and subjects
+
+```python
+from panoptes_client import Panoptes, Project, SubjectSet, Subject
+
+Panoptes.connect(username='my-user', password='my-password')
+
+project = Project.find(slug='my-user/my-project')
+
+subject_set = SubjectSet()
+subject_set.links.project = project
+subject_set.display_name = 'My First Subject Set'
+subject_set.save()
+
+subject = Subject()
+subject.links.project = project
+subject.add_location('path/to/image.png')
+subject.metadata.update({'filename': 'image.png'})
+subject.save()
+
+subject_set.add(subject)
+```
+
+### Querying classifications
+
+```python
+from panoptes_client import Classification
+
+for classification in Classification.where(project_id=1234):
+    print(classification.id, classification.raw['annotations'])
+```
+
+### Working with workflows and retirement
+
+```python
+from panoptes_client import Workflow, Subject
+
+workflow = Workflow.find(5678)
+
+subjects = list(Subject.where(workflow_id=workflow.id))
+workflow.retire_subjects(subjects, reason='consensus')
+```
+
+### Requesting a data export
+
+```python
+from panoptes_client import Project
+
+project = Project.find(1234)
+
+# Generate a new classifications export and wait for it to complete
+export = project.get_export('classifications', generate=True, wait=True)
+
+with open('classifications.csv', 'wb') as f:
+    for chunk in export.iter_content():
+        f.write(chunk)
+```
+
+### Configuring a workflow for Caesar aggregation
+
+```python
+from panoptes_client import Workflow
+
+workflow = Workflow.find(5678)
+
+workflow.configure_for_alice()
+workflow.run_aggregation()
+
+status = workflow.get_batch_aggregation_status()
+print(status)
+```
+
+### Importing data from iNaturalist
+
+```python
+from panoptes_client import Inaturalist
+
+Inaturalist.inat_import(taxon_id=48460, subject_set_id=9999)
+```
+
+## Error Handling
+
+The library defines several exceptions to signal API and usage errors:
+
+- `PanoptesAPIException` — raised for errors returned by the Panoptes
+  API.
+- `ObjectNotSavedException` — raised when an operation requires a saved
+  object but the object hasn't been persisted yet.
+- `ReadOnlyAttributeException` — raised when attempting to modify a
+  read-only link or attribute.
+- `UnknownMediaException` — raised when `Subject.add_location()` cannot
+  determine the media type of a given file.
+
+## License
+
+See the repository's `LICENSE` file for license information.

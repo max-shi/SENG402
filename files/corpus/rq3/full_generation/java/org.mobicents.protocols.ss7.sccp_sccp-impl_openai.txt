@@ -1,0 +1,931 @@
+# SCCP Implementation Library
+
+`org.mobicents.protocols.ss7.sccp:sccp-impl` is a Java implementation layer for working with SCCP (Signalling Connection Control Part) messages, addressing, routing, remote SCCP resources, congestion state, and MTP3-facing configuration.
+
+The library provides:
+
+- A `SccpStackImpl` stack facade with lifecycle and transport integration.
+- A `SccpProviderImpl` for message/parameter factories, listeners, and sending SCCP data.
+- SCCP connectionless and connection-oriented message implementations.
+- SCCP address, global title, protocol, segmentation, and cause parameter implementations.
+- Routing rules, routing addresses, long-message rules, and MTP3 service-access-point selection.
+- Remote signaling point code (SPC), remote subsystem (SSN), and concerned-SPC resource management.
+- SCCP congestion-control and network availability state support.
+- XML-serializable configuration-oriented objects.
+
+Most users will interact through the API interfaces returned by the stack and provider, while the `*Impl` classes are useful when constructing concrete messages and parameters directly.
+
+## Requirements
+
+- Java
+- An MTP3 user-part implementation where SCCP traffic is to be exchanged through MTP3
+
+The API exposes types such as `Mtp3UserPart`, `Mtp3TransferPrimitive`, and SCCP interfaces such as `SccpStack`, `SccpProvider`, `SccpAddress`, and `SccpDataMessage`. These types are part of the surrounding SS7 API ecosystem.
+
+---
+
+## Core components
+
+### `SccpStackImpl`
+
+`SccpStackImpl` is the main SCCP stack implementation. It owns the SCCP provider, routing facilities, resource configuration, and MTP3 user-part mappings.
+
+```java
+SccpStackImpl stack = new SccpStackImpl("example-stack");
+```
+
+Key responsibilities include:
+
+- Starting and stopping SCCP processing.
+- Registering MTP3 user parts by identifier.
+- Selecting and configuring the SCCP protocol version.
+- Managing delivery-thread count and SCCP timers.
+- Configuring long-message and segmentation limits.
+- Exposing `SccpProvider`, `Router`, and `SccpResource`.
+- Receiving MTP3 pause, resume, status, congestion-end, and transfer primitives.
+
+Notable methods:
+
+```java
+stack.setMtp3UserPart(int id, Mtp3UserPart mtp3UserPart);
+stack.start();
+stack.stop();
+
+SccpProvider provider = stack.getSccpProvider();
+Router router = stack.getRouter();
+SccpResource resources = stack.getSccpResource();
+```
+
+Stack configuration includes:
+
+```java
+stack.setSccpProtocolVersion(SccpProtocolVersion ...);
+stack.setRemoveSpc(boolean removeSpc);
+stack.setPreviewMode(boolean previewMode);
+
+stack.setMaxDataMessage(int maxDataMessage);
+stack.setZMarginXudtMessage(int zMarginXudtMessage);
+stack.setReassemblyTimerDelay(int reassemblyTimerDelay);
+
+stack.setCongControlTIMER_A(int value);
+stack.setCongControlTIMER_D(int value);
+stack.setCongControlN(int value);
+stack.setCongControlM(int value);
+stack.setCongControl_Algo(SccpCongestionControlAlgo value);
+stack.setCongControl_blockingOutgoungSccpMessages(boolean value);
+```
+
+### `SccpProviderImpl`
+
+`SccpProviderImpl` provides the application-facing SCCP operations:
+
+- Create SCCP messages and parameters.
+- Register listeners by subsystem number (SSN).
+- Register management-event listeners.
+- Send SCCP data messages.
+- Query maximum user-data capacity for an address pair.
+- Request subsystem coordination.
+
+```java
+SccpProvider provider = stack.getSccpProvider();
+
+MessageFactory messages = provider.getMessageFactory();
+ParameterFactory parameters = provider.getParameterFactory();
+
+provider.registerSccpListener(8, listener);
+provider.send(dataMessage);
+```
+
+The provider’s send method accepts a `SccpDataMessage`:
+
+```java
+void send(SccpDataMessage message) throws IOException;
+```
+
+### `MessageFactoryImpl`
+
+`MessageFactoryImpl` creates connectionless data messages, notices, connection requests, and decodes incoming SCCP payloads.
+
+Available factory operations include:
+
+| Method | Purpose |
+|---|---|
+| `createDataMessageClass0(...)` | Create a class 0 connectionless SCCP data message. |
+| `createDataMessageClass1(...)` | Create a class 1 connectionless SCCP data message with SLS input. |
+| `createNoticeMessage(...)` | Create an SCCP notice message with a return cause. |
+| `createConnectMessageClass2(...)` | Create a class 2 connection request. |
+| `createConnectMessageClass3(...)` | Create a class 3 connection request with credit. |
+| `createMessage(...)` | Decode a message from an input stream and MTP3 routing context. |
+
+Example factory call:
+
+```java
+SccpDataMessage message = messages.createDataMessageClass0(
+        calledParty,
+        callingParty,
+        payload,
+        8,
+        true,
+        hopCounter,
+        importance
+);
+```
+
+### Message implementations
+
+All concrete messages derive from `SccpMessageImpl`, which carries common MTP3/SCCP metadata:
+
+- Signaling link selection (`SLS`)
+- Incoming origin and destination point codes
+- Outgoing destination point code
+- Message type
+- MTP-originated state
+- Origin local SSN
+- Network identifier
+
+Message implementations support `decode(...)` and `encode(...)`. Encoding returns `EncodingResultData`, which carries both the result and encoded payload(s).
+
+#### Connectionless messages
+
+- `SccpDataMessageImpl`
+- `SccpNoticeMessageImpl`
+- `SccpDataNoticeTemplateMessageImpl`
+- `SccpSegmentableMessageImpl`
+- `SccpAddressedMessageImpl`
+
+Connectionless messages support called and calling addresses, optional hop counter, payload data, importance, and segmentation state.
+
+`SccpSegmentableMessageImpl` exposes reassembly-related state:
+
+```java
+Segmentation segmentation = message.getSegmentation();
+boolean complete = message.getIsFullyRecieved();
+int remaining = message.getRemainingSegments();
+byte[] data = message.getData();
+```
+
+#### Connection-oriented messages
+
+The library exposes implementations for standard connection-oriented SCCP message forms:
+
+| Message implementation | Main fields exposed |
+|---|---|
+| `SccpConnCrMessageImpl` | Source reference, called/calling address, protocol class, credit, data, hop counter, importance |
+| `SccpConnCcMessageImpl` | Destination/source references, called address, protocol class, credit, data, importance |
+| `SccpConnCrefMessageImpl` | Destination reference, called address, refusal cause, data, importance |
+| `SccpConnDt1MessageImpl` | Destination reference, segmenting/reassembling indicator, data |
+| `SccpConnDt2MessageImpl` | Destination reference, sequencing/segmenting information, data |
+| `SccpConnAkMessageImpl` | Destination reference, receive sequence number, credit |
+| `SccpConnItMessageImpl` | Destination/source references, protocol class, sequencing/segmenting, credit |
+| `SccpConnErrMessageImpl` | Destination reference, error cause |
+| `SccpConnRlsdMessageImpl` | Destination/source references, release cause, data, importance |
+| `SccpConnRlcMessageImpl` | Destination/source references |
+| `SccpConnRsrMessageImpl` | Destination/source references, reset cause |
+| `SccpConnRscMessageImpl` | Destination/source references |
+
+All of these messages can be decoded from an `InputStream` or encoded into SCCP wire data through:
+
+```java
+EncodingResultData result = message.encode(
+        stack,
+        longMessageRuleType,
+        maxMtp3UserDataLength,
+        logger,
+        removeSpc,
+        protocolVersion
+);
+```
+
+### `EncodingResult` and `EncodingResultData`
+
+Message encoding does not only produce bytes; it returns a structured result.
+
+`EncodingResult` values include:
+
+- `Success`
+- `ReturnFailure`
+- `DataMissed`
+- `DataMaxLengthExceeded`
+- `CalledPartyAddressMissing`
+- `CallingPartyAddressMissing`
+- `ProtocolClassMissing`
+- `SourceLocalReferenceNumberMissing`
+- `DestinationLocalReferenceNumberMissing`
+- `MessageTypeMissing`
+- `ReleaseCauseMissing`
+- `RefusalCauseMissing`
+- `SegmentingReassemblingMissing`
+- `ReceiveSequenceNumberMissing`
+- `CreditMissing`
+- `ResetCauseMissing`
+- `ErrorCauseMissing`
+- `SequencingSegmentingMissing`
+- `SegmentationNotSupported`
+
+`EncodingResultData` contains:
+
+```java
+EncodingResult status = result.getEncodingResult();
+byte[] oneMessage = result.getSolidData();
+ArrayList<byte[]> segments = result.getSegementedData();
+ReturnCauseValue returnCause = result.getReturnCause();
+```
+
+A caller should check the encoding result before using the returned encoded data.
+
+---
+
+## SCCP parameters and addressing
+
+### `ParameterFactoryImpl`
+
+`ParameterFactoryImpl` creates common SCCP parameter objects.
+
+```java
+ParameterFactory parameters = provider.getParameterFactory();
+```
+
+Supported factory operations include:
+
+```java
+SccpAddress address = parameters.createSccpAddress(
+        routingIndicator,
+        globalTitle,
+        destinationPointCode,
+        subsystemNumber
+);
+
+ProtocolClass protocolClass =
+        parameters.createProtocolClass(0, true);
+
+HopCounter hopCounter =
+        parameters.createHopCounter(15);
+
+Importance importance =
+        parameters.createImportance(0);
+
+Segmentation segmentation =
+        parameters.createSegmentation();
+
+ReturnCause returnCause =
+        parameters.createReturnCause(ReturnCauseValue ...);
+```
+
+### `SccpAddressImpl`
+
+`SccpAddressImpl` represents an SCCP address composed of:
+
+- A routing indicator.
+- An optional global title.
+- A signaling point code.
+- A subsystem number.
+
+```java
+SccpAddress address = new SccpAddressImpl(
+        routingIndicator,
+        globalTitle,
+        1234,
+        8
+);
+```
+
+Address inspection methods:
+
+```java
+AddressIndicator indicator = address.getAddressIndicator();
+int spc = address.getSignalingPointCode();
+int ssn = address.getSubsystemNumber();
+GlobalTitle gt = address.getGlobalTitle();
+```
+
+The translated marker can be read and changed:
+
+```java
+address.setTranslated(true);
+boolean translated = address.isTranslated();
+```
+
+### Global titles
+
+The global-title implementations correspond to different global-title indicator forms:
+
+| Class | Constructor data |
+|---|---|
+| `NoGlobalTitle` | Digits only |
+| `GlobalTitle0001Impl` | Digits and nature of address |
+| `GlobalTitle0010Impl` | Digits and translation type |
+| `GlobalTitle0011Impl` | Digits, translation type, encoding scheme, numbering plan |
+| `GlobalTitle0100Impl` | Digits, translation type, encoding scheme, numbering plan, nature of address |
+
+Examples:
+
+```java
+GlobalTitle gt = new NoGlobalTitle("123456789");
+
+GlobalTitle0010 translatedGt =
+        new GlobalTitle0010Impl("123456789", 0);
+```
+
+Or use the parameter factory:
+
+```java
+GlobalTitle0011 gt = parameters.createGlobalTitle(
+        "123456789",
+        0,
+        numberingPlan,
+        encodingScheme
+);
+```
+
+Encoding schemes include:
+
+- `DefaultEncodingScheme`
+- `BCDEvenEncodingScheme`
+- `BCDOddEncodingScheme`
+
+### Other parameter implementations
+
+The implementation exposes mutable parameter classes for SCCP message construction and decoding:
+
+- `CreditImpl`
+- `ErrorCauseImpl`
+- `HopCounterImpl`
+- `ImportanceImpl`
+- `LocalReferenceImpl`
+- `ProtocolClassImpl`
+- `ReceiveSequenceNumberImpl`
+- `RefusalCauseImpl`
+- `ReleaseCauseImpl`
+- `ResetCauseImpl`
+- `ReturnCauseImpl`
+- `SegmentationImpl`
+- `SegmentingReassemblingImpl`
+- `SequencingSegmentingImpl`
+
+For example:
+
+```java
+LocalReference sourceRef = new LocalReferenceImpl(0x10203);
+Credit credit = new CreditImpl(4);
+HopCounter hopCounter = new HopCounterImpl(15);
+Importance importance = new ImportanceImpl((byte) 0);
+```
+
+Most parameter implementations support both stream and byte-array encoding/decoding:
+
+```java
+byte[] encoded = parameter.encode(removeSpc, protocolVersion);
+parameter.decode(encoded, parameters, protocolVersion);
+```
+
+---
+
+## Routing
+
+### `RouterImpl`
+
+`RouterImpl` stores and evaluates SCCP routing rules, routing addresses, long-message policies, and MTP3 service-access-point mappings.
+
+The router can be obtained from the stack:
+
+```java
+Router router = stack.getRouter();
+```
+
+Lifecycle methods:
+
+```java
+router.setPersistDir("/var/lib/sccp-router");
+router.start();
+router.stop();
+router.store();
+```
+
+#### Routing rules
+
+Rules are represented by `RuleImpl` and selected through `findRule(...)`.
+
+```java
+Rule rule = router.findRule(
+        calledParty,
+        callingParty,
+        false,
+        networkId
+);
+```
+
+Rules can be configured with:
+
+- `RuleType`
+- `LoadSharingAlgorithm`
+- `OriginationType`
+- A called-party pattern and mask
+- Primary and secondary routing-address IDs
+- An optional replacement calling-party address ID
+- A network ID
+- An optional calling-party pattern
+
+```java
+router.addRule(
+        1,
+        ruleType,
+        loadSharingAlgorithm,
+        originationType,
+        calledPartyPattern,
+        mask,
+        primaryAddressId,
+        secondaryAddressId,
+        newCallingPartyAddressId,
+        networkId,
+        callingPartyPattern
+);
+```
+
+A `RuleImpl` can also be used directly to test or translate an address:
+
+```java
+boolean matches = rule.matches(
+        calledParty,
+        callingParty,
+        false,
+        networkId
+);
+
+SccpAddress translated = rule.translate(calledParty, ruleAddress);
+```
+
+#### Routing addresses
+
+Routing addresses are stored by integer ID:
+
+```java
+router.addRoutingAddress(100, primaryAddress);
+router.modifyRoutingAddress(100, updatedAddress);
+router.removeRoutingAddress(100);
+
+SccpAddress address = router.getRoutingAddress(100);
+```
+
+#### Long-message rules
+
+`LongMessageRuleType` determines which long-message encoding mode is applicable for a destination point code.
+
+Available values:
+
+- `LudtEnabled`
+- `LudtEnabled_WithSegmentationField`
+- `XudtEnabled`
+- `LongMessagesForbidden`
+
+Add a DPC range rule:
+
+```java
+router.addLongMessageRule(
+        1,
+        1000,
+        1999,
+        LongMessageRuleType.XudtEnabled
+);
+```
+
+Look up the effective rule for a DPC:
+
+```java
+LongMessageRule rule = router.findLongMessageRule(destinationPointCode);
+```
+
+Both `LongMessageRule` and `LongMessageRuleImpl` expose:
+
+```java
+boolean applies = rule.matches(destinationPointCode);
+```
+
+#### MTP3 service access points
+
+`Mtp3ServiceAccessPointImpl` represents an MTP3-facing service access point with an MTP3 ID, originating point code, network indicator, and network ID.
+
+```java
+router.addMtp3ServiceAccessPoint(
+        1,
+        10,
+        1234,
+        2,
+        0
+);
+```
+
+Destination ranges may then be associated with that service access point:
+
+```java
+router.addMtp3Destination(
+        1,      // SAP ID
+        1,      // destination ID
+        2000,   // first DPC
+        2999,   // last DPC
+        0,      // first SLS
+        15,     // last SLS
+        0x0F    // SLS mask
+);
+```
+
+Selection methods:
+
+```java
+Mtp3ServiceAccessPoint sap =
+        router.findMtp3ServiceAccessPoint(dpc, sls);
+
+Mtp3ServiceAccessPoint networkSap =
+        router.findMtp3ServiceAccessPoint(dpc, sls, networkId);
+```
+
+`Mtp3Destination` and `Mtp3DestinationImpl` can test a DPC/SLS range directly:
+
+```java
+boolean matches = destination.match(dpc, sls);
+```
+
+---
+
+## Remote SCCP resources
+
+### `SccpResourceImpl`
+
+`SccpResourceImpl` manages remote signaling point codes, remote subsystems, and concerned signaling point codes.
+
+```java
+SccpResource resources = stack.getSccpResource();
+```
+
+Lifecycle and persistence:
+
+```java
+resources.setPersistDir("/var/lib/sccp-resources");
+resources.start();
+resources.stop();
+```
+
+### Remote signaling point codes
+
+A `RemoteSignalingPointCodeImpl` tracks a remote SPC, flags, masks, prohibited status, and congestion state.
+
+```java
+resources.addRemoteSpc(
+        1,
+        2000,
+        0,
+        0
+);
+
+RemoteSignalingPointCode remote =
+        resources.getRemoteSpcByPC(2000);
+```
+
+Management operations:
+
+```java
+resources.modifyRemoteSpc(1, 2000, 0, 0);
+resources.removeRemoteSpc(1);
+```
+
+Remote SPC state includes:
+
+```java
+boolean mtpProhibited = remote.isRemoteSpcProhibited();
+boolean sccpProhibited = remote.isRemoteSccpProhibited();
+
+int congestionLevel = remote.getCurrentRestrictionLevel();
+int subLevel = remote.getCurrentRestrictionSubLevel();
+```
+
+### Remote subsystems
+
+Remote subsystem entries associate an SPC with an SSN:
+
+```java
+resources.addRemoteSsn(
+        1,
+        2000,
+        8,
+        0,
+        false
+);
+
+RemoteSubSystem remoteSsn = resources.getRemoteSsn(2000, 8);
+```
+
+The prohibited state can be managed directly:
+
+```java
+remoteSsn.setRemoteSsnProhibited(true);
+boolean prohibited = remoteSsn.isRemoteSsnProhibited();
+```
+
+### Concerned signaling point codes
+
+Concerned signaling point codes can be configured by ID and looked up by remote PC:
+
+```java
+resources.addConcernedSpc(1, 2000);
+
+ConcernedSignalingPointCode concerned =
+        resources.getConcernedSpcByPC(2000);
+
+int remoteSpc = concerned.getRemoteSpc();
+```
+
+---
+
+## Congestion control
+
+`SccpCongestionControl` coordinates SCCP congestion behavior based on restriction-level changes.
+
+```java
+SccpCongestionControl control =
+        new SccpCongestionControl(management, stack);
+```
+
+It can process a restriction change:
+
+```java
+control.onRestrictionLevelChange(
+        affectedPointCode,
+        restrictionLevel,
+        true
+);
+```
+
+The control exposes timing and algorithm configuration read from its stack context:
+
+```java
+int timerA = control.getCongControlTIMER_A();
+int timerD = control.getCongControlTIMER_D();
+int n = control.getCongControlN();
+int m = control.getCongControlM();
+
+SccpCongestionControlAlgo algorithm =
+        control.getCongControl_Algo();
+```
+
+It also provides static mapping helpers:
+
+```java
+int userCongestionLevel =
+        SccpCongestionControl.generateSccpUserCongLevel(restrictionLevel);
+
+int maxRestriction =
+        SccpCongestionControl.getMaxRestrictionLevelForMtp3Level(mtp3Level);
+```
+
+`NetworkIdStateImpl` represents availability and congestion state for a network ID:
+
+```java
+NetworkIdState state = new NetworkIdStateImpl(
+        true,   // available
+        false   // affected by point code
+);
+
+boolean available = state.isAvailavle();
+int level = state.getCongLevel();
+boolean affected = state.isAffectedByPc();
+```
+
+---
+
+## Usage examples
+
+## Example: create and send a class 0 SCCP message
+
+This example creates called and calling addresses, creates a class 0 SCCP data message, registers an application listener, and sends the message.
+
+```java
+import java.nio.charset.StandardCharsets;
+
+import org.mobicents.protocols.ss7.sccp.api.MessageFactory;
+import org.mobicents.protocols.ss7.sccp.api.ParameterFactory;
+import org.mobicents.protocols.ss7.sccp.api.SccpAddress;
+import org.mobicents.protocols.ss7.sccp.api.SccpDataMessage;
+import org.mobicents.protocols.ss7.sccp.api.SccpProvider;
+import org.mobicents.protocols.ss7.sccp.api.parameter.GlobalTitle;
+import org.mobicents.protocols.ss7.sccp.api.parameter.HopCounter;
+import org.mobicents.protocols.ss7.sccp.api.parameter.Importance;
+import org.mobicents.protocols.ss7.sccp.api.parameter.RoutingIndicator;
+import org.mobicents.protocols.ss7.sccp.impl.SccpStackImpl;
+
+SccpStackImpl stack = new SccpStackImpl("application-sccp");
+
+// Configure MTP3 user parts and stack options before starting, as required
+// by the deployment.
+stack.start();
+
+SccpProvider provider = stack.getSccpProvider();
+ParameterFactory parameters = provider.getParameterFactory();
+MessageFactory messages = provider.getMessageFactory();
+
+GlobalTitle calledGt = parameters.createGlobalTitle("123456789");
+GlobalTitle callingGt = parameters.createGlobalTitle("987654321");
+
+SccpAddress calledParty = parameters.createSccpAddress(
+        RoutingIndicator.ROUTING_BASED_ON_GLOBAL_TITLE,
+        calledGt,
+        2000,
+        8
+);
+
+SccpAddress callingParty = parameters.createSccpAddress(
+        RoutingIndicator.ROUTING_BASED_ON_GLOBAL_TITLE,
+        callingGt,
+        1000,
+        8
+);
+
+HopCounter hopCounter = parameters.createHopCounter(15);
+Importance importance = parameters.createImportance(0);
+
+byte[] payload = "hello over SCCP".getBytes(StandardCharsets.US_ASCII);
+
+SccpDataMessage message = messages.createDataMessageClass0(
+        calledParty,
+        callingParty,
+        payload,
+        8,
+        true,
+        hopCounter,
+        importance
+);
+
+provider.send(message);
+```
+
+The exact `RoutingIndicator` value used should match the application’s intended SCCP addressing and routing policy.
+
+## Example: configure a routing address and a long-message policy
+
+This example configures an address that may be referenced by routing rules, then enables XUDT long-message handling for a destination point-code range.
+
+```java
+import org.mobicents.protocols.ss7.sccp.api.Router;
+import org.mobicents.protocols.ss7.sccp.api.SccpAddress;
+import org.mobicents.protocols.ss7.sccp.impl.router.LongMessageRuleType;
+
+// Assume stack is configured and started.
+Router router = stack.getRouter();
+
+SccpAddress applicationAddress = parameters.createSccpAddress(
+        routingIndicator,
+        parameters.createGlobalTitle("123456789"),
+        2000,
+        8
+);
+
+// Store an address under an ID for use by rules.
+router.addRoutingAddress(100, applicationAddress);
+
+// Allow XUDT for destinations in the configured DPC range.
+router.addLongMessageRule(
+        1,
+        2000,
+        2999,
+        LongMessageRuleType.XudtEnabled
+);
+
+// Check the matching policy for a destination.
+LongMessageRuleType type =
+        router.findLongMessageRule(2000).getLongMessageRuleType();
+```
+
+## Example: construct a class 3 connection request
+
+A class 3 connection request includes a credit parameter in addition to the called/calling addresses and user data.
+
+```java
+import java.nio.charset.StandardCharsets;
+
+import org.mobicents.protocols.ss7.sccp.api.SccpConnCrMessage;
+import org.mobicents.protocols.ss7.sccp.api.parameter.Credit;
+import org.mobicents.protocols.ss7.sccp.api.parameter.Importance;
+
+Credit credit = new CreditImpl(4);
+Importance importance = new ImportanceImpl((byte) 0);
+
+SccpConnCrMessage connectionRequest =
+        messages.createConnectMessageClass3(
+                8,
+                calledParty,
+                callingParty,
+                credit,
+                "connection request".getBytes(StandardCharsets.US_ASCII),
+                importance
+        );
+```
+
+The created connection request can then be populated further where needed through its message API, such as source local reference, protocol class, hop counter, and user data.
+
+## Example: configure remote SCCP resources
+
+```java
+import org.mobicents.protocols.ss7.sccp.api.SccpResource;
+
+SccpResource resources = stack.getSccpResource();
+
+resources.addRemoteSpc(
+        1,      // resource ID
+        2000,   // remote SPC
+        0,      // SPC flag
+        0       // mask
+);
+
+resources.addRemoteSsn(
+        1,      // resource ID
+        2000,   // remote SPC
+        8,      // remote SSN
+        0,      // SSN flag
+        false   // prohibit when SPC resumes
+);
+
+resources.addConcernedSpc(
+        1,
+        2000
+);
+```
+
+---
+
+## Encoding and decoding messages manually
+
+Applications that need direct wire-level handling can use concrete message implementations and their `encode`/`decode` methods.
+
+```java
+EncodingResultData encoded = message.encode(
+        stack,
+        LongMessageRuleType.XudtEnabled,
+        maxMtp3UserDataLength,
+        logger,
+        stack.isRemoveSpc(),
+        stack.getSccpProtocolVersion()
+);
+
+if (encoded.getEncodingResult() == EncodingResult.Success) {
+    byte[] data = encoded.getSolidData();
+
+    if (data != null) {
+        // Send one SCCP payload through the selected MTP3 user part.
+    } else {
+        for (byte[] segment : encoded.getSegementedData()) {
+            // Send each encoded segment.
+        }
+    }
+}
+```
+
+To decode an inbound SCCP message, use `MessageFactory.createMessage(...)` with the message type, MTP3 routing context, input stream, SCCP protocol version, and network ID:
+
+```java
+SccpMessageImpl decoded = ((MessageFactoryImpl) messages).createMessage(
+        type,
+        opc,
+        dpc,
+        sls,
+        inputStream,
+        stack.getSccpProtocolVersion(),
+        networkId
+);
+```
+
+Malformed or unsupported message data may result in `ParseException`.
+
+---
+
+## Persistence-oriented components
+
+Several classes implement `XMLSerializable`, including:
+
+- `SccpAddressImpl`
+- Global-title and encoding-scheme implementations
+- `ConcernedSignalingPointCodeImpl`
+- `RemoteSignalingPointCodeImpl`
+- `RemoteSubSystemImpl`
+- `LongMessageRule` / `LongMessageRuleImpl`
+- `Mtp3Destination` / `Mtp3DestinationImpl`
+- `Mtp3ServiceAccessPointImpl`
+
+The library also provides `SccpRouterXMLBinding` and `SccpResourceXMLBinding`, as well as persistence-directory configuration on the router, stack, and resource manager.
+
+```java
+stack.setPersistDir("/var/lib/my-sccp");
+stack.getRouter().setPersistDir("/var/lib/my-sccp/router");
+stack.getSccpResource().setPersistDir("/var/lib/my-sccp/resources");
+
+stack.store();
+stack.getRouter().store();
+```
+
+---
+
+## Operational notes
+
+- Start the SCCP stack only after required MTP3 user parts and routing/resource configuration have been supplied.
+- Use `SccpProvider` rather than directly encoding messages when the application only needs normal SCCP send/receive behavior.
+- Use `Router` to configure routing addresses, selection rules, destination ranges, and long-message policy.
+- Use `SccpResource` to track remote SPC, SSN, and concerned-SPC state.
+- Check `EncodingResultData.getEncodingResult()` before sending manually encoded data.
+- Treat `getSegementedData()` as potentially containing multiple payloads when a message is segmented.

@@ -1,0 +1,21 @@
+{
+  "freeze_date": "n2000",
+  "generated_at": "2026-07-21T09:46:32.166580+00:00",
+  "seed": 20260721,
+  "n_target_per_ecosystem": 1000,
+  "n_target_per_ecosystem_original": 2000,
+  "n_target_reduced_reason": "disk-space constraint + realized ~15% clone-stage attrition (F4) before F5/F6/F7-readme attrition is even applied; reduced 2026-07-22, see RULES.md deviation note",
+  "n_draw_per_ecosystem": 5000,
+  "min_dependents": 5,
+  "registries": {
+    "python": "pypi.org",
+    "java": "repo1.maven.org"
+  },
+  "api_base": "https://packages.ecosyste.ms/api/v1",
+  "frame_counts_after_F1_F3": {
+    "python": 9881,
+    "java": 49424
+  },
+  "git_commit": "a68346db4dc334716b046e7fa1260145d1ebb377",
+  "spec_reference": "RULES.md (locked 2026-07-12)"
+}

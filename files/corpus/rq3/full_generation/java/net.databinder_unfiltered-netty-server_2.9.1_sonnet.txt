@@ -1,0 +1,152 @@
+# unfiltered-netty-server
+
+`unfiltered-netty-server` provides HTTP multipart/form-data and POST body decoding support for Netty-based servers, built on top of the Netty HTTP codec. It offers a flexible API for parsing `multipart/form-data` and `application/x-www-form-urlencoded` request bodies into structured attributes and file uploads, with configurable strategies for buffering data in memory or spooling it to disk.
+
+This library is particularly useful for handling file uploads and form submissions in Netty-based HTTP servers, giving you fine-grained control over memory usage versus disk I/O trade-offs when processing potentially large request bodies.
+
+## Core Concepts
+
+### `InterfaceHttpData` and `HttpData`
+
+At the root of the API is `InterfaceHttpData`, a simple marker interface (extending `Comparable`) representing any piece of decoded HTTP body data. It exposes a `name` and an `HttpDataType`.
+
+`HttpData` extends this with the actual data-handling contract: reading/writing content (as `ChannelBuffer`, `File`, `InputStream`, or raw bytes/strings), checking completion status, managing character sets, and querying whether the data is held in memory or on disk.
+
+Two specializations of `HttpData` model the two kinds of body parts you'll encounter in a multipart request:
+
+- **`Attribute`** — a simple named form field with a string `value`.
+- **`FileUpload`** — a submitted file, with `filename`, `contentType`, and `contentTransferEncoding` metadata in addition to its content.
+
+### Storage Strategies
+
+Implementations of `HttpData` differ in how they store content:
+
+- **`MemoryAttribute`** / **`MemoryFileUpload`** (via `AbstractMemoryHttpData`) — keep all content in memory (as byte arrays or `ChannelBuffer`s).
+- **`DiskAttribute`** / **`DiskFileUpload`** (via `AbstractDiskHttpData`) — spool content to a temporary file on disk, useful for large uploads.
+- **`MixedAttribute`** / **`MixedFileUpload`** — start in memory and transparently switch to disk-backed storage once content exceeds a configurable `limitSize`. This is generally the most practical choice for real-world servers, since it avoids excessive memory use for large uploads while keeping small form fields fast.
+
+### `HttpDataFactory`
+
+Rather than constructing `Attribute` and `FileUpload` instances directly, decoding code obtains them from an `HttpDataFactory`, which controls which storage strategy is used and tracks data associated with a given `HttpRequest` for later cleanup.
+
+`DefaultHttpDataFactory` is the standard implementation:
+
+- `new DefaultHttpDataFactory()` — memory-based by default.
+- `new DefaultHttpDataFactory(boolean useDisk)` — force disk-based or memory-based storage.
+- `new DefaultHttpDataFactory(long minSize)` — mixed strategy: use memory for data under `minSize` bytes, disk otherwise.
+
+The factory also provides cleanup methods (`cleanRequestHttpDatas`, `cleanAllHttpDatas`, `removeHttpDataFromClean`) to release temporary files once a request has been fully processed.
+
+### `HttpPostRequestDecoder`
+
+The main entry point for parsing request bodies. Given an `HttpRequest` (and optionally a custom `HttpDataFactory` and/or `Charset`), it decodes the body — whether multipart or URL-encoded — into a sequence of `InterfaceHttpData` items.
+
+Key operations:
+
+- `isMultipart()` — whether the request body is `multipart/form-data`.
+- `offer(HttpChunk chunk)` — feed additional chunks of body data as they arrive (for chunked/streamed requests).
+- `hasNext()` / `next()` — iterate over decoded data items as they become available.
+- `getBodyHttpDatas()` / `getBodyHttpDatas(name)` / `getBodyHttpData(name)` — retrieve all decoded data, or data matching a specific field name, once decoding is complete.
+- `cleanFiles()` — remove any temporary disk files created during decoding.
+
+### `HttpHeaders`
+
+A utility class of static helpers for reading and writing common HTTP headers on an `HttpMessage` — content length, keep-alive, host, dates, `Expect: 100-continue`, and generic header get/set/add/remove operations with type coercion (String, int, `Date`, `Iterable`).
+
+## Usage Example
+
+### Decoding a multipart form upload
+
+```java
+import org.jboss.netty.handler.codec.http.*;
+
+import java.nio.charset.Charset;
+import java.util.List;
+
+public class UploadHandler {
+
+    // Use a mixed strategy: keep small fields in memory,
+    // spool anything over 16KB to disk.
+    private final HttpDataFactory factory = new DefaultHttpDataFactory(16 * 1024);
+
+    public void handleRequest(HttpRequest request) throws Exception {
+        HttpPostRequestDecoder decoder =
+            new HttpPostRequestDecoder(factory, request, Charset.forName("UTF-8"));
+
+        if (!decoder.isMultipart()) {
+            // handle as a regular URL-encoded or non-multipart body
+        }
+
+        // If the request arrives as a series of chunks, feed them in as they arrive:
+        // decoder.offer(chunk);
+
+        List<InterfaceHttpData> bodyData = decoder.getBodyHttpDatas();
+
+        for (InterfaceHttpData data : bodyData) {
+            switch (data.getHttpDataType()) {
+                case Attribute: {
+                    Attribute attribute = (Attribute) data;
+                    System.out.println(attribute.getName() + " = " + attribute.getValue());
+                    break;
+                }
+                case FileUpload: {
+                    FileUpload upload = (FileUpload) data;
+                    if (upload.isCompleted()) {
+                        System.out.println("Received file: " + upload.getFilename()
+                            + " (" + upload.length() + " bytes, "
+                            + upload.getContentType() + ")");
+
+                        // Persist it wherever needed
+                        upload.renameTo(new java.io.File("/var/uploads/" + upload.getFilename()));
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+
+        // Clean up temporary files created during decoding
+        decoder.cleanFiles();
+        factory.cleanRequestHttpDatas(request);
+    }
+}
+```
+
+### Reading a single named field
+
+```java
+InterfaceHttpData data = decoder.getBodyHttpData("username");
+if (data != null && data.getHttpDataType() == InterfaceHttpData.HttpDataType.Attribute) {
+    String username = ((Attribute) data).getValue();
+}
+```
+
+### Working with header utilities
+
+```java
+if (HttpHeaders.isKeepAlive(request)) {
+    HttpHeaders.setHeader(response, "Connection", "keep-alive");
+}
+
+long contentLength = HttpHeaders.getContentLength(request, 0L);
+
+if (HttpHeaders.is100ContinueExpected(request)) {
+    HttpHeaders.set100ContinueExpected(response, true);
+}
+```
+
+## Choosing a Storage Strategy
+
+| Factory construction | Behavior |
+|---|---|
+| `new DefaultHttpDataFactory()` | All attributes/uploads held in memory |
+| `new DefaultHttpDataFactory(true)` | All attributes/uploads spooled to disk |
+| `new DefaultHttpDataFactory(false)` | All attributes/uploads held in memory |
+| `new DefaultHttpDataFactory(minSize)` | Mixed: memory below `minSize`, disk above |
+
+When working directly with individual data objects rather than through the factory, the `Mixed*`, `Memory*`, and `Disk*` classes (`MixedAttribute`, `MixedFileUpload`, `MemoryAttribute`, `MemoryFileUpload`, `DiskAttribute`, `DiskFileUpload`) can be instantiated directly if you need fine-grained control outside of the standard decoding flow.
+
+## Cleanup
+
+Because disk-backed and mixed data types may create temporary files, always call `cleanFiles()` on the decoder and/or `cleanRequestHttpDatas(request)` / `cleanAllHttpDatas()` on the factory once a request has been fully handled, to avoid leaking temporary files on disk.

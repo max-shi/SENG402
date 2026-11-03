@@ -1,0 +1,126 @@
+# flexicore-file-model
+
+`flexicore-file-model` provides the core domain model for representing and tracking files within the FlexiCore ecosystem. It defines the persistent entities used to describe uploaded/managed files (`FileResource`), zip archives that bundle multiple files (`ZipFile`), and the association between zip archives and the individual files they contain (`ZipFileToFileResource`).
+
+This library does not perform file I/O itself — it models the metadata and relationships needed by higher-level FlexiCore services to track, store, retrieve, and expire files.
+
+## Overview
+
+### `FileResource`
+
+`FileResource` is the base entity representing a single file known to the system. It extends `Baseclass`, the common FlexiCore entity base, and carries metadata such as:
+
+- **Identity/content**: `md5` (content hash), `originalFilename` (the name as uploaded), `actualFilename` (the name used for storage), `fullPath` (location on disk or storage backend).
+- **Transfer state**: `offset` (bytes written so far, useful for resumable/chunked uploads) and `done` (whether the file transfer/processing is complete).
+- **Access control**: `nonDownloadable` (flags files that should not be served directly) and `onlyFrom` (restricts access to a specific origin/source).
+- **Lifecycle**: `dateTaken` (when the file's content was originally created/captured, e.g. photo metadata) and `keepUntil` (retention/expiration timestamp).
+- **Archive membership**: `zipFileToFileResources`, the list of associations linking this file to any zip archives it belongs to.
+
+### `ZipFile`
+
+`ZipFile` extends `FileResource`, meaning a zip archive is itself modeled as a file resource (it has its own `md5`, `fullPath`, `done` state, etc.), while also acting as a container for other files:
+
+- `zippedFilesToFileResourceList` — the collection of link entities describing which `FileResource`s are packed inside this zip.
+- `uniqueFilesMd5` — a hash representing the combined/deduplicated set of file contents inside the archive, useful for detecting whether an equivalent zip has already been generated.
+
+### `ZipFileToFileResource`
+
+`ZipFileToFileResource` extends `Basic` and represents the many-to-many join between `ZipFile` and `FileResource`:
+
+- `zipFile` — the archive.
+- `zippedFile` — the individual file resource contained within that archive.
+
+This join entity allows a single `FileResource` to belong to multiple zip archives, and a single `ZipFile` to contain multiple file resources.
+
+## Relationships at a glance
+
+```
+FileResource (base entity for any managed file)
+   ▲
+   │ extends
+ZipFile (a FileResource that also bundles other FileResources)
+
+FileResource ── zipFileToFileResources ──► ZipFileToFileResource ◄── zippedFilesToFileResourceList ── ZipFile
+```
+
+## Usage Examples
+
+### Creating a plain file resource
+
+```java
+FileResource fileResource = new FileResource();
+fileResource.setOriginalFilename("report.pdf");
+fileResource.setActualFilename("a3f9c1-report.pdf");
+fileResource.setFullPath("/data/storage/2024/a3f9c1-report.pdf");
+fileResource.setMd5("d41d8cd98f00b204e9800998ecf8427e");
+fileResource.setOffset(0L);
+fileResource.setDone(true);
+fileResource.setNonDownloadable(false);
+```
+
+### Tracking a resumable upload
+
+```java
+FileResource upload = new FileResource();
+upload.setOriginalFilename("video.mp4");
+upload.setActualFilename("temp-video.mp4");
+upload.setOffset(0L);
+upload.setDone(false);
+
+// as chunks arrive...
+upload.setOffset(upload.getOffset() + chunkSize);
+
+// once complete
+upload.setDone(true);
+```
+
+### Setting a retention policy
+
+```java
+FileResource temp = new FileResource();
+temp.setOriginalFilename("session-log.txt");
+temp.setKeepUntil(OffsetDateTime.now().plusDays(7));
+```
+
+### Bundling files into a zip archive
+
+```java
+FileResource file1 = new FileResource();
+file1.setOriginalFilename("photo1.jpg");
+file1.setActualFilename("photo1-stored.jpg");
+
+FileResource file2 = new FileResource();
+file2.setOriginalFilename("photo2.jpg");
+file2.setActualFilename("photo2-stored.jpg");
+
+ZipFile archive = new ZipFile();
+archive.setOriginalFilename("photos.zip");
+archive.setActualFilename("photos-archive.zip");
+archive.setUniqueFilesMd5("9e107d9d372bb6826bd81d3542a419d6");
+
+ZipFileToFileResource link1 = new ZipFileToFileResource();
+link1.setZipFile(archive);
+link1.setZippedFile(file1);
+
+ZipFileToFileResource link2 = new ZipFileToFileResource();
+link2.setZipFile(archive);
+link2.setZippedFile(file2);
+
+archive.setZippedFilesToFileResourceList(List.of(link1, link2));
+```
+
+### Inspecting which archives a file belongs to
+
+```java
+List<ZipFileToFileResource> memberships = file1.getZipFileToFileResources();
+for (ZipFileToFileResource link : memberships) {
+    ZipFile zip = link.getZipFile();
+    System.out.println(file1.getOriginalFilename() + " is contained in " + zip.getOriginalFilename());
+}
+```
+
+## Notes
+
+- `FileResource` and `ZipFile` extend `Baseclass`, the standard FlexiCore audited/identifiable entity base, so instances are expected to carry the usual identity, audit, and security-related metadata provided by that base class.
+- `ZipFileToFileResource` extends `Basic`, a lighter-weight base typically used for join/association entities.
+- Fluent-style setters on `ZipFile` and `ZipFileToFileResource` (returning a generic type `T`) allow method chaining when building object graphs.

@@ -1,0 +1,206 @@
+# textalloc
+
+**textalloc** is a Python library for automatically placing non-overlapping text labels on matplotlib plots. Given a set of coordinates and corresponding text strings, it computes label positions that avoid overlapping with each other, with scatter points, with plotted lines, and with the boundaries of the axes — optionally drawing connector lines from each label back to its original data point.
+
+It is designed to work directly with `matplotlib` `Axes` objects and integrates naturally into an existing plotting workflow: you build your plot as usual (scatter, line plots, etc.), then hand off the axis and your label data to `textalloc` to place the text.
+
+## Features
+
+- Non-overlapping placement of many text labels at once
+- Avoids scatter points, other labels, and (optionally) plotted lines
+- Optional connector lines from labels to their target points
+- Configurable candidate search (distance ranges, number of candidates, allowed directions)
+- Support for 3D-style inputs (`z`, `z_scatter`, `z_lines`) via coordinate transform helpers
+- Customizable text size, weight, color, and horizontal alignment
+- Pluggable priority strategy for deciding which labels get placed/kept first when space is limited
+
+## Installation
+
+```bash
+pip install textalloc
+```
+
+## Main API
+
+### `allocate(ax, x, y, text_list, ...)`
+
+The primary entry point. Given a matplotlib `Axes` (`ax`), arrays of `x`/`y` coordinates, and a list of text strings (`text_list`), it computes non-overlapping positions for each label and draws them on the axis.
+
+Key parameters:
+
+- `z`, `x_scatter`/`y_scatter`/`z_scatter`, `scatter_sizes`, `scatter_plot` — describe scatter points (either raw coordinates/sizes or an existing scatter `PathCollection`) that labels should avoid overlapping.
+- `x_lines`/`y_lines`/`z_lines` — one or more line series that labels should avoid crossing or overlapping.
+- `text_scatter_sizes` — sizes reserved around each text-anchor point, treated like scatter points for overlap purposes.
+- `textsize`, `fontweight`, `textcolor` — styling for the label text, either as single values applied to all labels or lists (per-label).
+- `margin`, `min_distance`, `max_distance` — control candidate spacing: minimum margin around each box, and the min/max distance a label can be moved from its original point.
+- `nbr_candidates` — number of candidate positions evaluated per label.
+- `direction` — restrict candidate placement directions (e.g. constrain labels to appear above, below, left, or right of their anchor point).
+- `draw_lines`, `linecolor`, `linewidth` — control whether/how connector lines from labels to points are drawn.
+- `draw_all` — if `True`, forces placement of every label even when a good non-overlapping spot can't be found.
+- `avoid_label_lines_overlap`, `avoid_crossing_label_lines` — additional constraints so that label boxes don't overlap with, or connector lines don't cross, other lines/labels.
+- `auto_ha` — automatically choose horizontal alignment of each label based on its placement relative to its anchor point.
+- `priority_strategy` — an int, string, or callable `(w, h) -> float` used to decide which labels are prioritized when not all can be placed. See `priority_strategy_largest` for an example strategy.
+- `xlims`, `ylims` — explicit axis bounds to use for placement bounds, overriding the axis limits.
+- `plot_kwargs` — extra keyword arguments forwarded to the underlying text-drawing call.
+
+Returns a tuple of:
+1. A list of `(x, y, fontsize)` triples describing where each label ended up.
+2. A list of line segment endpoints `((x0, y0), (x1, y1), (x2, y2))` for any connector lines drawn.
+3. A list of the created text `Annotation`/`Text` objects.
+4. A list of the created connector `Line2D` objects.
+
+### `allocate_text(fig, ax, x, y, text_list, **kwargs)`
+
+A convenience wrapper around `allocate` that also takes the figure (`fig`), useful when the placement logic needs figure-level information (e.g. for accurate coordinate transforms) in addition to the axis. Forwards all other keyword arguments to `allocate`.
+
+### `lines_to_segments(x_lines, y_lines) -> np.ndarray`
+
+Utility to convert a list of line series (`x_lines`, `y_lines`, each a list of arrays) into a flat array of line segments, the format used internally for line-overlap checks.
+
+### `data_to_display(x, y, z, ax, transform=None)` / `display_to_data(x, y, z, ax, transform=None)`
+
+Coordinate transform helpers that convert between data coordinates and display (pixel) coordinates using the axis's transform, supporting an optional `z` component for 3D plots and a custom `transform`.
+
+### `get_scatter_bbs(sc, ax) -> np.ndarray`
+
+Given a scatter plot object (`sc`, e.g. as returned by `ax.scatter`) and the axis, computes the bounding boxes of the scatter markers in data coordinates — used internally when `scatter_plot` is passed to `allocate` instead of raw coordinates/sizes.
+
+## Lower-level modules
+
+These are used internally by `allocate` but are exposed for advanced use cases (e.g. building custom placement pipelines):
+
+### Candidate generation
+
+- **`generate_candidates(w, h, x, y, xmindistance, ymindistance, xmaxdistance, ymaxdistance, nbr_candidates, scatter_size, direction) -> np.ndarray`** — generates an array of candidate `(xmin, ymin)` (or similar) box positions around a point `(x, y)`, given a box size `(w, h)`, distance constraints, and allowed `direction`s.
+
+### Non-overlapping box computation
+
+- **`get_non_overlapping_boxes(original_boxes, xlims, ylims, aspect_ratio, margin, min_distance, max_distance, verbose, nbr_candidates, draw_all, scatter_xy, lines_xyxy, scatter_sizes, scatter_plot_bbs, text_scatter_sizes, direction, draw_lines, avoid_label_lines_overlap, avoid_crossing_label_lines, priority_strategy) -> Tuple[List[...], List[int]]`** — the core placement algorithm. Takes the initial (unmoved) label boxes plus all obstacle information and returns the final placed boxes (`xmin, ymin, xmax, ymax, text, direction_or_flag`) along with the indices of labels that were successfully placed.
+- **`find_nearest_point_on_box(xmin, ymin, w, h, x, y) -> Tuple[float, float]`** — finds the point on the boundary of a box closest to `(x, y)`, used to anchor connector lines to the edge of a placed label rather than its center.
+- **`priority_strategy_largest(w, h) -> float`** — a built-in priority function that scores boxes by size, usable as a `priority_strategy` argument to prioritize placing larger labels first.
+
+### Overlap checks
+
+Low-level geometric routines used to filter candidate positions:
+
+- **`non_overlapping_with_points(scatter_xy, candidates, xmargin, ymargin, scatter_sizes) -> np.ndarray`** — filters candidates that overlap given scatter points.
+- **`non_overlapping_with_lines(lines_xyxy, candidates, xmargin, ymargin, axis=1) -> np.ndarray`** — filters candidates that overlap given line segments.
+- **`non_overlapping_with_boxes(box_arr, candidates, xmargin, ymargin) -> np.ndarray`** — filters candidates that overlap already-placed boxes.
+- **`inside_plot(xmin_bound, ymin_bound, xmax_bound, ymax_bound, candidates) -> np.ndarray`** — filters candidates that fall outside the plot bounds.
+- **`line_intersect(cand_xyxy, lines_xyxy) -> np.ndarray`** — checks whether candidate connector lines intersect given line segments.
+- **`ccw(x1y1, x2y2, x3y3, cand) -> np.ndarray`** — counter-clockwise orientation test, a building block used by `line_intersect` to determine segment intersection.
+
+## Usage examples
+
+### Basic scatter plot with labels
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+import textalloc as ta
+
+x = np.random.rand(20)
+y = np.random.rand(20)
+text_list = [f"label {i}" for i in range(20)]
+
+fig, ax = plt.subplots()
+ax.scatter(x, y, c="steelblue")
+
+ta.allocate(
+    ax,
+    x, y,
+    text_list,
+    x_scatter=x, y_scatter=y,
+    textsize=9,
+    min_distance=0.02,
+    max_distance=0.15,
+    draw_lines=True,
+    linecolor="gray",
+)
+
+plt.show()
+```
+
+### Labeling only some points on a line plot, avoiding the line itself
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+import textalloc as ta
+
+x_line = np.linspace(0, 10, 200)
+y_line = np.sin(x_line)
+
+fig, ax = plt.subplots()
+ax.plot(x_line, y_line, color="black")
+
+x_labels = np.array([1.0, 3.5, 6.0, 8.5])
+y_labels = np.sin(x_labels)
+labels = ["A", "B", "C", "D"]
+
+ta.allocate(
+    ax,
+    x_labels, y_labels,
+    labels,
+    x_lines=[x_line],
+    y_lines=[y_line],
+    avoid_crossing_label_lines=True,
+    direction="north",
+    textsize=11,
+    fontweight="bold",
+)
+
+plt.show()
+```
+
+### Using an existing scatter plot object and a custom priority strategy
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+import textalloc as ta
+from textalloc import priority_strategy_largest
+
+x = np.random.rand(50) * 100
+y = np.random.rand(50) * 100
+sizes = np.random.rand(50) * 300 + 20
+text_list = [f"pt{i}" for i in range(50)]
+
+fig, ax = plt.subplots()
+sc = ax.scatter(x, y, s=sizes)
+
+ta.allocate(
+    ax,
+    x, y,
+    text_list,
+    scatter_plot=sc,
+    nbr_candidates=300,
+    draw_all=False,
+    priority_strategy=priority_strategy_largest,
+)
+
+plt.show()
+```
+
+### Using `allocate_text` when figure-level context is needed
+
+```python
+import matplotlib.pyplot as plt
+import textalloc as ta
+
+fig, ax = plt.subplots()
+ax.scatter([1, 2, 3], [4, 5, 6])
+
+ta.allocate_text(
+    fig, ax,
+    [1, 2, 3], [4, 5, 6],
+    ["one", "two", "three"],
+    textsize=10,
+)
+
+plt.show()
+```
+
+## License
+
+See the `LICENSE` file in this repository for details.

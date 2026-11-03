@@ -1,0 +1,231 @@
+# JPS — Java Property Service
+
+JPS is a lightweight Java library for defining, parsing, and accessing command-line arguments and application properties in a structured, type-safe way. Instead of manually parsing `String[] args`, you define strongly-typed **property classes** (booleans, integers, files, enums, lists, maps, etc.), register them with a central service, and then query their resolved values anywhere in your application.
+
+JPS also ships with a set of ready-made properties covering common application needs — verbosity flags, debug/test modes, working directories, log levels, locale settings, and more — so you can wire up sensible defaults without writing boilerplate.
+
+## Core Concepts
+
+### `AbstractJavaProperty<V>`
+
+The foundation of the library. Every property (command-line argument) is represented as a subclass of `AbstractJavaProperty<V>`, parameterized by the value type `V` it resolves to. A property is defined by one or more *identifiers* (e.g. `-v`, `--verbose`) passed to its constructor.
+
+Key capabilities:
+
+- `getValue()` — returns the parsed value (or default, if not overridden).
+- `update(V value)` — programmatically sets/overrides the resolved value.
+- `getDefaultValue()` — returns the default value, if defined.
+- `isParsed()` — whether the property was actually supplied on the command line.
+- `getValueType()` — the internal type classification used for parsing/formatting.
+- `getDependencyList()` — other property classes this property depends on.
+- `getDescription()` / `getSyntax()` / `getDefaultExample()` — used to build human-readable help text.
+
+Properties are comparable to one another (`Comparable<AbstractJavaProperty>`), which supports consistent ordering, e.g. when printing help output.
+
+### `JPService`
+
+The central static entry point of the library. It manages:
+
+- **Application metadata** — `setApplicationName(...)`, `setSubmoduleName(...)`.
+- **Property registration** — `registerProperty(...)` (with or without an explicit default value), used to tell JPS which property classes your application supports.
+- **Parsing** — `parse(String[] args)` / `parse(List<String> args)` and their `...AndExitOnError` variants, which parse command-line arguments against all registered properties.
+- **Value retrieval** — `getValue(Class<C> propertyClass)`, `getProperty(Class<C> propertyClass)`, and the "pre-evaluated" variants which parse a property ad hoc from raw arguments without full application setup.
+- **Convenience flags** — `verboseMode()`, `debugMode()`, `forceMode()`, `testMode()`, mapped to the built-in preset properties.
+- **Help & error handling** — `printHelp()`, `printError(...)`, `exitOnError()`.
+- **Utilities** — `getApplicationLogger()`, `newLineFormatter(...)`, `awaitUserConfirmationOrExit(...)`.
+- **Testing support** — `setupJUnitTestMode()` and `reset()` for use in unit tests.
+
+### Exceptions
+
+All JPS-specific errors extend `JPServiceException`:
+
+- `JPParsingException` — a property could not be parsed from the given arguments.
+- `JPBadArgumentException` — an argument value was structurally invalid.
+- `JPValidationException` — a successfully parsed value failed semantic validation (e.g. a file that must exist doesn't).
+- `JPNotAvailableException` — a requested property has no available value (no default, not parsed, not registered).
+- `JPInitializationException` — the service or a property could not be initialized correctly.
+
+### Preset Property Types (`org.openbase.jps.preset`)
+
+JPS provides abstract base classes for common value types, meant to be subclassed for your own properties:
+
+| Base class | Value type | Notes |
+|---|---|---|
+| `AbstractJPBoolean` | `Boolean` | Flag-style properties |
+| `AbstractJPString` | `String` | |
+| `AbstractJPInteger` | `Integer` | |
+| `AbstractJPLong` | `Long` | |
+| `AbstractJPFloat` | `Float` | |
+| `AbstractJPDouble` | `Double` | |
+| `AbstractJPEnum<E>` | `E extends Enum<E>` | Type detected via `detectTypeClass()` |
+| `AbstractJPClass<C>` | `Class<C>` | Type detected via `detectTypeClass()` |
+| `AbstractJPMethod<C>` | `Method` | Tied to an `AbstractJPClass<C>` |
+| `AbstractJPList<VALUE>` | `List<VALUE>` | Generic list property |
+| `AbstractJPListString` | `List<String>` | Convenience specialization |
+| `AbstractJPMap<KEY,VALUE>` | `Map<KEY,VALUE>` | Generic map property |
+| `AbstractJPMapStringString` | `Map<String,String>` | Convenience specialization |
+| `AbstractJPFile` | `File` | Supports `ExistenceHandling` / `AutoMode` semantics and validation |
+| `AbstractJPDirectory` | `File` | Extends `AbstractJPFile`, restricted to directories |
+| `AbstractJPTime` | `Long` | For duration/time-based properties; subclasses supply `getTimeDescription()` |
+
+`AbstractJPFile` (and its directory subclass) integrate with `FileHandler`, which resolves a `File` or URI according to an `ExistenceHandling` policy (e.g. must-exist, may-not-exist) and an `AutoMode` (e.g. auto-create), optionally using a custom `FileCreator`.
+
+### Ready-to-Use Properties
+
+JPS ships several concrete properties out of the box, ready to register:
+
+- `JPHelp` — triggers help output.
+- `JPVerbose`, `JPDebugMode`, `JPVisualDebugMode`, `JPTestMode`, `JPForce`, `JPInitialize`, `JPReadOnly`, `JPReset`, `JPShowGUI` — common boolean flags.
+- `JPLogLevel` — application log level (enum-based).
+- `JPLocale` — application locale.
+- `JPPropertyFile` — path to a properties file.
+- `JPPrefix`, `JPLocalUserPrefix`, `JPSystemDirectory`, `JPVarDirectory`, `JPTmpDirectory`, `JPShareDirectory` — standard filesystem locations, each with directory validation and parent-directory resolution logic appropriate to its purpose.
+
+These map directly to the convenience accessors on `JPService` (`verboseMode()`, `debugMode()`, `forceMode()`, `testMode()`).
+
+### `FileHandler`
+
+A low-level utility used internally by file/directory properties, but also usable directly:
+
+```java
+File file = FileHandler.handle("/var/myapp/data", FileType.DIRECTORY,
+        ExistenceHandling.MUST_EXIST, AutoMode.OFF);
+```
+
+It resolves a `String` URI or `File` into a validated `File` instance based on the requested `FileType`, `ExistenceHandling`, and `AutoMode`, optionally invoking a `FileCreator` to construct the file/directory if it is missing and auto-creation is enabled.
+
+## Usage
+
+### 1. Defining a custom property
+
+```java
+package com.example.app.jp;
+
+import org.openbase.jps.preset.AbstractJPInteger;
+
+public class JPPort extends AbstractJPInteger {
+
+    public JPPort() {
+        super(new String[]{"-p", "--port"});
+    }
+
+    @Override
+    public String getDescription() {
+        return "The network port the server should listen on.";
+    }
+}
+```
+
+### 2. Registering properties and parsing arguments
+
+```java
+import org.openbase.jps.core.JPService;
+import org.openbase.jps.exception.JPServiceException;
+import org.openbase.jps.preset.*;
+import com.example.app.jp.JPPort;
+
+public class Application {
+
+    public static void main(String[] args) {
+        JPService.setApplicationName(Application.class);
+
+        // Built-in properties
+        JPService.registerProperty(JPHelp.class);
+        JPService.registerProperty(JPVerbose.class);
+        JPService.registerProperty(JPDebugMode.class);
+        JPService.registerProperty(JPLogLevel.class);
+
+        // Custom property with an explicit default value
+        JPService.registerProperty(JPPort.class, 8080);
+
+        // Parse command-line arguments; exits the JVM on failure
+        JPService.parseAndExitOnError(args);
+
+        if (JPService.verboseMode()) {
+            System.out.println("Verbose mode enabled.");
+        }
+
+        int port = JPService.getValue(JPPort.class, 8080);
+        System.out.println("Starting server on port " + port);
+    }
+}
+```
+
+### 3. Handling errors explicitly
+
+```java
+try {
+    JPService.parse(args);
+} catch (JPServiceException ex) {
+    JPService.printError("Failed to start application", ex);
+    JPService.exitOnError();
+}
+```
+
+### 4. Reading a property value with fallback handling
+
+```java
+import org.openbase.jps.exception.JPNotAvailableException;
+
+try {
+    Integer port = JPService.getValue(JPPort.class);
+    System.out.println("Configured port: " + port);
+} catch (JPNotAvailableException ex) {
+    System.out.println("No port configured, using default.");
+}
+```
+
+### 5. Pre-evaluating a property before full application setup
+
+Sometimes you need a property's value very early — before the rest of the application's properties are registered and parsed:
+
+```java
+String[] args = {"--config", "/etc/myapp/app.conf"};
+
+String configPath = JPService.getPreEvaluatedValue(JPPropertyFile.class, args, "/etc/myapp/default.conf");
+```
+
+### 6. Working with filesystem properties
+
+```java
+JPService.registerProperty(JPVarDirectory.class);
+JPService.parseAndExitOnError(args);
+
+JPVarDirectory varDir = JPService.getProperty(JPVarDirectory.class);
+System.out.println("Var directory resolved to: " + varDir.getValue());
+```
+
+### 7. Using `FileHandler` directly
+
+```java
+import org.openbase.jps.tools.FileHandler;
+
+File logDir = FileHandler.handle(
+        "/var/log/myapp",
+        FileType.DIRECTORY,
+        ExistenceHandling.CAN_EXIST,
+        AutoMode.ON
+);
+```
+
+## Testing Support
+
+For unit tests, JPS provides a dedicated setup routine and a reset mechanism so that property state doesn't leak between test cases:
+
+```java
+import org.junit.jupiter.api.BeforeEach;
+import org.openbase.jps.core.JPService;
+
+class MyServiceTest {
+
+    @BeforeEach
+    void setUp() throws Exception {
+        JPService.reset();
+        JPService.setupJUnitTestMode();
+    }
+}
+```
+
+## Summary
+
+JPS turns ad-hoc command-line parsing into a declarative, reusable property model: define a property class once, register it with `JPService`, and retrieve strongly-typed, validated values anywhere in your codebase — with built-in support for common flags, filesystem locations, help text generation, and structured error handling.

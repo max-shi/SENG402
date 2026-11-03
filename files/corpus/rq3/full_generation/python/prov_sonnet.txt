@@ -1,0 +1,250 @@
+# prov
+
+`prov` is a Python library for creating, manipulating, and serializing
+[W3C PROV](https://www.w3.org/TR/prov-overview/) provenance documents. PROV
+is a data model for describing the entities, activities, and agents involved
+in producing a piece of data, along with the relationships among them
+(generation, usage, derivation, attribution, association, delegation, and
+more).
+
+The library lets you:
+
+- Build provenance graphs programmatically using a document/bundle model.
+- Serialize documents to and from PROV-JSON, PROV-N, PROV-O (RDF), and
+  PROV-XML.
+- Convert provenance documents to/from `networkx` graphs for graph analysis.
+- Visualize documents as diagrams via Graphviz (`pydot`).
+- Read documents directly from a file path, file-like object, or bytes with
+  automatic format detection.
+
+---
+
+## Installation
+
+```bash
+pip install prov
+```
+
+Optional extras may be required for particular serializers (e.g. RDF or XML
+support) or for plotting (`pydot`/Graphviz) and graph conversion
+(`networkx`).
+
+---
+
+## Core concepts
+
+### `ProvDocument` and `ProvBundle`
+
+The central class is `ProvDocument`, which represents a complete PROV
+document. A `ProvDocument` is itself a kind of `ProvBundle` — the container
+that holds provenance **records** (entities, activities, agents, and
+relations) and manages **namespaces** used to qualify their identifiers.
+
+A document can contain **named bundles**, each of which is also a
+`ProvBundle`, allowing provenance about provenance (e.g. describing who
+asserted a bundle of records).
+
+```python
+from prov.model.bundle import ProvDocument
+
+doc = ProvDocument()
+doc.set_default_namespace("http://example.org/")
+```
+
+### Records
+
+Every piece of provenance information is a `ProvRecord`, which comes in two
+flavors:
+
+- **`ProvElement`** — nouns of provenance: `ProvEntity`, `ProvActivity`,
+  `ProvAgent`.
+- **`ProvRelation`** — relationships between elements: `ProvGeneration`,
+  `ProvUsage`, `ProvDerivation`, `ProvCommunication`, `ProvStart`,
+  `ProvEnd`, `ProvInvalidation`, `ProvAttribution`, `ProvAssociation`,
+  `ProvDelegation`, `ProvInfluence`, `ProvSpecialization`, `ProvAlternate`,
+  `ProvMention`, `ProvMembership`.
+
+Elements expose convenience methods that create the appropriate relation
+directly (e.g. `ProvEntity.wasGeneratedBy`, `ProvActivity.used`,
+`ProvAgent.actedOnBehalfOf`), so you rarely need to construct relation
+objects by hand.
+
+### Namespaces and identifiers
+
+`Namespace` and `QualifiedName` (both built on `Identifier`) represent URIs
+and their qualified, prefixed forms (e.g. `ex:myEntity`). `ProvBundle`
+manages a `NamespaceManager` internally, exposing methods like
+`add_namespace`, `set_default_namespace`, and `valid_qualified_name` to
+resolve strings or identifiers into `QualifiedName` objects.
+
+---
+
+## Building a document
+
+The `ProvBundle`/`ProvDocument` API provides one method per PROV record
+type, mirroring the PROV data model:
+
+```python
+from prov.model.bundle import ProvDocument
+
+doc = ProvDocument()
+doc.add_namespace("ex", "http://example.org/")
+
+# Elements
+e1 = doc.entity("ex:dataset1")
+e2 = doc.entity("ex:dataset2")
+a1 = doc.activity("ex:process1")
+ag1 = doc.agent("ex:alice")
+
+# Relations
+doc.used(a1, e1)
+doc.wasGeneratedBy(e2, a1)          # or: e2.wasGeneratedBy(a1)
+doc.wasDerivedFrom(e2, e1, activity=a1)
+doc.wasAssociatedWith(a1, ag1)
+doc.wasAttributedTo(e2, ag1)
+
+print(doc.get_provn())
+```
+
+Equivalent element-centric style using the fluent methods on
+`ProvElement` subclasses:
+
+```python
+e2 = doc.entity("ex:dataset2")
+e2.wasGeneratedBy(a1)
+e2.wasDerivedFrom(e1, activity=a1)
+e2.wasAttributedTo(ag1)
+```
+
+### Bundles
+
+```python
+bundle = doc.bundle("ex:bundle1")
+bundle.entity("ex:e3")
+```
+
+`doc.has_bundles()`, `doc.bundles()`, `doc.flattened()`, and `doc.unified()`
+help you inspect or transform documents containing multiple bundles.
+
+---
+
+## Serialization
+
+`ProvDocument.serialize` and `ProvDocument.deserialize` support several
+formats through the `prov.serializers` registry (`get`, `Registry`):
+
+- `"json"` — PROV-JSON (`ProvJSONSerializer`)
+- `"provn"` — PROV-N notation (`ProvNSerializer`)
+- `"rdf"` — RDF/PROV-O, e.g. TriG, Turtle, XML (`ProvRDFSerializer`)
+- `"xml"` — PROV-XML (`ProvXMLSerializer`)
+
+```python
+# Serialize to a file
+with open("output.json", "w") as f:
+    doc.serialize(destination=f, format="json")
+
+# Serialize to a string
+json_str = doc.serialize(format="json")
+
+# Deserialize
+with open("output.json") as f:
+    doc2 = ProvDocument.deserialize(source=f, format="json")
+```
+
+For convenience, the top-level `read` function auto-detects the format from
+a file path, bytes, or content and returns a parsed `ProvDocument`:
+
+```python
+import prov
+
+doc = prov.read("output.json")
+```
+
+Custom serializers can be added by implementing the abstract `Serializer`
+class (`serialize`/`deserialize` methods) and registering it.
+
+---
+
+## Visualization
+
+`prov.dot.prov_to_dot` converts a bundle or document into a `pydot.Dot`
+graph, which can be rendered with Graphviz:
+
+```python
+from prov.dot import prov_to_dot
+
+graph = prov_to_dot(doc, show_nary=True, use_labels=True)
+graph.write_png("provenance.png")
+```
+
+`ProvBundle.plot` offers a shortcut that renders (and optionally saves) a
+diagram directly:
+
+```python
+doc.plot(filename="provenance.png")
+```
+
+---
+
+## Graph interoperability
+
+`prov.graph` bridges PROV documents and `networkx` graphs for graph-based
+analysis:
+
+```python
+from prov.graph import prov_to_graph, graph_to_prov
+
+g = prov_to_graph(doc)          # networkx.MultiDiGraph
+doc_roundtrip = graph_to_prov(g)  # back to a ProvDocument
+```
+
+---
+
+## Command-line tools
+
+The library ships with two CLI entry points under `prov.scripts`:
+
+- **`convert`** — convert a provenance document between supported formats.
+- **`compare`** — compare two provenance documents.
+
+Both expose a `main(argv=None) -> int` function suitable for use as a
+console-script entry point, and raise a module-local `CLIError` on
+usage/argument errors.
+
+```bash
+python -m prov.scripts.convert input.json output.ttl
+```
+
+---
+
+## Error handling
+
+All library-specific exceptions derive from `prov.Error`. Notable subtypes
+include:
+
+- `ProvException` and its subclasses `ProvExceptionInvalidQualifiedName`,
+  `ProvElementIdentifierRequired` — raised for invalid PROV model usage.
+- `ProvWarning` — a warning category used for non-fatal, PROV-related
+  issues.
+- Serializer-specific exceptions: `ProvJSONException`, `ProvRDFException`,
+  `ProvXMLException`.
+- `DoNotExist` — raised when requesting an unregistered serializer format.
+
+---
+
+## Summary of key classes
+
+| Class | Purpose |
+|---|---|
+| `ProvDocument` | Top-level PROV document; container for bundles and records |
+| `ProvBundle` | Container for records within a document (or the document itself) |
+| `ProvRecord` | Base class for all PROV statements |
+| `ProvElement` | Base class for entities, activities, agents |
+| `ProvRelation` | Base class for relations between elements |
+| `ProvEntity`, `ProvActivity`, `ProvAgent` | Concrete PROV element types |
+| `Namespace`, `QualifiedName`, `Identifier` | URI/identifier management |
+| `Serializer` | Abstract base for format serializers (JSON, PROV-N, RDF, XML) |
+
+This library is well-suited for applications that need to track, store,
+exchange, or visualize data lineage and provenance metadata in a
+standards-compliant way.

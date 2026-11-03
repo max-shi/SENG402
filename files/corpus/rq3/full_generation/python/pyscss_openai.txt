@@ -1,0 +1,629 @@
+# pyscss
+
+`pyscss` is a Python library for compiling SCSS- and Sass-style stylesheet source into CSS. Its public API includes:
+
+- High-level compiler entry points for strings and files
+- A legacy `Scss` compatibility interface
+- SCSS expression parsing and evaluation
+- Sass-like value types such as colors, numbers, strings, lists, maps, and functions
+- Selector and rule manipulation utilities
+- An extension system for imports and custom functionality
+- Built-in core, Compass-style, Bootstrap, font, image, sprite, and extra helpers
+- Structured errors suitable for command-line tools and applications
+
+## Quick start
+
+Compile a stylesheet string with the convenience function:
+
+```python
+from scss.compiler import compile_string
+
+source = """
+$accent: #336699;
+
+.button {
+  color: $accent;
+
+  &:hover {
+    color: lighten($accent, 10%);
+  }
+}
+"""
+
+css = compile_string(source)
+print(css)
+```
+
+Compile one or more files:
+
+```python
+from scss.compiler import compile_file
+
+css = compile_file("assets/site.scss")
+
+with open("public/site.css", "w", encoding="utf-8") as f:
+    f.write(css)
+```
+
+For repeated compilation, create a `Compiler` instance:
+
+```python
+from scss.compiler import Compiler
+
+compiler = Compiler()
+
+main_css = compiler.compile_string("""
+.page {
+  margin: 0 auto;
+}
+""")
+
+theme_css = compiler.compile("assets/theme.scss", "assets/components.scss")
+```
+
+## Compilation API
+
+### Convenience functions
+
+```python
+from scss.compiler import compile_file, compile_string
+```
+
+- `compile_file(filename, compiler_class=Compiler, **kwargs)` compiles a stylesheet file.
+- `compile_string(string, compiler_class=Compiler, **kwargs)` compiles stylesheet source provided as a string.
+
+Both functions accept a custom compiler class and additional keyword arguments.
+
+### `Compiler`
+
+`Compiler` is the main high-level compilation object.
+
+```python
+from scss.compiler import Compiler
+
+compiler = Compiler()
+
+css = compiler.compile_string("$spacing: 1rem; .card { padding: $spacing; }")
+```
+
+Available operations include:
+
+- `compile(*filenames)` — compile one or more named source files.
+- `compile_sources(*sources)` — compile source objects.
+- `compile_string(string)` — compile a source string.
+- `normalize_path(path)` — normalize a path for compiler use.
+- `make_compilation()` — create a lower-level `Compilation` object.
+- `call_and_catch_errors(f, *args, **kwargs)` — invoke a callable with compiler error handling.
+
+### `Compilation`
+
+`Compilation` represents the lower-level compilation process. It manages sources, rules, selectors, nested content, extensions, and final CSS creation.
+
+Key methods include:
+
+- `add_source(source)`
+- `run()`
+- `parse_selectors(raw_selectors)`
+- `manage_children(rule, scope)`
+- `apply_extends(rules)`
+- `create_css(rules)`
+
+This API is useful when integrating compilation into a larger build system or when working with parsed sources and rules directly.
+
+### Legacy interface
+
+The `Scss` class offers a legacy compilation API:
+
+```python
+from scss.legacy import Scss
+
+scss = Scss()
+
+css = scss.compile(
+    scss_string="""
+    $color: #222;
+
+    body {
+      color: $color;
+    }
+    """
+)
+```
+
+Its `compile()` method accepts source strings, source files, file lists, selectors, filenames, Sass-mode options, line-number options, and static CSS import handling.
+
+## Source handling
+
+`SourceFile` represents stylesheet input and can be created from paths, file-like objects, or strings.
+
+```python
+from scss.source import SourceFile
+
+source = SourceFile.from_string(
+    """
+    .notice {
+      border: 1px solid #cc0;
+    }
+    """,
+    relpath="styles/notice.scss",
+)
+
+print(source.path())
+```
+
+Supported constructors include:
+
+- `SourceFile.from_path(path, origin=MISSING, **kwargs)`
+- `SourceFile.from_filename(path_string, origin=MISSING, **kwargs)`
+- `SourceFile.from_file(f, origin=MISSING, relpath=MISSING, **kwargs)`
+- `SourceFile.from_string(string, relpath=None, encoding=None, is_sass=None)`
+
+`SourceFile` also exposes helpers for parsing SCSS and Sass lines and preparing source text.
+
+## Expressions and evaluation
+
+The expression subsystem models Sass-like expressions and evaluates them through a `Calculator`.
+
+```python
+from scss.calculator import Calculator
+
+calculator = Calculator()
+
+value = calculator.calculate("1 + 2")
+interpolated = calculator.interpolate("#{$name}")
+```
+
+`Calculator` provides:
+
+- `calculate(expression, divide=False)`
+- `evaluate_expression(expr, divide=False)`
+- `parse_expression(expr, target='goal')`
+- `parse_interpolations(string)`
+- `parse_vars_and_interpolations(string)`
+- `apply_vars(cont)`
+- `do_glob_math(cont)`
+
+Expression node types include:
+
+- `Literal`
+- `Variable`
+- `Interpolation`
+- `Parentheses`
+- `UnaryOp`
+- `BinaryOp`
+- `AnyOp`, `AllOp`, and `NotOp`
+- `CallOp`
+- `TernaryOp`
+- `ListLiteral`
+- `MapLiteral`
+- `ArgspecLiteral`
+- `FunctionLiteral`
+- `AlphaFunctionLiteral`
+
+These types are primarily useful for integrations that need to parse, inspect, or evaluate expressions programmatically.
+
+## Values
+
+The `scss.types` module defines the values used throughout evaluation and extension functions.
+
+| Type | Purpose |
+|---|---|
+| `Null` | Null-like Sass value |
+| `Undefined` | Undefined/null-like value |
+| `Boolean` | Boolean value |
+| `Number` | Numeric value, potentially with units |
+| `String` | Quoted or unquoted text |
+| `Function` | Function-like string value |
+| `Url` | URL function value |
+| `Color` | RGB, RGBA, HSL, and hexadecimal colors |
+| `List` | Ordered values with a separator |
+| `Arglist` | List with keyword argument extraction |
+| `Map` | Key/value collection |
+
+### Color values
+
+```python
+from scss.types import Color
+
+blue = Color.from_hex("#336699")
+transparent_blue = Color.from_rgb(51, 102, 153, alpha=0.5)
+warm = Color.from_hsl(30, 0.8, 0.5)
+
+print(blue.render())
+print(transparent_blue.rgba())
+print(warm.hsl())
+```
+
+### Strings and lists
+
+```python
+from scss.types import List, String
+
+items = List.from_maybe(["one", "two", "three"])
+label = String.unquoted("navigation")
+
+print(items.render())
+print(label.render_interpolated())
+```
+
+### Numbers and units
+
+`Number` supports unit-related operations:
+
+- `to_base_units()`
+- `to_python_index(length, check_bounds=True, circular=False)`
+- `has_simple_unit()`
+- `is_simple_unit(unit)`
+- `is_unitless()`
+- `render(compress=False)`
+
+The `scss.cssdefs` module provides related conversion and unit helpers:
+
+```python
+from scss.cssdefs import get_conversion_factor, convert_units_to_base_units
+
+factor = get_conversion_factor("px")
+base_units = convert_units_to_base_units(["cm", "mm"])
+```
+
+## Core Sass-style functions
+
+The core extension exposes functions for common color, string, list, map, type, and unit operations.
+
+### Color functions
+
+Examples include:
+
+- `rgb`, `rgba`, `hsl`, `hsla`
+- `red`, `green`, `blue`, `alpha`
+- `hue`, `saturation`, `lightness`
+- `mix`
+- `lighten`, `darken`
+- `saturate`, `desaturate`
+- `opacify`, `transparentize`
+- `adjust_color`, `scale_color`, `change_color`
+- `adjust_hue`, `complement`, `invert`
+- `greyscale` and `grayscale`
+- `ie_hex_str`
+
+```python
+from scss.extension.core import darken, lighten, mix
+from scss.types import Color, Number
+
+primary = Color.from_hex("#336699")
+
+lighter = lighten(primary, Number(10, "%"))
+darker = darken(primary, Number(10, "%"))
+combined = mix(primary, Color.from_hex("#ffffff"))
+
+print(lighter.render())
+print(darker.render())
+print(combined.render())
+```
+
+### String functions
+
+- `quote`, `unquote`
+- `str_length`
+- `str_insert`
+- `str_index`
+- `str_slice`
+- `to_upper_case`
+- `to_lower_case`
+
+### List functions
+
+- `length`
+- `nth`
+- `set_nth`
+- `join`
+- `append`
+- `index`
+- `zip_`
+- `list_separator`
+- `min_`
+- `max_`
+
+### Map functions
+
+- `map_get`
+- `map_get3`
+- `map_get_nested3`
+- `map_merge`
+- `map_merge_deep`
+- `map_keys`
+- `map_values`
+- `map_has_key`
+
+### Type and unit functions
+
+- `inspect`
+- `type_of`
+- `unit`
+- `unitless`
+- `comparable`
+- `percentage`
+- `variable_exists`
+- `global_variable_exists`
+- `function_exists`
+- `mixin_exists`
+
+## Namespaces and scopes
+
+`Namespace` manages variables, functions, mixins, and import state during evaluation.
+
+```python
+from scss.namespace import Namespace
+
+namespace = Namespace()
+
+namespace.set_variable("$theme-color", "#336699")
+color = namespace.variable("$theme-color")
+
+namespace.set_function("identity", 1, lambda value: value)
+identity = namespace.function("identity", 1)
+```
+
+Namespaces can derive from other namespaces:
+
+```python
+child = namespace.derive()
+```
+
+Available scope classes include:
+
+- `Scope`
+- `VariableScope`
+- `FunctionScope`
+- `MixinScope`
+- `ImportScope`
+
+Use `normalize_var(name)` to normalize variable naming:
+
+```python
+from scss.namespace import normalize_var
+
+print(normalize_var("$theme_color"))
+```
+
+## Selectors and rules
+
+`Selector` and `SimpleSelector` provide parsing, rendering, comparison, replacement, and substitution operations.
+
+```python
+from scss.selector import Selector
+
+selectors = Selector.parse_many(".button, .link")
+button = Selector.parse_one(".button:hover")
+
+for selector in selectors:
+    print(selector.render())
+
+print(button.has_parent_reference())
+print(button.has_placeholder())
+```
+
+Useful selector operations include:
+
+- `with_parent(parent)`
+- `is_superset_of(other)`
+- `substitute(target, replacement)`
+- `break_around(hinge)`
+- `lookup_key()`
+- `render()`
+
+For sequence matching, use:
+
+```python
+from scss.selector import longest_common_subsequence
+
+common = longest_common_subsequence(["a", "b", "c"], ["a", "c", "d"])
+```
+
+Rules and block headers are represented by:
+
+- `SassRule`
+- `RuleAncestry`
+- `BlockHeader`
+- `BlockAtRuleHeader`
+- `BlockSelectorHeader`
+- `BlockScopeHeader`
+- `UnparsedBlock`
+
+`SassRule` supports copying, selector inspection, source location lookup, placeholder checks, and emptiness checks.
+
+## Extensions
+
+Extensions provide integration points for imports and additional functionality.
+
+### Base extension API
+
+```python
+from scss.extension.api import Extension
+
+class MyExtension(Extension):
+    def handle_import(self, name, compilation, rule):
+        if name == "my-library":
+            # Handle the requested import.
+            return None
+        return None
+```
+
+The base `Extension` class defines:
+
+```python
+handle_import(name, compilation, rule)
+```
+
+`NamespaceAdapterExtension` is available for extensions that adapt namespace behavior.
+
+### Extension cache
+
+```python
+from scss.extension.api import Cache
+
+cache = Cache()
+
+cache.set("compiled-theme", "...")
+css = cache.get("compiled-theme")
+cache.clear_cache("compiled-theme")
+```
+
+### Included extension classes
+
+The library includes extension classes for several feature sets:
+
+- `CoreExtension`
+- `ExtraExtension`
+- `BootstrapExtension`
+- `CompassExtension`
+- `FontsExtension`
+
+### Compass-style helpers
+
+Compass helpers include utilities for selectors, prefixes, positions, ranges, URLs, fonts, gradients, images, and sprites.
+
+Examples:
+
+```python
+from scss.extension.compass.helpers import opposite_position, range_
+from scss.extension.compass.gradients import linear_gradient
+
+print(opposite_position("left"))
+print(range_(1, 4))
+
+gradient = linear_gradient("top", "#fff", "#000")
+```
+
+Available helper groups include:
+
+- Prefix helpers such as `prefix`, `prefixed`, `dash_webkit`, `dash_moz`, and `dash_ms`
+- Selector helpers such as `append_selector`, `nest`, `headers`, and `elements_of_type`
+- Mathematical helpers such as `pi`, `e`, `log_`, and `pow`
+- URL helpers such as `font_url` and `stylesheet_url`
+- Gradient helpers such as `linear_gradient`, `radial_gradient`, `color_stops`, and SVG gradient helpers
+- Image helpers such as `image_url`, `inline_image`, `image_width`, and `image_height`
+- Sprite helpers such as `sprite_map`, `sprite`, `sprite_url`, and `sprite_position`
+
+### Font helpers
+
+The font extension exposes helpers for font conversion, sheets, glyphs, and URLs:
+
+```python
+from scss.extension.fonts import font_format, glyph_code, has_glyph
+
+print(font_format("woff"))
+print(has_glyph("icons", "menu"))
+print(glyph_code("icons", "menu"))
+```
+
+### Extra helpers
+
+The extra extension provides generated backgrounds, grid images, and color images:
+
+- `background_noise`
+- `background_brushed`
+- `grid_image`
+- `image_color`
+
+```python
+from scss.extension.extra import image_color
+
+background = image_color("#f5f5f5", width=4, height=4)
+```
+
+## Error handling
+
+Compilation and evaluation errors derive from `SassBaseError`.
+
+```python
+from scss.compiler import compile_string
+from scss.errors import SassBaseError
+
+try:
+    css = compile_string(".example { color: ; }")
+except SassBaseError as exc:
+    print(exc.format_message())
+    print(exc.format_sass_stack())
+```
+
+Error types include:
+
+- `SassSyntaxError`
+- `SassImportError`
+- `SassMissingDependency`
+- `SassError`
+- `SassParseError`
+- `SassEvaluationError`
+
+`SassError` additionally provides:
+
+- `format_python_stack()`
+- `format_original_error()`
+- `to_css()`
+
+Use `add_error_marker(text, position, start_line=1)` to annotate source text around an error position.
+
+## Utility functions
+
+The `scss.util` module contains helpers for common stylesheet-processing tasks:
+
+```python
+from scss.util import dequote, escape, make_data_url, split_params
+
+print(split_params("a, b, c"))
+print(dequote('"quoted text"'))
+print(escape("a value with spaces"))
+print(make_data_url("text/plain", b"hello"))
+```
+
+Other utilities include:
+
+- `depar`
+- `to_str`
+- `to_float`
+- `unescape`
+- `normalize_var`
+- `make_filename_hash`
+- `getmtime`
+- `print_timing`
+- `profile`
+- `tmemoize`
+
+## LESS conversion
+
+`Less2Scss` provides conversion-oriented operations for LESS-like input.
+
+```python
+from scss.less2scss import Less2Scss
+
+converter = Less2Scss()
+
+scss_source = converter.convert("""
+@color: #336699;
+
+.button {
+  color: @color;
+}
+""")
+```
+
+The converter also exposes separate transformation stages:
+
+- `convertVariables`
+- `convertMixins`
+- `includeMixins`
+- `convertFunctions`
+
+## Command-line and interactive tools
+
+The tooling module exposes entry points for command-line usage, test execution, building, source watching, and a REPL:
+
+- `main()`
+- `print_version()`
+- `run_tests()`
+- `do_build(options, args)`
+- `watch_sources(options)`
+- `run_repl(is_sass=False)`
+
+`SassRepl` provides an interactive Sass-oriented environment.

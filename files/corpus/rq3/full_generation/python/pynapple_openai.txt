@@ -1,0 +1,674 @@
+# pynapple
+
+`pynapple` is a Python library for working with timestamped data and time intervals. Its API is centered on representing events, sampled signals, multidimensional time series, collections of event trains, and sets of time intervals. It also provides tools for common analyses including tuning curves, decoding, correlograms, filtering, spectra, wavelets, peri-event analyses, randomization, and data loading.
+
+The library is particularly suited to workflows where data must be consistently aligned to a shared time axis and restricted to meaningful epochs.
+
+## Core concepts
+
+### Time indexes
+
+`TsIndex` is an `numpy.ndarray`-based timestamp index. It provides utilities to:
+
+- format timestamps in a requested unit,
+- return timestamps in a requested unit,
+- sort timestamps,
+- convert timestamps to NumPy arrays,
+- view timestamps in specific time units.
+
+```python
+from pynapple.core.time_index import TsIndex
+
+timestamps = TsIndex.sort_timestamps([2.0, 0.5, 1.2])
+timestamps_ms = TsIndex.return_timestamps(timestamps, units="ms")
+```
+
+### Interval sets
+
+`IntervalSet` represents one or more temporal intervals. It is the main object for defining epochs such as trials, behavioral states, recording periods, or analysis windows.
+
+Key operations include:
+
+- interval intersection, union, and set difference;
+- interval duration and center calculation;
+- splitting intervals into fixed-size segments;
+- filtering intervals by duration;
+- merging nearby intervals;
+- testing whether timestamps or time series fall within intervals;
+- converting intervals to dataframes or alternate units;
+- attaching and grouping metadata.
+
+```python
+# Assume `wake_epochs` and `sleep_epochs` are IntervalSet objects.
+
+combined = wake_epochs.union(sleep_epochs)
+overlap = wake_epochs.intersect(sleep_epochs)
+wake_only = wake_epochs.set_diff(sleep_epochs)
+
+# Keep intervals at least 5 seconds long.
+long_wake = wake_epochs.drop_short_intervals(5.0, time_units="s")
+
+# Split epochs into 30-second windows.
+windows = long_wake.split(30.0, time_units="s")
+
+# Total duration in seconds.
+duration = long_wake.tot_length(time_units="s")
+```
+
+`IntervalSet` also supports metadata management:
+
+```python
+wake_epochs.set_info(label="wake", source="manual scoring")
+label = wake_epochs.get_info("label")
+```
+
+### Timestamped objects
+
+The core timestamped data classes are:
+
+| Class | Intended data representation |
+|---|---|
+| `Ts` | A sequence of timestamps or events. |
+| `Tsd` | A one-dimensional timestamped data series. |
+| `TsdFrame` | A timestamped table or multi-column data series. |
+| `TsdTensor` | A timestamped multidimensional array. |
+| `TsGroup` | A mapping-like collection of `Ts` objects. |
+
+All timestamped classes expose a common set of time-aware operations, including:
+
+- `restrict(iset)` to keep data within an `IntervalSet`;
+- `in_interval(iset)` to identify membership in intervals;
+- `count(...)` to bin events or samples;
+- `value_from(data, ...)` to align values from another time-indexed object;
+- `time_diff(...)` to compute temporal differences;
+- `get_slice(...)` to select a time range;
+- `save(filename)` to persist an object.
+
+For example:
+
+```python
+# Assume:
+# - `spikes` is a TsGroup
+# - `position` is a TsdFrame
+# - `wake_epochs` is an IntervalSet
+
+spikes_wake = spikes.restrict(wake_epochs)
+position_wake = position.restrict(wake_epochs)
+
+# Bin spike counts in 20 ms bins.
+binned_spikes = spikes_wake.count(
+    bin_size=0.02,
+    ep=wake_epochs,
+    time_units="s",
+)
+
+# Align position values to spike timestamps.
+position_at_spikes = spikes_wake.value_from(
+    position,
+    ep=wake_epochs,
+    mode="closest",
+)
+```
+
+#### `Ts`
+
+`Ts` represents timestamp-only data, such as event times or spike times. In addition to the common time-aware operations, it provides:
+
+- `as_series()` for a pandas-style series representation;
+- `as_units(units)` for unit conversion;
+- `fillna(value)`;
+- `trial_count(...)` for epoch-aligned trial tensors.
+
+```python
+# Assume `events` is a Ts object and `trials` is an IntervalSet.
+event_counts = events.count(bin_size=0.1, ep=trials)
+
+trial_tensor = events.trial_count(
+    ep=trials,
+    bin_size=0.01,
+    align="start",
+    padding_value=float("nan"),
+)
+```
+
+#### `Tsd`
+
+`Tsd` represents a scalar value associated with each timestamp. It adds:
+
+- `as_series()`;
+- `as_units(units)`;
+- `threshold(thr, method="above")`;
+- `to_tsgroup()`;
+- `find_peaks(...)`.
+
+```python
+# Assume `speed` is a Tsd object.
+running = speed.threshold(5.0, method="above")
+
+# Locate peaks within a set of intervals.
+peaks = speed.find_peaks(epochs=running)
+```
+
+#### `TsdFrame`
+
+`TsdFrame` represents multi-column timestamped data, such as position coordinates, multichannel signals, or simultaneously measured features. It supports:
+
+- dataframe conversion with `as_dataframe()`;
+- unit conversion with `as_units()`;
+- label/index-style access through `loc`;
+- peak detection with `find_peaks(...)`;
+- metadata operations.
+
+```python
+# Assume `position` is a TsdFrame with position-related columns.
+position_df = position.as_dataframe()
+
+position.set_info(
+    coordinate_system="arena",
+    units="cm",
+)
+```
+
+#### `TsdTensor`
+
+`TsdTensor` represents timestamped multidimensional data, such as trial tensors, image-derived activity, or time-by-feature-by-trial arrays.
+
+It supports the common restriction, binning, alignment, slicing, and persistence operations.
+
+### Groups of timestamp series
+
+`TsGroup` is a dictionary-like collection of `Ts` objects. It is useful for collections such as units, channels, neurons, or event categories.
+
+A `TsGroup` supports:
+
+- dictionary-style `keys()`, `items()`, and `values()`;
+- `rates()` for group rates;
+- interval restriction;
+- group-wide binning and alignment;
+- conversion to a `Tsd` via `to_tsd(...)`;
+- selecting members using metadata;
+- metadata grouping and grouped application;
+- group merging and subsampling.
+
+```python
+# Assume `spikes` is a TsGroup with metadata fields.
+unit_rates = spikes.rates()
+
+# Select units using a metadata threshold.
+fast_units = spikes.getby_threshold("rate", 5.0, op=">")
+
+# Partition units into categories defined by metadata.
+units_by_region = spikes.getby_category("region")
+
+# Keep a reproducible random fraction of units.
+subset = spikes.subsample(fraction=0.5, seed=42)
+```
+
+Groups can also be combined:
+
+```python
+merged = spikes.merge(
+    other_spikes,
+    reset_index=False,
+    reset_time_support=False,
+    ignore_metadata=False,
+)
+```
+
+## Typical analysis workflow
+
+A typical workflow combines interval restriction, event binning, feature alignment, tuning-curve estimation, and decoding.
+
+```python
+from pynapple.process.tuning_curves import compute_1d_tuning_curves
+from pynapple.process.decoding import decode_1d
+from pynapple.process.correlograms import compute_autocorrelogram
+
+# Assumed objects:
+# - spikes: TsGroup
+# - head_direction: Tsd
+# - wake_epochs: IntervalSet
+
+# Restrict analysis to wake intervals.
+spikes_wake = spikes.restrict(wake_epochs)
+hd_wake = head_direction.restrict(wake_epochs)
+
+# Estimate tuning curves for every member of the group.
+tuning_curves = compute_1d_tuning_curves(
+    group=spikes_wake,
+    feature=hd_wake,
+    nb_bins=60,
+    ep=wake_epochs,
+)
+
+# Decode the one-dimensional feature from population activity.
+decoded = decode_1d(
+    tuning_curves=tuning_curves,
+    group=spikes_wake,
+    ep=wake_epochs,
+    bin_size=0.02,
+    time_units="s",
+)
+
+# Compute autocorrelograms for the same units.
+autocorrelograms = compute_autocorrelogram(
+    group=spikes_wake,
+    binsize=0.001,
+    windowsize=0.05,
+    ep=wake_epochs,
+    norm=True,
+    time_units="s",
+)
+```
+
+## Analysis tools
+
+### Correlograms and inter-spike intervals
+
+The correlogram functions return pandas dataframes.
+
+```python
+from pynapple.process.correlograms import (
+    compute_autocorrelogram,
+    compute_crosscorrelogram,
+    compute_eventcorrelogram,
+    compute_isi_distribution,
+)
+
+# Auto-correlograms for each member of a group.
+acg = compute_autocorrelogram(
+    group=spikes,
+    binsize=0.001,
+    windowsize=0.05,
+    ep=wake_epochs,
+)
+
+# Cross-correlograms within a group or between two groups.
+ccg = compute_crosscorrelogram(
+    group=(spikes_a, spikes_b),
+    binsize=0.001,
+    windowsize=0.05,
+    ep=wake_epochs,
+    reverse=False,
+)
+
+# Spike/event timing relative to external events.
+event_ccg = compute_eventcorrelogram(
+    group=spikes,
+    event=events,
+    binsize=0.01,
+    windowsize=1.0,
+    ep=wake_epochs,
+)
+
+# Inter-event or inter-spike interval distributions.
+isi = compute_isi_distribution(
+    data=spikes,
+    bins=50,
+    log_scale=True,
+    epochs=wake_epochs,
+)
+```
+
+### Tuning curves and information measures
+
+The tuning-curve API supports generic features as well as one- and two-dimensional feature spaces.
+
+```python
+from pynapple.process.tuning_curves import (
+    compute_tuning_curves,
+    compute_1d_tuning_curves,
+    compute_2d_tuning_curves,
+    compute_mutual_information,
+)
+
+# Generic tuning curves.
+tuning = compute_tuning_curves(
+    data=spikes,
+    features=behavioral_features,
+    bins=20,
+    epochs=wake_epochs,
+)
+
+# One-dimensional tuning curves.
+tc_1d = compute_1d_tuning_curves(
+    group=spikes,
+    feature=head_direction,
+    nb_bins=60,
+    ep=wake_epochs,
+)
+
+# Two-dimensional tuning curves.
+tc_2d = compute_2d_tuning_curves(
+    group=spikes,
+    features=position,
+    nb_bins=30,
+    ep=wake_epochs,
+)
+
+information = compute_mutual_information(tc_1d)
+```
+
+For continuous timestamped data, use:
+
+- `compute_1d_tuning_curves_continuous`
+- `compute_2d_tuning_curves_continuous`
+
+For discrete epochs or categories, use:
+
+- `compute_discrete_tuning_curves`
+- `compute_response_per_epoch`
+
+### Decoding
+
+The decoding tools accept tuning curves, timestamped population data, analysis epochs, and binning parameters.
+
+```python
+from pynapple.process.decoding import decode_bayes, decode_template
+
+bayes_decoded = decode_bayes(
+    tuning_curves=tuning_curves,
+    data=spikes,
+    epochs=wake_epochs,
+    bin_size=0.02,
+    sliding_window_size=0.1,
+    time_units="s",
+    uniform_prior=True,
+)
+
+template_decoded = decode_template(
+    tuning_curves=tuning_curves,
+    data=spikes,
+    epochs=wake_epochs,
+    bin_size=0.02,
+    metric="correlation",
+)
+```
+
+Specialized helpers are also available:
+
+- `decode_1d(...)`
+- `decode_2d(...)`
+
+### Peri-event analyses
+
+Use the peri-event functions to align continuous data or events around timestamps of interest.
+
+```python
+from pynapple.process.perievent import (
+    compute_perievent,
+    compute_event_triggered_average,
+    compute_spike_triggered_average,
+)
+
+# Extract data around event timestamps.
+peri_event = compute_perievent(
+    data=signal,
+    events=events,
+    window=1.0,
+    time_unit="s",
+    epochs=wake_epochs,
+)
+
+# Average a signal around event times.
+event_average = compute_event_triggered_average(
+    data=signal,
+    events=events,
+    binsize=0.01,
+    window=0.5,
+    time_unit="s",
+    epochs=wake_epochs,
+)
+
+# Average a signal around spike times.
+spike_average = compute_spike_triggered_average(
+    data=signal,
+    spikes=spikes,
+    binsize=0.01,
+    window=0.5,
+    time_unit="s",
+)
+```
+
+### Signal processing
+
+Filtering utilities operate on timestamped signals and support Butterworth and alternative filter modes.
+
+```python
+from pynapple.process.filtering import (
+    apply_bandpass_filter,
+    apply_lowpass_filter,
+    get_filter_frequency_response,
+)
+from pynapple.process.signal import (
+    apply_hilbert_transform,
+    compute_hilbert_envelope,
+    compute_hilbert_phase,
+)
+
+theta = apply_bandpass_filter(
+    data=lfp,
+    cutoff=(6.0, 10.0),
+    fs=1250.0,
+    mode="butter",
+    order=4,
+)
+
+theta_phase = compute_hilbert_phase(theta)
+theta_envelope = compute_hilbert_envelope(theta)
+
+response = get_filter_frequency_response(
+    cutoff=(6.0, 10.0),
+    fs=1250.0,
+    filter_type="bandpass",
+    mode="butter",
+)
+```
+
+Available filters:
+
+- `apply_bandpass_filter`
+- `apply_bandstop_filter`
+- `apply_highpass_filter`
+- `apply_lowpass_filter`
+
+Oscillatory events can be detected with `detect_oscillatory_events(...)`.
+
+### Spectral and wavelet analysis
+
+```python
+from pynapple.process.spectrum import (
+    compute_fft,
+    compute_power_spectral_density,
+    compute_mean_power_spectral_density,
+)
+from pynapple.process.wavelets import (
+    compute_wavelet_transform,
+    generate_morlet_filterbank,
+)
+
+fft = compute_fft(
+    sig=lfp,
+    fs=1250.0,
+    ep=wake_epochs,
+    full_range=False,
+    norm=True,
+)
+
+psd = compute_power_spectral_density(
+    sig=lfp,
+    fs=1250.0,
+    ep=wake_epochs,
+)
+
+mean_psd = compute_mean_power_spectral_density(
+    sig=lfp,
+    interval_size=2.0,
+    fs=1250.0,
+    overlap=0.5,
+    ep=wake_epochs,
+)
+
+wavelets = compute_wavelet_transform(
+    sig=lfp,
+    freqs=[4.0, 8.0, 12.0, 30.0, 80.0],
+    fs=1250.0,
+)
+```
+
+### Trial tensors and temporal warping
+
+`build_tensor` constructs epoch-aligned data tensors, while `warp_tensor` resamples epochs into a common number of bins.
+
+```python
+from pynapple.process.warping import build_tensor, warp_tensor
+
+trial_tensor = build_tensor(
+    input=signal,
+    epochs=trials,
+    bin_size=0.01,
+    align="start",
+    time_unit="s",
+)
+
+warped = warp_tensor(
+    input=signal,
+    epochs=trials,
+    num_bins=100,
+)
+```
+
+### Timestamp randomization
+
+The randomization API provides several timestamp manipulation strategies.
+
+```python
+from pynapple.process.randomize import (
+    shift_timestamps,
+    shuffle_ts_intervals,
+    jitter_timestamps,
+    resample_timestamps,
+)
+
+shifted = shift_timestamps(
+    data=spikes,
+    min_shift=1.0,
+    max_shift=10.0,
+    mode="drop",
+)
+
+jittered = jitter_timestamps(
+    ts=events,
+    max_jitter=0.1,
+    keep_tsupport=False,
+)
+
+shuffled = shuffle_ts_intervals(events)
+resampled = resample_timestamps(events)
+```
+
+## Input and output
+
+The I/O API includes general file and folder utilities:
+
+```python
+from pynapple.io.misc import load_file, load_folder, load_session
+
+data = load_file("recording.npz")
+folder = load_folder("analysis/")
+session = load_session("session_directory")
+```
+
+### Supported loader interfaces
+
+The library includes loader and interface classes for several data organizations and formats:
+
+- `BaseLoader`
+- `NeuroSuite`
+- `Phy`
+- `Suite2P`
+- `CNMF_E`
+- `Minian`
+- `InscopixCNMFE`
+- `NWBFile`
+- `NPZFile`
+- `Folder`
+- `EphysReader`
+- `NeuroSuiteIO`
+- `NeoSignalInterface`
+
+Selected format-specific operations include:
+
+```python
+from pynapple.io.misc import load_binary_file, load_eeg
+
+binary = load_binary_file(
+    filepath="recording.dat",
+    channel=0,
+    n_channels=32,
+    frequency=20000.0,
+    precision="int16",
+    bytes_size=2,
+)
+
+eeg = load_eeg(
+    filepath="recording.eeg",
+    channel=0,
+    n_channels=16,
+    frequency=1250.0,
+)
+```
+
+`BaseLoader` provides methods for loading and saving interval and time-series objects in an NWB-oriented workflow:
+
+- `load_data()`
+- `save_nwb_intervals(...)`
+- `save_nwb_timeseries(...)`
+- `load_nwb_intervals(...)`
+- `load_nwb_timeseries(...)`
+
+## Metadata
+
+`IntervalSet`, `TsdFrame`, and `TsGroup` support a shared metadata API:
+
+```python
+obj.set_info(region="CA1", animal="subject_01")
+region = obj.get_info("region")
+
+obj.drop_info("animal")
+
+# Restrict an object based on a metadata key.
+restricted = obj.restrict_info("region")
+
+# Group by metadata and optionally apply a function.
+groups = obj.groupby("region")
+result = obj.groupby_apply("region", func=my_function)
+```
+
+## Configuration
+
+`PynappleConfig` exposes configuration for the computational backend, timestamp precision, conversion warnings, and timestamp-sorting warnings.
+
+```python
+from pynapple.core.config import PynappleConfig
+
+config = PynappleConfig()
+
+config.set_backend("numpy")
+config.suppress_conversion_warnings = True
+config.suppress_time_index_sorting_warnings = True
+
+# Restore default settings.
+config.restore_defaults()
+```
+
+## Time units
+
+Many methods accept either `time_units` or `time_unit` arguments. Their default value is generally `"s"` for seconds. Where supported, objects can be converted or displayed in alternate units using methods such as:
+
+```python
+signal_ms = signal.as_units("ms")
+epoch_ms = wake_epochs.as_units("ms")
+```
+
+Use a consistent unit convention throughout an analysis, especially when combining interval boundaries, bin sizes, windows, sampling frequencies, and event timestamps.

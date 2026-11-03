@@ -1,0 +1,452 @@
+# ru.greatbit:java-utils
+
+A general-purpose Java utility library containing helpers for collections, strings, beans, serialization, mathematics, dates, networking, reflection, and tree traversal.
+
+The API is organized as static utility classes for common tasks, plus a small tree-node model and traversal API.
+
+## Dependency
+
+```xml
+<dependency>
+    <groupId>ru.greatbit</groupId>
+    <artifactId>java-utils</artifactId>
+</dependency>
+```
+
+## Overview
+
+| Area | Main types | Purpose |
+|---|---|---|
+| Bean utilities | `BeanUtils` | Compare beans by value and create copies. |
+| Collections | `CollectionUtils`, `Difference`, `Wrapper` | Merge, compare, reorder, deduplicate, map, and generate collection combinations. |
+| Strings | `StringUtils` | Transliteration, MD5 generation, joining, matching, trimming, and longest common subsequence operations. |
+| Math | `Prime`, `Random`, `Sequence`, `MathException` | Prime checks, random values, factorials, and Fibonacci sequences. |
+| Finance | `Loan` | Annuity monthly-payment calculation. |
+| Time | `TimeUtils`, `CronUtils` | Day-boundary handling and cron conversion. |
+| Serialization | `JsonSerializer`, `XmlSerializer`, `Serializer`, `NamespaceFilter` | JSON/XML marshaling and unmarshaling. |
+| Network | `AddressUtils` | Local-host address resolution. |
+| Reflection | `FieldsFetcher` | Read nested fields and collect values by interface. |
+| Trees | `Node`, node specializations, `Traverse` | Build and traverse n-ary, binary, AVL, red-black, and oriented trees. |
+
+---
+
+## Collection utilities
+
+`CollectionUtils` provides operations for lists, maps, sets, and collections.
+
+```java
+import ru.greatbit.utils.collection.CollectionUtils;
+import ru.greatbit.utils.collection.Difference;
+
+import java.util.Arrays;
+import java.util.List;
+
+List<String> first = Arrays.asList("alpha", "beta", "gamma");
+List<String> second = Arrays.asList("beta", "gamma", "delta");
+
+List<String> merged = CollectionUtils.mergeLists(first, second);
+
+Difference<String> difference = CollectionUtils.getDiff(first, second);
+
+List<String> removed = difference.getRemoved();
+List<String> added = difference.getAdded();
+List<String> equal = difference.getEqual();
+List<String> combined = difference.getMerged();
+```
+
+### Available collection operations
+
+```java
+List<T> merged = CollectionUtils.mergeLists(first, second);
+
+List<T> mergedByValue =
+    CollectionUtils.mergeListsByValue(first, second);
+
+Difference<T> diff = CollectionUtils.getDiff(first, second);
+
+Difference<T> valueDiff =
+    CollectionUtils.getDiffAnyObject(first, second);
+
+Map<V, V> map = CollectionUtils.listToMap(input);
+
+Map<String, T> md5Map = CollectionUtils.listToMD5Map(input);
+
+List<T> withoutIndex = CollectionUtils.removeByIndex(input, index);
+
+List<T> unique = CollectionUtils.removeDuplicateValues(values);
+
+List<T> uniqueByProperty = CollectionUtils.removeDuplicateValues(
+    values,
+    value -> value.someProperty()
+);
+
+Set<Set<T>> subsets = CollectionUtils.powerSet(input);
+
+List<Set<T>> permutations = CollectionUtils.permutations(items);
+```
+
+`Difference<T>` exposes four result lists:
+
+- `getRemoved()`
+- `getAdded()`
+- `getEqual()`
+- `getMerged()`
+
+### `Wrapper<T>`
+
+`Wrapper<T>` wraps an object and can optionally use a function that identifies the value meaningful for equality.
+
+```java
+import ru.greatbit.utils.collection.Wrapper;
+
+Wrapper<String> value = new Wrapper<String>()
+    .withObject("example")
+    .withEquals(String::toLowerCase);
+
+String object = value.getObject();
+```
+
+---
+
+## String utilities
+
+`StringUtils` contains common text helpers.
+
+```java
+import ru.greatbit.utils.string.StringUtils;
+
+String safeName = StringUtils.emptyIfNull(null);
+
+String joined = StringUtils.listAsString(
+    java.util.Arrays.asList("one", "two", "three")
+);
+
+String compact = StringUtils.listAsStringNoSpaces(
+    java.util.Arrays.asList("one", "two", "three")
+);
+
+String checksum = StringUtils.getMd5String("important content");
+
+boolean hasAll = StringUtils.containsAll(
+    "quick brown fox",
+    "quick",
+    "fox"
+);
+
+boolean hasAny = StringUtils.containsAny(
+    "quick brown fox",
+    "cat",
+    "fox"
+);
+
+String withoutPrefix = StringUtils.removeHeading("prefix-value", "prefix-");
+String withoutSuffix = StringUtils.removeTailing("file.txt", ".txt");
+
+String common = StringUtils.lcs("ABCD", "ACBD");
+```
+
+Also available:
+
+- `translit(String text)` — transliteration helper.
+- `addUniqueString(String toAdd, List<String> strings)` — add a string to a list uniquely.
+- `getMd5String(String input)` — compute an MD5 string.
+
+---
+
+## Math and finance
+
+### Prime numbers
+
+```java
+import ru.greatbit.utils.math.Prime;
+
+boolean prime = Prime.isPrime(97L);
+
+List<Long> initialPrimes = Prime.getPrimes(10);
+List<Long> primesInRange = Prime.getPrimes(100, 200);
+```
+
+### Sequences
+
+`Sequence` provides factorial and Fibonacci values and sequences. Its methods can throw `MathException`.
+
+```java
+import ru.greatbit.utils.math.Sequence;
+import ru.greatbit.utils.exceptions.MathException;
+
+try {
+    long factorial = Sequence.factorial(5);
+    List<Long> factorials = Sequence.factorialSequence(5);
+
+    long fibonacci = Sequence.fibonacci(10);
+    List<Long> fibonacciValues = Sequence.fibonacciSequence(10);
+} catch (MathException e) {
+    // Handle an unsupported or invalid sequence request.
+}
+```
+
+### Random values
+
+```java
+import ru.greatbit.utils.math.Random;
+
+int value = Random.next(10, 100);
+```
+
+### Loan payments
+
+```java
+import ru.greatbit.utils.finance.Loan;
+
+double monthlyPayment = Loan.getAnnuityMonthlyPayment(
+    1_000_000.0,
+    0.12,
+    120
+);
+```
+
+---
+
+## Serialization
+
+### JSON
+
+`JsonSerializer` provides JSON marshaling and unmarshaling, with optional root names.
+
+```java
+import ru.greatbit.utils.serialize.JsonSerializer;
+
+User user = new User();
+
+String json = JsonSerializer.marshal(user);
+String jsonWithRoot = JsonSerializer.marshal(user, "user");
+
+User parsed = JsonSerializer.unmarshal(json, User.class);
+User parsedWithRoot = JsonSerializer.unmarshal(
+    jsonWithRoot,
+    "user",
+    User.class
+);
+```
+
+### XML
+
+`XmlSerializer` supports XML marshaling and unmarshaling from strings and streams.
+
+```java
+import ru.greatbit.utils.serialize.XmlSerializer;
+
+String xml = XmlSerializer.marshal(user);
+
+User fromString = XmlSerializer.unmarshal(xml, User.class);
+
+try (java.io.InputStream input = /* XML input stream */ null) {
+    User fromStream = XmlSerializer.unmarshal(input, User.class);
+}
+```
+
+For namespace-aware XML processing:
+
+```java
+User value = XmlSerializer.unmarshalNamespaceAware(inputStream, User.class);
+
+String namespace = XmlSerializer.getXMLRootNamespace(User.class);
+```
+
+### Generic string deserialization
+
+```java
+import ru.greatbit.utils.serialize.Serializer;
+
+User user = Serializer.unmarshal(data, User.class);
+```
+
+Serialization methods declare checked exceptions; callers should handle or propagate them as appropriate.
+
+---
+
+## Bean utilities
+
+`BeanUtils` offers value-based bean comparison and copying.
+
+```java
+import ru.greatbit.utils.beans.BeanUtils;
+
+boolean same = BeanUtils.equalByVal(firstUser, secondUser);
+
+User copied = BeanUtils.getCopy(firstUser);
+```
+
+Both methods declare `Exception`.
+
+---
+
+## Time and cron helpers
+
+```java
+import ru.greatbit.utils.time.TimeUtils;
+import ru.greatbit.utils.time.CronUtils;
+
+long startOfToday = TimeUtils.getStartOfTheDay(System.currentTimeMillis());
+
+java.util.Date startOfDate = TimeUtils.getStartOfTheDay(
+    new java.util.Date()
+);
+
+String quartzExpression = CronUtils.convertToQuartz(inputExpression);
+```
+
+---
+
+## Network utilities
+
+```java
+import ru.greatbit.utils.network.AddressUtils;
+
+java.net.InetAddress localHost = AddressUtils.getLocalHost();
+
+java.net.InetAddress lanAddress =
+    AddressUtils.getLocalHostLANAddress();
+```
+
+Both methods may throw `UnknownHostException`.
+
+---
+
+## Reflection helpers
+
+`FieldsFetcher` provides helpers for retrieving values from objects and navigating field paths.
+
+```java
+import ru.greatbit.utils.refclection.FieldsFetcher;
+
+Object value = FieldsFetcher.findValue(user, "address");
+
+Object nestedValue = FieldsFetcher.findValue(
+    user,
+    java.util.Arrays.asList("address", "city")
+);
+
+Object fieldValue = FieldsFetcher.getObjectFromField(
+    user,
+    User.class,
+    "name"
+);
+```
+
+It can also retrieve or merge values that implement a shared interface:
+
+```java
+List<MyInterface> values = FieldsFetcher.getValuesByInterface(
+    source,
+    MyInterface.class
+);
+
+List<MyInterface> merged = FieldsFetcher.mergeListsByInterface(
+    source,
+    MyInterface.class
+);
+```
+
+Several methods declare reflective access exceptions, including `IllegalAccessException` and `InstantiationException`.
+
+---
+
+## Tree model and traversal
+
+The tree API is based on `Node<K, V>`, which holds a key, a value, and child nodes.
+
+Available node variants include:
+
+- `NaryNode<K, V>` — node with a list of children.
+- `BaseBinary<K, V>` — node with left and right children.
+- `AvlNode<K, V>` — binary node with a height property.
+- `RedBlackNode<K, V>` — binary node with a color property.
+- `BaseOriented<K, V>` — node with left and right child lists.
+
+`Binary` describes nodes with left and right children. `Oriented` describes nodes with left and right child collections.
+
+### Build and traverse an n-ary tree
+
+```java
+import ru.greatbit.utils.tree.nodes.NaryNode;
+import ru.greatbit.utils.tree.nodes.Node;
+import ru.greatbit.utils.tree.processors.Traverse;
+
+import java.util.Arrays;
+import java.util.List;
+
+NaryNode<String, String> child1 =
+    new NaryNode<>("child-1", "First child");
+
+NaryNode<String, String> child2 =
+    new NaryNode<>("child-2", "Second child");
+
+NaryNode<String, String> root = new NaryNode<>(
+    "root",
+    "Root node",
+    Arrays.asList(child1, child2)
+);
+
+List<Node<String, String>> breadthFirst = Traverse.bfsList(root);
+List<Node<String, String>> depthFirst = Traverse.dfsList(root);
+
+List<Node<String, String>> leaves = Traverse.getLeafs(root);
+
+long leafCount = Traverse.countLeafs(root);
+int maxHeight = Traverse.countMaxHeight(root);
+```
+
+### Visit nodes
+
+Use the `Visitor` interface when traversal should execute an action instead of returning a list.
+
+```java
+import ru.greatbit.utils.tree.processors.Traverse;
+
+Traverse.bfsVisit(root, node -> {
+    System.out.println(node.getKey() + ": " + node.getValue());
+});
+
+Traverse.dfsVisit(root, node -> {
+    System.out.println(node.getKey());
+});
+```
+
+### Binary-node properties
+
+```java
+import ru.greatbit.utils.tree.nodes.AvlNode;
+import ru.greatbit.utils.tree.nodes.RedBlackNode;
+
+// AVL nodes expose height.
+AvlNode<String, Integer> avlNode = new AvlNode<>();
+avlNode.setHeight(3);
+int height = avlNode.getHeight();
+
+// Red-black nodes expose color.
+RedBlackNode<String, Integer> redBlackNode = new RedBlackNode<>();
+redBlackNode.setColor(true);
+boolean color = redBlackNode.getColor();
+```
+
+---
+
+## Tree processor interfaces
+
+The tree package includes interfaces for search, mutation, and visitation:
+
+- `Searchable`
+  - `find(K key)`
+  - `findByVal(V value)`
+
+- `Updatable`
+  - `addNode(...)`
+  - `removeNode(...)`
+  - `removeNodeByVal(...)`
+  - `merge(...)`
+
+- `Visitor`
+  - `visit(Node<K, V> node)`
+
+These interfaces can be implemented by application-specific tree processors while using the provided node types and `Traverse` utility methods.

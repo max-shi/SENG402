@@ -1,0 +1,423 @@
+# de.fosd.typechef:errorlib_2.10
+
+`de.fosd.typechef:errorlib_2.10` provides APIs for lexing and preprocessing C-family source text with support for macros, include paths, warnings, feature expressions, and variability-aware results.
+
+The library also contains a Java 1.5 lexer API, including a configurable character stream and token manager.
+
+## Main concepts
+
+### Preprocessing and lexing
+
+The central preprocessing API is `Preprocessor`, which implements `VALexer`.
+
+A `Preprocessor` can:
+
+- Read one or more `Source` inputs.
+- Define or remove macros under feature expressions.
+- Configure quote and system include paths.
+- Enable lexer `Feature` flags and `Warning` categories.
+- Produce `LexerToken` instances through `getNextToken()`.
+- Report errors and warnings through a `PreprocessorListener`.
+- Use a configurable `VirtualFileSystem` for file lookup.
+
+Useful input sources include:
+
+- `StringLexerSource` — source text from a `String`.
+- `FileLexerSource` — source text from a file, stream, or path.
+- `InputLexerSource` — source text from an `InputStream`.
+- `LexerSource` — reader-backed lexer source.
+- `UnnumberedUnexpandingTokenStreamSource` — a source backed by existing tokens.
+
+`Token` is the common preprocessor token abstraction. `SimpleToken`, `FeatureExprToken`, and `EOFToken` are concrete token types.
+
+### High-level lexer frontend
+
+`LexerFrontend` offers convenience methods for parsing source strings, files, and streams:
+
+- `parse(String code)`
+- `parseFile(String fileName, List<String> systemIncludePath, FeatureModel featureModel)`
+- `parseStream(...)`
+- `run(...)`
+
+The `run` methods return a `Conditional<LexerResult>`, allowing results to represent configuration-dependent outcomes. Helper methods include:
+
+- `conditionalResultToList(...)`
+- `getErrorCondition(...)`
+
+### Feature expressions and configuration
+
+Feature-related APIs are represented by `FeatureExpr`, `FeatureModel`, and related types.
+
+`FeatureExprLib` provides convenient static accessors:
+
+- `FeatureExprLib.True()`
+- `FeatureExprLib.False()`
+- `FeatureExprLib.zero()`
+- `FeatureExprLib.toFeatureExpr(...)`
+- `FeatureExprLib.featureModelFactory()`
+- `FeatureExprLib.featureExprParser()`
+
+`PartialConfiguration` stores explicitly defined and undefined feature names together with a feature expression.
+
+`MacroConstraint` represents a constraint associated with a macro name, a `MacroConstraintKind`, and a feature expression.
+
+### Macro handling
+
+Macros may be configured through `Preprocessor`, `VALexer`, or `CppReader`.
+
+Relevant methods include:
+
+```java
+preprocessor.addMacro("NAME", featureExpression);
+preprocessor.addMacro("NAME", featureExpression, "replacement text");
+preprocessor.removeMacro("NAME", featureExpression);
+```
+
+`MacroData` represents macro metadata and token content. It supports function-like macro arguments, variadic macros, token insertion, and token pasting.
+
+### Include files and virtual file systems
+
+`VirtualFileSystem` abstracts file resolution:
+
+```java
+public interface VirtualFileSystem {
+    VirtualFile getFile(String path);
+    VirtualFile getFile(String dir, String name);
+}
+```
+
+Available implementations include:
+
+- `JavaFileSystem` — filesystem access using Java file handling.
+- `ChrootFileSystem` — filesystem access rooted at a supplied `File`.
+
+A `VirtualFile` can expose file metadata, child and parent relationships, and a `Source`:
+
+```java
+VirtualFile file = fileSystem.getFile("include/header.h");
+Source source = file.getSource();
+```
+
+### Lexer features and warnings
+
+The `Feature` enum controls lexer and preprocessor behavior:
+
+```java
+Feature.DIGRAPHS
+Feature.TRIGRAPHS
+Feature.LINEMARKERS
+Feature.CSYNTAX
+Feature.KEEPCOMMENTS
+Feature.KEEPALLCOMMENTS
+Feature.INCLUDENEXT
+Feature.GNUCEXTENSIONS
+```
+
+It also includes debug-oriented flags such as `DEBUG_VERBOSE`, `DEBUGFILE_LOG`, and `DEBUGFILE_TOKENSTREAM`.
+
+Warnings are represented by the `Warning` enum:
+
+```java
+Warning.TRIGRAPHS
+Warning.UNDEF
+Warning.ENDIF_LABELS
+Warning.ERROR
+```
+
+Use `Warning.allWarnings()` to retrieve all warning categories.
+
+### Listener-based diagnostics
+
+Attach a `PreprocessorListener` to receive preprocessing diagnostics and source-change notifications:
+
+```java
+PreprocessorListener listener = new PreprocessorListener(preprocessor, options);
+preprocessor.setListener(listener);
+```
+
+The listener tracks warning and error counts and exposes invalid configurations:
+
+```java
+int errors = listener.getErrors();
+int warnings = listener.getWarnings();
+FeatureExpr invalid = listener.getInvalidConfigurations();
+```
+
+### Option objects
+
+The library includes option containers for command-line-oriented integrations:
+
+- `Options`
+- `LexerOptions`
+- `FeatureModelOptions`
+- `FrontendOptions`
+
+`Options.parseOptions(String[] args)` parses command-line arguments and may throw `OptionException`.
+
+`LexerOptions` and `ILexerOptions` expose preprocessing configuration such as:
+
+- Defined and undefined macros.
+- Include paths.
+- Included headers.
+- Lexer features and warnings.
+- Feature models.
+- Partial configurations.
+- Lexer output and diagnostic behavior.
+
+`FrontendOptions` adds frontend-oriented settings such as input file names, parser output controls, parser statistics, serialized AST output, and parser-error rendering.
+
+## Usage examples
+
+## Lex a source string with `LexerFrontend`
+
+For simple use cases, `LexerFrontend` can lex a source string directly.
+
+```java
+import de.fosd.typechef.lexer.LexerFrontend;
+import de.fosd.typechef.lexer.LexerToken;
+
+import java.io.IOException;
+import java.util.List;
+
+public class LexStringExample {
+    public static void main(String[] args) throws Exception {
+        String code =
+            "#define SIZE 4\n" +
+            "int values[SIZE];\n";
+
+        LexerFrontend frontend = new LexerFrontend();
+        List<LexerToken> tokens = frontend.parse(code);
+
+        System.out.println("Token count: " + tokens.size());
+    }
+}
+```
+
+`LexerFrontend.parse(...)` may throw `LexerException` or `IOException`, so production code should handle both appropriately.
+
+## Configure and consume a `Preprocessor`
+
+Use `Preprocessor` when you need direct control over macro definitions, features, include paths, and token consumption.
+
+```java
+import de.fosd.typechef.lexer.Feature;
+import de.fosd.typechef.lexer.FeatureExprLib;
+import de.fosd.typechef.lexer.Preprocessor;
+import de.fosd.typechef.lexer.StringLexerSource;
+import de.fosd.typechef.lexer.Token;
+
+public class PreprocessorExample {
+    public static void main(String[] args) throws Exception {
+        Preprocessor preprocessor = new Preprocessor();
+
+        preprocessor.addFeature(Feature.GNUCEXTENSIONS);
+        preprocessor.addSystemIncludePath("/usr/include");
+        preprocessor.addQuoteIncludePath("./include");
+
+        preprocessor.addMacro(
+            "ENABLE_LOGGING",
+            FeatureExprLib.True(),
+            "1"
+        );
+
+        preprocessor.addInput(
+            new StringLexerSource(
+                "#if ENABLE_LOGGING\n" +
+                "int logging_enabled = 1;\n" +
+                "#endif\n"
+            )
+        );
+
+        try {
+            Token token;
+            do {
+                token = (Token) preprocessor.getNextToken();
+                System.out.println(token.getText());
+            } while (!token.isEOF());
+        } finally {
+            preprocessor.close();
+        }
+    }
+}
+```
+
+Tokens expose source-oriented information such as text, location, feature expression, source name, and whether further macro expansion is allowed:
+
+```java
+String text = token.getText();
+int line = token.getLine();
+int column = token.getColumn();
+boolean canExpand = token.mayExpand();
+```
+
+## Process a source file
+
+`FileLexerSource` can be used to provide a file as preprocessor input.
+
+```java
+import de.fosd.typechef.lexer.FileLexerSource;
+import de.fosd.typechef.lexer.Preprocessor;
+import de.fosd.typechef.lexer.Token;
+
+import java.io.File;
+
+public class FilePreprocessorExample {
+    public static void main(String[] args) throws Exception {
+        Preprocessor preprocessor = new Preprocessor();
+        preprocessor.addInput(new FileLexerSource(new File("example.c")));
+
+        try {
+            while (true) {
+                Token token = (Token) preprocessor.getNextToken();
+
+                if (token.isEOF()) {
+                    break;
+                }
+
+                if (token.isLanguageToken()) {
+                    System.out.println(token.getText());
+                }
+            }
+        } finally {
+            preprocessor.close();
+        }
+    }
+}
+```
+
+## Use `CppReader` as a `Reader`
+
+`CppReader` adapts preprocessing output to the standard `Reader` API.
+
+```java
+import de.fosd.typechef.lexer.CppReader;
+
+import java.io.Reader;
+import java.io.StringReader;
+
+public class CppReaderExample {
+    public static void main(String[] args) throws Exception {
+        Reader input = new StringReader(
+            "#define VERSION 2\n" +
+            "int version = VERSION;\n"
+        );
+
+        CppReader reader = new CppReader(input);
+        reader.addMacro("EXTRA_FLAG", "1");
+
+        char[] buffer = new char[256];
+        int count;
+
+        try {
+            while ((count = reader.read(buffer, 0, buffer.length)) != -1) {
+                System.out.print(new String(buffer, 0, count));
+            }
+        } finally {
+            reader.close();
+        }
+    }
+}
+```
+
+## Configure a virtual filesystem
+
+A `Preprocessor` can use a custom `VirtualFileSystem` for include-file lookup or other path-based source access.
+
+```java
+import de.fosd.typechef.lexer.ChrootFileSystem;
+import de.fosd.typechef.lexer.Preprocessor;
+
+import java.io.File;
+
+public class FileSystemExample {
+    public static void main(String[] args) {
+        Preprocessor preprocessor = new Preprocessor();
+
+        ChrootFileSystem fileSystem =
+            new ChrootFileSystem(new File("/project/source-root"));
+
+        preprocessor.setFileSystem(fileSystem);
+    }
+}
+```
+
+## Inspect preprocessing diagnostics
+
+Attach a listener to count diagnostics and inspect configuration validity.
+
+```java
+import de.fosd.typechef.lexer.Preprocessor;
+import de.fosd.typechef.lexer.PreprocessorListener;
+import de.fosd.typechef.lexer.options.ILexerOptions;
+
+public class DiagnosticsExample {
+    public static void attachListener(
+        Preprocessor preprocessor,
+        ILexerOptions options
+    ) {
+        PreprocessorListener listener =
+            new PreprocessorListener(preprocessor, options);
+
+        preprocessor.setListener(listener);
+
+        // Run preprocessing here.
+
+        int errorCount = listener.getErrors();
+        int warningCount = listener.getWarnings();
+
+        System.out.println("Errors: " + errorCount);
+        System.out.println("Warnings: " + warningCount);
+    }
+}
+```
+
+## Java 1.5 lexer API
+
+The Java lexer is exposed through `Java15ParserTokenManager` and a `CharStream` implementation such as `OffsetCharStream`.
+
+```java
+import de.fosd.typechef.parser.java15.lexer.Java15ParserTokenManager;
+import de.fosd.typechef.parser.java15.lexer.OffsetCharStream;
+import de.fosd.typechef.parser.java15.lexer.Token;
+
+import java.io.StringReader;
+
+public class JavaLexerExample {
+    public static void main(String[] args) {
+        OffsetCharStream stream =
+            new OffsetCharStream(new StringReader("class Example {}"));
+
+        Java15ParserTokenManager tokenManager =
+            new Java15ParserTokenManager(stream);
+
+        Token token = tokenManager.getNextToken();
+
+        System.out.println(token.toString());
+        System.out.println("End offset: " + token.getEndOffset());
+    }
+}
+```
+
+`OffsetCharStream` supports construction and reinitialization from `Reader` and `InputStream` sources, with optional encoding, line, column, and buffer-size settings.
+
+## Error handling
+
+The primary exception and error types are:
+
+- `LexerException` — checked exception for lexer and preprocessing failures.
+- `IOException` — input and output failures.
+- `OptionException` — invalid option parsing or option usage.
+- `InternalException` — runtime internal failure.
+- `TokenMgrError` — Java lexer token-manager error.
+
+Typical preprocessing code should handle at least `LexerException` and `IOException`:
+
+```java
+try {
+    // Configure and run lexer or preprocessor.
+} catch (de.fosd.typechef.lexer.LexerException e) {
+    System.err.println("Lexing failed: " + e.getMessage());
+} catch (java.io.IOException e) {
+    System.err.println("I/O failed: " + e.getMessage());
+}
+```

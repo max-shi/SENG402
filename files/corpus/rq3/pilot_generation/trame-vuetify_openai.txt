@@ -1,0 +1,386 @@
+# trame-vuetify
+
+`trame-vuetify` provides Python bindings for building [Vuetify](https://vuetifyjs.com/) user interfaces in [trame](https://kitware.github.io/trame/) applications.
+
+The library exposes Vuetify components as Python classes, allowing applications to compose an interface using trame’s declarative widget and layout model. It includes bindings for both Vuetify 2 and Vuetify 3, UI layout helpers, module setup functions, and utilities for serializing values and preparing tabular data for grid-style components.
+
+## Installation
+
+Install `trame-vuetify` in the Python environment used by your trame application.
+
+```bash
+pip install trame-vuetify
+```
+
+## Choose a Vuetify version
+
+The package provides separate modules for Vuetify 2 and Vuetify 3.
+
+| Vuetify version | Widget module | Layout module |
+| --- | --- | --- |
+| Vuetify 2 | `trame.widgets.vuetify` | `trame_vuetify.ui.vuetify` |
+| Vuetify 3 | `trame.widgets.vuetify3` | `trame_vuetify.ui.vuetify3` |
+
+Use the widget and layout modules for the same Vuetify major version in a given application.
+
+---
+
+## Quick start: Vuetify 2
+
+```python
+from trame.app import get_server
+from trame.ui.vuetify import SinglePageLayout
+from trame.widgets import vuetify
+
+server = get_server()
+
+# Register Vuetify support with the server when needed by the application setup.
+vuetify.initialize(server)
+
+with SinglePageLayout(server) as layout:
+    with layout.toolbar:
+        vuetify.VToolbarTitle("My trame-vuetify application")
+
+    with layout.content:
+        with vuetify.VContainer():
+            vuetify.VAlert(
+                "Welcome to the application",
+                color="primary",
+            )
+
+            with vuetify.VCard():
+                vuetify.VCardTitle("Example card")
+                vuetify.VCardText(
+                    "Vuetify components are available as Python classes."
+                )
+
+                with vuetify.VCardActions():
+                    vuetify.VBtn("Continue", color="primary")
+```
+
+## Quick start: Vuetify 3
+
+```python
+from trame.app import get_server
+from trame.ui.vuetify3 import SinglePageLayout
+from trame.widgets import vuetify3
+
+server = get_server()
+
+vuetify3.initialize(server)
+
+with SinglePageLayout(server) as layout:
+    with layout.toolbar:
+        vuetify3.VToolbarTitle("Vuetify 3 application")
+
+    with layout.content:
+        with vuetify3.VContainer():
+            vuetify3.VAlert(
+                "This page uses the Vuetify 3 widget bindings.",
+                color="primary",
+            )
+
+            with vuetify3.VCard():
+                vuetify3.VCardTitle("Dashboard")
+                vuetify3.VCardText("Build layouts from Vuetify components.")
+
+                with vuetify3.VCardActions():
+                    vuetify3.VBtn("Open", color="primary")
+```
+
+---
+
+## Main API overview
+
+### Widget modules
+
+The primary APIs are the generated component bindings:
+
+```python
+from trame.widgets import vuetify      # Vuetify 2
+from trame.widgets import vuetify3     # Vuetify 3
+```
+
+Each Vuetify component is represented by a Python class derived from `HtmlElement`. Components can be nested to create the same parent/child structure used by Vuetify templates.
+
+For example:
+
+```python
+from trame.widgets import vuetify3 as v3
+
+with v3.VContainer():
+    with v3.VRow():
+        with v3.VCol():
+            v3.VTextField(label="Project name")
+
+        with v3.VCol():
+            v3.VSelect(label="Status")
+```
+
+Commonly used component groups include:
+
+- **Application structure:** `VApp`, `VMain`, `VContainer`, `VRow`, `VCol`, `VLayout`, `VSpacer`
+- **Navigation:** `VAppBar`, `VNavigationDrawer`, `VBottomNavigation`, `VTabs`, `VTab`, `VMenu`
+- **Cards and surfaces:** `VCard`, `VSheet`, `VDialog`, `VBottomSheet`, `VOverlay`
+- **Inputs and selection:** `VTextField`, `VTextarea`, `VSelect`, `VAutocomplete`, `VCheckbox`, `VRadioGroup`, `VSlider`, `VSwitch`
+- **Data display:** `VDataTable`, `VDataIterator`, `VList`, `VTreeview`, `VVirtualScroll`
+- **Feedback:** `VAlert`, `VSnackbar`, `VProgressCircular`, `VProgressLinear`, `VSkeletonLoader`
+- **Visual content:** `VIcon`, `VImg`, `VAvatar`, `VBadge`, `VChip`, `VTooltip`
+- **Transitions:** `VFadeTransition`, `VScaleTransition`, `VSlideXTransition`, `VSlideYTransition`, and related transition components
+
+The exact available set differs between Vuetify 2 and Vuetify 3. For example, Vuetify 3 includes components such as `VDataTableServer`, `VDateInput`, `VEmptyState`, `VFileUpload`, `VNumberInput`, and `VSnackbarQueue`.
+
+### `HtmlElement`
+
+Both widget modules expose an `HtmlElement` base class:
+
+```python
+from trame.widgets.vuetify import HtmlElement
+# or
+from trame.widgets.vuetify3 import HtmlElement
+```
+
+All generated Vuetify component classes inherit from this type. In normal applications, instantiate the concrete components such as `VBtn`, `VCard`, or `VDataTable` rather than `HtmlElement` directly.
+
+### Server initialization
+
+The widget namespaces expose initialization functions:
+
+```python
+from trame.widgets import vuetify
+from trame.widgets import vuetify3
+
+vuetify.initialize(server)
+vuetify3.initialize(server)
+```
+
+Use the initialization function matching the component namespace used by the application.
+
+The package also provides setup functions intended for module-level integration:
+
+```python
+from trame_vuetify.module import setup
+from trame_vuetify.module import vue2, vue3, vue3_lab
+
+setup(server)
+vue2.setup(server)
+vue3.setup(server)
+vue3_lab.setup(server)
+```
+
+`setup()` accepts additional keyword arguments:
+
+```python
+setup(server, **options)
+```
+
+### Layout helpers
+
+The UI packages provide application-level layouts for each Vuetify version.
+
+```python
+from trame_vuetify.ui.vuetify import (
+    VAppLayout,
+    SinglePageLayout,
+    SinglePageWithDrawerLayout,
+)
+```
+
+or:
+
+```python
+from trame_vuetify.ui.vuetify3 import (
+    VAppLayout,
+    SinglePageLayout,
+    SinglePageWithDrawerLayout,
+)
+```
+
+Available layout classes:
+
+- `VAppLayout`: Base Vuetify application layout.
+- `SinglePageLayout`: A single-page application layout.
+- `SinglePageWithDrawerLayout`: A single-page layout with a navigation drawer.
+- `on_server_reload()`: Available on `SinglePageLayout` for handling server reloads.
+
+Both UI modules also provide:
+
+```python
+get_trame_versions()
+```
+
+This function can be used by applications or tooling that need access to trame-related version information.
+
+---
+
+## Building a page with a navigation drawer
+
+`SinglePageWithDrawerLayout` is useful for applications that need persistent navigation alongside a main content region.
+
+```python
+from trame.app import get_server
+from trame.ui.vuetify3 import SinglePageWithDrawerLayout
+from trame.widgets import vuetify3 as v3
+
+server = get_server()
+v3.initialize(server)
+
+with SinglePageWithDrawerLayout(server) as layout:
+    with layout.toolbar:
+        v3.VToolbarTitle("Project workspace")
+
+    with layout.drawer:
+        with v3.VList():
+            v3.VListItem("Overview")
+            v3.VListItem("Datasets")
+            v3.VListItem("Settings")
+
+    with layout.content:
+        with v3.VContainer():
+            v3.VCardTitle("Overview")
+            v3.VCardText("Select an item from the drawer to begin.")
+```
+
+---
+
+## Data-table helpers
+
+Both widget modules expose utilities that can be used when preparing Python values for client-side components.
+
+```python
+from trame.widgets import vuetify3
+
+serializable_value = vuetify3.cast_to_serializable(value)
+grid_data = vuetify3.dataframe_to_grid(dataframe)
+```
+
+Available helpers:
+
+```python
+cast_to_serializable(value)
+dataframe_to_grid(dataframe, options={})
+```
+
+`cast_to_serializable()` is intended for converting a value into a serializable form. `dataframe_to_grid()` is intended to transform a dataframe into data suitable for a grid or table component, optionally accepting an `options` dictionary.
+
+A typical table composition can look like:
+
+```python
+from trame.widgets import vuetify3 as v3
+
+grid_data = v3.dataframe_to_grid(dataframe)
+
+with v3.VContainer():
+    v3.VDataTable(items=grid_data)
+```
+
+The structure accepted by a particular table component depends on the Vuetify component and version being used.
+
+---
+
+## Vuetify 3 Labs support
+
+Vuetify 3 bindings expose an `enable_lab()` function:
+
+```python
+from trame.widgets import vuetify3
+
+vuetify3.enable_lab()
+```
+
+A corresponding module setup entry point is also available:
+
+```python
+from trame_vuetify.module import vue3_lab
+
+vue3_lab.setup(server)
+```
+
+Use these APIs when an application requires Vuetify 3 Lab components.
+
+---
+
+## Component examples
+
+### Form controls
+
+```python
+from trame.widgets import vuetify3 as v3
+
+with v3.VCard():
+    v3.VCardTitle("Account settings")
+
+    with v3.VCardText():
+        v3.VTextField(label="Display name")
+        v3.VTextField(label="Email address")
+        v3.VSelect(label="Role")
+        v3.VSwitch(label="Receive notifications")
+
+    with v3.VCardActions():
+        v3.VBtn("Save", color="primary")
+```
+
+### Dialog content
+
+```python
+from trame.widgets import vuetify as v2
+
+with v2.VDialog():
+    with v2.VCard():
+        v2.VCardTitle("Confirm action")
+        v2.VCardText("Do you want to continue?")
+
+        with v2.VCardActions():
+            v2.VBtn("Cancel")
+            v2.VBtn("Confirm", color="primary")
+```
+
+### Lists
+
+```python
+from trame.widgets import vuetify3 as v3
+
+with v3.VList():
+    with v3.VListItem():
+        v3.VListItemTitle("First item")
+        v3.VListItemSubtitle("Additional details")
+
+    with v3.VListItem():
+        v3.VListItemTitle("Second item")
+        v3.VListItemSubtitle("Another description")
+```
+
+---
+
+## Generated binding tooling
+
+The repository also includes generation utilities for producing Vuetify Python bindings.
+
+Vuetify 2 generation helpers include:
+
+```python
+from vue2.generate_python import generate_vuetify, get_docs
+```
+
+Vuetify 3 generation helpers include:
+
+```python
+from vue3.generate_python import generate_vuetify, get_docs
+```
+
+Both generators expose helpers for processing component attributes, events, descriptions, and documentation before generating Python output:
+
+- `get_attributes(tag)`
+- `get_events(tag)`
+- `get_docs(tag)`
+- `generate_vuetify(input_file, output_file)`
+- `init_argparse()`
+
+The Vuetify 3 generator additionally provides name-conversion helpers:
+
+```python
+to_class_name(name)
+to_attr_name(name)
+```
+
+These utilities are primarily useful when maintaining or regenerating the component bindings.

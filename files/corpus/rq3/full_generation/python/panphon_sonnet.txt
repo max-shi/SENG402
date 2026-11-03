@@ -1,0 +1,207 @@
+# panphon
+
+**panphon** is a Python library for working with phonological features of IPA (International Phonetic Alphabet) segments. It provides tools to:
+
+- Segment IPA-transcribed text into individual phonemic segments
+- Convert IPA segments and words into feature vectors (numeric or symbolic)
+- Compare, match, and filter segments based on articulatory/phonological feature specifications
+- Compute phonetic distance metrics between words or segments (Levenshtein, feature-edit distance, weighted/Hamming variants, phoneme/feature error rates)
+- Match segments and words against feature-based patterns (a kind of "phonological regex")
+- Convert between X-SAMPA and IPA transcription systems
+- Tokenize words into their constituent IPA segments, including multi-character segments and diacritics
+
+It is aimed at computational phonologists, linguists, and NLP researchers who need to reason about phonetic similarity, feature-based segment matching, or convert transcription systems programmatically.
+
+## Installation
+
+```bash
+pip install panphon
+```
+
+## Core Concepts
+
+At the heart of panphon is the **feature table**, which maps IPA segments to sets of phonological features (e.g., `+voice`, `-nasal`, `0round`). Two main feature table implementations are provided:
+
+- `panphon.featuretable.FeatureTable` — the primary, modern interface, built around a `Segment` object representing feature bundles.
+- `panphon._panphon.FeatureTable` — a lower-level/legacy interface working directly with sets and lists of `(feature, value)` tuples.
+- `panphon.permissive.PermissiveFeatureTable` — a more lenient subclass that attempts best-effort matching for unknown or malformed segments.
+
+A `Segment` (in `panphon.segment`) is a mapping from feature names to integer-encoded values, supporting comparisons like `distance`, `hamming_distance`, and `weighted_distance` against other segments.
+
+`panphon.distance.Distance` builds on feature tables to compute various distance metrics between whole words (as strings of IPA segments), including simple Levenshtein distance, Dolgopolsky-class distance, and several flavors of feature-weighted edit distance.
+
+`panphon.xsampa.XSampa` converts between X-SAMPA ASCII phonetic notation and IPA.
+
+`panphon.tokenizer.Tokenizer` and the top-level `segment_text` function split raw text into IPA segments, handling multi-character segments and diacritics correctly.
+
+## Main Classes and Functions
+
+### `panphon.featuretable.FeatureTable`
+
+The main entry point for feature-based analysis of IPA words and segments.
+
+Key methods:
+- `fts(ipa)` — get the `Segment` (feature bundle) for a single IPA segment.
+- `word_fts(word)` — get a list of `Segment`s for each segment in a word.
+- `ipa_segs(word)` — split a word into its IPA segments.
+- `word_array(ft_names, word)` / `segment_to_vector(seg)` — get numeric feature-vector representations (as NumPy arrays).
+- `word_to_vector_list(word, numeric=False, xsampa=False)` — vectorize a word segment-by-segment.
+- `vector_list_to_word(tensor, xsampa=False)` — convert feature vectors back into an IPA transcription.
+- `match_pattern(pat, word)` / `match_pattern_seq(pat, const)` — match a sequence of feature-mask dictionaries against a word, similar to a regex over phonological features.
+- `fts_match_all` / `fts_match_any` / `fts_contrast` / `fts_count` — test or count segments in an inventory against a feature specification.
+- `filter_segs(segs)` / `filter_string(word)` — remove segments unknown to the feature table.
+- `validate_word(word)` / `seg_known(segment)` — check whether a word or segment is representable in the feature system.
+- `compile_regex_from_str(pat)` — build a standard regex matching segments described by a feature string.
+- `bag_of_features(word)` — get an aggregate feature-count vector for a word.
+
+### `panphon.segment.Segment`
+
+A `Mapping[str, int]` representing a bundle of phonological features for one phone. Supports:
+- `match(ft_mask)` — check if the segment satisfies a feature mask.
+- `intersection(other)` — combine shared feature specifications.
+- `distance`, `hamming_distance`, `weighted_distance` (and normalized variants) — compare two segments.
+- `numeric(names)` / `strings(names)` — extract feature values as numbers or symbols.
+- `specified()` / `differing_specs(other)` — inspect which features are non-neutral or differ between segments.
+
+### `panphon.distance.Distance`
+
+Computes distances between whole words (sequences of IPA segments), using a `FeatureTable` internally. Includes:
+- `levenshtein_distance` / `fast_levenshtein_distance` — plain edit distance on segment strings.
+- `dolgo_prime_distance` — distance using Dolgopolsky sound classes.
+- `feature_edit_distance`, `weighted_feature_edit_distance`, `hamming_feature_edit_distance`, `partial_hamming_feature_edit_distance` (and `_div_maxlen` / `jt_` variants) — edit distance where substitution cost is based on featural (dis)similarity rather than a flat cost.
+- `phoneme_error_rate` / `feature_error_rate` — error-rate metrics comparing hypothesis and reference transcriptions.
+
+### `panphon.xsampa.XSampa`
+
+- `convert(xsampa)` — convert an X-SAMPA string into IPA.
+- `read_xsampa_table()` — load the mapping table used for conversion.
+
+### `panphon.tokenizer.Tokenizer`
+
+- `tokenize(ipa)` — split an IPA string into a list of segments.
+- `longest_prefix(s)` / `prefixes(s)` — find matching segment(s) at the start of a string.
+
+### `panphon.collapse.Collapser`
+
+- `collapse(s)` — reduce/normalize a string of segments (e.g., collapsing sequences into canonical phonemic units).
+
+### `panphon.sonority.Sonority`
+
+- `sonority(seg)` / `sonority_from_fts(seg)` — compute a sonority ranking for a segment, useful for syllabification.
+
+### `panphon.panphonvec`
+
+Lower-level utilities for building and manipulating feature-vector representations directly from data files, including `encode`/`decode` for converting between IPA strings and NumPy feature matrices, and `hamming_distance` for comparing raw vectors.
+
+### Module-level helpers (`panphon._panphon`)
+
+- `segment_text(text)` — iterate over IPA segments in a string of text.
+- `fts(s)` / `pat(p)` — parse feature strings into feature sets or feature patterns.
+- `word2array(ft_names, word)` — convert parsed word features into a NumPy array.
+
+## Usage Examples
+
+### Getting features for a segment or word
+
+```python
+from panphon.featuretable import FeatureTable
+
+ft = FeatureTable()
+
+# Feature bundle for a single segment
+seg = ft.fts("pʰ")
+print(seg["asp"])       # 1 (aspirated)
+print(seg.specified())  # dict of all non-neutral features
+
+# Segment a word and get features for each segment
+segments = ft.ipa_segs("kʰɔːlə")
+print(segments)  # ['kʰ', 'ɔː', 'l', 'ə']
+
+word_features = ft.word_fts("kʰɔːlə")
+for s in word_features:
+    print(s.strings())
+```
+
+### Checking whether a word is well-formed
+
+```python
+if ft.validate_word("kʰɔːlə"):
+    print("Recognized entirely as known IPA segments")
+else:
+    cleaned = ft.filter_string("kʰɔːlə")
+    print("Cleaned:", cleaned)
+```
+
+### Comparing two segments
+
+```python
+seg1 = ft.fts("p")
+seg2 = ft.fts("b")
+
+print(seg1.hamming_distance(seg2))
+print(seg1.norm_weighted_distance(seg2))
+```
+
+### Matching feature patterns against a word
+
+```python
+# Match a CV-like pattern: a consonant followed by a vowel
+pattern = [
+    {"syl": -1, "cons": 1},
+    {"syl": 1},
+]
+
+result = ft.match_pattern(pattern, "kʰɔːlə")
+if result:
+    print("Pattern matched:", [s.strings() for s in result])
+```
+
+### Computing phonetic distance between words
+
+```python
+from panphon.distance import Distance
+
+dist = Distance()
+
+print(dist.fast_levenshtein_distance("kʰɔːlə", "kolo"))
+print(dist.weighted_feature_edit_distance("kʰɔːlə", "kolo"))
+print(dist.feature_error_rate(hyp="kolo", ref="kʰɔːlə"))
+```
+
+### Converting X-SAMPA to IPA
+
+```python
+from panphon.xsampa import XSampa
+
+xs = XSampa()
+ipa = xs.convert("k_h O: l @")
+print(ipa)
+```
+
+### Tokenizing a word into segments
+
+```python
+from panphon.tokenizer import Tokenizer
+
+tok = Tokenizer()
+print(tok.tokenize("kʰɔːlə"))
+```
+
+## Working with Vectors
+
+For numeric processing (e.g., feeding into machine learning pipelines), feature tables can produce and consume NumPy arrays:
+
+```python
+ft_names = ["syl", "son", "cons", "voice", "nasal"]
+
+vec = ft.word_array(ft_names, "kʰɔːlə")
+print(vec.shape)
+
+vectors = ft.word_to_vector_list("kʰɔːlə", numeric=True)
+word_back = ft.vector_list_to_word(vectors)
+print(word_back)
+```
+
+## License
+
+See the `LICENSE` file for details.

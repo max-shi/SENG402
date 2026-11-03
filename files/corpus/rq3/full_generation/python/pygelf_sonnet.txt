@@ -1,0 +1,188 @@
+# pygelf
+
+`pygelf` is a Python library that provides logging handlers for sending log
+records to a [Graylog](https://www.graylog.org/) server using the GELF
+(Graylog Extended Log Format) protocol. It plugs directly into Python's
+standard `logging` module, so you can attach a `pygelf` handler to any
+logger and have your log records automatically converted to GELF messages
+and delivered over TCP, UDP, TLS, HTTP, or HTTPS.
+
+## Features
+
+- Drop-in `logging.Handler` subclasses for TCP, UDP, TLS, HTTP, and HTTPS
+  transports.
+- Automatic conversion of Python `LogRecord` objects into GELF-compliant
+  payloads.
+- Support for additional static fields and environment-variable-derived
+  fields to enrich every log message.
+- Optional inclusion of "extra" fields passed to logging calls
+  (`logger.info("msg", extra={...})`).
+- Automatic compression and chunking of GELF messages for transports that
+  need it (e.g. UDP).
+
+## Installation
+
+```bash
+pip install pygelf
+```
+
+## Core Concepts
+
+### GELF message construction (`pygelf/gelf.py`)
+
+These are the internal building blocks used by the handlers to turn a
+`LogRecord` into a GELF message:
+
+- **`make(record, domain, debug, version, additional_fields, additional_env_fields, include_extra_fields=False)`**
+  Builds a GELF-formatted dictionary from a Python `LogRecord`. `domain` is
+  typically the hostname to report, `debug` controls whether debug-level
+  information (such as file/line/stack info) is included, `version` is the
+  GELF spec version, and `additional_fields`/`additional_env_fields` let you
+  inject static or environment-derived key/value pairs into every message.
+  If `include_extra_fields` is `True`, any custom attributes attached to
+  the record via `extra=` are included as well.
+
+- **`add_extra_fields(gelf, record)`**
+  Merges extra attributes found on a `LogRecord` into an existing GELF
+  dictionary.
+
+- **`object_to_json(obj)`**
+  A JSON serialization helper used to safely encode arbitrary Python
+  objects (e.g. exceptions, non-serializable types) found in log records.
+
+- **`pack(gelf, compress, default)`**
+  Serializes a GELF dictionary into bytes ready for network transmission,
+  optionally compressing the payload (used by handlers such as
+  `GelfUdpHandler`).
+
+- **`split(gelf, chunk_size)`**
+  Splits a packed GELF message into chunks no larger than `chunk_size`,
+  as required by the GELF UDP chunking specification for large messages.
+
+These functions are used internally by the handlers below; most users
+won't need to call them directly.
+
+### Handlers (`pygelf/handlers.py`)
+
+All handlers share a common base and behave like standard `logging`
+handlers — you configure them once and attach them to a `logging.Logger`.
+
+- **`BaseHandler`**
+  Common base class providing `convert_record_to_gelf(self, record)`,
+  which converts a `LogRecord` into a GELF payload using the `gelf.make`
+  function under the hood. All transport-specific handlers inherit from
+  this class.
+
+- **`GelfTcpHandler(BaseHandler, SocketHandler)`**
+  Sends GELF messages over a raw TCP socket. Overrides `makePickle` to
+  produce a GELF-formatted, null-terminated payload instead of Python's
+  default pickle format.
+
+- **`GelfUdpHandler(BaseHandler, DatagramHandler)`**
+  Sends GELF messages over UDP. Overrides `makePickle` to build the GELF
+  payload (with optional compression) and `send` to handle chunking large
+  messages into multiple UDP datagrams as required by the GELF protocol.
+
+- **`GelfTlsHandler(GelfTcpHandler)`**
+  A TCP handler variant that wraps the socket connection in TLS.
+  Overrides `makeSocket(self, timeout=1)` to establish an encrypted
+  connection to the Graylog server.
+
+- **`GelfHttpHandler(BaseHandler, LoggingHandler)`**
+  Sends GELF messages as HTTP requests. Overrides `emit(self, record)` to
+  POST the GELF payload to a Graylog HTTP input.
+
+- **`GelfHttpsHandler(BaseHandler, LoggingHandler)`**
+  Same as `GelfHttpHandler`, but sends messages over HTTPS.
+
+## Usage
+
+### Basic TCP logging
+
+```python
+import logging
+from pygelf import GelfTcpHandler
+
+logger = logging.getLogger("my_app")
+logger.setLevel(logging.INFO)
+
+handler = GelfTcpHandler(
+    host="graylog.example.com",
+    port=12201,
+)
+logger.addHandler(handler)
+
+logger.info("Application started")
+```
+
+### UDP with compression and additional fields
+
+```python
+import logging
+from pygelf import GelfUdpHandler
+
+logger = logging.getLogger("my_app")
+logger.setLevel(logging.DEBUG)
+
+handler = GelfUdpHandler(
+    host="graylog.example.com",
+    port=12201,
+    debug=True,
+    include_extra_fields=True,
+    additional_fields={"application": "billing-service", "environment": "production"},
+    additional_env_fields={"pod_name": "POD_NAME", "node": "NODE_NAME"},
+)
+logger.addHandler(handler)
+
+logger.error("Payment failed", extra={"customer_id": 42, "order_id": "A-1001"})
+```
+
+### Secure transport with TLS
+
+```python
+import logging
+from pygelf import GelfTlsHandler
+
+logger = logging.getLogger("secure_app")
+logger.setLevel(logging.WARNING)
+
+handler = GelfTlsHandler(
+    host="graylog.example.com",
+    port=12204,
+)
+logger.addHandler(handler)
+
+logger.warning("Unauthorized access attempt detected")
+```
+
+### Sending logs over HTTPS
+
+```python
+import logging
+from pygelf import GelfHttpsHandler
+
+logger = logging.getLogger("web_app")
+logger.setLevel(logging.INFO)
+
+handler = GelfHttpsHandler(
+    host="graylog.example.com",
+    port=12202,
+)
+logger.addHandler(handler)
+
+try:
+    1 / 0
+except ZeroDivisionError:
+    logger.exception("Something went wrong")
+```
+
+## Notes
+
+- Extra fields passed via `extra=` in logging calls are only included in
+  the GELF payload when `include_extra_fields=True` is set on the handler.
+- `additional_fields` and `additional_env_fields` are useful for tagging
+  every log message with static metadata (e.g. service name, version) or
+  dynamic values pulled from the process environment (e.g. hostname, pod
+  name, deployment identifiers).
+- UDP messages exceeding the GELF chunk size limit are automatically
+  split using `gelf.split` and reassembled by Graylog on the receiving end.

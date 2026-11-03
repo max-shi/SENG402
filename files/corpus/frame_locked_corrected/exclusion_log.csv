@@ -1,0 +1,501 @@
+package_name,ecosystem,draw_order,stage,filter_failed,evidence,timestamp
+rjieba,python,277,frame-dedup,DEDUP,duplicate of earlier draw_order (kept first occurrence),2026-07-12T06:56:43.294630+00:00
+kitchen,python,388,frame-dedup,DEDUP,duplicate of earlier draw_order (kept first occurrence),2026-07-12T06:56:43.294630+00:00
+jobflow,python,391,frame-dedup,DEDUP,duplicate of earlier draw_order (kept first occurrence),2026-07-12T06:56:43.294630+00:00
+event-model,python,394,frame-dedup,DEDUP,duplicate of earlier draw_order (kept first occurrence),2026-07-12T06:56:43.294630+00:00
+gigachain,python,463,frame-dedup,DEDUP,duplicate of earlier draw_order (kept first occurrence),2026-07-12T06:56:43.294630+00:00
+com.bkahlert.kommons:kommons-text,java,325,frame-dedup,DEDUP,duplicate of earlier draw_order (kept first occurrence),2026-07-12T06:56:43.294630+00:00
+org.apache.xmlgraphics:fop-events,java,450,frame-dedup,DEDUP,duplicate of earlier draw_order (kept first occurrence),2026-07-12T06:56:43.294630+00:00
+org.kitesdk:kite-hadoop-dependencies,java,72,f7-prefilter,F7,artifact-suffix:-dependencies,2026-07-12T07:02:34.176108+00:00
+io.gitee.cikaros:fly-feel-dependencies,java,74,f7-prefilter,F7,artifact-suffix:-dependencies,2026-07-12T07:02:34.176108+00:00
+openimis-be-policy,python,5,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+locustio,python,6,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+profile-local,python,8,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/profile-local'...
+remote: Repository not found.
+fatal: repository 'https://github.com/circles-zone/profile-local-python",2026-07-12T07:12:25.439044+00:00
+openimis-be-calculation,python,11,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+swh.objstorage,python,12,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+pyicat-plus,python,25,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+plone.app.uuid,python,34,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+uwsgi,python,36,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+sout,python,41,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+python-neutronclient,python,47,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+progressbar,python,63,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+cadquery-ocp,python,81,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+azureml-dataset-runtime,python,93,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+django-impersonate,python,95,clone,F4,git-clone failed: timeout after 300s,2026-07-12T07:12:25.439044+00:00
+damv1time7,python,104,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+u-boot-pylib,python,106,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+variable-local,python,118,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/variable-local'...
+remote: Repository not found.
+fatal: repository 'https://github.com/circles-zone/variable-local-pyth",2026-07-12T07:12:25.439044+00:00
+artd-product,python,124,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+odoo14-addon-ssi-task-mixin,python,126,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+kitchen,python,129,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+trytond-account-statement,python,132,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+ipih,python,137,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+web3-api,python,140,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/web3-api'...
+remote: Repository not found.
+fatal: repository 'https://github.com/dafdsgr/web3-api/' not found",2026-07-12T07:12:25.439044+00:00
+apex,python,147,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+cooptools,python,163,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/cooptools'...
+remote: Repository not found.
+fatal: repository 'https://github.com/tylertjburns/cooptools/' not found",2026-07-12T07:12:25.439044+00:00
+odoo14-addon-ssi-transaction-done-mixin,python,182,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+pyams-file,python,197,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+org.opendaylight.l2switch.loopremover:loopremover-model,java,2,clone,F4,repository_url=https://wiki.opendaylight.org/view/ODL_Root_Parent:Main: non-git-url,2026-07-12T07:12:25.439044+00:00
+de.pfabulist:nonnullbydefault,java,20,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.pfabulist_nonnullbydefault'...
+remote: Repository not found.
+fatal: repository 'https://github.com/openCage/nonnullbyd",2026-07-12T07:12:25.439044+00:00
+org.apache.mahout:mahout-core,java,21,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=mahout.git;a=tree;h=refs/heads/mahout-14.1;hb=mahout-14.1: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.apache.camel.springboot:camel-controlbus-starter,java,23,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=camel-spring-boot.git;a=summary: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.apache.geronimo.configs:tomcat7,java,28,clone,F4,repository_url=http://svn.apache.org/viewvc/geronimo/server/tags/geronimo-3.0.1: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.apache.portals.jetspeed-2:jetspeed-maven-utils,java,31,clone,F4,repository_url=http://svn.apache.org/viewcvs.cgi/portals/jetspeed-2/portal/tags/jetspeed-2-2.3.1: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.jasig.service:person-directory-impl,java,57,clone,F4,repository_url=http://developer.jasig.org/source/browse/jasigsvn/person-directory/tags/rel-1.5.0-RC6: non-git-url,2026-07-12T07:12:25.439044+00:00
+com.tairanchina.csp.dew:cluster-common,java,61,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/com.tairanchina.csp.dew_cluster-common'...
+remote: Repository not found.
+fatal: repository 'https://github.com/gudaoxuri/",2026-07-12T07:12:25.439044+00:00
+org.opendaylight.aaa.web:web-jetty-impl,java,73,clone,F4,repository_url=https://wiki.opendaylight.org/display/ODL/MD-SAL: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.grails:grails-gorm,java,80,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+org.apache.hadoop:hadoop-hdds-interface-client,java,85,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+de.sciss:lucre-core_2.10,java,104,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.sciss_lucre-core_2.10'...
+remote: Repository not found.
+fatal: repository 'https://github.com/Sciss/Lucre/' not found",2026-07-12T07:12:25.439044+00:00
+org.apache.karaf.management:org.apache.karaf.management.boot,java,114,clone,F4,repository_url=https://git-wip-us.apache.org/repos/asf?p=karaf.git;a=summary: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.apache.camel.springboot:camel-swagger-java-starter,java,119,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=camel-spring-boot.git;a=summary: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.objectweb.fractal.juliac:juliac-fractaladl,java,120,clone,F4,repository_url=http://svn.forge.objectweb.org/cgi-bin/viewcvs.cgi/fractal/trunk: non-git-url,2026-07-12T07:12:25.439044+00:00
+nl.cloudfarming.client:field-model,java,122,clone,F4,repository_url=https://hg.java.net/hg/agrosense~core: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.eclipse.dirigible:dirigible-cms,java,124,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.eclipse.dirigible_dirigible-cms'...
+remote: Repository not found.
+fatal: repository 'https://github.com/dirigiblelabs",2026-07-12T07:12:25.439044+00:00
+net.wicp.tams:duckula-dev-plugin-common,java,128,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/net.wicp.tams_duckula-dev-plugin-common'...
+remote: Repository not found.
+fatal: repository 'https://github.com/rjzjh/com",2026-07-12T07:12:25.439044+00:00
+de.sciss:lucrestm-bdb_2.10,java,132,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.sciss_lucrestm-bdb_2.10'...
+remote: Repository not found.
+fatal: repository 'https://github.com/Sciss/LucreSTM/' not f",2026-07-12T07:12:25.439044+00:00
+org.eclipse.hudson.main:hudson-test-utils,java,138,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.eclipse.hudson.main_hudson-test-utils'...
+remote: Repository not found.
+fatal: repository 'https://github.com/hudson/",2026-07-12T07:12:25.439044+00:00
+org.apache.kafka:connect-api,java,139,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+org.sonatype.plugin:plugin-api,java,144,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.sonatype.plugin_plugin-api'...
+remote: Repository not found.
+fatal: repository 'https://github.com/sonatype/sisu-plug",2026-07-12T07:12:25.439044+00:00
+org.apache.sqoop:sqoop-security,java,155,clone,F4,repository_url=https://git-wip-us.apache.org/repos/asf?p=sqoop.git: non-git-url,2026-07-12T07:12:25.439044+00:00
+com.mortennobel:java-image-scaling,java,159,clone,F4,repository_url=http://java-image-scaling.googlecode.com/svn/tags/0.8.6: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.jvnet.jaxbcommons:jaxbcommons-runtime,java,160,clone,F4,repository_url=http://java.net/projects/jaxbcommons/sources/svn/show/trunk: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.apache.directory.studio:connection.core,java,163,clone,F4,repository_url=https://svn.apache.org/viewvc/directory/studio/tags/2.0.0.v20130628: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.ow2.util.marshalling:marshalling,java,165,clone,F4,repository_url=http://gitorious.ow2.org/ow2-utilities/marshalling: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.apache.johnzon:johnzon-jsonp-strict,java,170,clone,F4,repository_url=https://git-wip-us.apache.org/repos/asf?p=johnzon.git: non-git-url,2026-07-12T07:12:25.439044+00:00
+org.kie.kogito:kogito-addons-springboot-jobs-management,java,194,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T07:12:25.439044+00:00
+com.alibaba.rocketmq:rocketmq-store,java,196,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/com.alibaba.rocketmq_rocketmq-store'...
+remote: Repository not found.
+fatal: repository 'https://github.com/alibaba/rocke",2026-07-12T07:12:25.439044+00:00
+com.github.yroffin:jbehaviour-engine,java,198,clone,F4,repository_url=http://svn.sonatype.org/spice/tags/oss-parent-7: non-git-url,2026-07-12T07:12:25.439044+00:00
+closer-web3,python,202,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/closer-web3'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: ",2026-07-12T11:14:26.189464+00:00
+gwdatafind,python,206,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T11:14:26.189464+00:00
+pytest-cache,python,207,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/pytest-cache'...
+remote: You may not have access to this repository or it no longer exists in this workspace. If you th",2026-07-12T11:14:26.189464+00:00
+hacking,python,209,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T11:14:26.189464+00:00
+gigachain,python,216,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T11:14:26.189464+00:00
+rfc3339,python,225,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T11:14:26.189464+00:00
+org.apache.camel:camel-pdf-starter,java,205,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T11:14:26.189464+00:00
+org.cert.netsa:netsa-data_2.12,java,206,clone,F4,repository_url=https://tools.netsa.cert.org/mothra/index.html: non-git-url,2026-07-12T11:14:26.189464+00:00
+org.apache.camel.quarkus:camel-quarkus-yammer-deployment,java,211,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=camel-quarkus.git;a=summary: non-git-url,2026-07-12T11:14:26.189464+00:00
+org.apache.phoenix:phoenix-queryserver-client,java,215,clone,F4,repository_url=https://gitbox.apache.org/repos/asf/phoenix-queryserver.git: non-git-url,2026-07-12T11:14:26.189464+00:00
+org.opendaylight.vpnservice:vpnmanager-api,java,218,clone,F4,repository_url=https://wiki.opendaylight.org/view/ODL_Root_Parent:Main: non-git-url,2026-07-12T11:14:26.189464+00:00
+org.osgi:core,java,221,clone,F4,repository_url=private: non-git-url,2026-07-12T11:14:26.189464+00:00
+net.java.truecommons:truecommons-key-default,java,222,clone,F4,repository_url=http://java.net/projects/truecommons/sources/v1/show: non-git-url,2026-07-12T11:14:26.189464+00:00
+com.googlecode.streamflyer:streamflyer-core,java,228,clone,F4,repository_url=http://code.google.com/p/streamflyer/source/browse/: non-git-url,2026-07-12T11:14:26.189464+00:00
+org.apache.camel.springboot:camel-jacksonxml-starter,java,232,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=camel-spring-boot.git;a=summary: non-git-url,2026-07-12T11:14:26.189464+00:00
+codefast,python,227,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T11:16:29.511349+00:00
+jupyter-releaser,python,232,clone,F4,repository_url=(empty): empty-repository_url,2026-07-12T11:16:29.511349+00:00
+io.github.kangjianqun:fast-common-core,java,240,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/io.github.kangjianqun_fast-common-core'...
+remote: Invalid username or token. Password authentication is not supported fo",2026-07-12T11:16:29.511349+00:00
+org.sonatype.spice.inject:guice-bean-inject,java,241,clone,F4,repository_url=http://svn.sonatype.org/spice/tags/guice-bean-1.3.4: non-git-url,2026-07-12T11:16:29.511349+00:00
+de.dentrassi.eclipse.neoscada.utils:org.eclipse.scada.utils.osgi,java,242,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.dentrassi.eclipse.neoscada.utils_org.eclipse.scada.utils.osgi'...
+fatal: https://git.eclipse.org/c/eclipsescada/org.ec",2026-07-12T11:17:40.754220+00:00
+pylibjpeg-rle,python,0,preprocess,F5,word_count_post_clean=475 < 500,2026-07-14T00:55:50.462769+00:00
+outdated,python,4,preprocess,F5,word_count_post_clean=426 < 500,2026-07-14T00:55:50.462769+00:00
+email-reply-parser,python,15,preprocess,F5,word_count_post_clean=125 < 500,2026-07-14T00:55:50.462769+00:00
+aedev-git-repo-manager,python,16,preprocess,F5,word_count_post_clean=118 < 500,2026-07-14T00:55:50.462769+00:00
+pydataset,python,17,preprocess,F5,word_count_post_clean=255 < 500,2026-07-14T00:55:50.462769+00:00
+pydotplus,python,19,preprocess,F5,word_count_post_clean=162 < 500,2026-07-14T00:55:50.462769+00:00
+ete3,python,22,preprocess,F5,word_count_post_clean=232 < 500,2026-07-14T00:55:50.462769+00:00
+invenio-userprofiles,python,24,preprocess,F5,word_count_post_clean=104 < 500,2026-07-14T00:55:50.462769+00:00
+cmeel-urdfdom,python,26,preprocess,F5,word_count_post_clean=7 < 500,2026-07-14T00:55:50.462769+00:00
+pydot-ng,python,29,preprocess,F5,word_count_post_clean=321 < 500,2026-07-14T00:55:50.462769+00:00
+a-pandas-ex-df-to-string,python,30,preprocess,F5,word_count_post_clean=2 < 500,2026-07-14T00:55:50.462769+00:00
+djangocms-style,python,31,preprocess,F5,word_count_post_clean=299 < 500,2026-07-14T00:55:50.462769+00:00
+lazy-loader,python,33,preprocess,F5,word_count_post_clean=386 < 500,2026-07-14T00:55:50.462769+00:00
+odoo11-addon-l10n-es-aeat,python,37,preprocess,F6,english_fraction=0.28 < 0.5,2026-07-14T00:55:50.462769+00:00
+selinux,python,39,preprocess,F5,word_count_post_clean=82 < 500,2026-07-14T00:55:50.462769+00:00
+rfc6266,python,43,preprocess,F5,word_count_post_clean=257 < 500,2026-07-14T00:55:50.462769+00:00
+keras-core,python,45,preprocess,F5,word_count_post_clean=429 < 500,2026-07-14T00:55:50.462769+00:00
+voluptuous-serialize,python,46,preprocess,F5,word_count_post_clean=50 < 500,2026-07-14T00:55:50.462769+00:00
+releasecmd,python,49,preprocess,F5,word_count_post_clean=168 < 500,2026-07-14T00:55:50.462769+00:00
+lion-pytorch,python,51,preprocess,F5,word_count_post_clean=497 < 500,2026-07-14T00:55:50.462769+00:00
+sqlvalidator,python,53,preprocess,F5,word_count_post_clean=277 < 500,2026-07-14T00:55:50.462769+00:00
+rjieba,python,58,preprocess,F5,word_count_post_clean=74 < 500,2026-07-14T00:55:50.462769+00:00
+ftd2xx,python,59,preprocess,F5,word_count_post_clean=112 < 500,2026-07-14T00:55:50.462769+00:00
+pause,python,60,preprocess,F5,word_count_post_clean=346 < 500,2026-07-14T00:55:50.462769+00:00
+teaxyzzzz,python,70,preprocess,F5,word_count_post_clean=273 < 500,2026-07-14T00:55:50.462769+00:00
+py-trello,python,76,preprocess,F5,word_count_post_clean=334 < 500,2026-07-14T00:55:50.462769+00:00
+fastuuid,python,77,preprocess,F5,word_count_post_clean=418 < 500,2026-07-14T00:55:50.462769+00:00
+treon,python,78,preprocess,F5,word_count_post_clean=444 < 500,2026-07-14T00:55:50.462769+00:00
+flake8-rst,python,82,preprocess,F5,word_count_post_clean=414 < 500,2026-07-14T00:55:50.462769+00:00
+zipfile36,python,86,preprocess,F5,word_count_post_clean=18 < 500,2026-07-14T00:55:50.462769+00:00
+django-colorfield,python,92,preprocess,F5,word_count_post_clean=391 < 500,2026-07-14T00:55:50.462769+00:00
+db-sqlite3,python,94,preprocess,F5,no prose files extracted,2026-07-14T00:55:50.462769+00:00
+peewee-migrate,python,98,preprocess,F5,word_count_post_clean=148 < 500,2026-07-14T00:55:50.462769+00:00
+seqeval,python,101,preprocess,F5,word_count_post_clean=243 < 500,2026-07-14T00:55:50.462769+00:00
+prefetch-generator,python,102,preprocess,F5,word_count_post_clean=182 < 500,2026-07-14T00:55:50.462769+00:00
+django-iban,python,109,preprocess,F5,word_count_post_clean=204 < 500,2026-07-14T00:55:50.462769+00:00
+ae-kivy,python,112,preprocess,F5,word_count_post_clean=106 < 500,2026-07-14T00:55:50.462769+00:00
+edx-celeryutils,python,113,preprocess,F5,word_count_post_clean=310 < 500,2026-07-14T00:55:50.462769+00:00
+flake518,python,122,preprocess,F5,word_count_post_clean=218 < 500,2026-07-14T00:55:50.462769+00:00
+odoo14-addon-l10n-br-base,python,128,preprocess,F6,english_fraction=0.39 < 0.5,2026-07-14T00:55:50.462769+00:00
+pytest-pspec,python,131,preprocess,F5,word_count_post_clean=71 < 500,2026-07-14T00:55:50.462769+00:00
+zope.traversing,python,133,preprocess,F5,word_count_post_clean=67 < 500,2026-07-14T00:55:50.462769+00:00
+bw2calc,python,145,preprocess,F5,word_count_post_clean=60 < 500,2026-07-14T00:55:50.462769+00:00
+argon2,python,149,preprocess,F5,word_count_post_clean=123 < 500,2026-07-14T00:55:50.462769+00:00
+invenio-upgrader,python,150,preprocess,F5,word_count_post_clean=29 < 500,2026-07-14T00:55:50.462769+00:00
+readerwriterlock,python,151,preprocess,F5,word_count_post_clean=218 < 500,2026-07-14T00:55:50.462769+00:00
+swagger-ui-bundle,python,154,preprocess,F5,word_count_post_clean=156 < 500,2026-07-14T00:55:50.462769+00:00
+django-autoslug,python,155,preprocess,F5,word_count_post_clean=262 < 500,2026-07-14T00:55:50.462769+00:00
+adafruit-circuitpython-ble,python,159,preprocess,F5,word_count_post_clean=213 < 500,2026-07-14T00:55:50.462769+00:00
+pyrubberband,python,160,preprocess,F5,word_count_post_clean=106 < 500,2026-07-14T00:55:50.462769+00:00
+semverit,python,164,preprocess,F5,word_count_post_clean=170 < 500,2026-07-14T00:55:50.462769+00:00
+fastapi-websocket-pubsub,python,172,preprocess,F5,word_count_post_clean=464 < 500,2026-07-14T00:55:50.462769+00:00
+hypy-utils,python,176,preprocess,F5,word_count_post_clean=39 < 500,2026-07-14T00:55:50.462769+00:00
+multi-agent-ale-py,python,178,preprocess,F5,word_count_post_clean=57 < 500,2026-07-14T00:55:50.462769+00:00
+inspire-utils,python,180,preprocess,F5,word_count_post_clean=35 < 500,2026-07-14T00:55:50.462769+00:00
+webull,python,181,preprocess,F5,word_count_post_clean=269 < 500,2026-07-14T00:55:50.462769+00:00
+hypothesis-geometry,python,183,preprocess,F5,word_count_post_clean=242 < 500,2026-07-14T00:55:50.462769+00:00
+google-pasta,python,186,preprocess,F5,word_count_post_clean=270 < 500,2026-07-14T00:55:50.462769+00:00
+sphinx-remove-toctrees,python,187,preprocess,F5,word_count_post_clean=495 < 500,2026-07-14T00:55:50.462769+00:00
+sphinxcontrib-devhelp,python,191,preprocess,F5,word_count_post_clean=24 < 500,2026-07-14T00:55:50.462769+00:00
+minilog,python,196,preprocess,F5,word_count_post_clean=414 < 500,2026-07-14T00:55:50.462769+00:00
+mygene,python,199,preprocess,F5,word_count_post_clean=326 < 500,2026-07-14T00:55:50.462769+00:00
+wincertstore,python,200,preprocess,F5,word_count_post_clean=195 < 500,2026-07-14T00:55:50.462769+00:00
+langdetect,python,201,preprocess,F5,word_count_post_clean=253 < 500,2026-07-14T00:55:50.462769+00:00
+timeloop,python,203,preprocess,F5,word_count_post_clean=115 < 500,2026-07-14T00:55:50.462769+00:00
+structlog-sentry,python,204,preprocess,F5,word_count_post_clean=463 < 500,2026-07-14T00:55:50.462769+00:00
+misaka,python,210,preprocess,F5,word_count_post_clean=32 < 500,2026-07-14T00:55:50.462769+00:00
+queuelib,python,211,preprocess,F5,word_count_post_clean=330 < 500,2026-07-14T00:55:50.462769+00:00
+py-multibase,python,212,preprocess,F5,word_count_post_clean=442 < 500,2026-07-14T00:55:50.462769+00:00
+pylint-flask,python,222,preprocess,F5,word_count_post_clean=146 < 500,2026-07-14T00:55:50.462769+00:00
+matplotx,python,224,preprocess,F5,word_count_post_clean=414 < 500,2026-07-14T00:55:50.462769+00:00
+pgsanity,python,234,preprocess,F5,word_count_post_clean=489 < 500,2026-07-14T00:55:50.462769+00:00
+org.netbeans.api:org-netbeans-api-web-webmodule,java,3,preprocess,F5,word_count_post_clean=40 < 500,2026-07-14T00:55:50.462769+00:00
+org.nutz:nutz-integration-jedis,java,6,preprocess,F6,english_fraction=0.22 < 0.5,2026-07-14T00:55:50.462769+00:00
+io.circe:circe-fs2_2.13,java,8,preprocess,F5,word_count_post_clean=273 < 500,2026-07-14T00:55:50.462769+00:00
+ch.acra:acra-core,java,9,preprocess,F5,word_count_post_clean=444 < 500,2026-07-14T00:55:50.462769+00:00
+org.uberfire:uberfire-project-backend,java,11,preprocess,F5,word_count_post_clean=14 < 500,2026-07-14T00:55:50.462769+00:00
+org.uberfire:uberfire-metadata-commons-io,java,18,preprocess,F5,word_count_post_clean=14 < 500,2026-07-14T00:55:50.462769+00:00
+com.applovin.mediation:facebook-adapter,java,26,preprocess,F5,word_count_post_clean=450 < 500,2026-07-14T00:55:50.462769+00:00
+io.vlingo.xoom:xoom-streams,java,30,preprocess,F5,word_count_post_clean=65 < 500,2026-07-14T00:55:50.462769+00:00
+edu.byu.hbll:config,java,33,preprocess,F5,word_count_post_clean=266 < 500,2026-07-14T00:55:50.462769+00:00
+org.openurp.platform.security:openurp-platform-security-core,java,36,preprocess,F5,word_count_post_clean=91 < 500,2026-07-14T00:55:50.462769+00:00
+org.sonatype.p2.bridge:p2-runtime,java,39,preprocess,F5,word_count_post_clean=169 < 500,2026-07-14T00:55:50.462769+00:00
+io.vertx:vertx-mongo-service,java,40,preprocess,F5,word_count_post_clean=95 < 500,2026-07-14T00:55:50.462769+00:00
+org.jsr107.ri:cache-ri-impl,java,46,preprocess,F5,word_count_post_clean=124 < 500,2026-07-14T00:55:50.462769+00:00
+org.everit.osgi:org.everit.osgi.querydsl.support,java,58,preprocess,F5,word_count_post_clean=12 < 500,2026-07-14T00:55:50.462769+00:00
+com.ardikars.common:common-util,java,64,preprocess,F5,word_count_post_clean=152 < 500,2026-07-14T00:55:50.462769+00:00
+cafe.adriel.voyager:voyager-navigator-desktop,java,70,preprocess,F5,word_count_post_clean=131 < 500,2026-07-14T00:55:50.462769+00:00
+org.wso2.carbon.metrics:org.wso2.carbon.metrics.core.feature,java,78,preprocess,F5,word_count_post_clean=422 < 500,2026-07-14T00:55:50.462769+00:00
+com.buschmais.jqassistant.plugin:jpa2,java,82,preprocess,F5,word_count_post_clean=59 < 500,2026-07-14T00:55:50.462769+00:00
+uk.co.real-logic:Agrona,java,87,preprocess,F5,word_count_post_clean=312 < 500,2026-07-14T00:55:50.462769+00:00
+com.rometools:rome,java,94,preprocess,F5,word_count_post_clean=97 < 500,2026-07-14T00:55:50.462769+00:00
+com.google.code.flexlib:flexlib,java,95,preprocess,F5,word_count_post_clean=34 < 500,2026-07-14T00:55:50.462769+00:00
+com.att.research.xacml:xacml,java,99,preprocess,F5,word_count_post_clean=256 < 500,2026-07-14T00:55:50.462769+00:00
+io.github.crac:org-crac,java,112,preprocess,F5,word_count_post_clean=102 < 500,2026-07-14T00:55:50.462769+00:00
+io.vertx:vertx-zipkin,java,113,preprocess,F5,word_count_post_clean=27 < 500,2026-07-14T00:55:50.462769+00:00
+io.backchat.inflector:scala-inflector_2.10,java,123,preprocess,F5,word_count_post_clean=78 < 500,2026-07-14T00:55:50.462769+00:00
+com.lyncode:builder-commons,java,140,preprocess,F5,word_count_post_clean=3 < 500,2026-07-14T00:55:50.462769+00:00
+net.codingwell:scala-guice_2.11,java,142,preprocess,F5,word_count_post_clean=294 < 500,2026-07-14T00:55:50.462769+00:00
+org.catools:common.utils,java,146,preprocess,F5,word_count_post_clean=115 < 500,2026-07-14T00:55:50.462769+00:00
+org.specs2:specs2-scalacheck_2.13.0-M5,java,148,preprocess,F5,word_count_post_clean=40 < 500,2026-07-14T00:55:50.462769+00:00
+org.webjars:emberjs,java,150,preprocess,F5,word_count_post_clean=5 < 500,2026-07-14T00:55:50.462769+00:00
+com.softwaremill.magnolia:magnolia-core_2.12,java,153,preprocess,F5,word_count_post_clean=498 < 500,2026-07-14T00:55:50.462769+00:00
+org.webjars.bowergithub.vaadin:vaadin-notification,java,162,preprocess,F5,word_count_post_clean=348 < 500,2026-07-14T00:55:50.462769+00:00
+love.forte.simple-robot:serialization-json-core,java,164,preprocess,F5,word_count_post_clean=249 < 500,2026-07-14T00:55:50.462769+00:00
+org.julienrf:endpoints-algebra-circe_2.12,java,167,preprocess,F5,word_count_post_clean=6 < 500,2026-07-14T00:55:50.462769+00:00
+org.webjars.npm:algolia__transporter,java,169,preprocess,F5,word_count_post_clean=404 < 500,2026-07-14T00:55:50.462769+00:00
+org.webjars.npm:has-symbols,java,172,preprocess,F5,word_count_post_clean=33 < 500,2026-07-14T00:55:50.462769+00:00
+org.beangle.security:beangle-security-web_2.13,java,174,preprocess,F5,word_count_post_clean=91 < 500,2026-07-14T00:55:50.462769+00:00
+org.webjars.npm:util.promisify,java,180,preprocess,F5,word_count_post_clean=79 < 500,2026-07-14T00:55:50.462769+00:00
+org.apache.camel:camel-scheduler,java,183,preprocess,F5,word_count_post_clean=423 < 500,2026-07-14T00:55:50.462769+00:00
+org.hswebframework.web:hsweb-commons-utils,java,187,preprocess,F5,word_count_post_clean=347 < 500,2026-07-14T00:55:50.462769+00:00
+org.openurp.platform.api:openurp-platform-api-cas,java,189,preprocess,F5,word_count_post_clean=91 < 500,2026-07-14T00:55:50.462769+00:00
+org.apache.logging.log4j:log4j-jpa,java,191,preprocess,F5,word_count_post_clean=386 < 500,2026-07-14T00:55:50.462769+00:00
+com.github.waikato:jclasslocator,java,200,preprocess,F5,word_count_post_clean=377 < 500,2026-07-14T00:55:50.462769+00:00
+com.palantir.config.crypto:encrypted-config-value-module,java,204,preprocess,F5,word_count_post_clean=225 < 500,2026-07-14T00:55:50.462769+00:00
+org.webjars.bower:github-com-polymerelements-iron-icons,java,209,preprocess,F5,word_count_post_clean=107 < 500,2026-07-14T00:55:50.462769+00:00
+ru.sbtqa.tag.datajack:datajack-api,java,217,preprocess,F5,word_count_post_clean=214 < 500,2026-07-14T00:55:50.462769+00:00
+org.apache.camel:camel-core,java,220,preprocess,F5,word_count_post_clean=423 < 500,2026-07-14T00:55:50.462769+00:00
+com.symphony.oss.commons:commons-dom-jackson,java,226,preprocess,F5,word_count_post_clean=6 < 500,2026-07-14T00:55:50.462769+00:00
+org.apache.tez:tez-mapreduce,java,227,preprocess,F5,word_count_post_clean=423 < 500,2026-07-14T00:55:50.462769+00:00
+org.wso2.carbon.analytics-common:org.wso2.carbon.databridge.core,java,233,preprocess,F5,word_count_post_clean=62 < 500,2026-07-14T00:55:50.462769+00:00
+org.orbisgis:cts,java,235,preprocess,F5,word_count_post_clean=393 < 500,2026-07-14T00:55:50.462769+00:00
+org.scalatest:scalatest-funsuite_sjs1_2.12,java,244,preprocess,F5,word_count_post_clean=408 < 500,2026-07-14T00:55:50.462769+00:00
+langchainplus-sdk,python,242,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/langchainplus-sdk'...
+remote: Repository not found.
+fatal: repository 'https://github.com/hwchase17/langchain,/' not fo",2026-07-14T02:54:48.970923+00:00
+typepigeon,python,243,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/typepigeon'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: A",2026-07-14T02:54:48.970923+00:00
+sparv-pipeline,python,252,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+spaceone-core,python,254,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+llama-index-llms-llama-cpp,python,256,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+ruamel.base,python,257,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/ruamel.base'...
+remote: You may not have access to this repository or it no longer exists in this workspace. If you thi",2026-07-14T02:54:48.970923+00:00
+requires,python,267,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+pattern,python,274,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/pattern'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Auth",2026-07-14T02:54:48.970923+00:00
+odoo14-addon-ssi-transaction-open-mixin,python,291,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+odoo11-addon-mgmtsystem-nonconformity,python,293,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+irisml,python,305,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/irisml'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authe",2026-07-14T02:54:48.970923+00:00
+org.codehaus.btm:btm-tomcat55-lifecycle,java,247,clone,F4,repository_url=http://git.codehaus.org/gitweb.cgi?p=btm-git.git: non-git-url,2026-07-14T02:54:48.970923+00:00
+org.apache.hbase:hbase-common,java,252,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=hbase.git/hbase-build-configuration/hbase-common: non-git-url,2026-07-14T02:54:48.970923+00:00
+org.open-dolphin:dolphin-server,java,256,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.open-dolphin_dolphin-server'...
+remote: Invalid username or token. Password authentication is not supported for Git o",2026-07-14T02:54:48.970923+00:00
+org.apache.rya:rya.test.kafka,java,258,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=rya.git: non-git-url,2026-07-14T02:54:48.970923+00:00
+org.apache.hadoop:hadoop-hdfs-nfs,java,268,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+org.apache.camel:camel-protobuf-starter,java,271,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T02:54:48.970923+00:00
+org.ow2.bonita:bonita-core,java,276,clone,F4,repository_url=http://svn.forge.objectweb.org/cgi-bin/viewcvs.cgi/bonita/trunk/bonitaPVM: non-git-url,2026-07-14T02:54:48.970923+00:00
+org.apache.xmlgraphics:fop-events,java,290,clone,F4,repository_url=scm:svn:https://svn.apache.org/repos/asf/xmlgraphics/fop/trunk/: non-git-url,2026-07-14T02:54:48.970923+00:00
+io.functionalj:functionalj-types,java,292,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/io.functionalj_functionalj-types'...
+remote: Invalid username or token. Password authentication is not supported for Git ",2026-07-14T02:54:48.970923+00:00
+org.apache.felix.karaf:org.apache.felix.karaf.management,java,294,clone,F4,repository_url=http://svn.apache.org/viewvc/felix/releases/karaf-1.6.0: non-git-url,2026-07-14T02:54:48.970923+00:00
+net.oschina.zcx7878:fastdfs-client-java,java,295,clone,F4,repository_url=http://git.oschina.net/zcx7878/cicada.java: non-git-url,2026-07-14T02:54:48.970923+00:00
+watchmen-storage-oracle,python,315,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T03:01:14.255288+00:00
+org.apache.myfaces.extensions.validator.validation-modules:myfaces-extval-property-validation,java,299,clone,F4,repository_url=http://svn.apache.org/viewvc/myfaces/extensions/validator/tags/extval-2.0.8: non-git-url,2026-07-14T03:01:14.255288+00:00
+dev.zio:zio-schema_3,java,306,clone,F4,repository_url=https://zio.dev/zio-schema: non-git-url,2026-07-14T03:01:14.255288+00:00
+org.apache.tomcat:tomcat-i18n-fr,java,309,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T03:02:40.299540+00:00
+pyjokes,python,246,preprocess,F5,word_count_post_clean=213 < 500,2026-07-14T03:02:47.571820+00:00
+sty,python,247,preprocess,F5,word_count_post_clean=283 < 500,2026-07-14T03:02:47.571820+00:00
+sqlalchemy-trino,python,249,preprocess,F5,word_count_post_clean=180 < 500,2026-07-14T03:02:47.571820+00:00
+pyxlsb,python,255,preprocess,F5,word_count_post_clean=113 < 500,2026-07-14T03:02:47.571820+00:00
+logmuse,python,258,preprocess,F5,word_count_post_clean=320 < 500,2026-07-14T03:02:47.571820+00:00
+edit-distance,python,262,preprocess,F5,word_count_post_clean=391 < 500,2026-07-14T03:02:47.571820+00:00
+absl-py,python,266,preprocess,F5,word_count_post_clean=164 < 500,2026-07-14T03:02:47.571820+00:00
+bluetooth-data-tools,python,273,preprocess,F5,word_count_post_clean=177 < 500,2026-07-14T03:02:47.571820+00:00
+allianceauth-app-utils,python,283,preprocess,F5,word_count_post_clean=152 < 500,2026-07-14T03:02:47.571820+00:00
+bilibili-api-python,python,285,preprocess,F5,word_count_post_clean=30 < 500,2026-07-14T03:02:47.571820+00:00
+vsdehalo,python,287,preprocess,F5,word_count_post_clean=29 < 500,2026-07-14T03:02:47.571820+00:00
+beziers,python,289,preprocess,F5,word_count_post_clean=123 < 500,2026-07-14T03:02:47.571820+00:00
+vsexprtools,python,290,preprocess,F5,word_count_post_clean=29 < 500,2026-07-14T03:02:47.571820+00:00
+ipynbname,python,294,preprocess,F5,word_count_post_clean=176 < 500,2026-07-14T03:02:47.571820+00:00
+coverage-lcov,python,295,preprocess,F5,word_count_post_clean=50 < 500,2026-07-14T03:02:47.571820+00:00
+pytest-emoji,python,298,preprocess,F5,word_count_post_clean=391 < 500,2026-07-14T03:02:47.571820+00:00
+toposort,python,306,preprocess,F5,word_count_post_clean=406 < 500,2026-07-14T03:02:47.571820+00:00
+yamlordereddictloader,python,316,preprocess,F5,word_count_post_clean=167 < 500,2026-07-14T03:02:47.571820+00:00
+jaraco.timing,python,318,preprocess,F5,word_count_post_clean=10 < 500,2026-07-14T03:02:47.571820+00:00
+zepben.auth,python,319,preprocess,F5,word_count_post_clean=48 < 500,2026-07-14T03:02:47.571820+00:00
+org.netbeans.modules:org-netbeans-modules-j2ee-common,java,245,preprocess,F5,word_count_post_clean=40 < 500,2026-07-14T03:02:47.571820+00:00
+org.webjars.npm:is-callable,java,248,preprocess,F5,word_count_post_clean=220 < 500,2026-07-14T03:02:47.571820+00:00
+org.bitstrings.test:junit-clptr,java,249,preprocess,F5,word_count_post_clean=128 < 500,2026-07-14T03:02:47.571820+00:00
+com.io7m.jintegers:io7m-jintegers-core,java,254,preprocess,F5,word_count_post_clean=157 < 500,2026-07-14T03:02:47.571820+00:00
+com.almende.eve:eve-transport-common,java,255,preprocess,F5,word_count_post_clean=115 < 500,2026-07-14T03:02:47.571820+00:00
+org.webjars.npm:utf8,java,262,preprocess,F5,word_count_post_clean=360 < 500,2026-07-14T03:02:47.571820+00:00
+cn.dev33:sa-token-dao-redis-jackson,java,269,preprocess,F6,english_fraction=0.16 < 0.5,2026-07-14T03:02:47.571820+00:00
+org.kasource.kaevent:ka-event-annotations,java,270,preprocess,F5,no prose files extracted,2026-07-14T03:02:47.571820+00:00
+com.ea.orbit:orbit-actors-client,java,277,preprocess,F5,word_count_post_clean=14 < 500,2026-07-14T03:02:47.571820+00:00
+com.davfx.ninio:ninio-core,java,279,preprocess,F5,word_count_post_clean=24 < 500,2026-07-14T03:02:47.571820+00:00
+org.eclipse.scout.sdk:org.eclipse.scout.sdk.core,java,280,preprocess,F5,word_count_post_clean=14 < 500,2026-07-14T03:02:47.571820+00:00
+com.github.philcali:lmxml-core_2.8.1,java,285,preprocess,F5,word_count_post_clean=378 < 500,2026-07-14T03:02:47.571820+00:00
+org.apache.camel:camel-robotframework,java,287,preprocess,F5,word_count_post_clean=423 < 500,2026-07-14T03:02:47.571820+00:00
+org.specs2:specs2-cats_2.12,java,288,preprocess,F5,word_count_post_clean=40 < 500,2026-07-14T03:02:47.571820+00:00
+com.farao-community.farao:farao-crac-creator-cse,java,289,preprocess,F5,word_count_post_clean=364 < 500,2026-07-14T03:02:47.571820+00:00
+org.webjars.npm:two-product,java,293,preprocess,F5,word_count_post_clean=116 < 500,2026-07-14T03:02:47.571820+00:00
+io.trino.hadoop:hadoop-apache,java,300,preprocess,F5,no prose files extracted,2026-07-14T03:02:47.571820+00:00
+org.webjars.bower:paper-styles,java,304,preprocess,F5,word_count_post_clean=112 < 500,2026-07-14T03:02:47.571820+00:00
+com.immomo.cosmos:cvcenter,java,310,preprocess,F5,word_count_post_clean=49 < 500,2026-07-14T03:02:47.571820+00:00
+grpc,python,324,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T03:06:58.846126+00:00
+stups-zign,python,328,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/stups-zign'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: A",2026-07-14T03:06:58.846126+00:00
+tensorrt-libs,python,332,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T03:06:58.846126+00:00
+wisepy2,python,325,preprocess,F5,word_count_post_clean=174 < 500,2026-07-14T03:09:46.219747+00:00
+tiktoken,python,329,preprocess,F5,word_count_post_clean=436 < 500,2026-07-14T03:09:46.219747+00:00
+branca,python,331,preprocess,F5,word_count_post_clean=39 < 500,2026-07-14T03:09:46.219747+00:00
+aiosonic,python,334,preprocess,F5,word_count_post_clean=340 < 500,2026-07-14T03:09:46.219747+00:00
+vendorize,python,335,preprocess,F5,word_count_post_clean=179 < 500,2026-07-14T03:09:46.219747+00:00
+pyprctl,python,341,preprocess,F5,word_count_post_clean=468 < 500,2026-07-14T03:09:46.219747+00:00
+gammarers.aws-secure-bucket,python,342,preprocess,F5,word_count_post_clean=257 < 500,2026-07-14T03:09:46.219747+00:00
+com.github.angry1980:audio-fingerprint,java,311,preprocess,F5,word_count_post_clean=16 < 500,2026-07-14T03:09:46.219747+00:00
+com.gwtplatform:gwtp-dispatch-server-guice,java,314,preprocess,F5,word_count_post_clean=196 < 500,2026-07-14T03:09:46.219747+00:00
+org.liveontologies:puli,java,319,preprocess,F5,word_count_post_clean=172 < 500,2026-07-14T03:09:46.219747+00:00
+org.apache.camel:camel-quartz2,java,320,preprocess,F5,word_count_post_clean=423 < 500,2026-07-14T03:09:46.219747+00:00
+org.coodex:concrete-core-spring,java,327,preprocess,F6,english_fraction=0.46 < 0.5,2026-07-14T03:09:46.219747+00:00
+com.flipthebird.gwt-hashcode-equals:gwt-hashcode-equals,java,331,clone,F4,repository_url=http://code.google.com/p/gwt-hashcode-equals/source/browse: non-git-url,2026-07-14T03:10:13.534134+00:00
+software.amazon.awssdk:forecast,java,335,clone,F4,repository_url=(empty): empty-repository_url,2026-07-14T03:10:13.534134+00:00
+org.jboss.integration:jboss-integration,java,336,clone,F4,repository_url=http://viewvc.jboss.org/cgi-bin/viewvc.cgi/jbossas/projects/integration/tags/6.0.0.CR1: non-git-url,2026-07-14T03:10:55.910006+00:00
+wakeonlan,python,344,preprocess,F5,word_count_post_clean=179 < 500,2026-07-14T03:11:08.513278+00:00
+ipydatagrid,python,346,preprocess,F5,word_count_post_clean=323 < 500,2026-07-14T03:11:08.513278+00:00
+com.weicoder:socket,java,337,preprocess,F5,no prose files extracted,2026-07-14T03:11:08.513278+00:00
+com.github.eagle6688:devutility.internal,java,338,preprocess,F5,no prose files extracted,2026-07-14T03:11:08.513278+00:00
+io.janusproject.v1.extras.modules.scriptedagent:script,java,340,clone,F4,repository_url=http://www.janus-project.org/scm/git/janus/: non-git-url,2026-07-14T03:11:20.078491+00:00
+net.n2oapp.criteria:criteria-dataset,java,341,clone,F4,repository_url=https://git.i-novus.ru/framework/n2o-framework: non-git-url,2026-07-14T03:11:28.007401+00:00
+net.jangaroo:jangaroo-compiler-api,java,339,preprocess,F5,word_count_post_clean=6 < 500,2026-07-14T03:11:34.233077+00:00
+ai.swim:swim-spatial,java,344,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/ai.swim_swim-spatial'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+",2026-07-14T05:26:24.574199+00:00
+de.sciss:swingplus_2.13.0-RC1,java,346,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.sciss_swingplus_2.13.0-RC1'...
+remote: Invalid username or token. Password authentication is not supported for Git ope",2026-07-14T05:26:24.574199+00:00
+com.github.rocketraman.cfg4k:cfg4k-core,java,347,preprocess,F5,word_count_post_clean=262 < 500,2026-07-14T05:56:32.260103+00:00
+io.github.cjkent.osiris:osiris-core,java,348,preprocess,F5,word_count_post_clean=152 < 500,2026-07-14T05:56:32.260103+00:00
+org.apache.geronimo.configs:axis-deployer,java,349,clone,F4,repository_url=http://svn.apache.org/viewvc/geronimo/server/tags/geronimo-3.0.1: non-git-url,2026-07-14T05:56:46.567113+00:00
+opentelemetry-instrumentation-falcon,python,9,preprocess,F5,word_count_post_clean=168 < 500,2026-08-05T08:22:42.951059+00:00
+odoo-addon-l10n-it-fatturapa-out,python,66,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+azure-mgmt-containerregistry,python,67,preprocess,F5,word_count_post_clean=173 < 500,2026-08-05T08:22:42.951059+00:00
+cupy-cuda90,python,142,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+opentelemetry-instrumentation-kafka-python,python,174,preprocess,F5,word_count_post_clean=13 < 500,2026-08-05T08:22:42.951059+00:00
+opentelemetry-instrumentation-starlette,python,190,preprocess,F5,word_count_post_clean=38 < 500,2026-08-05T08:22:42.951059+00:00
+cupy-cuda100,python,219,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+azure-mgmt-authorization,python,250,preprocess,F5,word_count_post_clean=174 < 500,2026-08-05T08:22:42.951059+00:00
+types-cachetools,python,272,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+odoo14-addon-l10n-it-fatturapa-out,python,307,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+types-decorator,python,340,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.sonatype.nexus:nexus-swagger,java,5,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+org.neo4j:neo4j-schema,java,7,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+io.arrow-kt:arrow-mtl,java,12,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+io.fabric8:crd-generator-apt,java,13,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apache.camel.quarkus:camel-quarkus-file,java,14,preprocess,F5,word_count_post_clean=27 < 500,2026-08-05T08:22:42.951059+00:00
+org.jboss.weld.environment:weld-environment-common,java,24,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apereo.cas:cas-server-support-webauthn,java,27,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+io.openliberty.features:openidConnectServer-1.0,java,32,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+li.strolch:li.strolch.model,java,37,preprocess,F5,word_count_post_clean=17 < 500,2026-08-05T08:22:42.951059+00:00
+io.openliberty.features:io.openliberty.openidConnectServer1.0.internal.ee-6.0,java,41,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+io.fabric8:volumesnapshot-server-mock,java,52,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.neo4j:neo4j-cypher-commons,java,55,preprocess,F5,word_count_post_clean=194 < 500,2026-08-05T08:22:42.951059+00:00
+org.glassfish.main.jdbc.jdbc-ra.jdbc-ra-distribution:jdbc-ra,java,75,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+dev.zio:zio-test-sbt_native0.4_2.11,java,76,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+io.kotest:kotest-property-tvossimulatorarm64,java,79,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apache.camel.quarkus:camel-quarkus-jgroups-raft,java,91,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+org.apache.camel.quarkus:camel-quarkus-etcd3,java,102,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+org.eclipse.che.core:che-core-commons-test,java,106,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.spark-project.akka:akka-actor_2.10,java,109,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.locationtech.geotrellis:geotrellis-s3_2.11,java,127,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+software.amazon.awssdk:iot,java,143,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+org.apereo.cas:cas-server-support-ws-idp-api,java,158,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+com.google.api.grpc:grpc-google-cloud-orgpolicy-v2,java,161,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+com.typesafe.akka:akka-persistence_2.12.0-RC1,java,166,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apache.shardingsphere:shardingsphere-infra-context,java,168,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apache.shardingsphere:shardingsphere-transaction-core,java,177,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+io.arrow-kt:arrow-core-js,java,181,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.sonatype.nexus.plugins:nexus-rapture-plugin,java,182,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apache.camel.quarkus:camel-quarkus-jooq-deployment,java,186,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.locationtech.geotrellis:geotrellis-vector_2.13,java,201,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.jboss.weld:weld-core-test,java,202,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apache.camel.quarkus:camel-quarkus-protobuf,java,203,preprocess,F5,word_count_post_clean=139 < 500,2026-08-05T08:22:42.951059+00:00
+io.kotest:kotest-framework-discovery-jvm,java,208,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.neo4j:neo4j-consistency-check,java,210,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+dev.zio:zio-streams_sjs0.6_2.12,java,213,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.apereo.cas:cas-server-core-authentication-mfa,java,236,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+org.apache.camel.quarkus:camel-quarkus-kudu-deployment,java,237,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+io.openliberty.features:io.openliberty.jakarta.activation-2.0,java,243,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+io.arrow-kt:arrow-effects,java,257,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+org.eclipse.che.plugin:org.eclipse.core.filebuffers,java,273,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+com.google.api.grpc:proto-google-cloud-networkconnectivity-v1alpha1,java,283,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:22:42.951059+00:00
+org.glassfish.main.common:container-common,java,291,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+org.apereo.cas:cas-server-support-throttle,java,333,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+software.amazon.awssdk:aws-sdk-java,java,350,preprocess,F5,no prose files extracted,2026-08-05T08:22:42.951059+00:00
+django-static-jquery-ui,python,352,clone,F4,repository_url=(empty): empty-repository_url,2026-08-05T08:23:07.521507+00:00
+net.sourceforge.jadex:jadex-rules,java,352,clone,F4,repository_url=http://jadex.svn.sourceforge.net/viewvc/jadex/: non-git-url,2026-08-05T08:23:07.521507+00:00
+software.amazon.awssdk:costandusagereport,java,359,clone,F4,repository_url=(empty): empty-repository_url,2026-08-05T08:23:07.521507+00:00
+org.kuali.student.common:ks-cxf,java,362,clone,F4,repository_url=http://svn.kuali.org/repos/student/tags/student-1.2.2-M4: non-git-url,2026-08-05T08:23:07.521507+00:00
+org.jresearch.flexess.client:org.jresearch.flexess.client.local,java,365,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.jresearch.flexess.client_org.jresearch.flexess.client.local'...
+remote: You may not have access to this repository or",2026-08-05T08:23:07.521507+00:00
+com.github.xiaoymin:knife4j-micro-spring-boot-starter,java,374,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/com.github.xiaoymin_knife4j-micro-spring-boot-starter'...
+Host key verification failed.
+fatal: Could not read from remote",2026-08-05T08:23:07.521507+00:00
+org.jdtaus.core.container:jdtaus-core-client-container,java,375,clone,F4,repository_url=http://svn.jdtaus.org/jdtaus-core/tags/jdtaus-core-1.15: non-git-url,2026-08-05T08:23:07.521507+00:00
+org.openjax.jaxb:xjc,java,384,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.openjax.jaxb_xjc'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+",2026-08-05T08:23:07.521507+00:00
+org.apache.karaf.log:org.apache.karaf.log.core,java,388,clone,F4,repository_url=https://gitbox.apache.org/repos/asf?p=karaf.git;a=summary: non-git-url,2026-08-05T08:23:07.521507+00:00
+org.opendaylight.vtn:features-vtn-manager,java,392,clone,F4,repository_url=https://wiki.opendaylight.org/view/ODL_Root_Parent:Main: non-git-url,2026-08-05T08:23:07.521507+00:00
+org.rwshop:org.rwshop.swing.animation,java,398,clone,F4,repository_url=https://www.assembla.com/code/roboworkshop/subversion/nodes/tags/org.rwshop.project.root-0.9.9: non-git-url,2026-08-05T08:27:43.560164+00:00
+mkdocs-git-revision-date-plugin,python,360,preprocess,F5,word_count_post_clean=216 < 500,2026-08-05T08:29:01.014173+00:00
+mf2py,python,362,preprocess,F5,word_count_post_clean=393 < 500,2026-08-05T08:29:01.014173+00:00
+visvalingamwyatt,python,363,preprocess,F5,word_count_post_clean=78 < 500,2026-08-05T08:29:01.014173+00:00
+org.bitbucket.bradleysmithllc.etlunit:core,java,353,preprocess,F5,no prose files extracted,2026-08-05T08:29:01.014173+00:00
+org.typelevel:munit-cats-effect-2_3,java,355,preprocess,F5,word_count_post_clean=201 < 500,2026-08-05T08:29:01.014173+00:00
+site.morn.boot:morn-boot-data,java,356,preprocess,F5,word_count_post_clean=76 < 500,2026-08-05T08:29:01.014173+00:00
+org.apache.oodt:cas-cli,java,357,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:29:01.014173+00:00
+com.thesamet.scalapb:protoc-gen_2.13,java,360,preprocess,F5,word_count_post_clean=13 < 500,2026-08-05T08:29:01.014173+00:00
+org.jgrapht:jgrapht-guava,java,361,preprocess,F5,no prose files extracted,2026-08-05T08:29:01.014173+00:00
+org.wso2.carbon.identity.inbound.auth.saml2:org.wso2.carbon.identity.sso.saml,java,363,preprocess,F5,word_count_post_clean=44 < 500,2026-08-05T08:29:01.014173+00:00
+com.whisk:docker-testkit-scalatest_2.13,java,366,preprocess,F5,word_count_post_clean=227 < 500,2026-08-05T08:29:01.014173+00:00
+io.shulie.takin:takin-cloud-biz-service,java,367,preprocess,F5,word_count_post_clean=7 < 500,2026-08-05T08:29:01.014173+00:00
+org.eclipse.jetty.websocket:websocket-core-common,java,368,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:29:01.014173+00:00
+com.gwtplatform:gwtp-tester,java,369,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:29:01.014173+00:00
+com.soywiz:korui,java,371,preprocess,F5,word_count_post_clean=3 < 500,2026-08-05T08:29:01.014173+00:00
+io.openliberty.features:microProfile-3.3,java,372,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:29:01.014173+00:00
+org.wildfly:wildfly-cmp,java,376,preprocess,F5,no prose files extracted,2026-08-05T08:29:01.014173+00:00
+io.nuls.protocol-module:protocol,java,378,preprocess,F5,word_count_post_clean=310 < 500,2026-08-05T08:29:01.014173+00:00
+org.sonatype.nexus.plugins:nexus-blobstore-tasks,java,379,preprocess,F5,no prose files extracted,2026-08-05T08:29:01.014173+00:00
+io.github.autumn-framework:autumn-reporting,java,380,preprocess,F5,word_count_post_clean=346 < 500,2026-08-05T08:29:01.014173+00:00
+com.oracle.oci.sdk:oci-java-sdk-resourcemanager,java,381,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:29:01.014173+00:00
+org.ops4j.pax.cdi:pax-cdi-extension,java,382,preprocess,F5,word_count_post_clean=132 < 500,2026-08-05T08:29:01.014173+00:00
+org.gjgr.pig:pig-chivalrous-exclude,java,383,preprocess,F5,word_count_post_clean=182 < 500,2026-08-05T08:29:01.014173+00:00
+com.arpnetworking.metrics.extras:apache-http-sink-extra,java,385,preprocess,F5,word_count_post_clean=215 < 500,2026-08-05T08:29:01.014173+00:00
+org.jboss.arquillian.container:arquillian-container-osgi-tests,java,393,preprocess,F5,word_count_post_clean=200 < 500,2026-08-05T08:29:01.014173+00:00
+com.natpryce:make-it-easy,java,394,preprocess,F5,word_count_post_clean=231 < 500,2026-08-05T08:29:01.014173+00:00
+org.locationtech.geomesa:geomesa-accumulo-datastore_2.12,java,395,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:29:01.014173+00:00
+com.faasadmin:faas-excel,java,396,preprocess,F5,word_count_post_clean=278 < 500,2026-08-05T08:29:01.014173+00:00
+org.webjars.npm:etag,java,397,preprocess,F5,word_count_post_clean=137 < 500,2026-08-05T08:29:01.014173+00:00
+org.jboss.as:jboss-as-naming,java,400,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:29:01.014173+00:00
+cn.leancloud:realtime-core,java,403,preprocess,F5,word_count_post_clean=379 < 500,2026-08-05T08:29:01.014173+00:00
+org.scalatestplus:scalacheck-1-17_sjs1_2.12,java,404,preprocess,F5,word_count_post_clean=206 < 500,2026-08-05T08:29:01.014173+00:00
+org.jboss.forge.addon:environment,java,405,preprocess,F5,word_count_post_clean=279 < 500,2026-08-05T08:29:01.014173+00:00
+kivy-garden,python,366,clone,F4,repository_url=(empty): empty-repository_url,2026-08-05T08:29:21.596750+00:00
+org.apache.ratis:ratis-grpc,java,412,clone,F4,repository_url=https://git-wip-us.apache.org/repos/asf?p=ratis.git: non-git-url,2026-08-05T08:29:21.596750+00:00
+org.codehaus.plexus.redback:redback-rbac-role-manager,java,414,clone,F4,repository_url=https://svn.codehaus.org/redback/redback/tags/redback-1.0.3/redback-rbac/redback-rbac-role-manager: non-git-url,2026-08-05T08:29:21.596750+00:00
+org.eclipse.jgit:org.eclipse.jgit.junit.ssh,java,419,clone,F4,repository_url=https://eclipse.gerrithub.io/admin/repos/eclipse-jgit/jgit: non-git-url,2026-08-05T08:29:21.596750+00:00
+com.github.vhall.android.library:vhallyun-ops,java,424,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/com.github.vhall.android.library_vhallyun-ops'...
+remote: Invalid username or token. Password authentication is not suppo",2026-08-05T08:29:21.596750+00:00
+org.apache.servicemix.jbi:org.apache.servicemix.jbi.runtime,java,426,clone,F4,repository_url=http://svn.apache.org/viewvc/servicemix/smx4/nmr/tags/nmr-parent-1.6.1: non-git-url,2026-08-05T08:29:21.596750+00:00
+org.opendaylight.controller:features-netconf-connector,java,427,clone,F4,repository_url=https://git.opendaylight.org/gerrit/gitweb?p=controller.git;a=summary: non-git-url,2026-08-05T08:29:21.596750+00:00
+tz.co.asoft:cache-mock-jvm,java,432,clone,F4,"git-clone failed: Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/tz.co.asoft_cache-mock-jvm'...
+remote: Invalid username or token. Password authentication is not supported for Git operat",2026-08-05T08:29:21.596750+00:00
+org.apache.beam:beam-sdks-common-fn-api,java,438,clone,F4,repository_url=https://git-wip-us.apache.org/repos/asf?p=beam.git;a=summary: non-git-url,2026-08-05T08:31:43.563294+00:00
+bashlex,python,364,preprocess,F5,word_count_post_clean=251 < 500,2026-08-05T08:32:39.899558+00:00
+org.apache.camel.quarkus:camel-quarkus-aws2-iam,java,407,preprocess,F5,no prose files extracted,2026-08-05T08:32:39.899558+00:00
+com.lihaoyi:pprint_2.10,java,408,preprocess,F5,word_count_post_clean=10 < 500,2026-08-05T08:32:39.899558+00:00
+org.ctoolkit.test:ctoolkit-test,java,411,preprocess,F5,word_count_post_clean=13 < 500,2026-08-05T08:32:39.899558+00:00
+org.wso2.carbon.identity.governance:org.wso2.carbon.identity.tenant.resource.manager,java,413,preprocess,F5,word_count_post_clean=44 < 500,2026-08-05T08:32:39.899558+00:00
+org.jvnet.hyperjaxb3:hyperjaxb3-ejb-plugin,java,420,preprocess,F5,word_count_post_clean=8 < 500,2026-08-05T08:32:39.899558+00:00
+ru.sbtqa.tag.datajack.providers:json-provider,java,422,preprocess,F5,no prose files extracted,2026-08-05T08:32:39.899558+00:00
+com.github.javafaker:javafaker,java,425,preprocess,F5,word_count_post_clean=257 < 500,2026-08-05T08:32:39.899558+00:00
+org.geomajas.widget:geomajas-widget-featureinfo-gwt,java,433,preprocess,F5,word_count_post_clean=220 < 500,2026-08-05T08:32:39.899558+00:00
+org.comroid:interfaces,java,434,preprocess,F5,word_count_post_clean=7 < 500,2026-08-05T08:32:39.899558+00:00
+org.jbundle.util:org.jbundle.util.muffinmanager,java,436,preprocess,F5,word_count_post_clean=36 < 500,2026-08-05T08:32:39.899558+00:00
+org.openscience.cdk:cdk-core,java,440,preprocess,F5,word_count_post_clean=452 < 500,2026-08-05T08:32:39.899558+00:00
+io.quarkus:quarkus-jackson-deployment,java,441,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:32:39.899558+00:00
+org.jboss.forge.addon:convert,java,442,preprocess,F5,word_count_post_clean=487 < 500,2026-08-05T08:32:39.899558+00:00
+io.fabric8:fabric-project-deployer,java,443,preprocess,F5,no prose files extracted,2026-08-05T08:32:39.899558+00:00
+com.adobe.granite:com.adobe.granite.auth.oauth,java,445,clone,F4,repository_url=https://git.corp.adobe.com/Granite/granite/tree/master/bundles/auth/oauth: non-git-url,2026-08-05T08:33:00.447147+00:00
+org.netbeans.api:org-netbeans-modules-editor-plain-lib,java,444,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:34:31.337452+00:00
+org.ton:ton-kotlin-tlb-macosx64,java,446,preprocess,F5,word_count_post_clean=69 < 500,2026-08-05T08:34:31.337452+00:00
+com.thoughtworks.dsl:dsl_sjs0.6_2.11,java,449,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:34:31.337452+00:00
+org.eclipse.jetty.websocket:websocket-core-server,java,453,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:34:31.337452+00:00
+dev.binis:code-generator-core,java,455,preprocess,F5,word_count_post_clean=67 < 500,2026-08-05T08:34:31.337452+00:00
+dev.zio:zio-streams_3,java,456,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:34:31.337452+00:00
+org.codelibs:xpp3,java,457,preprocess,F5,word_count_post_clean=145 < 500,2026-08-05T08:34:31.337452+00:00
+org.openidentityplatform.openam:openam-license-manager-cli,java,461,preprocess,F5,no prose files extracted,2026-08-05T08:35:27.728482+00:00
+com.seanshubin.detangler:detangler-collection,java,463,preprocess,F5,word_count_post_clean=128 < 500,2026-08-05T08:35:27.728482+00:00
+org.jboss.spec.javax.security.auth.message:jboss-jaspi-api_1.1_spec,java,466,preprocess,F5,word_count_post_clean=151 < 500,2026-08-05T08:35:27.728482+00:00
+com.google.api.grpc:proto-google-cloud-apikeys-v2,java,468,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:35:53.416958+00:00
+org.openjdk.jol:jol-core,java,469,preprocess,F5,word_count_post_clean=203 < 500,2026-08-05T08:35:53.416958+00:00
+com.manyangled:coulomb-core_sjs1_3,java,470,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:36:07.595427+00:00
+com.oracle.oci.sdk:oci-java-sdk-autoscaling,java,472,preprocess,F5,repo shared with other sampled packages; no confident per-package subdirectory match,2026-08-05T08:36:30.957504+00:00
+org.opendaylight.mdsal.binding.model.ietf:rfc8343,java,473,clone,F4,repository_url=https://wiki.opendaylight.org/display/ODL/MD-SAL: non-git-url,2026-08-05T08:36:40.317086+00:00
+com.day.commons:day-commons-misc,java,474,clone,F4,repository_url=http://svn.day.com/repos/commons/tags/day-commons-misc-1.1.2: non-git-url,2026-08-05T08:36:40.327298+00:00

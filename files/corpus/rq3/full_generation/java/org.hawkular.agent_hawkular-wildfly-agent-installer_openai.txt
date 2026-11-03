@@ -1,0 +1,240 @@
+# hawkular-wildfly-agent-installer
+
+A Java installer-oriented library for configuring a Hawkular WildFly agent deployment.
+
+The public API provides:
+
+- An executable entry point through `AgentInstaller`.
+- Configuration access through `InstallerConfiguration`.
+- Target-configuration descriptors for standalone, host, and domain-style targets.
+- String encoding and decoding helpers for protected configuration values.
+- XPath and related configuration-location metadata through `TargetConfigInfo`.
+
+## Main API
+
+### `AgentInstaller`
+
+```java
+public class AgentInstaller {
+    public static void main(String[] args) throws Exception;
+}
+```
+
+`AgentInstaller` is the command-line entry point. Applications or scripts can invoke it as a standard Java `main` method.
+
+```java
+AgentInstaller.main(args);
+```
+
+Because it declares `throws Exception`, callers embedding it should handle or propagate failures.
+
+---
+
+### `InstallerConfiguration`
+
+```java
+public class InstallerConfiguration {
+    public InstallerConfiguration(CommandLine<?> commandLine) throws Exception;
+    public void decodeProperties(String encryptionKey, byte[] salt) throws Exception;
+    // getters...
+}
+```
+
+`InstallerConfiguration` represents installer settings obtained from a command-line configuration source. It exposes getters for installation, connection, authentication, targeting, and managed-server settings.
+
+Available settings include:
+
+| Method | Description inferred from name |
+|---|---|
+| `getInstallerConfig()` | Installer configuration identifier or location. |
+| `isEnabled()` | Whether installation or agent configuration is enabled. |
+| `isConfigOnly()` | Whether the operation is configuration-only. |
+| `getTargetLocation()` | Target installation or server location. |
+| `getModuleDistribution()` | Module distribution setting. |
+| `getTargetConfig()` | Target configuration setting. |
+| `getSubsystemSnippet()` | Subsystem configuration snippet. |
+| `getServerUrl()` | Server URL. |
+| `getDownloadServerUrl()` | Download server URL. |
+| `getKeystorePath()` | Keystore path. |
+| `getKeystorePassword()` | Keystore password. |
+| `getUsername()` | Username. |
+| `getPassword()` | Password. |
+| `getManagedServerName()` | Managed server name. |
+| `getFeedId()` | Feed identifier. |
+| `getTenantId()` | Tenant identifier. |
+| `isMetricsOnlyMode()` | Whether metrics-only mode is enabled. |
+| `getManagedResourceTypeSets()` | Managed resource-type-set configuration. |
+
+Call `decodeProperties` before reading properties that may have been encoded.
+
+```java
+configuration.decodeProperties(encryptionKey, salt);
+String username = configuration.getUsername();
+String password = configuration.getPassword();
+```
+
+---
+
+### `EncoderDecoder`
+
+```java
+public class EncoderDecoder {
+    public static String encode(String clearText, String key, byte[] salt) throws Exception;
+    public static String decode(String encodedString, String key, byte[] salt) throws Exception;
+}
+```
+
+`EncoderDecoder` provides static helpers to encode clear-text values and decode previously encoded values using a key and salt.
+
+```java
+String key = "example-key";
+byte[] salt = new byte[] { 1, 2, 3, 4 };
+
+String encodedPassword = EncoderDecoder.encode("change-me", key, salt);
+String clearPassword = EncoderDecoder.decode(encodedPassword, key, salt);
+```
+
+Use the same key and salt for decoding that were used for encoding.
+
+---
+
+### `TargetConfigInfo`
+
+```java
+public interface TargetConfigInfo {
+    String getRootXPath();
+    String getSecurityRealmsXPath();
+    String getProfileXPath();
+    String getManagedServerResourceTypeSets();
+    String getRelativeTo();
+}
+```
+
+`TargetConfigInfo` describes configuration locations and related target metadata. Its implementations provide values appropriate for different target modes.
+
+The interface exposes:
+
+| Method | Purpose inferred from name |
+|---|---|
+| `getRootXPath()` | XPath for the target configuration root. |
+| `getSecurityRealmsXPath()` | XPath for security realms. |
+| `getProfileXPath()` | XPath for a profile section. |
+| `getManagedServerResourceTypeSets()` | Managed-server resource-type-set value. |
+| `getRelativeTo()` | A relative location or base reference. |
+
+### Target configuration implementations
+
+Three implementations are available:
+
+- `StandaloneTargetConfigInfo`
+- `HostTargetConfigInfo`
+- `DomainTargetConfigInfo`
+
+Each implements `TargetConfigInfo` and supplies the same set of target-specific configuration values.
+
+```java
+TargetConfigInfo target = new StandaloneTargetConfigInfo();
+
+String rootXPath = target.getRootXPath();
+String profileXPath = target.getProfileXPath();
+String relativeTo = target.getRelativeTo();
+```
+
+Choose the implementation matching the type of target configuration being processed.
+
+## Usage Examples
+
+### Invoke the installer entry point
+
+The simplest integration is to pass command-line arguments directly to the installer.
+
+```java
+public final class InstallAgent {
+    public static void main(String[] args) {
+        try {
+            AgentInstaller.main(args);
+        } catch (Exception e) {
+            throw new RuntimeException("Agent installation failed", e);
+        }
+    }
+}
+```
+
+### Encode and decode a configuration secret
+
+```java
+import org.hawkular.wildfly.agent.installer.EncoderDecoder;
+
+public final class SecretExample {
+    public static void main(String[] args) throws Exception {
+        String key = "installer-secret";
+        byte[] salt = new byte[] { 10, 20, 30, 40 };
+
+        String encoded = EncoderDecoder.encode("my-password", key, salt);
+
+        // Store or pass `encoded` as needed.
+        String decoded = EncoderDecoder.decode(encoded, key, salt);
+
+        System.out.println(decoded);
+    }
+}
+```
+
+### Work with target configuration metadata
+
+```java
+import org.hawkular.wildfly.agent.installer.DomainTargetConfigInfo;
+import org.hawkular.wildfly.agent.installer.TargetConfigInfo;
+
+public final class TargetInfoExample {
+    public static void main(String[] args) {
+        TargetConfigInfo target = new DomainTargetConfigInfo();
+
+        System.out.println("Root XPath: " + target.getRootXPath());
+        System.out.println("Security realms XPath: " + target.getSecurityRealmsXPath());
+        System.out.println("Profile XPath: " + target.getProfileXPath());
+        System.out.println("Relative to: " + target.getRelativeTo());
+        System.out.println("Managed resource type sets: "
+                + target.getManagedServerResourceTypeSets());
+    }
+}
+```
+
+### Read installer configuration
+
+`InstallerConfiguration` is constructed from a `CommandLine<?>` instance. Once the command-line object has been created by the calling application, it can be used to obtain installer settings.
+
+```java
+public void inspectConfiguration(CommandLine<?> commandLine,
+                                 String encryptionKey,
+                                 byte[] salt) throws Exception {
+    InstallerConfiguration configuration =
+            new InstallerConfiguration(commandLine);
+
+    configuration.decodeProperties(encryptionKey, salt);
+
+    if (configuration.isEnabled()) {
+        String targetLocation = configuration.getTargetLocation();
+        String serverUrl = configuration.getServerUrl();
+        String username = configuration.getUsername();
+
+        // Use the resolved settings in installer integration code.
+        System.out.println("Target: " + targetLocation);
+        System.out.println("Server URL: " + serverUrl);
+        System.out.println("Username: " + username);
+    }
+}
+```
+
+## Error Handling
+
+The entry point, configuration constructor, property decoding methods, and encoding helpers declare `Exception`. Code using these APIs should either propagate exceptions or handle them explicitly.
+
+```java
+try {
+    String encoded = EncoderDecoder.encode(value, key, salt);
+    // use encoded value
+} catch (Exception e) {
+    // report or recover from the failure
+}
+```

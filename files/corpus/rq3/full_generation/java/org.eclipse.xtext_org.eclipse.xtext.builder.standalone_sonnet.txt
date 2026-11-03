@@ -1,0 +1,229 @@
+# org.eclipse.xtext.builder.standalone
+
+Standalone build infrastructure for Xtext-based languages. This library lets you compile Xtext DSL sources (and their generated Java code) outside of Eclipse — for example from a build tool, a CLI, or a custom launcher — without requiring a running Eclipse workbench.
+
+It provides:
+
+- A driver (`StandaloneBuilder`) that orchestrates parsing/validating/generating for one or more Xtext languages over a set of source directories.
+- A pluggable Java compiler abstraction (`IJavaCompiler`) with an Eclipse JDT-based implementation (`EclipseJavaCompiler`), used to compile the Java code that your Xtext generators emit.
+- An incremental build subsystem (the `incremental` package) that hashes classpath entries and resources so that subsequent builds can skip unchanged inputs.
+- Configuration types (`ILanguageConfiguration`, `LanguageAccess`, `LanguageAccessFactory`) that describe and wire up individual languages participating in the build.
+- Guice wiring (`StandaloneBuilderModule`) to assemble the whole thing.
+
+This library is typically used as an engine underneath build-tool integrations (Maven/Gradle plugins, Ant tasks, etc.) or directly from a custom `main()` method.
+
+---
+
+## Core Concepts
+
+### `StandaloneBuilder`
+
+The main entry point. You configure it with source directories, classpath entries, the languages to build, and various options, then call `launch()` to run a build.
+
+Key configuration:
+
+- `setBaseDir(String)` — root directory the build is relative to.
+- `setSourceDirs(Iterable<String>)` — directories containing DSL source files.
+- `setJavaSourceDirs(Iterable<String>)` — directories containing plain Java sources to compile alongside generated code.
+- `setClassPathEntries(Iterable<String>)` — classpath used both for loading language runtime code and for compiling generated Java.
+- `setClassPathLookUpFilter(String)` — filter used when resolving classpath entries.
+- `setLanguages(Map<String, LanguageAccess>)` — the languages to process, keyed by file extension (or similar discriminator), typically produced by `LanguageAccessFactory`.
+- `setEncoding(String)` — source/output file encoding.
+- `setTempDir(String)` / `setTempDir(File)` — scratch directory used during the build.
+- `setFailOnValidationError(boolean)` — whether validation errors abort the build.
+- `setDebugLog(boolean)` / `setWriteStorageResources(boolean)` — diagnostics and resource persistence toggles.
+- `setIncrementalBuild(boolean)` — turns on incremental compilation support.
+- `setClasspathConfigurationLocation(String, String, String)` — location/key/output directory used for classpath-related incremental state.
+- `setClusteringConfig(ClusteringConfig)` — controls how source files are grouped into build "clusters" (batches) to bound memory usage.
+
+Other useful methods:
+
+- `getCompiler()` — access to the underlying `IJavaCompiler` used for compiling generated/plain Java sources.
+- `fileEncodingSetup(Collection<LanguageAccess>, String)` — applies an encoding setting across a set of languages.
+- `clearResourceSet(ResourceSet)` — resets a resource set between build runs.
+
+### `ClusteringConfig`
+
+Controls how the builder splits large source sets into smaller clusters, to avoid running out of memory when processing many files at once.
+
+```java
+public ClusteringConfig(long minimumFreeMemory, int minimumClusterSize, long minimumPercentFreeMemory);
+```
+
+- `minimumFreeMemory` — absolute free memory (bytes) threshold before starting a new cluster.
+- `minimumClusterSize` — minimum number of files per cluster, regardless of memory pressure.
+- `minimumPercentFreeMemory` — free memory threshold expressed as a percentage.
+
+### Language configuration
+
+- **`ILanguageConfiguration`** — describes one Xtext language to build:
+  - `getSetup()` — fully-qualified name of the language's `Setup` class.
+  - `getOutputConfigurations()` — where/how generated artifacts are written.
+  - `isJavaSupport()` — whether this language emits Java code that needs compiling.
+
+- **`LanguageAccess`** — a runtime handle to everything needed to process one language: its generator, stub generator, resource service provider, resource description manager, validator, encoding provider, and output configurations. Created per-language, typically via the factory below.
+
+- **`LanguageAccessFactory`** — builds a `Map<String, LanguageAccess>` from a list of `ILanguageConfiguration` instances, using a given `ClassLoader` to load each language's setup class. The resulting map is what you hand to `StandaloneBuilder.setLanguages(...)`.
+
+### Java compilation
+
+- **`IJavaCompiler`** — abstraction for compiling generated (and plain) Java source into class files:
+  - `compile(Iterable<String> sourceRoots, File outputClassDirectory)` returns a `CompilationResult`.
+  - `setClassPath(Iterable<String>)`.
+  - `getConfiguration()` returns a `CompilerConfiguration`.
+
+- **`EclipseJavaCompiler`** — the default `IJavaCompiler` implementation, backed by the Eclipse JDT compiler. Lets you redirect compiler output/error streams via `setOutputWriter`/`setErrorWriter`.
+
+- **`CompilerConfiguration`** — Java compiler options: source/target level, verbosity, annotation processing, formal parameter debug info, and incremental compilation settings (`enableIncrementalCompilation(File, IResourceDescription.Event.Listener)` / `disableIncrementalCompilation()`).
+
+- **`StandaloneBuilderModule`** — a Guice `AbstractModule` that binds `IJavaCompiler` to `EclipseJavaCompiler` by default.
+
+### Issue handling
+
+- **`IIssueHandler`** — callback interface for reacting to validation issues (`Issue` instances) collected during a build; `handleIssue(Iterable<Issue>)` returns whether the build should continue.
+
+### File change callbacks
+
+- **`StandaloneBuilderFileCallback`** implements `IFileCallback`, notifying about files added/deleted during generation, useful for hooking into external build tools' file tracking.
+
+---
+
+## Incremental Build Support (`incremental` package)
+
+These classes back `StandaloneBuilder.setIncrementalBuild(true)` and let the builder avoid reprocessing unchanged sources/classpath entries between runs.
+
+- **`BinaryFileHashing`** — utility for computing hashes of `.class` files and directories of class files (`processDirectory`, `processFile`), plus access to the `HashFunction` used and a sentinel `unknownHashCode()`.
+
+- **`ClasspathEntryHash`** / **`ClasspathEntryHashVisitor`** — abstraction representing the hash of a classpath entry (a jar or a directory of classes), visited either as a whole archive hash or per-class-file hash.
+  - **`CoarseGrainedEntryHash`** — a single hash for an entire classpath entry (e.g. a jar treated as one unit).
+  - **`FineGrainedEntryHash`** — a per-class-file map of hashes, allowing detection of exactly which classes changed.
+
+- **`ClasspathInfos`** — computes `ClasspathEntryHash` instances for classpath entries (`hashClassesOrJar(IPath)`) and can be reset via `clear()`.
+
+- **`ExtendedEObjectInputStream`** / **`ExtendedEObjectOutputStream`** — serialization streams (extending Xtext's `EObjectInputStream`/`EObjectOutputStream`) used to persist and restore incremental build state, including hash codes, paths, resource descriptions, and URIs.
+
+- **`ResourceURICollector`** — walks a set of root `URI`s and file extensions to collect all matching resource `URI`s, used to discover which sources participate in a build.
+
+---
+
+## Typical Workflow
+
+1. Describe each Xtext language you want to build with an `ILanguageConfiguration` (setup class name, output configurations, whether it needs Java compilation).
+2. Use `LanguageAccessFactory` to turn those configurations into a `Map<String, LanguageAccess>`.
+3. Create a `StandaloneBuilder`, configure source/classpath directories, encoding, clustering, and incremental build settings.
+4. Call `setLanguages(...)` with the map from step 2.
+5. Call `launch()`.
+6. Optionally inspect/react to compilation results via `getCompiler()` and to issues via a custom `IIssueHandler`.
+
+---
+
+## Usage Example
+
+### Basic standalone build
+
+```java
+import org.eclipse.xtext.builder.standalone.*;
+import org.eclipse.xtext.builder.standalone.compiler.*;
+
+import java.util.*;
+
+public class BuildRunner {
+
+    public static void main(String[] args) {
+        // 1. Describe the language(s) to build
+        ILanguageConfiguration myDslConfig = new ILanguageConfiguration() {
+            @Override
+            public String getSetup() {
+                return "com.example.mydsl.MyDslStandaloneSetup";
+            }
+
+            @Override
+            public Set<org.eclipse.xtext.generator.OutputConfiguration> getOutputConfigurations() {
+                org.eclipse.xtext.generator.OutputConfiguration defaultOutput =
+                    new org.eclipse.xtext.generator.OutputConfiguration(
+                        org.eclipse.xtext.generator.IFileSystemAccess.DEFAULT_OUTPUT);
+                defaultOutput.setOutputDirectory("./src-gen");
+                defaultOutput.setCreateOutputDirectory(true);
+                return Collections.singleton(defaultOutput);
+            }
+
+            @Override
+            public boolean isJavaSupport() {
+                return true;
+            }
+        };
+
+        // 2. Turn the configuration into a LanguageAccess map
+        LanguageAccessFactory factory = new LanguageAccessFactory();
+        Map<String, LanguageAccess> languages =
+            factory.createLanguageAccess(
+                Collections.singletonList(myDslConfig),
+                Thread.currentThread().getContextClassLoader());
+
+        // 3. Configure the builder
+        StandaloneBuilder builder = new StandaloneBuilder();
+        builder.setBaseDir("/path/to/project");
+        builder.setSourceDirs(Collections.singletonList("src/main/mydsl"));
+        builder.setJavaSourceDirs(Collections.singletonList("src/main/java"));
+        builder.setClassPathEntries(Collections.singletonList("lib/mydsl-runtime.jar"));
+        builder.setLanguages(languages);
+        builder.setEncoding("UTF-8");
+        builder.setFailOnValidationError(true);
+        builder.setTempDir("target/xtext-tmp");
+
+        // Optionally tune clustering to bound memory usage on large projects
+        builder.setClusteringConfig(new ClusteringConfig(
+            50L * 1024 * 1024, // minimum free memory in bytes
+            200,               // minimum cluster size in files
+            10L                // minimum percent free memory
+        ));
+
+        // 4. Run the build
+        boolean success = builder.launch();
+        if (!success) {
+            throw new RuntimeException("Standalone build failed.");
+        }
+    }
+}
+```
+
+### Enabling incremental compilation
+
+```java
+StandaloneBuilder builder = new StandaloneBuilder();
+builder.setIncrementalBuild(true);
+builder.setClasspathConfigurationLocation(
+    "target/classpath-info", // location
+    "main",                  // key
+    "target/classes"         // output directory
+);
+
+// Tune the underlying Java compiler
+IJavaCompiler compiler = builder.getCompiler();
+CompilerConfiguration compilerConfig = compiler.getConfiguration();
+compilerConfig.setSourceLevel("17");
+compilerConfig.setTargetLevel("17");
+compilerConfig.setVerbose(false);
+```
+
+### Compiling Java sources directly with `EclipseJavaCompiler`
+
+```java
+EclipseJavaCompiler compiler = new EclipseJavaCompiler();
+compiler.setClassPath(Arrays.asList("lib/dependency.jar"));
+compiler.getConfiguration().setSourceLevel("17");
+compiler.getConfiguration().setTargetLevel("17");
+
+CompilationResult result = compiler.compile(
+    Arrays.asList("src-gen", "src/main/java"),
+    new File("target/classes")
+);
+```
+
+---
+
+## Extending the Build
+
+- Implement `IIssueHandler` to customize how validation issues are reported or to decide whether a build should be aborted.
+- Implement `IFileCallback` (or use `StandaloneBuilderFileCallback`) to hook into file add/delete notifications emitted during generation, useful for integrating with external build-tool file-tracking mechanisms.
+- Bind a custom `IJavaCompiler` implementation via Guice if you need a compiler backend other than the bundled `EclipseJavaCompiler` (see `StandaloneBuilderModule` for the default binding).

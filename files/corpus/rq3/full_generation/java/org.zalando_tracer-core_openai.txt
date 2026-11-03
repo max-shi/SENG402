@@ -1,0 +1,282 @@
+# tracer-core
+
+`org.zalando:tracer-core` is a Java library for maintaining named tracing values during application execution. A `Tracer` can start and stop a tracing scope, expose active trace values, and wrap tasks so they can be run through Java executors.
+
+The library also provides value generators, trace listeners, and executor adapters for integrating tracing with concurrent code.
+
+## Core concepts
+
+### `Tracer`
+
+`Tracer` is the main entry point.
+
+Create a tracer with the names of the trace values it should manage:
+
+```java
+import org.zalando.tracer.Tracer;
+
+Tracer tracer = Tracer.create("trace-id", "flow-id");
+```
+
+A tracer can:
+
+- start a trace scope with generated or supplied values;
+- report whether tracing is active;
+- look up an individual `Trace`;
+- iterate over all active trace values;
+- create a snapshot map of the current values;
+- stop the current trace scope;
+- wrap `Runnable` and `Callable` tasks for use across execution boundaries.
+
+Key methods include:
+
+```java
+tracer.start();
+tracer.start(name -> "value-for-" + name);
+
+boolean active = tracer.isActive();
+
+Trace trace = tracer.get("trace-id");
+
+tracer.forEach((name, value) -> {
+    System.out.println(name + "=" + value);
+});
+
+Map<String, String> values = tracer.snapshot();
+
+tracer.stop();
+```
+
+A `Trace` represents one named tracing value:
+
+```java
+String name = trace.getName();
+String value = trace.getValue();
+```
+
+## Basic usage
+
+Create a tracer, start a trace scope, access its values, and always stop it when finished:
+
+```java
+import org.zalando.tracer.Trace;
+import org.zalando.tracer.Tracer;
+
+Tracer tracer = Tracer.create("trace-id", "request-id");
+
+tracer.start(name -> {
+    if ("trace-id".equals(name)) {
+        return "trace-123";
+    }
+    return "request-456";
+});
+
+try {
+    Trace traceId = tracer.get("trace-id");
+
+    if (traceId != null) {
+        System.out.println("Handling trace " + traceId.getValue());
+    }
+
+    tracer.forEach((name, value) ->
+            System.out.println("Trace value: " + name + "=" + value));
+} finally {
+    tracer.stop();
+}
+```
+
+For simple cases, use the no-argument `start()` method:
+
+```java
+Tracer tracer = Tracer.create("trace-id");
+
+tracer.start();
+try {
+    System.out.println(tracer.snapshot());
+} finally {
+    tracer.stop();
+}
+```
+
+## Task wrapping and concurrency
+
+Tracing state is often relevant when work moves to another thread. `Tracer` can wrap `Runnable` and `Callable` tasks:
+
+```java
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+Tracer tracer = Tracer.create("trace-id");
+ExecutorService executor = Executors.newFixedThreadPool(4);
+
+tracer.start();
+try {
+    Runnable task = tracer.preserve(() -> {
+        System.out.println("Running with trace values: " + tracer.snapshot());
+    });
+
+    executor.execute(task);
+
+    Callable<String> operation = tracer.manage(() -> {
+        Trace trace = tracer.get("trace-id");
+        return trace != null ? trace.getValue() : "no trace";
+    });
+
+    String result = executor.submit(operation).get();
+    System.out.println(result);
+} finally {
+    tracer.stop();
+    executor.shutdown();
+}
+```
+
+The available wrapping modes are:
+
+- `manage(...)`
+- `preserve(...)`
+- `tryPreserve(...)`
+- `delegate(..., provider)`
+
+Each mode is available for both `Runnable` and `Callable` tasks.
+
+`delegate` accepts a provider function for producing values by trace name:
+
+```java
+Runnable task = tracer.delegate(
+        () -> System.out.println(tracer.snapshot()),
+        name -> "delegated-" + name
+);
+```
+
+## Executor adapters
+
+`TracingExecutors` provides corresponding adapters for standard Java executor types:
+
+- `Executor`
+- `ExecutorService`
+- `ScheduledExecutorService`
+
+Wrap an executor once rather than wrapping each submitted task individually:
+
+```java
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import org.zalando.tracer.Tracer;
+import org.zalando.tracer.concurrent.TracingExecutors;
+
+Tracer tracer = Tracer.create("trace-id");
+
+ExecutorService rawExecutor = Executors.newFixedThreadPool(2);
+ExecutorService tracingExecutor =
+        TracingExecutors.preserve(rawExecutor, tracer);
+
+tracer.start();
+try {
+    tracingExecutor.submit(() -> {
+        System.out.println("Trace values: " + tracer.snapshot());
+    }).get();
+} finally {
+    tracer.stop();
+    tracingExecutor.shutdown();
+}
+```
+
+The executor adapter methods mirror the tracer task-wrapping modes:
+
+```java
+TracingExecutors.manage(executor, tracer);
+TracingExecutors.preserve(executor, tracer);
+TracingExecutors.tryPreserve(executor, tracer);
+```
+
+## Trace listeners
+
+Trace listeners receive notifications when a trace value starts or stops.
+
+```java
+import org.zalando.tracer.TraceListener;
+
+TraceListener listener = new TraceListener() {
+    @Override
+    public void onStart(String name, String value) {
+        System.out.println("Started " + name + "=" + value);
+    }
+
+    @Override
+    public void onStop(String name, String value) {
+        System.out.println("Stopped " + name + "=" + value);
+    }
+};
+```
+
+The library includes these listener implementations:
+
+- `LoggingTraceListener` — a listener intended for logging trace lifecycle events.
+- `MDCTraceListener` — a listener for MDC-oriented trace handling.
+- `StackedMDCTraceListener` — a stacked MDC-oriented listener.
+
+`LoggingTraceListener` can be created with its default constructor or with a `Logger`:
+
+```java
+LoggingTraceListener listener = new LoggingTraceListener();
+
+Logger logger = listener.getLogger();
+```
+
+## Value generators
+
+A `Generator` produces a string value:
+
+```java
+import org.zalando.tracer.Generator;
+
+Generator generator = () -> "custom-value";
+String value = generator.generate();
+```
+
+Built-in generator implementations include:
+
+- `FlowIDGenerator`
+- `PhraseGenerator`
+- `Random64Generator`
+- `Random128Generator`
+- `UUIDGenerator`
+
+Example:
+
+```java
+import org.zalando.tracer.Generator;
+import org.zalando.tracer.UUIDGenerator;
+
+Generator generator = new UUIDGenerator();
+String traceValue = generator.generate();
+```
+
+## Building a tracer
+
+In addition to `Tracer.create(...)`, the API exposes a builder entry point:
+
+```java
+TracerFactory.Builder builder = Tracer.builder();
+```
+
+Use `Tracer.create(...)` when the required trace names are known directly:
+
+```java
+Tracer tracer = Tracer.create("trace-id", "flow-id", "request-id");
+```
+
+## API summary
+
+| Type | Purpose |
+|---|---|
+| `Tracer` | Starts, reads, snapshots, stops, and propagates tracing state. |
+| `Trace` | Represents a named trace value. |
+| `Generator` | Produces a string trace value. |
+| `TraceListener` | Receives trace start and stop events. |
+| `TracingExecutors` | Wraps Java executors for tracing-aware task execution. |
+| `LoggingTraceListener` | Logging-oriented trace listener. |
+| `MDCTraceListener` | MDC-oriented trace listener. |
+| `StackedMDCTraceListener` | Stacked MDC-oriented trace listener. |

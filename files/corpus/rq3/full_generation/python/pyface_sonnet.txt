@@ -1,0 +1,267 @@
+# Pyface
+
+Pyface is a toolkit-agnostic library for building desktop GUI applications in Python. It provides a set of abstractions—windows, dialogs, actions, fields, data views, tree/table viewers, and task-based application layouts—that can be backed by either Qt or wxWidgets. Application code is written once against Pyface's interfaces, and the appropriate toolkit implementation is selected at runtime.
+
+## Introduction
+
+At its core, Pyface separates *interface* from *implementation*:
+
+- Interfaces (prefixed `I`, e.g. `IWindow`, `IDialog`, `IField`) define the contract that all toolkit backends must satisfy.
+- Mixins (prefixed `M`, e.g. `MWindow`, `MDialog`, `MField`) implement toolkit-independent behavior shared across backends.
+- Concrete classes live under `pyface.ui.qt` and `pyface.ui.wx`, combining the mixin with toolkit-specific widget code (e.g. `pyface.ui.qt.window.Window`, `pyface.ui.wx.window.Window`).
+
+On top of these building blocks, Pyface offers higher-level frameworks:
+
+- **Actions** — menus, toolbars, and command objects (`pyface.action`).
+- **Applications** — `Application` and `GUIApplication` for structuring app startup/shutdown.
+- **Tasks** — a windowing framework with dockable panes, editors, and layouts (`pyface.tasks`).
+- **Workbench** — an older, Eclipse-style perspective/view/editor framework (`pyface.workbench`).
+- **Data View** — a MVC-style framework for tabular/hierarchical data display (`pyface.data_view`).
+- **Fields** — simple bound-value widgets like text fields, spin fields, combo fields (`pyface.fields`).
+- **Undo/Redo** — a command-stack based undo framework (`pyface.undo`).
+- **Viewer/Tree/Grid** — older widget abstractions for lists, trees, and grids.
+
+Because the public API is toolkit-agnostic, most application code imports from `pyface` directly (which resolves to the active toolkit at runtime) rather than from `pyface.ui.qt` or `pyface.ui.wx` specifically.
+
+## Core Concepts
+
+### Widgets and Windows
+
+Everything visual in Pyface ultimately derives from `IWidget`/`MWidget`, which defines the basic lifecycle:
+
+```python
+def create(self, parent=None): ...
+def destroy(self): ...
+def show(self, visible): ...
+def enable(self, enabled): ...
+def focus(self): ...
+```
+
+`IWindow`/`MWindow` extends this with dialog-style helpers:
+
+```python
+def open(self): ...
+def close(self, force=False): ...
+def confirm(self, message, title=None, cancel=False, default=NO): ...
+def information(self, message, title='Information', ...): ...
+def warning(self, message, title='Warning', ...): ...
+def error(self, message, title='Error', ...): ...
+```
+
+Standard dialogs build on this: `Dialog`, `FileDialog`, `DirectoryDialog`, `ColorDialog`, `FontDialog`, `MessageDialog`, `ConfirmationDialog`, `ProgressDialog`, `SingleChoiceDialog`, `AboutDialog`, `SplashScreen`.
+
+Module-level convenience functions wrap common dialogs:
+
+```python
+from pyface.api import confirm, information, warning, error
+from pyface.confirmation_dialog import confirm
+from pyface.message_dialog import information, warning, error
+from pyface.color_dialog import get_color
+from pyface.font_dialog import get_font
+from pyface.single_choice_dialog import choose_one
+```
+
+### Fields
+
+`pyface.fields` provides simple, bindable input widgets: `TextField`, `SpinField`, `ComboField`, `TimeField`, `ToggleField` (`CheckBoxField`, `RadioButtonField`, `ToggleButtonField`), `ImageField`, `LabelField`. All derive from `IField`/`MField`, which in turn derive from `ILayoutWidget`.
+
+### Actions and Menus
+
+The `pyface.action` package models menu bars, toolbars, and the commands attached to them:
+
+- `Action` — a single command with `perform(event)`.
+- `Group` and `Separator` — logical groupings of actions within a menu/toolbar.
+- `ActionManager` (base of `MenuManager`, `ToolBarManager`, `MenuBarManager`) — a hierarchical container of groups and items.
+- `ActionManagerItem` / `ActionItem` — wraps an `Action` for insertion into a manager.
+- `ActionController` — intercepts and mediates action execution (`perform`, `add_to_menu`, `add_to_toolbar`).
+- `ListeningAction` / `WindowAction` — actions that automatically enable/disable based on a listened-to trait.
+- The `pyface.action.schema` sub-package (`Schema`, `MenuSchema`, `ToolBarSchema`, `ActionManagerBuilder`) provides a declarative way to assemble menus/toolbars from reusable fragments, with `SchemaAddition` used to inject new items at specific paths.
+
+### Applications
+
+`Application` is the base class for a runnable program:
+
+```python
+def start(self): ...
+def stop(self): ...
+def run(self): ...
+def exit(self, force=False): ...
+```
+
+`GUIApplication` extends this with window management (`create_window`, `add_window`) suitable for GUI apps, and `TasksApplication` further extends it to manage `Task` instances inside `TaskWindow`s.
+
+### Tasks Framework
+
+The Tasks framework (`pyface.tasks`) organizes an application window around a central pane, dockable side panes, and editors:
+
+- `Task` — defines `create_central_pane()` and `create_dock_panes()`.
+- `TaskWindow` — hosts one or more `Task`s, manages activation, layout (`get_layout`/`set_layout`), and dock panes.
+- `TaskPane`, `DockPane`, `Editor`, `EditorAreaPane` — the panes that make up a task's UI.
+- `TaskLayout`, `PaneItem`, `Splitter`/`HSplitter`/`VSplitter`, `Tabbed` — declarative layout description objects.
+- `TaskWindowLayout` — describes which tasks are active/visible in a window.
+- Traits-integrated variants: `TraitsTaskPane`, `TraitsDockPane`, `TraitsEditor` render a TraitsUI view inside a pane.
+
+### Workbench Framework
+
+`pyface.workbench` is a related, older framework based on perspectives, views, and editors:
+
+- `Workbench` / `WorkbenchWindow` — manages editors and views across named `Perspective`s.
+- `IView` / `IEditor` — the parts a perspective arranges.
+- `UserPerspectiveManager` — lets end users save/restore custom perspectives.
+
+### Data View
+
+`pyface.data_view` provides an MVC framework for displaying tabular/hierarchical data:
+
+- `AbstractDataModel` — subclassed to expose row/column data (`get_row_count`, `get_value`, `set_value`, `get_value_type`).
+- `AbstractValueType` (and subclasses `TextValue`, `IntValue`, `FloatValue`, `BoolValue`, `EnumValue`, `ColorValue`, `ConstantValue`, `NoValue`) — describe how a cell's raw value is edited, displayed as text, checkbox, color, or image.
+- `IDataViewWidget` — the toolkit widget that renders a model.
+- `ArrayDataModel`, `RowTableDataModel` — ready-made models over NumPy arrays or lists of row objects.
+- `IDataWrapper` / `DataWrapper` and the `data_formats` module — support drag-and-drop / clipboard interchange of structured data (JSON, CSV, `.npy`).
+
+### Undo/Redo
+
+`pyface.undo` implements a standard command-stack undo system:
+
+- `AbstractCommand` — subclassed with `do()`, `undo()`, `redo()`, `merge()`.
+- `CommandStack` — `push()`, `undo()`, `redo()`, with macro support (`begin_macro`/`end_macro`).
+- `UndoManager` — coordinates one or more command stacks.
+- `UndoAction` / `RedoAction` / `CommandAction` — ready-made `Action`s to wire into menus/toolbars.
+
+### Other Utilities
+
+- `Color` and `Font` — toolkit-independent color/font value objects with `from_toolkit`/`to_toolkit` conversion.
+- `GUI` — event loop control: `invoke_later`, `set_trait_later`, `process_events`, `start_event_loop`/`stop_event_loop`.
+- `ImageResource`, `ImageCache`, `ArrayImage`, `PILImage` — image loading/caching abstractions implementing `IImage`.
+- `Clipboard` — cross-toolkit clipboard access.
+- `Timer` / `CallbackTimer` / `EventTimer` and `do_later`/`do_after` — scheduling utilities.
+- `pyface.viewer` and `pyface.tree` — older, pre-DataView abstractions for displaying lists/trees with pluggable `ContentProvider`, `LabelProvider`, `ViewerSorter`, `ViewerFilter`.
+- `pyface.testing` (`WidgetMixin`, `LayoutWidgetMixin`) and `pyface.ui.qt.util.gui_test_assistant.GuiTestAssistant` — mixins for writing toolkit-driven unit tests.
+
+## Usage Examples
+
+### A simple application window with a menu and toolbar
+
+```python
+from pyface.api import ApplicationWindow, GUI
+from pyface.action.api import Action, MenuManager, MenuBarManager, ToolBarManager
+
+
+class MainWindow(ApplicationWindow):
+    def _menu_bar_manager_default(self):
+        return MenuBarManager(
+            MenuManager(
+                Action(name="Open...", on_perform=self.open_file),
+                Action(name="Exit", on_perform=self.close),
+                name="File",
+            )
+        )
+
+    def _tool_bar_manager_default(self):
+        return ToolBarManager(
+            Action(name="Open", on_perform=self.open_file),
+        )
+
+    def open_file(self):
+        self.information("Open was triggered!")
+
+
+gui = GUI()
+window = MainWindow(title="My Application")
+window.open()
+gui.start_event_loop()
+```
+
+### Using dialogs directly
+
+```python
+from pyface.api import confirm, information, error
+from pyface.file_dialog import FileDialog
+
+if confirm(None, "Really quit?", title="Confirm Exit"):
+    ...
+
+dialog = FileDialog(action="open", wildcard=FileDialog.create_wildcard("Text files", "*.txt"))
+if dialog.open() == "OK":
+    print(dialog.path)
+else:
+    information(None, "No file selected")
+```
+
+### Building a Task-based application
+
+```python
+from pyface.tasks.api import Task, TaskLayout, PaneItem
+from pyface.tasks.tasks_application import TasksApplication, TaskFactory
+
+
+class MyTask(Task):
+    id = "example.task"
+    name = "Example Task"
+
+    def create_central_pane(self):
+        from pyface.tasks.api import TraitsTaskPane
+        return TraitsTaskPane()
+
+    def _default_layout_default(self):
+        return TaskLayout(left=PaneItem("example.dock_pane"))
+
+
+app = TasksApplication(
+    id="example.app",
+    task_factories=[TaskFactory(id="example.task", factory=MyTask)],
+)
+app.run()
+```
+
+### A data view over a NumPy array
+
+```python
+import numpy as np
+from pyface.data_view.data_models.array_data_model import ArrayDataModel
+from pyface.data_view.i_data_view_widget import IDataViewWidget
+
+data = np.arange(20).reshape(4, 5)
+model = ArrayDataModel(data=data)
+
+# `DataViewWidget` (toolkit-specific) renders the model:
+from pyface.api import GUI
+from pyface.data_view.api import DataViewWidget
+
+widget = DataViewWidget(parent=None, data_model=model)
+widget.create()
+```
+
+### Undo/redo command stack
+
+```python
+from pyface.undo.api import AbstractCommand, CommandStack, UndoManager
+
+
+class SetValueCommand(AbstractCommand):
+    def do(self):
+        self.redo()
+
+    def redo(self):
+        self.obj.value = self.data
+
+    def undo(self):
+        self.obj.value = self.previous_data
+
+
+stack = CommandStack()
+manager = UndoManager()
+manager.active_stack = stack
+
+stack.push(SetValueCommand(obj=my_object, data=42))
+manager.undo()
+manager.redo()
+```
+
+## Toolkit Selection
+
+Pyface automatically discovers and loads a toolkit backend (Qt or wx) via `pyface.base_toolkit.find_toolkit` / `import_toolkit`. Application code should import from the top-level `pyface` API modules (e.g. `pyface.api`, `pyface.action.api`, `pyface.tasks.api`) rather than from `pyface.ui.qt` or `pyface.ui.wx` directly, so that the same code runs unmodified regardless of which GUI toolkit is installed.
+
+## Status
+
+Pyface underlies applications built with TraitsUI and the Envisage plugin framework, providing the low-level windowing, dialog, and action infrastructure they depend on.

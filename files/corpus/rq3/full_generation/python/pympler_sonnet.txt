@@ -1,0 +1,232 @@
+# Pympler
+
+Pympler is a development tool to measure, monitor, and analyze the memory behavior of Python objects in a running Python application. It combines several complementary techniques — sizing individual objects, tracking classes and instances over time, browsing reference graphs, detecting reference cycles and garbage, and exposing all of this through a web-based UI — to help developers understand where memory goes and why it doesn't get freed.
+
+Pympler works with actual, running processes: no simulation or offline log processing is required. It can be used interactively at a console, embedded in test suites, or attached to a live application via its web interface.
+
+## Installation
+
+```bash
+pip install pympler
+```
+
+## Core Concepts
+
+Pympler is organized around a handful of related subsystems:
+
+- **`asizeof`** — Computes the memory footprint ("size") of arbitrary Python objects, including nested containers and object graphs, more accurately than `sys.getsizeof`.
+- **`muppy`** — A lightweight, general-purpose muppy ("memory puppy") API for listing all objects currently tracked by the garbage collector, summarizing them, and diffing object populations over time.
+- **`summary`** — Utilities for turning collections of objects into aggregated, human-readable summaries (counts, total size, per-type breakdown).
+- **`tracker`** — High-level trackers (`SummaryTracker`, `ObjectTracker`) that make it easy to snapshot and diff memory usage between two points in a program's execution.
+- **`classtracker` / `classtracker_stats`** — Instance-level tracking: monitor the size and lifetime of instances of specific classes over time, and generate console or HTML reports from the collected data.
+- **`refgraph` / `garbagegraph`** — Build and render reference graphs between objects, useful for visualizing why objects are kept alive, and specifically for inspecting garbage-collector cycles.
+- **`refbrowser`** — Interactive and non-interactive browsers for walking the reference graph of an object (who references what).
+- **`web`** — A browser-based UI (built on the bundled `bottle` micro web framework) that exposes live process, tracker, and garbage information.
+- **`process`** — Small helpers for querying OS-level process/thread information.
+
+## Main Classes and Functions
+
+### `pympler.asizeof`
+
+- `asizeof(*objs, **opts)` — Return the total size in bytes of one or more objects, including all objects they reference.
+- `asizesof(*objs, **opts)` — Return a tuple of sizes, one for each object passed in.
+- `asized(*objs, **opts)` — Like `asizeof`, but returns `Asized` instances with a detailed breakdown (`.format()`, `.get()`).
+- `flatsize`, `basicsize`, `itemsize`, `leng`, `refs`, `named_refs` — Lower-level helpers describing an object's own (flat) size, its type's basic/item size, its length, and its referents.
+- `Asizer` — A configurable, stateful sizer object (alignment, cutoffs, detail level, statistics) for repeated or fine-tuned sizing operations; offers `asizeof`/`asizesof`/`asized` methods plus reporting methods (`print_summary`, `print_stats`, `print_typedefs`, `print_largest`, `print_profiles`).
+- `Asized` — Result object describing one sized object's flat size, total size, and references.
+
+### `pympler.muppy`
+
+- `get_objects()` — Return all objects currently known to the garbage collector.
+- `get_size(objects)` — Sum the size of a list of objects.
+- `get_diff(left, right)` — Compute which objects were added/removed between two object lists.
+- `filter(objects, Type=None, min=-1, max=-1)` — Filter objects by type and size.
+- `sort(objects)` — Sort objects, typically by size.
+- `get_referents(object, level=1)` — Get objects referenced by an object, optionally recursively.
+- `print_summary()` — Print a quick summary of all currently tracked objects.
+
+### `pympler.summary`
+
+- `summarize(objects)` — Build a summary (rows of type/count/size) from a list of objects.
+- `get_diff(left, right)` — Diff two summaries.
+- `format_(rows, ...)` / `print_(rows, ...)` — Format or print summary rows sorted/limited as desired.
+
+### `pympler.tracker`
+
+- `SummaryTracker` — Takes summaries of all live objects at different points in time and reports the difference (`create_summary`, `diff`, `print_diff`, `format_diff`, `store_summary`).
+- `ObjectTracker` — Similar, but tracks raw object lists rather than summaries (`get_diff`, `print_diff`, `format_diff`).
+
+### `pympler.classtracker`
+
+- `ClassTracker` — The central object for instance-level tracking:
+  - `track_class(cls, ...)` / `track_object(instance, ...)` — Start tracking instances of a class, or a specific instance.
+  - `track_change(instance, ...)` — Force re-measurement of an already-tracked instance.
+  - `create_snapshot(description='', compute_total=False)` — Record the current size of all tracked objects.
+  - `start_periodic_snapshots(interval=1.0)` / `stop_periodic_snapshots()` — Automatically snapshot on a timer via a background thread.
+  - `detach_class`, `detach_all_classes`, `detach_all`, `clear`, `close` — Manage tracked classes/instances and free tracker resources.
+  - `stats()` — Return a `ConsoleStats` object for reporting.
+- `TrackedObject` — Internal record of a single tracked instance's size history, resolution level, and lifetime.
+- `Snapshot` — A point-in-time record of tracked memory (`total()`, `label()`).
+
+### `pympler.classtracker_stats`
+
+- `Stats` — Base class for loading/saving tracked class statistics (`load_stats`, `dump_stats`, `sort_stats`, `annotate`, `annotate_snapshot`, `tracked_classes`).
+- `ConsoleStats` — Prints tracked class statistics to the console (`print_stats`, `print_summary`, `print_object`).
+- `HtmlStats` — Generates HTML reports and charts of tracked class statistics (`create_html`, `create_snapshot_chart`, `create_pie_chart`, `create_lifetime_chart`, `create_title_page`).
+
+### `pympler.refgraph` and `pympler.garbagegraph`
+
+- `ReferenceGraph` — Builds a graph of references between a set of objects; can `reduce_to_cycles()`, `split()`/`split_and_sort()` into connected components, `render()` to an image via Graphviz, or `write_graph()` to a dot file.
+- `GarbageGraph` — A `ReferenceGraph` specialized for `gc.garbage` (uncollectable objects), with `print_stats()`.
+- `start_debug_garbage()` / `end_debug_garbage()` — Toggle `gc` debug flags for garbage collection diagnostics.
+
+### `pympler.refbrowser`
+
+- `RefBrowser` / `StreamBrowser` / `ConsoleBrowser` / `FileBrowser` — Walk and print the tree of references to/from an object, to the console or a file.
+- `InteractiveBrowser` — A Tkinter-based interactive reference browser (`main()`).
+
+### `pympler.web`
+
+- `start_profiler(host='localhost', port=8090, tracker=None, stats=None, debug=False, **kwargs)` — Launch the Pympler web UI, optionally pre-populated with a `ClassTracker` or `Stats` object.
+- `start_in_background(**kwargs)` — Start the web UI in a background thread so your application keeps running.
+- Route handlers such as `root`, `process`, `tracker_index`, `tracker_class`, `garbage_index`, `garbage_cycle`, `garbage_graph`, `get_traceback`, `refresh` implement the UI's pages and JSON endpoints (built on the bundled `bottle` framework).
+
+### `pympler.process`
+
+- `is_available()` — Whether process/thread introspection is supported on this platform.
+- `get_current_threads()` — Return `ThreadInfo` objects describing running threads.
+- `get_current_thread_id()` — Get the current thread's identifier.
+
+## Usage Examples
+
+### Measuring the size of an object
+
+```python
+from pympler import asizeof
+
+data = {"a": list(range(1000)), "b": "x" * 500}
+print(asizeof.asizeof(data))          # total size in bytes, including contents
+
+# Detailed breakdown
+sized = asizeof.asized(data, detail=1)
+print(sized.format())
+```
+
+### Summarizing and diffing all live objects
+
+```python
+from pympler import muppy, summary
+
+all_objects = muppy.get_objects()
+summary1 = summary.summarize(all_objects)
+
+# ... run some code that allocates memory ...
+
+all_objects = muppy.get_objects()
+summary2 = summary.summarize(all_objects)
+
+diff = summary.get_diff(summary1, summary2)
+summary.print_(diff)
+```
+
+### Tracking memory growth between two points with `SummaryTracker`
+
+```python
+from pympler.tracker import SummaryTracker
+
+tracker = SummaryTracker()
+
+def do_work():
+    return [str(i) for i in range(100000)]
+
+leftover = do_work()
+tracker.print_diff()   # shows what grew since the tracker was created
+```
+
+### Tracking instances of a class over time
+
+```python
+from pympler.classtracker import ClassTracker
+
+class Widget:
+    def __init__(self, size):
+        self.data = bytearray(size)
+
+tracker = ClassTracker()
+tracker.track_class(Widget)
+
+widgets = [Widget(1024) for _ in range(100)]
+tracker.create_snapshot("after allocation")
+
+del widgets
+tracker.create_snapshot("after deletion")
+
+tracker.stats().print_summary()
+```
+
+Generate an HTML report from the same tracker:
+
+```python
+from pympler.classtracker_stats import HtmlStats
+
+stats = tracker.stats()
+html = HtmlStats(tracker=tracker)
+html.create_html("memory_report.html")
+```
+
+### Finding reference cycles and garbage
+
+```python
+import gc
+from pympler.garbagegraph import GarbageGraph, start_debug_garbage
+
+start_debug_garbage()
+
+# ... code that may create uncollectable cycles ...
+gc.collect()
+
+gg = GarbageGraph()
+gg.print_stats()
+gg.render("garbage.png", format="png")
+```
+
+### Browsing references to an object
+
+```python
+from pympler.refbrowser import ConsoleBrowser
+
+obj = {"key": [1, 2, 3]}
+browser = ConsoleBrowser(obj, maxdepth=3)
+browser.print_tree()
+```
+
+### Launching the live web profiler
+
+```python
+from pympler.web import start_in_background
+from pympler.classtracker import ClassTracker
+
+tracker = ClassTracker()
+tracker.track_class(dict)
+
+# Runs the web UI in a background thread so the app can continue
+start_in_background(tracker=tracker, port=8090)
+
+# ... application keeps running; visit http://localhost:8090 to inspect memory ...
+```
+
+## When to Use What
+
+| Goal | Use |
+|---|---|
+| "How big is this one object?" | `asizeof.asizeof` / `asizeof.asized` |
+| "What's using memory right now?" | `muppy.get_objects` + `summary.summarize` |
+| "What grew between point A and B?" | `tracker.SummaryTracker` / `tracker.ObjectTracker` |
+| "Track specific classes' instance sizes over the life of my app" | `classtracker.ClassTracker` + `classtracker_stats` |
+| "Why is this object still alive?" | `refbrowser` |
+| "Do I have reference cycles / uncollectable garbage?" | `refgraph.ReferenceGraph` / `garbagegraph.GarbageGraph` |
+| "I want a live dashboard" | `web.start_profiler` / `web.start_in_background` |
+
+## License
+
+See the `LICENSE` file included with this distribution.

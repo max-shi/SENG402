@@ -1,0 +1,117 @@
+# org.scala-native:test-interface_native0.4_2.11
+
+A small Java-facing interface for invoking a compiler that produces one or more `Path` results.
+
+The library exposes an `NIRCompiler` abstraction with two compilation entry points:
+
+- Compile from a `String` source value.
+- Compile from a `Path` base value.
+
+Compilation results are returned as arrays of `Path` objects. The library also provides `CompilationFailedException`, a checked exception type that can be used by integrations to represent compilation failures.
+
+## API Overview
+
+### `NIRCompiler`
+
+```java
+public interface NIRCompiler {
+    Path[] compile(String source);
+    Path[] compile(Path base);
+}
+```
+
+`NIRCompiler` is the primary API.
+
+Implementations define how compilation is performed. Both overloads return a `Path[]`, allowing a compilation operation to report multiple output paths.
+
+| Method | Description |
+| --- | --- |
+| `Path[] compile(String source)` | Compiles from a string input. |
+| `Path[] compile(Path base)` | Compiles using a path input. |
+
+Because `NIRCompiler` is an interface, applications receive or provide an implementation through their own integration or dependency setup.
+
+### `CompilationFailedException`
+
+```java
+public class CompilationFailedException extends Exception {
+    public CompilationFailedException(String message);
+}
+```
+
+`CompilationFailedException` is a checked exception for representing a compilation failure with a human-readable message.
+
+The `NIRCompiler.compile` methods do not declare this exception in their signatures. Code using an `NIRCompiler` implementation should follow that implementation’s documented failure behavior.
+
+## Usage
+
+### Compile a source string
+
+Pass an `NIRCompiler` implementation to the code that needs to compile source input:
+
+```java
+import scala.scalanative.api.NIRCompiler;
+
+public final class SourceCompilation {
+    public static void compileSource(NIRCompiler compiler, String source) {
+        Path[] results = compiler.compile(source);
+
+        for (Path result : results) {
+            System.out.println("Compilation result: " + result);
+        }
+    }
+}
+```
+
+### Compile from a path
+
+Use the path-based overload when the compiler should operate from a `Path` input:
+
+```java
+import scala.scalanative.api.NIRCompiler;
+
+public final class PathCompilation {
+    public static Path[] compileFromBase(NIRCompiler compiler, Path base) {
+        return compiler.compile(base);
+    }
+}
+```
+
+### Report a compilation failure
+
+`CompilationFailedException` can be used by application-level compilation workflows that need to expose a checked failure:
+
+```java
+import scala.scalanative.api.CompilationFailedException;
+
+public final class CompilationValidation {
+    public static void requireResults(Path[] results)
+            throws CompilationFailedException {
+        if (results == null || results.length == 0) {
+            throw new CompilationFailedException(
+                "Compilation did not produce any result paths."
+            );
+        }
+    }
+}
+```
+
+## Typical Integration Shape
+
+A typical caller receives an `NIRCompiler` implementation, invokes one of its `compile` overloads, and consumes the returned paths:
+
+```java
+public final class BuildStep {
+    private final NIRCompiler compiler;
+
+    public BuildStep(NIRCompiler compiler) {
+        this.compiler = compiler;
+    }
+
+    public Path[] run(String source) {
+        return compiler.compile(source);
+    }
+}
+```
+
+This keeps compilation behavior behind the `NIRCompiler` interface while allowing callers to work with the resulting `Path` values.

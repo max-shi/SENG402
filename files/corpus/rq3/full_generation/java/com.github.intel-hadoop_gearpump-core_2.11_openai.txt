@@ -1,0 +1,513 @@
+# Gearpump Core Java API
+
+`com.github.intel-hadoop:gearpump-core_2.11` exposes Java-facing APIs for building streaming applications, defining stream-processing functions and tasks, working with transport messages, and interacting with Linux control groups (cgroups).
+
+The public API is organized around these areas:
+
+- **Streaming Java API** — application, processor, task, graph, and functional interfaces for stream transformations.
+- **Transport utilities** — message containers, Netty decoding integration, and serialization contracts.
+- **cgroup APIs** — classes for inspecting, creating, mounting, and managing cgroup hierarchies and resource controllers.
+- **General utilities** — actor lookup and logging support.
+
+## Requirements
+
+This library integrates with types from the surrounding Gearpump, Akka, Netty, and logging ecosystems, including:
+
+- `ActorSystem` and `ActorRef`
+- `UserConfig`
+- `Application` and `ApplicationMaster`
+- `ChannelBuffer` and Netty `FrameDecoder`
+- Gearpump streaming task, source, sink, message, and partitioning types
+
+## Streaming Java API
+
+The `io.gearpump.streaming.javaapi` package provides Java wrappers and extension points for creating streaming applications.
+
+### Core types
+
+| Type | Purpose |
+|---|---|
+| `StreamApplication` | An application definition containing a name, user configuration, and processing graph. |
+| `Graph` | A graph of streaming processors connected with partitioners. |
+| `Processor<T>` | A processor definition for a task type, including parallelism, description, and task configuration. |
+| `Task` | Base class for user-defined streaming tasks. |
+| `MapFunction<T, R>` | Maps one input value to one output value. |
+| `FlatMapFunction<T, R>` | Maps one input value to zero or more output values. |
+| `FilterFunction<T>` | Determines whether an input value is accepted. |
+| `GroupByFunction<T, Group>` | Produces a grouping key for an input value. |
+| `ReduceFunction<T>` | Combines two values of the same type. |
+
+All streaming function interfaces extend `Serializable`, allowing function implementations to be used where serializable callbacks are required.
+
+### Defining transformation functions
+
+The functional interfaces have a single `apply` method and can be implemented with lambda expressions.
+
+```java
+import io.gearpump.streaming.javaapi.dsl.functions.FilterFunction;
+import io.gearpump.streaming.javaapi.dsl.functions.FlatMapFunction;
+import io.gearpump.streaming.javaapi.dsl.functions.GroupByFunction;
+import io.gearpump.streaming.javaapi.dsl.functions.MapFunction;
+import io.gearpump.streaming.javaapi.dsl.functions.ReduceFunction;
+
+import java.util.Arrays;
+import java.util.Iterator;
+
+MapFunction<String, Integer> lengthOf = value -> value.length();
+
+FilterFunction<String> isNonEmpty = value -> !value.isEmpty();
+
+FlatMapFunction<String, String> splitWords =
+    value -> Arrays.asList(value.split("\\s+")).iterator();
+
+GroupByFunction<String, Character> firstCharacter =
+    value -> value.charAt(0);
+
+ReduceFunction<Integer> sum =
+    (left, right) -> left + right;
+```
+
+### Implementing a task
+
+Extend `io.gearpump.streaming.javaapi.Task` to implement task lifecycle behavior.
+
+```java
+import io.gearpump.Message;
+import io.gearpump.streaming.StartTime;
+import io.gearpump.streaming.javaapi.Task;
+import io.gearpump.streaming.task.TaskContext;
+import io.gearpump.util.UserConfig;
+
+public class LoggingTask extends Task {
+
+    public LoggingTask(TaskContext taskContext, UserConfig userConf) {
+        super(taskContext, userConf);
+    }
+
+    @Override
+    public void onStart(StartTime startTime) {
+        // Initialize task state.
+        // self() returns the ActorRef associated with this task.
+        self();
+    }
+
+    @Override
+    public void onNext(Message msg) {
+        // Process an incoming message.
+    }
+
+    @Override
+    public void onStop() {
+        // Release task resources.
+    }
+}
+```
+
+The available lifecycle methods are:
+
+- `onStart(StartTime startTime)` — invoked when the task starts.
+- `onNext(Message msg)` — invoked for incoming messages.
+- `onStop()` — invoked when the task stops.
+- `self()` — returns the task's `ActorRef`.
+
+### Creating processors
+
+A `Processor<T>` describes a task class and its execution settings.
+
+```java
+import io.gearpump.streaming.javaapi.Processor;
+import io.gearpump.util.UserConfig;
+
+UserConfig taskConfig = new UserConfig();
+
+Processor<LoggingTask> processor =
+    new Processor<>(LoggingTask.class, 2, "logging processor", taskConfig);
+
+processor = processor
+    .withParallelism(4)
+    .withDescription("parallel logging processor")
+    .withConfig(taskConfig);
+
+int parallelism = processor.parallelism();
+String description = processor.description();
+UserConfig configuredTaskConfig = processor.taskConf();
+Class<?> taskClass = processor.taskClass();
+```
+
+Processors can also be created for source and sink task types through the static factory methods:
+
+```java
+import akka.actor.ActorSystem;
+import io.gearpump.streaming.javaapi.Processor;
+import io.gearpump.streaming.sink.DataSink;
+import io.gearpump.streaming.source.DataSource;
+import io.gearpump.util.UserConfig;
+
+// Given a DataSource, DataSink, ActorSystem, and task configuration:
+DataSource source = null;
+DataSink sink = null;
+ActorSystem system = null;
+UserConfig config = new UserConfig();
+
+Processor<?> sourceProcessor =
+    Processor.source(source, 1, "input source", config, system);
+
+Processor<?> sinkProcessor =
+    Processor.sink(sink, 1, "output sink", config, system);
+```
+
+### Creating an application
+
+A `StreamApplication` combines an application name, configuration, and graph.
+
+```java
+import akka.actor.ActorSystem;
+import io.gearpump.streaming.javaapi.Graph;
+import io.gearpump.streaming.javaapi.StreamApplication;
+import io.gearpump.util.UserConfig;
+
+Graph graph = new Graph();
+UserConfig applicationConfig = new UserConfig();
+
+StreamApplication application =
+    new StreamApplication("example-streaming-application", applicationConfig, graph);
+
+String name = application.name();
+
+ActorSystem system = null;
+UserConfig resolvedConfig = application.userConfig(system);
+Class<?> applicationMaster = application.appMaster();
+```
+
+`Graph` extends the generic Gearpump graph type for streaming processors and partitioners. It is the graph object supplied to `StreamApplication`.
+
+## Transport API
+
+The transport API provides a serializer abstraction and a message envelope for communication between tasks.
+
+### `TaskMessage`
+
+`TaskMessage` stores a message together with session and task-routing information.
+
+```java
+import io.gearpump.transport.netty.TaskMessage;
+
+TaskMessage taskMessage = new TaskMessage(
+    42,              // session ID
+    1001L,           // target task ID
+    1000L,           // source task ID
+    "hello"
+);
+
+int sessionId = taskMessage.sessionId();
+long targetTask = taskMessage.targetTask();
+long sourceTask = taskMessage.sourceTask();
+Object payload = taskMessage.message();
+```
+
+### `ITransportMessageSerializer`
+
+Implement `ITransportMessageSerializer` to define how transport messages are measured, written, and reconstructed.
+
+```java
+import io.gearpump.transport.netty.ITransportMessageSerializer;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+
+public class IntegerSerializer implements ITransportMessageSerializer {
+
+    @Override
+    public int getLength(Object obj) {
+        return Integer.BYTES;
+    }
+
+    @Override
+    public void serialize(DataOutput dataOutput, Object transportMessage) {
+        try {
+            dataOutput.writeInt((Integer) transportMessage);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public Object deserialize(DataInput dataInput, int length) {
+        if (length != Integer.BYTES) {
+            throw new IllegalArgumentException("Expected a 4-byte integer");
+        }
+
+        try {
+            return dataInput.readInt();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+```
+
+The serializer contract consists of:
+
+- `getLength(Object obj)` — returns the serialized message length.
+- `serialize(DataOutput dataOutput, Object transportMessage)` — writes a message.
+- `deserialize(DataInput dataInput, int length)` — reads a message of the provided length.
+
+### `MessageDecoder`
+
+`MessageDecoder` is a Netty `FrameDecoder` initialized with an `ITransportMessageSerializer`.
+
+```java
+import io.gearpump.transport.netty.MessageDecoder;
+
+IntegerSerializer serializer = new IntegerSerializer();
+MessageDecoder decoder = new MessageDecoder(serializer);
+```
+
+### `WrappedChannelBuffer`
+
+`WrappedChannelBuffer` adapts a Netty `ChannelBuffer` to Java's `DataInput` interface.
+
+```java
+import io.gearpump.transport.netty.WrappedChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffer;
+
+ChannelBuffer buffer = null;
+
+WrappedChannelBuffer input = new WrappedChannelBuffer(buffer);
+
+int value = input.readInt();
+long timestamp = input.readLong();
+String text = input.readUTF();
+```
+
+An instance may also be created without a buffer and assigned one later:
+
+```java
+WrappedChannelBuffer input = new WrappedChannelBuffer();
+input.setChannelBuffer(buffer);
+```
+
+### `NettyRenameThreadFactory`
+
+`NettyRenameThreadFactory` implements `ThreadFactory` and can be used where a thread factory is needed.
+
+```java
+import io.gearpump.transport.netty.NettyRenameThreadFactory;
+
+NettyRenameThreadFactory threadFactory = new NettyRenameThreadFactory();
+
+Thread thread = threadFactory.newThread(() -> {
+    // Work performed by the new thread.
+});
+
+thread.start();
+```
+
+## cgroup API
+
+The `io.gearpump.cluster.cgroup` APIs model Linux cgroup hierarchies, cgroups, and resource controllers.
+
+### Resource types
+
+`ResourceType` identifies supported resource controller types:
+
+- `blkio`
+- `cpu`
+- `cpuacct`
+- `cpuset`
+- `devices`
+- `freezer`
+- `memory`
+- `perf_event`
+- `net_cls`
+- `net_prio`
+
+```java
+import io.gearpump.cluster.cgroup.ResourceType;
+
+ResourceType cpu = ResourceType.cpu;
+ResourceType parsed = ResourceType.getResourceType("cpu");
+```
+
+### Hierarchies and cgroups
+
+A `Hierarchy` represents a cgroup hierarchy associated with one or more resource types.
+
+```java
+import io.gearpump.cluster.cgroup.Hierarchy;
+import io.gearpump.cluster.cgroup.ResourceType;
+
+import java.util.EnumSet;
+import java.util.Set;
+
+Set<ResourceType> resourceTypes = EnumSet.of(ResourceType.cpu);
+
+Hierarchy hierarchy = new Hierarchy(
+    "cpu-hierarchy",
+    resourceTypes,
+    "/example/cgroup/path"
+);
+
+String name = hierarchy.getName();
+String directory = hierarchy.getDir();
+Set<ResourceType> types = hierarchy.getResourceTypes();
+
+boolean hasCpuSubsystem = hierarchy.subSystemMounted(ResourceType.cpu);
+```
+
+`CgroupCommon` represents a cgroup within a hierarchy.
+
+```java
+import io.gearpump.cluster.cgroup.CgroupCommon;
+
+CgroupCommon root = hierarchy.getRootCgroups();
+
+CgroupCommon workers = new CgroupCommon(
+    "workers",
+    hierarchy,
+    root
+);
+
+String cgroupName = workers.getName();
+String cgroupDirectory = workers.getDir();
+boolean isRoot = workers.isRoot();
+```
+
+A cgroup can manage task IDs, process IDs, release-related settings, and child cgroups.
+
+```java
+workers.addTask(12345);
+workers.addProcs(67890);
+
+workers.setNotifyOnRelease(true);
+workers.setReleaseAgent("/path/to/release-agent");
+workers.setCgroupCloneChildren(true);
+
+boolean notifyOnRelease = workers.getNotifyOnRelease();
+String releaseAgent = workers.getReleaseAgent();
+boolean cloneChildren = workers.getCgroupCloneChildren();
+
+workers.setEventControl("event-fd", "control-fd", "argument1");
+
+workers.delete();
+```
+
+### cgroup center
+
+`CgroupCenter` is a singleton implementing `CgroupOperation`. It exposes hierarchy discovery and lifecycle operations.
+
+```java
+import io.gearpump.cluster.cgroup.CgroupCenter;
+import io.gearpump.cluster.cgroup.Hierarchy;
+import io.gearpump.cluster.cgroup.ResourceType;
+
+CgroupCenter center = CgroupCenter.getInstance();
+
+boolean cpuEnabled = center.enabled(ResourceType.cpu);
+
+Hierarchy busyHierarchy = center.busy(ResourceType.cpu);
+
+for (Hierarchy hierarchy : center.getHierarchies()) {
+    System.out.println(hierarchy.getName());
+}
+```
+
+The center provides operations to:
+
+- Obtain known hierarchies with `getHierarchies()`.
+- Obtain cgroup resource descriptions with `getCGroupResources()`.
+- Check whether a resource type is enabled with `enabled(...)`.
+- Find busy or mounted hierarchies with `busy(...)` and `mounted(...)`.
+- Mount and unmount hierarchies with `mount(...)` and `umount(...)`.
+- Create and delete `CgroupCommon` instances with `create(...)` and `delete(...)`.
+
+### CPU controller
+
+`CpuCore` implements `CgroupCore` for the `cpu` resource type.
+
+```java
+import io.gearpump.cluster.cgroup.core.CpuCore;
+
+CpuCore cpuCore = new CpuCore("/example/cgroup/path");
+
+cpuCore.setCpuShares(1024);
+cpuCore.setCpuCfsPeriodUs(100_000L);
+cpuCore.setCpuCfsQuotaUs(50_000L);
+
+int shares = cpuCore.getCpuShares();
+```
+
+`CgroupCoreFactory` can create cgroup-core mappings for a set of resource types.
+
+```java
+import io.gearpump.cluster.cgroup.CgroupCoreFactory;
+import io.gearpump.cluster.cgroup.ResourceType;
+import io.gearpump.cluster.cgroup.core.CgroupCore;
+
+import java.util.EnumSet;
+import java.util.Map;
+
+Map<ResourceType, CgroupCore> cores = CgroupCoreFactory.getInstance(
+    EnumSet.of(ResourceType.cpu),
+    "/example/cgroup/path"
+);
+```
+
+### cgroup utilities
+
+`CgroupUtils` includes utilities for filesystem checks, text-file access, resource-type conversion, and cgroup availability checks.
+
+```java
+import io.gearpump.cluster.cgroup.CgroupUtils;
+import io.gearpump.cluster.cgroup.ResourceType;
+
+import java.util.Set;
+
+boolean available = CgroupUtils.enabled();
+boolean exists = CgroupUtils.dirExists("/example/cgroup/path");
+
+Set<ResourceType> types = CgroupUtils.analyse("cpu,memory");
+String serializedTypes = CgroupUtils.reAnalyse(types);
+```
+
+## Utility APIs
+
+### Actor lookup
+
+`AkkaHelper.actorFor` resolves an actor reference from an `ActorSystem` and actor path.
+
+```java
+import akka.actor.ActorRef;
+import akka.actor.ActorSystem;
+import io.gearpump.util.AkkaHelper;
+
+ActorSystem system = null;
+ActorRef actor = AkkaHelper.actorFor(system, "/user/example");
+```
+
+### Rolling file logging
+
+`RecreateRollingFileAppender` extends `RollingFileAppender` and adds a configurable file-check interval.
+
+```java
+import io.gearpump.util.RecreateRollingFileAppender;
+
+RecreateRollingFileAppender appender = new RecreateRollingFileAppender();
+
+appender.setCheckFileInterval(60_000L);
+
+long interval = appender.getCheckFileInterval();
+```
+
+## API relationships
+
+A typical streaming-oriented integration uses the API as follows:
+
+1. Define task behavior by extending `Task`.
+2. Describe task execution with `Processor<T>`, including parallelism and configuration.
+3. Create a `Graph` containing streaming processors and partitioners.
+4. Create a `StreamApplication` from the graph and application configuration.
+5. Use `MapFunction`, `FilterFunction`, `FlatMapFunction`, `GroupByFunction`, and `ReduceFunction` for serializable data-processing logic.
+6. Use `TaskMessage`, `ITransportMessageSerializer`, and `MessageDecoder` when working with task-oriented transport messages.
+7. Optionally use the cgroup APIs to inspect and manage resource-controller hierarchies and cgroups.

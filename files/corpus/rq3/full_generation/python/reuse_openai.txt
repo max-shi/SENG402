@@ -1,0 +1,538 @@
+# reuse
+
+`reuse` is a Python library for working with copyright and licensing metadata in source projects.
+
+Its API centers on:
+
+- discovering files in a project while respecting version-control and project-layout rules;
+- extracting and combining copyright notices and SPDX license expressions;
+- reading project-wide licensing annotations;
+- adding or replacing license headers in files using language-appropriate comment styles;
+- downloading license texts;
+- checking a project for licensing compliance and producing reports, including SPDX-style bill-of-materials output.
+
+## Core concepts
+
+### `Project`
+
+`Project` represents a source tree and provides the main entry point for project-aware operations.
+
+```python
+from reuse.project import Project
+
+project = Project.from_directory(".")
+```
+
+A project can enumerate files, restrict processing to a subset, resolve paths relative to its root, and obtain licensing information for a file.
+
+```python
+for path in project.all_files():
+    print(path)
+
+for path in project.subset_files(["src", "README.md"]):
+    print(path)
+
+info_items = project.reuse_info_of("src/example.py")
+```
+
+Project-wide licensing information can be discovered through `Project.find_global_licensing()`.
+
+---
+
+### Licensing metadata: `ReuseInfo`, `CopyrightNotice`, and `SpdxExpression`
+
+`ReuseInfo` groups licensing-related metadata. It can be copied, combined with other metadata, and inspected to determine whether it contains copyright and/or licensing information.
+
+```python
+combined = first_info.union(second_info)
+
+if combined.contains_info():
+    print("Licensing metadata is available.")
+```
+
+`CopyrightNotice` parses and formats copyright notices.
+
+```python
+from reuse.copyright import CopyrightNotice
+
+notice = CopyrightNotice.from_string(
+    "Copyright 2020 Example Contributors"
+)
+
+print(notice.to_string())
+```
+
+`SpdxExpression` represents SPDX license expressions. It can validate expressions, list referenced licenses, simplify expressions, and combine multiple expressions.
+
+```python
+from reuse.copyright import SpdxExpression
+
+expression = SpdxExpression("MIT OR Apache-2.0")
+
+if expression.is_valid():
+    print(expression.licenses())
+    print(expression.simplify())
+```
+
+Multiple expressions can be combined:
+
+```python
+combined = SpdxExpression.combine(
+    [
+        SpdxExpression("MIT"),
+        SpdxExpression("Apache-2.0"),
+    ]
+)
+```
+
+> `SpdxExpression` construction and accepted expression syntax should follow the SPDX expression format used by your application.
+
+---
+
+### Copyright years
+
+`YearRange` parses, formats, and compacts copyright year ranges.
+
+```python
+from reuse.copyright import YearRange
+
+years = YearRange.from_string("2020-2024")
+print(years.to_string())
+
+ranges = YearRange.tuple_from_string("2018-2020, 2022-2024")
+compact = YearRange.compact(ranges)
+
+for year_range in compact:
+    print(year_range.to_string())
+```
+
+The `is_four_digits()` and `validate_four_digits()` helpers can be used when validating individual years.
+
+```python
+from reuse.copyright import is_four_digits, validate_four_digits
+
+assert is_four_digits("2024")
+year = validate_four_digits("2024")
+```
+
+---
+
+## Reading licensing information
+
+The `reuse.extract` module provides lower-level functions for extracting metadata from text or file objects.
+
+```python
+from reuse.extract import extract_reuse_info
+
+text = """\
+# SPDX-FileCopyrightText: 2024 Example Contributors
+# SPDX-License-Identifier: MIT
+"""
+
+reuse_info = extract_reuse_info(text)
+
+if reuse_info.contains_copyright_or_licensing():
+    print("Found REUSE metadata.")
+```
+
+To inspect a file while preserving binary handling, use `reuse_info_of_file()`.
+
+```python
+from reuse.extract import reuse_info_of_file
+
+with open("src/example.py", "rb") as fp:
+    reuse_info = reuse_info_of_file(fp)
+
+print(reuse_info.contains_info())
+```
+
+The extraction helpers also include encoding and newline detection:
+
+```python
+from reuse.extract import detect_encoding, detect_newline
+
+chunk = b"first line\r\nsecond line\r\n"
+
+encoding = detect_encoding(chunk)
+newline = detect_newline(chunk)
+
+print(encoding, repr(newline))
+```
+
+---
+
+## Generating and modifying headers
+
+`reuse.header` can create headers from `ReuseInfo` and insert or replace them in source text.
+
+Comment formatting is selected using a `CommentStyle`, generally obtained from a file path.
+
+```python
+from pathlib import Path
+
+from reuse.comment import get_comment_style
+from reuse.header import create_header
+
+path = Path("src/example.py")
+style = get_comment_style(path)
+
+if style is not None:
+    header = create_header(reuse_info, style=style)
+    print(header)
+```
+
+To add a header to text:
+
+```python
+from reuse.header import add_new_header
+
+updated = add_new_header(
+    text="print('hello')\n",
+    reuse_info=reuse_info,
+    style=get_comment_style("src/example.py"),
+)
+```
+
+To find and replace an existing header where applicable:
+
+```python
+from reuse.header import find_and_replace_header
+
+updated = find_and_replace_header(
+    text=existing_text,
+    reuse_info=reuse_info,
+    style=get_comment_style("src/example.py"),
+)
+```
+
+`place_header()` provides direct control over how a prepared header is placed between text before and after the insertion point.
+
+For file-based annotation, use `add_header_to_file()`.
+
+```python
+from reuse._annotate import add_header_to_file
+from reuse.comment import get_comment_style
+
+result = add_header_to_file(
+    path="src/example.py",
+    reuse_info=reuse_info,
+    template=None,
+    template_is_commented=False,
+    style=None,
+)
+```
+
+The annotation API supports options for encodings, newlines, multiline comments, preserving existing headers, fallback behavior, copyright merging, and replacement behavior.
+
+---
+
+## Comment styles
+
+`reuse.comment` contains comment-style implementations for many file types and markup formats, including C-like languages, Python, HTML, Jinja, TeX, Lisp, shell-style semicolon comments, and more.
+
+Use `get_comment_style()` to determine the available style for a path:
+
+```python
+from reuse.comment import get_comment_style, has_style, is_uncommentable
+
+path = Path("templates/page.html")
+
+if has_style(path):
+    style = get_comment_style(path)
+    commented = style.create_comment("SPDX-License-Identifier: MIT")
+    print(commented)
+
+if is_uncommentable(path):
+    print(f"{path} cannot receive a source comment header.")
+```
+
+A comment style can create comments, parse comments, and place a comment at the first character of a text block.
+
+```python
+style = get_comment_style("src/example.py")
+
+if style is not None:
+    comment = style.create_comment("SPDX-License-Identifier: MIT")
+    original_text = style.parse_comment(comment)
+```
+
+---
+
+## Project-wide licensing annotations
+
+The `reuse.global_licensing` module models licensing metadata that applies to groups of files.
+
+`GlobalLicensing` is the base abstraction. Available implementations include:
+
+- `ReuseDep5`
+- `ReuseTOML`
+- `NestedReuseTOML`
+
+A global licensing source can be loaded from a file and queried for a path.
+
+```python
+from reuse.global_licensing import ReuseTOML
+
+annotations = ReuseTOML.from_file("REUSE.toml")
+
+for precedence, info_items in annotations.reuse_info_of("src/example.py").items():
+    print(precedence, info_items)
+```
+
+`ReuseTOML` can also be created from parsed dictionaries or TOML text.
+
+```python
+from reuse.global_licensing import ReuseTOML
+
+annotations = ReuseTOML.from_toml(
+    toml_text,
+    source="REUSE.toml",
+)
+
+item = annotations.find_annotations_item("src/example.py")
+```
+
+`NestedReuseTOML.find_reuse_tomls()` can discover nested annotation files beneath a path.
+
+---
+
+## Linting and compliance reports
+
+`ProjectReport` builds a project-wide compliance report.
+
+```python
+from reuse.project import Project
+from reuse.report import ProjectReport
+
+project = Project.from_directory(".")
+report = ProjectReport.generate(project)
+
+if report.is_compliant():
+    print("Project is compliant.")
+else:
+    print("Project needs licensing work.")
+
+print("Used licenses:", report.used_licenses())
+print("Missing license texts:", report.missing_licenses())
+print("Invalid SPDX expressions:", report.invalid_spdx_expressions())
+print("Files without licenses:", report.files_without_licenses())
+print("Files without copyright notices:", report.files_without_copyright())
+print("Recommendations:", report.recommendations())
+```
+
+The report can be rendered using the formatting functions in `reuse.lint`.
+
+```python
+from reuse.lint import format_json, format_lines, format_plain
+
+print(format_plain(report))
+print(format_lines(report))
+print(format_json(report))
+```
+
+For checking only a selected collection of files, use `ProjectSubsetReport`.
+
+```python
+from reuse.report import ProjectSubsetReport
+
+subset_report = ProjectSubsetReport.generate(
+    project,
+    subset_files=["src/example.py", "README.md"],
+)
+
+if not subset_report.is_compliant():
+    print(format_lines(subset_report))
+```
+
+For a single file, use `FileReport`.
+
+```python
+from reuse.report import FileReport
+
+file_report = FileReport.generate(project, "src/example.py")
+
+print(file_report.to_dict_lint())
+```
+
+### SPDX bill of materials
+
+`ProjectReport.bill_of_materials()` creates an SPDX-oriented bill of materials.
+
+```python
+document = report.bill_of_materials(
+    creator_person="Example Developer",
+    creator_organization="Example Organization",
+)
+
+with open("sbom.spdx", "w", encoding="utf-8") as fp:
+    fp.write(document)
+```
+
+Use `format_creator()` when formatting creator values independently.
+
+---
+
+## License texts
+
+The download helpers retrieve license text by SPDX identifier and write it to a destination.
+
+```python
+from reuse.download import download_license, put_license_in_file
+
+license_text = download_license("MIT")
+print(license_text)
+
+put_license_in_file(
+    spdx_identifier="MIT",
+    destination="LICENSES/MIT.txt",
+)
+```
+
+`put_license_in_file()` also accepts an optional source location.
+
+---
+
+## File discovery and ignore handling
+
+`iter_files()` enumerates files under a directory. It supports subset selection and options related to submodules, Meson subprojects, nested annotations, and version-control strategy.
+
+```python
+from reuse.covered_files import iter_files
+
+for path in iter_files("."):
+    print(path)
+```
+
+To test whether a path should be ignored:
+
+```python
+from pathlib import Path
+from reuse.covered_files import is_path_ignored
+
+path = Path("build/generated.py")
+
+if is_path_ignored(path):
+    print(f"Ignored: {path}")
+```
+
+---
+
+## Version-control support
+
+`reuse.vcs` provides a common `VCSStrategy` interface and strategies for several version-control systems:
+
+- `VCSStrategyGit`
+- `VCSStrategyHg`
+- `VCSStrategyJujutsu`
+- `VCSStrategyPijul`
+- `VCSStrategyNone`
+
+Use `find_root()` to locate a repository root.
+
+```python
+from reuse.vcs import find_root
+
+root = find_root()
+if root is not None:
+    print(f"Repository root: {root}")
+```
+
+To inspect available strategy classes:
+
+```python
+from reuse.vcs import all_vcs_strategies
+
+for strategy_class in all_vcs_strategies():
+    print(strategy_class.__name__)
+```
+
+---
+
+## Templates
+
+Header-generation and annotation APIs accept `Template` values, and both `reuse._annotate` and `reuse.cli.annotate` expose `find_template()` helpers.
+
+```python
+from reuse._annotate import find_template
+from reuse.project import Project
+
+project = Project.from_directory(".")
+template = find_template(project, "default")
+```
+
+Templates can be supplied to header-generation functions such as `create_header()`, `add_new_header()`, and `find_and_replace_header()`.
+
+---
+
+## CLI integration APIs
+
+The `reuse.cli` package exposes functions backing command-line-oriented workflows, including:
+
+- annotation: `annotate`
+- linting: `lint`, `lint_file`
+- license downloads: `download`
+- SPDX output: `spdx`
+- supported-license output: `supported_licenses`
+- DEP5 conversion: `convert_dep5`
+
+The shared `ClickObj` type exposes a `project()` method for retrieving the current project context, and `spdx_identifier()` validates or parses SPDX identifiers for command-line input.
+
+---
+
+## Exceptions
+
+Library-specific errors derive from `ReuseError`.
+
+Notable exception types include:
+
+- `SpdxIdentifierNotFoundError`
+- `GlobalLicensingParseError`
+- `GlobalLicensingConflictError`
+- `MissingReuseInfoError`
+- `CommentError`
+- `CommentCreateError`
+- `CommentParseError`
+- `CopyrightNoticeParseError`
+- `YearRangeParseError`
+- `NoEncodingModuleError`
+
+Example:
+
+```python
+from reuse.exceptions import CommentCreateError
+from reuse.header import create_header
+
+try:
+    header = create_header(reuse_info, style=get_comment_style("unknown.file"))
+except CommentCreateError as error:
+    print(f"Could not create a header: {error}")
+```
+
+---
+
+## Utility functions
+
+A small set of utility functions is available for common tasks:
+
+```python
+from reuse._util import (
+    cleandoc_nl,
+    find_licenses_directory,
+    relative_from_root,
+    setup_logging,
+)
+
+setup_logging()
+
+print(cleandoc_nl("""
+    SPDX-License-Identifier: MIT
+"""))
+
+licenses_dir = find_licenses_directory(".")
+relative = relative_from_root(
+    Path("/project/src/example.py"),
+    Path("/project"),
+)
+```
+
+`execute_command()` provides a logging-aware wrapper around subprocess execution.

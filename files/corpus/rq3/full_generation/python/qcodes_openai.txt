@@ -1,0 +1,1173 @@
+# qcodes
+
+qcodes is a Python framework for instrument control, parameterized measurements, data acquisition, storage, export, visualization, and laboratory configuration.
+
+Its API is organized around a few connected concepts:
+
+- **Instruments** expose hardware communication and named components.
+- **Parameters** represent readable and/or settable values, including scalar values, arrays, multi-value measurements, and values with setpoints.
+- **Measurements and sweeps** collect parameter values into datasets.
+- **Datasets** persist results, metadata, snapshots, parameter relationships, and provenance in SQLite-backed or in-memory forms.
+- **Export and plotting tools** convert measurement data to pandas, xarray, CSV, NetCDF-compatible files, and matplotlib plots.
+- **Instrument drivers** provide support for a broad range of laboratory devices.
+
+---
+
+## Core concepts
+
+### Instruments
+
+The instrument hierarchy begins with `InstrumentBase`, which manages parameters, functions, submodules, metadata, snapshots, and component lookup.
+
+```python
+from qcodes.instrument.instrument import Instrument
+from qcodes.instrument.visa import VisaInstrument
+from qcodes.instrument.ip import IPInstrument
+```
+
+Common operations include:
+
+```python
+instrument.write("*RST")
+response = instrument.ask("*IDN?")
+
+instrument.add_parameter("voltage")
+instrument.set("voltage", 0.1)
+value = instrument.get("voltage")
+
+instrument.print_readable_snapshot(update=True)
+instrument.close()
+```
+
+`Instrument` tracks live instances and provides lookup helpers:
+
+```python
+from qcodes.instrument.instrument import Instrument, find_or_create_instrument
+
+existing = Instrument.find_instrument("source")
+is_present = Instrument.exist("source")
+
+# Reuse or create an instrument instance.
+source = find_or_create_instrument(
+    instrument_class=MyInstrument,
+    name="source",
+    address="GPIB::1",
+)
+```
+
+> `MyInstrument` above represents an instrument-driver class appropriate for your hardware.
+
+#### VISA and IP instruments
+
+`VisaInstrument` provides a VISA-based transport interface, while `IPInstrument` supports network-connected instruments.
+
+```python
+visa_instrument.set_terminator("\n")
+visa_instrument.device_clear()
+visa_instrument.write_raw("*CLS")
+
+ip_instrument.set_address(address="192.168.0.10", port=5025)
+ip_instrument.set_timeout(5.0)
+ip_instrument.write_raw("*IDN?")
+```
+
+### Instrument modules and channels
+
+Instruments can contain submodules and channels. `InstrumentModule` delegates communication to its parent instrument, while `InstrumentChannel` represents an individual channel.
+
+`ChannelList` is a mutable channel collection that can be locked and converted to an immutable `ChannelTuple`.
+
+```python
+channels = instrument.channels
+
+channel = channels.get_channel_by_name("ch01")
+selected = channels.get_channels_by_name("ch01", "ch02")
+
+channels.lock()
+frozen_channels = channels.to_channel_tuple()
+
+validator = frozen_channels.get_validator()
+```
+
+A channel tuple can also generate multi-channel parameters and functions:
+
+```python
+all_voltages = frozen_channels.multi_parameter("voltage")
+all_outputs_off = frozen_channels.multi_function("off")
+
+all_outputs_off()
+values = all_voltages()
+```
+
+---
+
+## Parameters
+
+Parameters are the basic interface to values that can be measured, configured, or swept.
+
+The primary parameter types include:
+
+| Type | Purpose |
+|---|---|
+| `Parameter` | A general scalar parameter. |
+| `ManualParameter` | A software-managed parameter. |
+| `ArrayParameter` | A parameter returning an array. |
+| `MultiParameter` | A parameter returning multiple values. |
+| `ParameterWithSetpoints` | A value associated with one or more setpoint parameters. |
+| `DelegateParameter` | A parameter forwarding to another parameter. |
+| `ScaledParameter` | A parameter applying gain or division to a wrapped parameter. |
+| `GroupParameter` | A parameter managed as part of a `Group`. |
+| `GroupedParameter` | A parameter grouping multiple delegate parameters. |
+| `ElapsedTimeParameter` | A parameter measuring elapsed time. |
+| `InstrumentRefParameter` | A parameter that resolves to an instrument. |
+
+A regular `Parameter` supports metadata and simple sweeps:
+
+```python
+gate.unit = "V"
+gate.label = "Gate voltage"
+
+gate.increment(0.01)
+
+values = gate.sweep(start=-1.0, stop=1.0, num=101)
+```
+
+### Parameters with setpoints
+
+Use `ParameterWithSetpoints` for traces, spectra, images, and other array-valued measurements with coordinate axes.
+
+```python
+trace.setpoints = (frequency_axis,)
+trace.validate_consistent_shape()
+
+dependencies = trace.depends_on()
+expanded = trace.unpack_self(trace())
+```
+
+The helper `expand_setpoints_helper` expands a setpoint-aware measurement into parameter/value pairs suitable for recording:
+
+```python
+from qcodes.parameters.parameter_with_setpoints import expand_setpoints_helper
+
+results = expand_setpoints_helper(trace)
+```
+
+### Combined parameters
+
+`combine` creates a parameter-like object that sets several parameters together.
+
+```python
+from qcodes.parameters.combined_parameter import combine
+
+xy = combine(
+    x_position,
+    y_position,
+    name="xy_position",
+    label="XY position",
+)
+
+xy.sweep(
+    [-1.0, 0.0, 1.0],
+    [-1.0, 0.0, 1.0],
+)
+
+xy.set(0)
+```
+
+### Scaled and delegated parameters
+
+`ScaledParameter` wraps a physical parameter and applies a gain or division factor.
+
+```python
+scaled_voltage.gain = 10.0
+measured_value = scaled_voltage.get_wrapped_parameter_value()
+
+scaled_voltage.set_raw(1.2)
+```
+
+`DelegateParameter` forwards get/set behavior to a source parameter:
+
+```python
+delegate.source = source_parameter
+
+value = delegate.get_raw()
+delegate.set_raw(value)
+```
+
+---
+
+## Validation
+
+The `qcodes.validators` API provides reusable runtime validators for parameter values.
+
+```python
+from qcodes.validators.validators import (
+    Anything,
+    Arrays,
+    Bool,
+    Enum,
+    Ints,
+    Numbers,
+    Strings,
+    validate_all,
+)
+
+voltage_validator = Numbers(min_value=-10, max_value=10)
+voltage_validator.validate(1.25)
+
+mode_validator = Enum("voltage", "current")
+mode_validator.validate("voltage")
+
+validate_all(
+    (Numbers(-1, 1), 0.2),
+    (Strings(1, 20), "sample-a"),
+)
+```
+
+Available validators cover:
+
+- unrestricted or forbidden values: `Anything`, `Nothing`
+- booleans: `Bool`
+- strings: `Strings`
+- numeric ranges: `Numbers`, `Ints`, `PermissiveInts`
+- complex values: `ComplexNumbers`
+- enumerated values: `Enum`, `LiteralValidator`, `OnOff`
+- divisibility: `Multiples`, `PermissiveMultiples`
+- arrays, lists, sequences, dictionaries, and callables
+- combinations of validators: `MultiTypeOr`, `MultiTypeAnd`
+
+---
+
+## Measurements and sweeps
+
+The `dond` measurement API provides high-level helpers for zero-, one-, two-, and N-dimensional measurements.
+
+```python
+from qcodes.dataset.dond.do_0d import do0d
+from qcodes.dataset.dond.do_1d import do1d
+from qcodes.dataset.dond.do_2d import do2d
+from qcodes.dataset.dond.do_nd import dond
+from qcodes.dataset.dond.sweeps import ArraySweep, LinSweep, LogSweep, TogetherSweep
+```
+
+### Zero-dimensional measurement
+
+Measure one or more parameters once:
+
+```python
+axes, colorbars, dataset = do0d(
+    current,
+    voltage,
+    measurement_name="operating_point",
+)
+```
+
+### One-dimensional sweep
+
+Sweep a setpoint parameter linearly while measuring one or more parameters:
+
+```python
+axes, colorbars, dataset = do1d(
+    gate_voltage,
+    start=-1.0,
+    stop=1.0,
+    num_points=101,
+    delay=0.05,
+    current,
+    voltage,
+    measurement_name="gate_sweep",
+    show_progress=True,
+)
+```
+
+### Two-dimensional sweep
+
+Perform a nested two-axis scan:
+
+```python
+axes, colorbars, dataset = do2d(
+    gate_voltage,
+    start1=-1.0,
+    stop1=1.0,
+    num_points1=81,
+    delay1=0.02,
+    magnetic_field,
+    start2=-0.5,
+    stop2=0.5,
+    num_points2=51,
+    delay2=0.1,
+    conductance,
+    measurement_name="field_gate_map",
+    show_progress=True,
+)
+```
+
+### Retrace scan
+
+`do2d_retrace` performs a two-dimensional measurement and returns a pair of datasets, suitable for forward and retrace data:
+
+```python
+from qcodes.dataset.dond.do2d_retrace import do2d_retrace
+
+forward_dataset, retrace_dataset = do2d_retrace(
+    gate_voltage,
+    start1=-1.0,
+    stop1=1.0,
+    num_points1=101,
+    delay1=0.02,
+    magnetic_field,
+    start2=0.0,
+    stop2=1.0,
+    num_points2=21,
+    delay2=0.1,
+    current,
+    measurement_name="hysteresis_map",
+)
+```
+
+### Custom N-dimensional sweeps
+
+Use `LinSweep`, `LogSweep`, `ArraySweep`, and `TogetherSweep` to compose more flexible measurements.
+
+```python
+linear_gate = LinSweep(
+    gate_voltage,
+    start=-1.0,
+    stop=1.0,
+    num_points=101,
+    delay=0.02,
+)
+
+log_frequency = LogSweep(
+    frequency,
+    start=1e3,
+    stop=1e6,
+    num_points=51,
+    delay=0.01,
+)
+
+result = dond(
+    linear_gate,
+    log_frequency,
+    response,
+    measurement_name="frequency_gate_scan",
+    show_progress=True,
+)
+```
+
+Use `TogetherSweep` when several parameters must advance together:
+
+```python
+coordinated_sweep = TogetherSweep(
+    sweep_x,
+    sweep_y,
+)
+
+result = dond(
+    coordinated_sweep,
+    signal,
+    measurement_name="coordinated_scan",
+)
+```
+
+### Interrupt handling
+
+Measurement code can use `catch_interrupts` and `BreakConditionInterrupt` to support graceful early termination.
+
+```python
+from qcodes.dataset.dond.do_nd_utils import catch_interrupts
+
+with catch_interrupts() as get_interrupt:
+    for _ in range(100):
+        if get_interrupt() is not None:
+            break
+        # Acquire or process data here.
+```
+
+---
+
+## Experiments and datasets
+
+Experiments group related measurement runs. Each run produces a dataset.
+
+```python
+from qcodes.dataset.experiment_container import (
+    load_experiment,
+    load_or_create_experiment,
+    new_experiment,
+)
+
+experiment = load_or_create_experiment(
+    experiment_name="transport",
+    sample_name="device-17",
+)
+```
+
+Create a new experiment explicitly:
+
+```python
+experiment = new_experiment(
+    name="cooldown-2025",
+    sample_name="wafer-A3",
+)
+```
+
+Inspect experiments and runs:
+
+```python
+from qcodes.dataset.experiment_container import experiments
+
+for experiment in experiments():
+    print(experiment.exp_id, experiment.name, experiment.sample_name)
+    print(experiment.last_counter)
+```
+
+### Creating and loading datasets
+
+```python
+from qcodes.dataset.data_set import (
+    get_guids_by_run_spec,
+    load_by_counter,
+    load_by_guid,
+    load_by_id,
+    load_by_run_spec,
+    new_data_set,
+)
+
+dataset = new_data_set(
+    name="initial_characterization",
+    exp_id=experiment.exp_id,
+)
+```
+
+Load existing datasets by run ID, GUID, experiment counter, or run metadata:
+
+```python
+dataset = load_by_id(42)
+
+dataset = load_by_guid("00000000-0000-0000-0000-000000000000")
+
+dataset = load_by_counter(
+    counter=3,
+    exp_id=experiment.exp_id,
+)
+
+dataset = load_by_run_spec(
+    experiment_name="transport",
+    sample_name="device-17",
+    captured_counter=3,
+)
+
+guids = get_guids_by_run_spec(
+    experiment_name="transport",
+    sample_name="device-17",
+)
+```
+
+### Dataset lifecycle
+
+Datasets expose lifecycle state:
+
+```python
+if dataset.pristine():
+    print("Dataset has not been started")
+
+if dataset.running():
+    print("Measurement is in progress")
+
+if dataset.completed():
+    print("Measurement is complete")
+```
+
+Data and metadata can be attached to a dataset:
+
+```python
+dataset.add_metadata("operator", "researcher")
+dataset.add_metadata("temperature", 0.020)
+
+dataset.add_snapshot('{"instrument": "snapshot"}')
+```
+
+After recording, mark the dataset complete:
+
+```python
+dataset.mark_completed()
+```
+
+### Retrieving data
+
+Use `get_parameter_data` for NumPy-oriented parameter data:
+
+```python
+data = dataset.get_parameter_data("current")
+```
+
+Limit retrieval to a range of result rows:
+
+```python
+partial_data = dataset.get_parameter_data(
+    "current",
+    start=0,
+    end=1000,
+)
+```
+
+### Data cache
+
+Datasets provide a cache object for working with collected data:
+
+```python
+cache = dataset.cache
+
+cache.prepare()
+cache.load_data_from_db()
+
+data = cache.data
+is_live = cache.live
+```
+
+---
+
+## Exporting data
+
+Datasets can be exported through their `export` method and converted into pandas or xarray objects.
+
+### pandas
+
+```python
+frames = dataset.to_pandas_dataframe_dict()
+frame = dataset.to_pandas_dataframe()
+
+print(frame.head())
+```
+
+For a selected parameter:
+
+```python
+current_frame = dataset.to_pandas_dataframe("current")
+```
+
+The lower-level conversion functions are also available:
+
+```python
+from qcodes.dataset.exporters.export_to_pandas import (
+    load_to_concatenated_dataframe,
+    load_to_dataframe_dict,
+)
+
+frames = load_to_dataframe_dict(data, dataset.description.interdeps)
+combined = load_to_concatenated_dataframe(data, dataset.description.interdeps)
+```
+
+### xarray
+
+```python
+xarray_datasets = dataset.to_xarray_dataset_dict()
+xarray_dataset = dataset.to_xarray_dataset(use_multi_index="auto")
+```
+
+Control whether multi-index coordinates are used:
+
+```python
+dataset.to_xarray_dataset(use_multi_index="always")
+dataset.to_xarray_dataset(use_multi_index="never")
+```
+
+Write an xarray dataset using an HDF5/NetCDF-compatible representation:
+
+```python
+from qcodes.dataset.exporters.export_to_xarray import (
+    xarray_to_h5netcdf_with_complex_numbers,
+)
+
+xarray_to_h5netcdf_with_complex_numbers(
+    xarray_dataset,
+    file_path="measurement.nc",
+)
+```
+
+### CSV and text files
+
+```python
+dataset.write_data_to_text_file(
+    path="exports",
+    single_file=True,
+    single_file_name="gate_sweep.csv",
+)
+```
+
+Or export dataframes directly:
+
+```python
+from qcodes.dataset.exporters.export_to_csv import dataframe_to_csv
+
+dataframe_to_csv(
+    dfdict=dataset.to_pandas_dataframe_dict(),
+    path="exports",
+    single_file=False,
+)
+```
+
+### Export configuration
+
+Configure default export behavior:
+
+```python
+from qcodes.dataset.export_config import (
+    get_data_export_path,
+    set_data_export_path,
+    set_data_export_prefix,
+    set_data_export_type,
+)
+
+set_data_export_type("csv")
+set_data_export_path("exports")
+set_data_export_prefix("device17")
+
+print(get_data_export_path())
+```
+
+Then export a dataset:
+
+```python
+dataset.export(
+    export_type="csv",
+    path="exports",
+    prefix="device17",
+)
+```
+
+---
+
+## Plotting
+
+Plot a dataset directly:
+
+```python
+from qcodes.dataset.plotting import plot_dataset
+
+axes, colorbars = plot_dataset(
+    dataset,
+    parameters="current",
+    rescale_axes=True,
+)
+```
+
+Plot a run by ID:
+
+```python
+from qcodes.dataset.plotting import plot_by_id
+
+axes, colorbars = plot_by_id(
+    run_id=42,
+    auto_color_scale=True,
+)
+```
+
+For complex-valued data, choose real/imaginary or magnitude/phase rendering:
+
+```python
+plot_dataset(
+    dataset,
+    complex_plot_type="mag_and_phase",
+    complex_plot_phase="degrees",
+)
+```
+
+For manually supplied two-dimensional data:
+
+```python
+from qcodes.dataset.plotting import (
+    plot_2d_scatterplot,
+    plot_on_a_plain_grid,
+)
+
+plot_2d_scatterplot(x, y, z, ax)
+plot_on_a_plain_grid(x, y, z, ax)
+```
+
+Color scales can be adjusted automatically or explicitly:
+
+```python
+from qcodes.plotting.matplotlib_helpers import (
+    apply_auto_color_scale,
+    apply_color_scale_limits,
+)
+
+apply_auto_color_scale(colorbar, data_array=data)
+apply_color_scale_limits(colorbar, new_lim=(0.0, 1.0))
+```
+
+---
+
+## In-memory datasets and files
+
+`DataSetInMem` provides an in-memory dataset representation that can be loaded from exported files.
+
+```python
+from qcodes.dataset.data_set_in_memory import (
+    load_from_file,
+    load_from_netcdf,
+)
+
+dataset = load_from_netcdf("measurement.nc")
+dataset = load_from_file("measurement_file")
+```
+
+An in-memory dataset can be connected to database metadata when needed:
+
+```python
+dataset.write_metadata_to_db(path_to_db="results.db")
+dataset.set_netcdf_location("measurement.nc")
+```
+
+---
+
+## SQLite database support
+
+The dataset system supports SQLite databases through `AtomicConnection`.
+
+```python
+from qcodes.dataset.sqlite.database import (
+    connect,
+    initialise_database,
+    initialised_database_at,
+)
+
+initialise_database(db_path="results.db")
+
+connection = connect("results.db")
+```
+
+Use `atomic` for an atomic connection context:
+
+```python
+from qcodes.dataset.sqlite.connection import atomic
+
+with atomic(connection) as conn:
+    # Execute database operations with `conn`.
+    pass
+```
+
+A temporary database initialization context is also available:
+
+```python
+with initialised_database_at("temporary_results.db"):
+    # Work with the initialized database.
+    pass
+```
+
+Database version helpers and upgrade functions support schema maintenance:
+
+```python
+from qcodes.dataset.sqlite.database import get_db_version_and_newest_available_version
+from qcodes.dataset.sqlite.db_upgrades import perform_db_upgrade
+
+current, newest = get_db_version_and_newest_available_version("results.db")
+
+if current < newest:
+    perform_db_upgrade(connection)
+```
+
+---
+
+## Dataset descriptions and dependencies
+
+A `RunDescriber` records the relationship between measured parameters, setpoints, dependencies, inferences, and expected shapes.
+
+`InterDependencies_` represents parameter dependency relationships:
+
+```python
+from qcodes.dataset.descriptions.dependencies import InterDependencies_
+
+interdeps = InterDependencies_()
+
+names = interdeps.names
+top_level = interdeps.top_level_parameters
+graph = interdeps.graph
+```
+
+Useful inspection methods include:
+
+```python
+dependent_parameters = interdeps.what_depends_on(parameter_spec)
+inferred_parameters = interdeps.what_is_inferred_from(parameter_spec)
+
+interdeps.validate_subset([parameter_spec])
+cytoscape_json = interdeps.to_ipycytoscape_json()
+```
+
+Measurement shapes can be inferred from parameters and sweep dimensions:
+
+```python
+from qcodes.dataset.descriptions.detect_shapes import detect_shape_of_measurement
+
+shapes = detect_shape_of_measurement(
+    parameters=[trace_parameter],
+    steps=[101, 51],
+)
+```
+
+Run descriptions can be serialized to JSON or YAML:
+
+```python
+from qcodes.dataset.descriptions.versioning.serialization import (
+    from_json_to_current,
+    from_yaml_to_current,
+    to_json_for_storage,
+    to_yaml_for_storage,
+)
+
+json_description = to_json_for_storage(dataset.description)
+yaml_description = to_yaml_for_storage(dataset.description)
+
+description = from_json_to_current(json_description)
+```
+
+---
+
+## Configuration and station management
+
+`Config` manages qcodes configuration and schema information.
+
+```python
+from qcodes.configuration.config import Config
+
+config = Config()
+
+config.update_config()
+config.validate()
+
+config.add(
+    key="laboratory_name",
+    value="Lab A",
+    value_type="string",
+    description="Human-readable laboratory name",
+)
+
+config.save_config("qcodes_config.json")
+config.save_schema("qcodes_schema.json")
+```
+
+Configuration can be saved to common locations:
+
+```python
+config.save_to_home()
+config.save_to_env()
+config.save_to_cwd()
+```
+
+`DotDict` is a dictionary type used for configuration structures.
+
+### Station
+
+A `Station` manages instruments and other named components.
+
+```python
+from qcodes.station import Station
+
+station = Station()
+
+station.add_component(instrument, name="source")
+source = station.get_component("source")
+
+station.load_config_file("station.yaml")
+```
+
+Load configured instruments:
+
+```python
+instrument = station.load_instrument("source")
+loaded = station.load_all_instruments()
+```
+
+Clean up registered instruments when finished:
+
+```python
+station.close_all_registered_instruments()
+```
+
+---
+
+## Instrument drivers
+
+qcodes includes drivers for a wide selection of laboratory instruments, including equipment from:
+
+- Agilent and Keysight
+- AimTTi
+- AlazarTech
+- American Magnetics
+- Basel
+- Copper Mountain
+- Cryomagnetics
+- Galil
+- Harvard
+- HP
+- Ithaco
+- Keithley
+- Lakeshore
+- Mini-Circuits
+- Oxford Instruments
+- QDev
+- Quantum Design
+- Rigol
+- Rohde & Schwarz
+- Signal Hound
+- Stanford Research Systems
+- Tektronix
+- Weinschel
+- Yokogawa
+
+Representative driver classes include:
+
+```python
+from qcodes.instrument_drivers.Keithley.Keithley_2450 import Keithley2450
+from qcodes.instrument_drivers.Keysight.Keysight_N9030B import KeysightN9030B
+from qcodes.instrument_drivers.Lakeshore.Lakeshore_model_372 import LakeshoreModel372
+from qcodes.instrument_drivers.yokogawa.GS200 import GS200
+```
+
+Many drivers expose high-level device operations beyond ordinary parameters. For example:
+
+```python
+source.on()
+source.ramp_voltage(ramp_to=0.1, step=0.001, delay=0.01)
+source.off()
+```
+
+```python
+magnet.set_field(0.25, block=True)
+magnet.wait_while_ramping()
+magnet.zero()
+```
+
+```python
+analyzer.reset()
+analyzer.abort()
+```
+
+Always ensure that parameter ranges, compliance limits, wiring, interlocks, and device-specific safety procedures are appropriate for the connected hardware.
+
+---
+
+## Keithley SMU calibration helpers
+
+Calibration utilities are available for Keithley 26xx source-measure units and a DMM reference instrument.
+
+```python
+from qcodes.calibrations.keithley import (
+    calibrate_keithley_smu_v,
+    save_calibration,
+    setup_dmm,
+)
+
+setup_dmm(dmm)
+
+calibrate_keithley_smu_v(
+    smu=smu,
+    dmm=dmm,
+    src_Z=1e-30,
+    time_delay=3.0,
+    save_calibrations=True,
+    calibration_due_in_years_from_today=1.0,
+)
+
+save_calibration(
+    smu,
+    calibration_due_in_years_from_today=1.0,
+)
+```
+
+For a single channel and voltage range:
+
+```python
+from qcodes.calibrations.keithley import calibrate_keithley_smu_v_single
+
+calibrate_keithley_smu_v_single(
+    smu=smu,
+    channel="smua",
+    dmm_param_volt=dmm_voltage,
+    v_range="10",
+)
+```
+
+---
+
+## GUID utilities
+
+Datasets can be identified using globally unique identifiers.
+
+```python
+from qcodes.dataset.guids import (
+    build_guid_from_components,
+    generate_guid,
+    parse_guid,
+    validate_guid_format,
+)
+
+guid = generate_guid()
+components = parse_guid(guid)
+
+validate_guid_format(guid)
+
+rebuilt_guid = build_guid_from_components(components)
+```
+
+Filter GUIDs by encoded location, sample, or workstation information:
+
+```python
+from qcodes.dataset.guids import filter_guids_by_parts
+
+selected = filter_guids_by_parts(
+    guids,
+    location=1,
+    sample_id=42,
+    work_station=3,
+)
+```
+
+---
+
+## Logging
+
+qcodes provides logging helpers for application and instrument-specific logging.
+
+```python
+from qcodes.logger.logger import start_all_logging
+from qcodes.logger.instrument_logger import get_instrument_logger
+
+start_all_logging()
+
+logger = get_instrument_logger(instrument)
+logger.info("Instrument connected")
+```
+
+Capture logs as a pandas dataframe:
+
+```python
+from qcodes.logger.log_analysis import capture_dataframe
+
+with capture_dataframe() as (_, get_dataframe):
+    logger.debug("Starting measurement")
+    logger.info("Measurement complete")
+
+log_dataframe = get_dataframe()
+```
+
+Temporarily adjust handler or console log levels:
+
+```python
+from qcodes.logger.logger import console_level
+
+with console_level("DEBUG"):
+    logger.debug("Detailed diagnostic output")
+```
+
+---
+
+## Utilities
+
+### Field vectors
+
+`FieldVector` represents vector quantities in Cartesian, spherical, and cylindrical coordinate systems.
+
+```python
+from qcodes.math_utils.field_vector import FieldVector
+
+field = FieldVector()
+
+field.set_vector(x=0.1, y=0.2, z=0.3)
+
+magnitude = field.norm()
+cartesian = field.repr_cartesian()
+spherical = field.repr_spherical()
+
+other = FieldVector()
+distance = field.distance(other)
+```
+
+### Snapshot comparison
+
+Compare parameter values in snapshots or datasets:
+
+```python
+from qcodes.dataset.snapshot_utils import diff_param_snapshots
+from qcodes.utils.snapshot_helpers import diff_param_values
+
+difference = diff_param_snapshots(left_dataset, right_dataset)
+
+snapshot_difference = diff_param_values(
+    left_dataset.snapshot(),
+    right_dataset.snapshot(),
+)
+```
+
+### Thread helpers
+
+Run callables in responding threads:
+
+```python
+from qcodes.utils.threading_utils import RespondingThread, thread_map
+
+results = thread_map(
+    callables=[read_current, read_voltage],
+)
+
+thread = RespondingThread(target=read_temperature)
+thread.start()
+temperature = thread.output(timeout=5.0)
+```
+
+### Sequence helpers
+
+```python
+from qcodes.parameters.sequence_helpers import is_sequence, is_sequence_of
+
+is_sequence([1, 2, 3])
+is_sequence_of([1, 2, 3], types=int)
+is_sequence_of([[1, 2], [3, 4]], types=int, depth=2, shape=(2, 2))
+```
+
+---
+
+## Typical workflow
+
+A typical measurement workflow is:
+
+1. Create or load a `Station`.
+2. Load or instantiate instruments.
+3. Obtain instrument parameters or define software parameters.
+4. Create or load an `Experiment`.
+5. Run `do0d`, `do1d`, `do2d`, or `dond`.
+6. Retrieve the resulting dataset.
+7. Plot, export, or analyze the data using pandas or xarray.
+8. Close instruments when the session is complete.
+
+```python
+from qcodes.dataset.dond.do_1d import do1d
+from qcodes.dataset.experiment_container import load_or_create_experiment
+from qcodes.dataset.plotting import plot_dataset
+
+experiment = load_or_create_experiment(
+    experiment_name="device_characterization",
+    sample_name="sample-001",
+)
+
+axes, colorbars, dataset = do1d(
+    gate_voltage,
+    start=-0.5,
+    stop=0.5,
+    num_points=101,
+    delay=0.02,
+    current,
+    measurement_name="gate_characterization",
+    exp=experiment,
+    show_progress=True,
+)
+
+plot_dataset(dataset, parameters="current")
+
+dataframe = dataset.to_pandas_dataframe("current")
+dataset.export(export_type="csv", path="exports")
+```
+

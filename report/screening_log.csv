@@ -1,0 +1,6 @@
+thread,database,search_string_id,date_run,hits,stage,citation,decision,criterion,note
+T1,Scopus,S1,,,identification,,,,
+T1,Scopus,S1,,,title_abstract,,include/exclude,I1-I4/E1-E5,
+T2,ACM DL,S2,,,identification,,,,
+T3,IEEE Xplore,S3,,,identification,,,,
+T4,Scopus,S4,,,identification,,,,

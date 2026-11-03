@@ -1,0 +1,280 @@
+# resource-server-utils
+
+`org.jasig.resourceserver:resource-server-utils` provides Java web-application utilities for working with resource aggregation and inclusion.
+
+The library centers on a `ResourcesElementsProvider`, which resolves resource URLs and exposes resource information in HTML, XML, parameter, and object forms. It also includes servlet filters for aggregation-aware request handling and cache expiration, page-caching filter variants, and JSP tag classes for resource inclusion and JavaScript minification workflows.
+
+## Main components
+
+### Resource element provider
+
+`ResourcesElementsProvider` is the primary abstraction for obtaining resource-related output for a request.
+
+```java
+public interface ResourcesElementsProvider {
+    String resolveResourceUrl(HttpServletRequest request, String resource);
+
+    void setDefaultIncludedType(Included included);
+    Included getDefaultIncludedType();
+    Included getIncludedType(HttpServletRequest request);
+
+    String getResourcesParameter(
+        HttpServletRequest request,
+        String skinXml,
+        String name
+    );
+
+    NodeList getResourcesXmlFragment(
+        HttpServletRequest request,
+        String skinXml
+    );
+
+    String getResourcesHtmlFragment(
+        HttpServletRequest request,
+        String skinXml
+    );
+
+    Resources getResources(
+        HttpServletRequest request,
+        String skinXml
+    );
+}
+```
+
+Use this interface when application code, filters, or views need to:
+
+- Resolve a resource reference into a URL appropriate for the current request.
+- Determine the requested or default `Included` type.
+- Obtain a named resource parameter.
+- Render resources as an HTML fragment.
+- Obtain resources as XML nodes.
+- Access the underlying `Resources` model.
+
+### `ResourcesElementsProviderImpl`
+
+`ResourcesElementsProviderImpl` is the provided implementation of `ResourcesElementsProvider`.
+
+It supports dependency injection through setters:
+
+- `setResourceLoader(ResourceLoader)`
+- `setServletContext(ServletContext)`
+- `setResourcesDao(ResourcesDao)`
+- `setRegisterWithServletContext(boolean)`
+- `setResolvedResourceCache(Map<String, String>)`
+- `setHtmlResourcesCache(Map<String, String>)`
+- `setXmlResourcesCache(Map<String, DocumentFragment>)`
+
+The class also implements Spring lifecycle interfaces, so `afterPropertiesSet()` can be called after required properties have been configured.
+
+### Provider lookup utilities
+
+`ResourcesElementsProviderUtils` retrieves a provider associated with a servlet context:
+
+```java
+ResourcesElementsProvider provider =
+    ResourcesElementsProviderUtils.getResourcesElementsProvider(servletContext);
+```
+
+Use `getOrCreateResourcesElementsProvider` when code needs a provider and can accept creation/registration when one is not already available:
+
+```java
+ResourcesElementsProvider provider =
+    ResourcesElementsProviderUtils.getOrCreateResourcesElementsProvider(servletContext);
+```
+
+### Servlet filters
+
+The library contains several filters that integrate resource aggregation with request processing and caching.
+
+| Class | Purpose |
+|---|---|
+| `AggregationAwareFilterBean` | Wraps another servlet `Filter` and accepts a `ResourcesElementsProvider`. |
+| `CacheExpirationFilter` | Applies a configurable cache maximum age and can use a `ResourcesElementsProvider`. |
+| `PathBasedCacheExpirationFilter` | Applies cache maximum ages configured by path. |
+| `AggregationAwarePageCachingFilter` | A page-caching filter with resource-provider support. |
+| `ConfigurablePageCachingFilter` | A page-caching filter constructed with an Ehcache `CacheManager` and optional cache name. |
+
+### JSP tag classes
+
+The tag classes support JSP-based resource rendering and inclusion.
+
+| Class | Notable API |
+|---|---|
+| `AggregatedResourcesTag` | Supports a configurable `path`. |
+| `ResourceIncludeTag` | Supports `var` and `value` attributes and exposes `getUrl()`. |
+| `JavaScriptMinificationTag` | A body tag intended for JavaScript minification-oriented processing. |
+
+## Usage
+
+### Resolve a resource URL
+
+When handling a servlet request, retrieve the provider from the current `ServletContext` and resolve a resource reference:
+
+```java
+import javax.servlet.ServletContext;
+import javax.servlet.http.HttpServletRequest;
+
+import org.jasig.resourceserver.utils.aggr.ResourcesElementsProvider;
+import org.jasig.resourceserver.utils.aggr.ResourcesElementsProviderUtils;
+
+public class ResourceUrlHelper {
+    public String getResourceUrl(HttpServletRequest request, String resource) {
+        ServletContext servletContext = request.getServletContext();
+
+        ResourcesElementsProvider provider =
+                ResourcesElementsProviderUtils.getOrCreateResourcesElementsProvider(
+                        servletContext
+                );
+
+        return provider.resolveResourceUrl(request, resource);
+    }
+}
+```
+
+### Render an HTML resource fragment
+
+An application can obtain HTML representing the resources associated with a skin XML value:
+
+```java
+import javax.servlet.http.HttpServletRequest;
+
+import org.jasig.resourceserver.utils.aggr.ResourcesElementsProvider;
+
+public class ResourceRenderer {
+    private final ResourcesElementsProvider resourcesElementsProvider;
+
+    public ResourceRenderer(ResourcesElementsProvider resourcesElementsProvider) {
+        this.resourcesElementsProvider = resourcesElementsProvider;
+    }
+
+    public String renderHeadResources(
+            HttpServletRequest request,
+            String skinXml) {
+
+        return resourcesElementsProvider.getResourcesHtmlFragment(request, skinXml);
+    }
+}
+```
+
+For example, a controller or servlet could write the returned fragment into an HTML response:
+
+```java
+String html = resourceRenderer.renderHeadResources(request, skinXml);
+response.getWriter().write(html);
+```
+
+### Read a named resource parameter
+
+Use `getResourcesParameter` when resource configuration exposes a named parameter:
+
+```java
+String value = resourcesElementsProvider.getResourcesParameter(
+        request,
+        skinXml,
+        "theme"
+);
+```
+
+The returned value can then be used by application code that needs request-specific resource configuration.
+
+### Access resources as XML or as a model object
+
+For XML-oriented processing:
+
+```java
+import org.w3c.dom.NodeList;
+
+NodeList resourcesFragment =
+        resourcesElementsProvider.getResourcesXmlFragment(request, skinXml);
+```
+
+For programmatic processing through the resource model:
+
+```java
+Resources resources =
+        resourcesElementsProvider.getResources(request, skinXml);
+```
+
+### Configure an aggregation-aware filter wrapper
+
+`AggregationAwareFilterBean` wraps an existing servlet filter and associates it with a resource provider.
+
+```java
+import javax.servlet.Filter;
+
+import org.jasig.resourceserver.utils.aggr.ResourcesElementsProvider;
+import org.jasig.resourceserver.utils.filter.AggregationAwareFilterBean;
+
+public class FilterConfiguration {
+    public AggregationAwareFilterBean aggregationAwareFilter(
+            Filter delegate,
+            ResourcesElementsProvider provider) {
+
+        AggregationAwareFilterBean filter = new AggregationAwareFilterBean();
+        filter.setFilter(delegate);
+        filter.setResourcesElementsProvider(provider);
+
+        return filter;
+    }
+}
+```
+
+### Configure cache expiration
+
+A single cache max-age value can be configured with `CacheExpirationFilter`:
+
+```java
+import org.jasig.resourceserver.utils.aggr.ResourcesElementsProvider;
+import org.jasig.resourceserver.utils.filter.CacheExpirationFilter;
+
+CacheExpirationFilter filter = new CacheExpirationFilter();
+filter.setCacheMaxAge(3600);
+filter.setResourcesElementsProvider(resourcesElementsProvider);
+```
+
+For path-specific values, use `PathBasedCacheExpirationFilter`:
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+import org.jasig.resourceserver.utils.filter.PathBasedCacheExpirationFilter;
+
+Map<String, Number> cacheMaxAges = new HashMap<String, Number>();
+cacheMaxAges.put("/resources/", 86400);
+cacheMaxAges.put("/images/", 3600);
+
+PathBasedCacheExpirationFilter filter = new PathBasedCacheExpirationFilter();
+filter.setCacheMaxAges(cacheMaxAges);
+filter.setResourcesElementsProvider(resourcesElementsProvider);
+```
+
+### Configure page caching
+
+`ConfigurablePageCachingFilter` is constructed with an Ehcache `CacheManager`:
+
+```java
+import net.sf.ehcache.CacheManager;
+
+import org.jasig.resourceserver.utils.cache.ConfigurablePageCachingFilter;
+
+CacheManager cacheManager = /* obtain or create a CacheManager */;
+
+ConfigurablePageCachingFilter filter =
+        new ConfigurablePageCachingFilter(cacheManager, "pageCache");
+
+String cacheName = filter.getCacheName();
+```
+
+A `ResourcesElementsProvider` can also be assigned through the inherited API:
+
+```java
+filter.setResourcesElementsProvider(resourcesElementsProvider);
+```
+
+## Integration notes
+
+- Prefer depending on the `ResourcesElementsProvider` interface in application code.
+- Use `ResourcesElementsProviderUtils` when a servlet-context-based provider lookup is appropriate.
+- Configure cache and aggregation filters with the same provider used by application rendering code so resource handling is available consistently across the request pipeline.
+- `ResourcesElementsProviderImpl` supports explicit caches for resolved resource URLs, HTML fragments, and XML fragments when those maps are supplied during configuration.

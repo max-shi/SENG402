@@ -1,0 +1,309 @@
+# sentinel-spring-webmvc-adapter
+
+A Java adapter for integrating Sentinel-style request protection into Spring Web MVC applications.
+
+The library provides Spring MVC interceptors that participate in the request lifecycle, configuration objects for request/resource handling, and callback interfaces for customizing blocked-request responses, request origin extraction, and URL cleanup.
+
+## Main components
+
+### Interceptors
+
+| Class | Purpose |
+|---|---|
+| `SentinelWebInterceptor` | A Spring MVC interceptor for regular web request handling. |
+| `SentinelWebTotalInterceptor` | A Spring MVC interceptor configured around a total/shared resource name. |
+| `AbstractSentinelInterceptor` | Base interceptor implementation. Implements Spring's `AsyncHandlerInterceptor` lifecycle. |
+
+Both concrete interceptors can be registered through Spring MVC interceptor configuration.
+
+`AbstractSentinelInterceptor` exposes the standard asynchronous interceptor callbacks:
+
+- `preHandle(...)`
+- `postHandle(...)`
+- `afterCompletion(...)`
+- `afterConcurrentHandlingStarted(...)`
+
+### Configuration
+
+#### `BaseWebMvcConfig`
+
+Common configuration shared by the interceptor types.
+
+| Method | Description |
+|---|---|
+| `setRequestAttributeName(String)` | Sets the request attribute name used by the configuration. |
+| `getRequestAttributeName()` | Returns the configured request attribute name. |
+| `getRequestRefName()` | Returns the request reference name. |
+| `setBlockExceptionHandler(BlockExceptionHandler)` | Configures handling for blocked requests. |
+| `getBlockExceptionHandler()` | Returns the configured block exception handler. |
+| `setOriginParser(RequestOriginParser)` | Configures request-origin parsing. |
+| `getOriginParser()` | Returns the configured origin parser. |
+
+#### `SentinelWebMvcConfig`
+
+Configuration for `SentinelWebInterceptor`.
+
+| Method | Description |
+|---|---|
+| `setUrlCleaner(UrlCleaner)` | Configures URL cleanup before the URL is used by the interceptor. |
+| `setHttpMethodSpecify(boolean)` | Enables or disables HTTP-method-specific handling. |
+| `setWebContextUnify(boolean)` | Enables or disables web context unification. |
+| `toString()` | Returns a string representation of the configuration. |
+
+All setter methods on this class return the same `SentinelWebMvcConfig` instance, allowing fluent setup.
+
+#### `SentinelWebMvcTotalConfig`
+
+Configuration for `SentinelWebTotalInterceptor`.
+
+| Method | Description |
+|---|---|
+| `setTotalResourceName(String)` | Sets the resource name used for total/shared request handling. |
+| `getTotalResourceName()` | Returns the configured resource name. |
+| `toString()` | Returns a string representation of the configuration. |
+
+### Callback interfaces
+
+#### `BlockExceptionHandler`
+
+Handles a `BlockException` encountered for an HTTP request.
+
+```java
+public interface BlockExceptionHandler {
+    void handle(HttpServletRequest request,
+                HttpServletResponse response,
+                BlockException e) throws Exception;
+}
+```
+
+Implement this interface to produce an application-specific blocked response, such as JSON, an error page, or a redirect.
+
+`DefaultBlockExceptionHandler` is the built-in implementation.
+
+#### `RequestOriginParser`
+
+Extracts an origin value from an incoming request.
+
+```java
+public interface RequestOriginParser {
+    String parseOrigin(HttpServletRequest request);
+}
+```
+
+#### `UrlCleaner`
+
+Transforms an original URL before it is used by the web MVC configuration.
+
+```java
+public interface UrlCleaner {
+    String clean(String originUrl);
+}
+```
+
+This is useful when URLs contain variable path segments or other values that should be normalized.
+
+### Exception resolver
+
+`SentinelExceptionAware` implements Spring's `HandlerExceptionResolver`:
+
+```java
+public class SentinelExceptionAware implements HandlerExceptionResolver {
+    ModelAndView resolveException(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        Object handler,
+        Exception ex
+    );
+}
+```
+
+It can be registered as a Spring MVC exception resolver where exception-aware request handling is desired.
+
+---
+
+## Basic Spring MVC setup
+
+Create a `SentinelWebMvcConfig`, customize it as needed, and register a `SentinelWebInterceptor`.
+
+```java
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.SentinelWebInterceptor;
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.config.SentinelWebMvcConfig;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+
+@Configuration
+public class WebMvcConfiguration implements WebMvcConfigurer {
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        SentinelWebMvcConfig config = new SentinelWebMvcConfig()
+            .setHttpMethodSpecify(true)
+            .setWebContextUnify(true);
+
+        registry.addInterceptor(new SentinelWebInterceptor(config));
+    }
+}
+```
+
+For the default configuration, use the no-argument constructor:
+
+```java
+registry.addInterceptor(new SentinelWebInterceptor());
+```
+
+---
+
+## Customize blocked-request responses
+
+Implement `BlockExceptionHandler` to control the response sent when a `BlockException` occurs.
+
+```java
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.callback.BlockExceptionHandler;
+import com.alibaba.csp.sentinel.slots.block.BlockException;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+
+public class JsonBlockExceptionHandler implements BlockExceptionHandler {
+
+    @Override
+    public void handle(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            BlockException exception) throws IOException {
+
+        response.setStatus(HttpServletResponse.SC_TOO_MANY_REQUESTS);
+        response.setContentType("application/json");
+        response.getWriter().write(
+            "{\"message\":\"Request blocked\",\"reason\":\""
+                + exception.getClass().getSimpleName()
+                + "\"}"
+        );
+    }
+}
+```
+
+Attach the handler to a web MVC configuration:
+
+```java
+SentinelWebMvcConfig config = new SentinelWebMvcConfig()
+    .setBlockExceptionHandler(new JsonBlockExceptionHandler());
+
+SentinelWebInterceptor interceptor = new SentinelWebInterceptor(config);
+```
+
+---
+
+## Normalize request URLs
+
+Use `UrlCleaner` to normalize paths before they are used by the interceptor. For example, an application may want to replace numeric identifiers with a placeholder.
+
+```java
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.callback.UrlCleaner;
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.config.SentinelWebMvcConfig;
+
+UrlCleaner cleaner = originUrl ->
+    originUrl.replaceAll("/orders/\\d+", "/orders/:id");
+
+SentinelWebMvcConfig config = new SentinelWebMvcConfig()
+    .setUrlCleaner(cleaner);
+```
+
+The configured interceptor can then be registered with Spring MVC:
+
+```java
+registry.addInterceptor(new SentinelWebInterceptor(config));
+```
+
+---
+
+## Provide a request origin
+
+Implement `RequestOriginParser` when the application needs to derive an origin from request data, such as an HTTP header.
+
+```java
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.callback.RequestOriginParser;
+
+RequestOriginParser originParser = request -> {
+    String origin = request.getHeader("X-Request-Origin");
+    return origin != null ? origin : "unknown";
+};
+```
+
+Configure it through the shared base configuration API:
+
+```java
+SentinelWebMvcConfig config = new SentinelWebMvcConfig();
+config.setOriginParser(originParser);
+```
+
+---
+
+## Configure a total/shared resource interceptor
+
+`SentinelWebTotalInterceptor` accepts `SentinelWebMvcTotalConfig`, including a total resource name.
+
+```java
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.SentinelWebTotalInterceptor;
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.config.SentinelWebMvcTotalConfig;
+
+SentinelWebMvcTotalConfig totalConfig = new SentinelWebMvcTotalConfig()
+    .setTotalResourceName("web-requests-total");
+
+SentinelWebTotalInterceptor totalInterceptor =
+    new SentinelWebTotalInterceptor(totalConfig);
+```
+
+Register it like any other Spring MVC interceptor:
+
+```java
+@Override
+public void addInterceptors(InterceptorRegistry registry) {
+    SentinelWebMvcTotalConfig totalConfig = new SentinelWebMvcTotalConfig()
+        .setTotalResourceName("web-requests-total");
+
+    registry.addInterceptor(new SentinelWebTotalInterceptor(totalConfig));
+}
+```
+
+A default total interceptor can also be created directly:
+
+```java
+SentinelWebTotalInterceptor interceptor = new SentinelWebTotalInterceptor();
+```
+
+---
+
+## Register the exception resolver
+
+`SentinelExceptionAware` can be exposed as a Spring bean implementing `HandlerExceptionResolver`.
+
+```java
+import com.alibaba.csp.sentinel.adapter.spring.webmvc.SentinelExceptionAware;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.HandlerExceptionResolver;
+
+@Configuration
+public class ExceptionResolverConfiguration {
+
+    @Bean
+    public HandlerExceptionResolver sentinelExceptionAware() {
+        return new SentinelExceptionAware();
+    }
+}
+```
+
+## Typical integration flow
+
+1. Create either `SentinelWebMvcConfig` or `SentinelWebMvcTotalConfig`.
+2. Optionally configure:
+   - a `BlockExceptionHandler`,
+   - a `RequestOriginParser`,
+   - a `UrlCleaner` for regular web MVC configuration,
+   - HTTP-method-specific and web-context options.
+3. Construct the corresponding interceptor.
+4. Register the interceptor with Spring MVC.
+5. Optionally register `SentinelExceptionAware` as a `HandlerExceptionResolver`.

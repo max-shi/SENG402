@@ -1,0 +1,644 @@
+# li.strolch:li.strolch.privilege
+
+A Java library for user authentication, session certificates, role-based privileges, and access-control policies.
+
+The library centers on a `PrivilegeHandler`, which manages users, roles, authentication, sessions, password validation, challenge flows, persistence, and authorization. After authentication, callers receive a `Certificate`; validating that certificate produces a `PrivilegeContext`, which is used to check roles and privileges before performing protected actions.
+
+## Core concepts
+
+| Concept | Primary types | Purpose |
+|---|---|---|
+| User | `UserRep`, `User` | User identity, state, roles, locale, properties, and login history. |
+| Role | `RoleRep`, `Role` | Named collection of privileges. |
+| Privilege | `PrivilegeRep`, `IPrivilege` | A named permission with a policy and allow/deny configuration. |
+| Session | `Certificate` | Authentication result and session identity for a user. |
+| Authorization context | `PrivilegeContext` | Validated view of a certificate, user, roles, privileges, and policies. |
+| Handler | `PrivilegeHandler` | Main API for authentication, session management, users, roles, and persistence. |
+| Policy | `PrivilegePolicy` | Determines whether a requested restricted action is permitted. |
+
+## Typical flow
+
+1. Initialize a `PrivilegeHandler`.
+2. Authenticate a username and password.
+3. Receive a `Certificate`.
+4. Validate the certificate to obtain a `PrivilegeContext`.
+5. Check roles or privileges with that context.
+6. Use the same certificate for administrative calls such as user or role management.
+
+```text
+Credentials
+    │
+    ▼
+PrivilegeHandler.authenticate(...)
+    │
+    ▼
+Certificate
+    │
+    ▼
+PrivilegeHandler.validate(...)
+    │
+    ▼
+PrivilegeContext
+    │
+    ├── assertHasRole(...)
+    ├── assertHasPrivilege(...)
+    ├── validateAction(...)
+    └── hasPrivilege(...)
+```
+
+## Initialization
+
+`PrivilegeInitializationHelper` provides convenience methods for creating a handler from an XML configuration source.
+
+```java
+import java.io.File;
+
+import li.strolch.privilege.handler.PrivilegeHandler;
+import li.strolch.privilege.helper.PrivilegeInitializationHelper;
+
+PrivilegeHandler privilegeHandler =
+        PrivilegeInitializationHelper.initializeFromXml(
+                new File("privilege.xml"));
+```
+
+An `InputStream` can also be used:
+
+```java
+import java.io.InputStream;
+
+import li.strolch.privilege.handler.PrivilegeHandler;
+import li.strolch.privilege.helper.PrivilegeInitializationHelper;
+
+InputStream input = /* configuration input stream */;
+
+PrivilegeHandler privilegeHandler =
+        PrivilegeInitializationHelper.initializeFromXml(input);
+```
+
+For programmatic assembly, use `PrivilegeContainerModel` and initialize from that model:
+
+```java
+import li.strolch.privilege.handler.PrivilegeHandler;
+import li.strolch.privilege.helper.PrivilegeInitializationHelper;
+import li.strolch.privilege.model.internal.PrivilegeContainerModel;
+
+PrivilegeContainerModel model = new PrivilegeContainerModel();
+
+// Configure handler class names, parameter maps, and policies on model.
+
+PrivilegeHandler privilegeHandler =
+        PrivilegeInitializationHelper.initializeFromXml(model);
+```
+
+`PrivilegeContainerModel` supports configuring the implementations and parameters for:
+
+- `EncryptionHandler`
+- `PasswordStrengthHandler`
+- `PersistenceHandler`
+- `UserChallengeHandler`
+- `SingleSignOnHandler`
+- `PrivilegeHandler`
+- named `PrivilegePolicy` implementations
+
+## Authentication and authorization
+
+Authenticate with a username and password to obtain a session `Certificate`.
+
+```java
+import li.strolch.privilege.handler.PrivilegeHandler;
+import li.strolch.privilege.model.Certificate;
+
+char[] password = "correct-password".toCharArray();
+
+Certificate certificate = privilegeHandler.authenticate(
+        "alice",
+        password,
+        true);
+```
+
+The `keepAlive` argument is carried by the returned certificate and can be inspected through `Certificate.isKeepAlive()`.
+
+To associate the authentication with a source and usage, use the extended overload:
+
+```java
+import li.strolch.privilege.model.Certificate;
+import li.strolch.privilege.model.Usage;
+
+Certificate certificate = privilegeHandler.authenticate(
+        "alice",
+        "correct-password".toCharArray(),
+        "web-portal",
+        Usage.ANY,
+        true);
+```
+
+Validate the certificate before authorizing actions:
+
+```java
+import li.strolch.privilege.base.AccessDeniedException;
+import li.strolch.privilege.handler.PrivilegeHandler;
+import li.strolch.privilege.model.PrivilegeContext;
+
+try {
+    PrivilegeContext context = privilegeHandler.validate(certificate, "web-portal");
+
+    context.assertHasRole("administrator");
+    context.assertHasPrivilege("user-management");
+
+    // Protected application operation.
+} catch (AccessDeniedException e) {
+    // The authenticated user does not have the required access.
+}
+```
+
+### Checking a privilege with a value
+
+Privileges may restrict access to values. Use a `SimpleRestrictable` when the protected operation can be represented by a privilege name and value.
+
+```java
+import li.strolch.privilege.model.PrivilegeContext;
+import li.strolch.privilege.model.SimpleRestrictable;
+
+PrivilegeContext context = privilegeHandler.validate(certificate);
+
+SimpleRestrictable action =
+        new SimpleRestrictable("document-access", "document-123");
+
+context.validateAction(action);
+```
+
+For a non-throwing check:
+
+```java
+boolean allowed = context.hasPrivilege(
+        "document-access",
+        "document-123");
+
+if (!allowed) {
+    // Do not perform the operation.
+}
+```
+
+`PrivilegeContext` also offers role-oriented checks:
+
+```java
+if (context.hasRole("operator")) {
+    // Operator-specific functionality.
+}
+
+if (context.hasAnyRole("administrator", "operator")) {
+    // Functionality available to either role.
+}
+```
+
+## Managing users and roles
+
+User and role management is performed through `PrivilegeHandler` and is authorized using a caller certificate.
+
+### Create a role
+
+A `RoleRep` contains a name and a list of `PrivilegeRep` definitions.
+
+```java
+import java.util.List;
+import java.util.Set;
+
+import li.strolch.privilege.model.PrivilegeRep;
+import li.strolch.privilege.model.RoleRep;
+
+PrivilegeRep userManagement = new PrivilegeRep(
+        "user-management",
+        "DefaultPrivilege",
+        true,
+        Set.of(),
+        Set.of());
+
+RoleRep administratorRole = new RoleRep(
+        "administrator",
+        List.of(userManagement));
+
+RoleRep createdRole = privilegeHandler.addRole(
+        adminCertificate,
+        administratorRole);
+```
+
+A privilege definition contains:
+
+- a privilege `name`;
+- a policy name;
+- an `allAllowed` flag;
+- a deny list;
+- an allow list.
+
+The effective interpretation is determined by the configured `PrivilegePolicy`.
+
+### Create a user
+
+`UserRep` describes user data without exposing password hashes or salts. Passwords are provided separately as `char[]`.
+
+```java
+import java.util.Map;
+import java.util.Set;
+
+import li.strolch.privilege.model.UserRep;
+import li.strolch.privilege.model.UserState;
+
+UserRep newUser = new UserRep(
+        "user-1001",
+        "alice",
+        "Alice",
+        "Example",
+        UserState.ENABLED,
+        Set.of("administrator"),
+        java.util.Locale.ENGLISH,
+        Map.of(
+                "email", "alice@example.test",
+                "organisation", "example-org"),
+        null);
+
+UserRep createdUser = privilegeHandler.addUser(
+        adminCertificate,
+        newUser,
+        "initial-password".toCharArray());
+```
+
+### Update user data and role assignments
+
+```java
+import java.util.Locale;
+
+privilegeHandler.addRoleToUser(
+        adminCertificate,
+        "alice",
+        "operator");
+
+privilegeHandler.removeRoleFromUser(
+        adminCertificate,
+        "alice",
+        "administrator");
+
+privilegeHandler.setUserLocale(
+        adminCertificate,
+        "alice",
+        Locale.GERMAN);
+
+privilegeHandler.setUserState(
+        adminCertificate,
+        "alice",
+        UserState.DISABLED);
+```
+
+To update a complete user representation:
+
+```java
+UserRep user = privilegeHandler.getUser(adminCertificate, "alice");
+
+user.setFirstname("Alicia");
+user.setProperty("email", "alicia@example.test");
+
+UserRep updated = privilegeHandler.updateUser(adminCertificate, user);
+```
+
+### Password operations
+
+```java
+privilegeHandler.validatePassword(
+        java.util.Locale.ENGLISH,
+        "new-password".toCharArray());
+
+privilegeHandler.setUserPassword(
+        adminCertificate,
+        "alice",
+        "new-password".toCharArray());
+
+privilegeHandler.requirePasswordChange(
+        adminCertificate,
+        "alice");
+```
+
+Password strength checking is supplied by a `PasswordStrengthHandler`. Available implementations include:
+
+- `SimplePasswordStrengthHandler`
+- `BasicPasswordStrengthHandler`
+
+## Session lifecycle
+
+A certificate represents an authenticated session. The handler supports validation, refresh, and invalidation.
+
+```java
+import li.strolch.privilege.model.Certificate;
+import li.strolch.privilege.model.PrivilegeContext;
+
+PrivilegeContext context = privilegeHandler.validate(certificate, "web-portal");
+
+// Refresh is available only when enabled by the handler configuration.
+if (privilegeHandler.isRefreshAllowed()) {
+    Certificate refreshed = privilegeHandler.refresh(certificate, "web-portal");
+    certificate = refreshed;
+}
+
+boolean invalidated = privilegeHandler.invalidate(certificate);
+```
+
+Useful certificate data includes:
+
+```java
+String username = certificate.getUsername();
+String sessionId = certificate.getSessionId();
+String token = certificate.getAuthToken();
+String source = certificate.getSource();
+
+boolean keepAlive = certificate.isKeepAlive();
+boolean hasAdminRole = certificate.hasRole("administrator");
+
+java.util.Locale locale = certificate.getLocale();
+java.time.ZonedDateTime loginTime = certificate.getLoginTime();
+java.time.ZonedDateTime lastAccess = certificate.getLastAccess();
+```
+
+## Challenge-based authentication flows
+
+The library supports initiating and validating user challenges. A challenge has a `Usage`, user, source, initiation time, and fulfillment status.
+
+```java
+import li.strolch.privilege.model.Certificate;
+import li.strolch.privilege.model.Usage;
+
+privilegeHandler.initiateChallengeFor(
+        Usage.SET_PASSWORD,
+        "alice",
+        "password-reset");
+
+Certificate certificate = privilegeHandler.validateChallenge(
+        "alice",
+        "challenge-response",
+        "password-reset");
+```
+
+`UserChallengeHandler` is responsible for delivering challenges. Provided implementations include:
+
+- `ConsoleUserChallengeHandler`
+- `MailUserChallengeHandler`
+
+Custom delivery mechanisms can extend `UserChallengeHandler` and implement `sendChallengeToUser(User user, String challenge)`.
+
+## Single sign-on
+
+A configured `SingleSignOnHandler` can authenticate external identity data and resolve it to a `User`.
+
+```java
+import li.strolch.privilege.model.Certificate;
+
+Object externalIdentityData = /* SSO provider data */;
+
+Certificate certificate = privilegeHandler.authenticateSingleSignOn(
+        externalIdentityData,
+        "web-portal",
+        true);
+```
+
+Custom SSO integrations implement:
+
+```java
+import java.util.Map;
+
+import li.strolch.privilege.base.PrivilegeException;
+import li.strolch.privilege.handler.SingleSignOnHandler;
+import li.strolch.privilege.model.internal.User;
+
+public class ExampleSingleSignOnHandler implements SingleSignOnHandler {
+
+    @Override
+    public void initialize(Map<String, String> parameterMap) {
+        // Read provider configuration.
+    }
+
+    @Override
+    public User authenticateSingleSignOn(Object data) throws PrivilegeException {
+        // Validate external data and return the matching user.
+        throw new UnsupportedOperationException("Implement provider lookup");
+    }
+
+    @Override
+    public Map<String, String> getParameterMap() {
+        return Map.of();
+    }
+}
+```
+
+## Running actions as a system user
+
+`runAs` and `runWithResult` execute actions in a system-user privilege context. `SystemAction` and `SystemActionWithResult<T>` are `Restrictable`, so actions can declare a required privilege name and value.
+
+```java
+import li.strolch.privilege.handler.SystemAction;
+import li.strolch.privilege.model.PrivilegeContext;
+
+privilegeHandler.runAs("system", new SystemAction() {
+
+    @Override
+    public String getPrivilegeName() {
+        return "maintenance";
+    }
+
+    @Override
+    public Object getPrivilegeValue() {
+        return "rebuild-index";
+    }
+
+    @Override
+    public void execute(PrivilegeContext context) throws Exception {
+        context.validateAction(this);
+
+        // Execute the protected maintenance operation.
+    }
+});
+```
+
+Returning a value:
+
+```java
+import li.strolch.privilege.handler.SystemActionWithResult;
+import li.strolch.privilege.model.PrivilegeContext;
+
+Integer activeUserCount = privilegeHandler.runWithResult(
+        "system",
+        new SystemActionWithResult<Integer>() {
+
+            @Override
+            public String getPrivilegeName() {
+                return "user-management";
+            }
+
+            @Override
+            public Object getPrivilegeValue() {
+                return "read";
+            }
+
+            @Override
+            public Integer execute(PrivilegeContext context) throws Exception {
+                context.validateAction(this);
+                return privilegeHandler.getUsers(
+                        context.getCertificate()).size();
+            }
+        });
+```
+
+Use `openSystemUserContext(String)` when only the context is required:
+
+```java
+PrivilegeContext systemContext =
+        privilegeHandler.openSystemUserContext("system");
+```
+
+## Privilege policies
+
+A privilege references a policy by name. Policies implement `PrivilegePolicy`:
+
+```java
+import li.strolch.privilege.base.AccessDeniedException;
+import li.strolch.privilege.base.PrivilegeException;
+import li.strolch.privilege.model.IPrivilege;
+import li.strolch.privilege.model.PrivilegeContext;
+import li.strolch.privilege.model.Restrictable;
+import li.strolch.privilege.policy.PrivilegePolicy;
+
+public class ExamplePrivilegePolicy implements PrivilegePolicy {
+
+    @Override
+    public void validateAction(
+            PrivilegeContext context,
+            IPrivilege privilege,
+            Restrictable restrictable) throws AccessDeniedException {
+
+        if (!hasPrivilege(context, privilege, restrictable)) {
+            throw new AccessDeniedException("Access denied");
+        }
+    }
+
+    @Override
+    public boolean hasPrivilege(
+            PrivilegeContext context,
+            IPrivilege privilege,
+            Restrictable restrictable) throws PrivilegeException {
+
+        return privilege.isAllAllowed();
+    }
+}
+```
+
+Built-in policy implementations include:
+
+- `DefaultPrivilege`
+- `RoleAccessPrivilege`
+- `UserAccessPrivilege`
+- `UserAccessWithSameOrganisationPrivilege`
+- `UsernameFromCertificatePrivilege`
+- `UsernameFromCertificateWithSameOrganisationPrivilege`
+
+`PrivilegePolicyHelper` exposes helper methods for policy implementations, including allow/deny evaluation.
+
+## Persistence and XML support
+
+`PersistenceHandler` provides the storage abstraction for users and roles:
+
+```java
+import li.strolch.privilege.handler.PersistenceHandler;
+
+PersistenceHandler persistence = privilegeHandler.getPersistenceHandler();
+
+boolean reloaded = persistence.reload();
+boolean persisted = persistence.persist();
+```
+
+The library includes `XmlPersistenceHandler`, which implements `PersistenceHandler`.
+
+The handler also exposes authorized persistence operations:
+
+```java
+boolean saved = privilegeHandler.persist(adminCertificate);
+
+boolean sessionDataSaved = privilegeHandler.persistSessions(
+        adminCertificate,
+        "web-portal");
+
+boolean reloaded = privilegeHandler.reload(
+        adminCertificate,
+        "web-portal");
+```
+
+XML readers and writers are also available for configuration, users, roles, and certificate stubs:
+
+- `PrivilegeConfigSaxReader` / `PrivilegeConfigDomWriter`
+- `PrivilegeUsersSaxReader` / `PrivilegeUsersDomWriter`
+- `PrivilegeRolesSaxReader` / `PrivilegeRolesDomWriter`
+- `CertificateStubsSaxReader` / `CertificateStubsDomWriter`
+
+## Encryption and password hashes
+
+`EncryptionHandler` provides token generation, salt generation, and password hashing. `DefaultEncryptionHandler` is the built-in implementation.
+
+```java
+import li.strolch.privilege.handler.EncryptionHandler;
+
+EncryptionHandler encryption = privilegeHandler.getEncryptionHandler();
+
+String token = encryption.nextToken();
+byte[] salt = encryption.nextSalt();
+
+byte[] hash = encryption.hashPassword(
+        "password".toCharArray(),
+        salt);
+```
+
+`Crypt` represents password-hash metadata and can serialize/parse crypt strings.
+
+```java
+import li.strolch.privilege.helper.Crypt;
+
+Crypt crypt = new Crypt()
+        .setAlgorithm("algorithm-name")
+        .setSalt(new byte[] { /* salt bytes */ })
+        .setIterations(1000)
+        .setKeyLength(256)
+        .setPassword(new byte[] { /* password hash bytes */ });
+
+String encoded = crypt.toCryptString();
+
+boolean matches = crypt.isSame("password".toCharArray());
+```
+
+`CryptHelper.buildPasswordString(...)` can build a password string from a `User` or explicit hash parameters.
+
+## Exceptions
+
+All library-specific runtime errors derive from `PrivilegeException`.
+
+| Exception | Meaning |
+|---|---|
+| `PrivilegeException` | Base exception for privilege-related failures. |
+| `AccessDeniedException` | Authentication or authorization was denied. |
+| `InvalidCredentialsException` | Credentials are invalid; extends `AccessDeniedException`. |
+| `NotAuthenticatedException` | An operation requires authentication. |
+| `PrivilegeModelException` | A privilege model or configuration issue occurred. |
+
+Callers commonly handle `AccessDeniedException` around authentication and authorization boundaries, and `PrivilegeException` around broader handler operations.
+
+```java
+try {
+    Certificate certificate = privilegeHandler.authenticate(
+            "alice",
+            "password".toCharArray(),
+            false);
+
+    PrivilegeContext context = privilegeHandler.validate(certificate);
+    context.validateAction("report-read", "monthly-report");
+
+} catch (li.strolch.privilege.base.InvalidCredentialsException e) {
+    // Invalid username or password.
+} catch (li.strolch.privilege.base.AccessDeniedException e) {
+    // Authenticated but not permitted, or access otherwise denied.
+} catch (li.strolch.privilege.base.PrivilegeException e) {
+    // Other privilege-system failure.
+}
+```

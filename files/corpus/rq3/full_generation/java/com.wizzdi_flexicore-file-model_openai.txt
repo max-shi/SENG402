@@ -1,0 +1,192 @@
+# flexicore-file-model
+
+`com.wizzdi:flexicore-file-model` provides Java model objects for representing files and ZIP archives.
+
+The library models general file metadata—including names, paths, checksums, upload/progress state, retention dates, and download restrictions—and adds support for describing which `FileResource` instances are contained in a `ZipFile`.
+
+## Main types
+
+### `FileResource`
+
+`FileResource` is the base model for a stored or managed file. It extends `Baseclass` and exposes metadata commonly associated with file handling.
+
+| Property | Type | Description |
+|---|---:|---|
+| MD5 | `String` | A checksum associated with the file. |
+| Offset | `long` | A numeric offset, such as a transfer or processing position. |
+| Original filename | `String` | The filename supplied before storage or processing. |
+| Actual filename | `String` | The filename used by the underlying file representation. |
+| Full path | `String` | The complete path associated with the file. |
+| Done | `boolean` | Indicates whether the file operation or lifecycle state is complete. |
+| Non-downloadable | `boolean` | Indicates that the file should not be downloadable. |
+| Date taken | `OffsetDateTime` | A date/time associated with when the file was taken or created. |
+| Keep until | `OffsetDateTime` | A date/time until which the file should be retained. |
+| Only from | `String` | A string restriction or source-related value associated with the file. |
+| ZIP relationships | `List<ZipFileToFileResource>` | ZIP archive relationships involving this file. |
+
+Example setters include:
+
+```java
+FileResource file = new FileResource();
+
+file.setOriginalFilename("invoice.pdf");
+file.setActualFilename("4f0c0f9d-invoice.pdf");
+file.setFullPath("/files/2025/4f0c0f9d-invoice.pdf");
+file.setMd5("d41d8cd98f00b204e9800998ecf8427e");
+file.setDone(true);
+file.setNonDownloadable(false);
+```
+
+### `ZipFile`
+
+`ZipFile` represents a ZIP archive and extends `FileResource`. As a file resource, it has all normal file metadata, plus archive-specific fields.
+
+| Property | Type | Description |
+|---|---:|---|
+| Zipped-file relationships | `List<ZipFileToFileResource>` | The files associated with this ZIP archive. |
+| Unique files MD5 | `String` | An MD5-related value for the archive’s unique files. |
+
+```java
+ZipFile archive = new ZipFile();
+
+archive.setOriginalFilename("documents.zip");
+archive.setActualFilename("documents-archive.zip");
+archive.setFullPath("/archives/documents-archive.zip");
+archive.setDone(true);
+archive.setUniqueFilesMd5("archive-content-checksum");
+```
+
+### `ZipFileToFileResource`
+
+`ZipFileToFileResource` is a relationship model connecting a `ZipFile` to a `FileResource` contained in that archive. It extends `Basic`.
+
+| Property | Type | Description |
+|---|---:|---|
+| ZIP file | `ZipFile` | The archive side of the relationship. |
+| Zipped file | `FileResource` | The file associated with that archive. |
+
+This relationship allows a ZIP archive to be connected to one or more files, while a file can expose its related ZIP entries through `FileResource#getZipFileToFileResources()`.
+
+```java
+ZipFileToFileResource relationship = new ZipFileToFileResource()
+    .setZipFile(archive)
+    .setZippedFile(file);
+```
+
+## Relationships
+
+The core relationship is:
+
+```text
+ZipFile 1 --- * ZipFileToFileResource * --- 1 FileResource
+```
+
+A `ZipFile` is itself a `FileResource`, so archive instances can use the same filename, path, checksum, status, and retention metadata as ordinary files.
+
+Use the following accessors to navigate the relationship:
+
+```java
+List<ZipFileToFileResource> archiveEntries =
+    archive.getZippedFilesToFileResourceList();
+
+List<ZipFileToFileResource> fileArchiveReferences =
+    file.getZipFileToFileResources();
+```
+
+## Usage examples
+
+### Create a file resource with retention and access metadata
+
+```java
+import com.wizzdi.flexicore.file.model.FileResource;
+
+import java.time.OffsetDateTime;
+
+FileResource report = new FileResource();
+
+report.setOriginalFilename("monthly-report.csv");
+report.setActualFilename("monthly-report-2025-03.csv");
+report.setFullPath("/exports/monthly-report-2025-03.csv");
+report.setMd5("a8f5f167f44f4964e6c998dee827110c");
+
+report.setOffset(0L);
+report.setDone(true);
+
+report.setDateTaken(OffsetDateTime.now());
+report.setKeepUntil(OffsetDateTime.now().plusDays(30));
+
+report.setNonDownloadable(false);
+report.setOnlyFrom("internal-network");
+```
+
+### Model a ZIP archive and its contents
+
+```java
+import com.wizzdi.flexicore.file.model.FileResource;
+import com.wizzdi.flexicore.file.model.ZipFile;
+import com.wizzdi.flexicore.file.model.ZipFileToFileResource;
+
+import java.util.List;
+
+FileResource image = new FileResource()
+    .setOriginalFilename("photo.jpg")
+    .setActualFilename("photo-001.jpg")
+    .setFullPath("/uploads/photo-001.jpg")
+    .setMd5("image-md5")
+    .setDone(true);
+
+FileResource metadata = new FileResource()
+    .setOriginalFilename("metadata.json")
+    .setActualFilename("metadata.json")
+    .setFullPath("/uploads/metadata.json")
+    .setMd5("metadata-md5")
+    .setDone(true);
+
+ZipFile archive = new ZipFile()
+    .setOriginalFilename("upload-package.zip")
+    .setActualFilename("upload-package.zip")
+    .setFullPath("/uploads/upload-package.zip")
+    .setMd5("zip-md5")
+    .setUniqueFilesMd5("unique-content-md5")
+    .setDone(true);
+
+ZipFileToFileResource imageEntry = new ZipFileToFileResource()
+    .setZipFile(archive)
+    .setZippedFile(image);
+
+ZipFileToFileResource metadataEntry = new ZipFileToFileResource()
+    .setZipFile(archive)
+    .setZippedFile(metadata);
+
+archive.setZippedFilesToFileResourceList(List.of(imageEntry, metadataEntry));
+
+image.setZipFileToFileResources(List.of(imageEntry));
+metadata.setZipFileToFileResources(List.of(metadataEntry));
+```
+
+### Read archive content relationships
+
+```java
+for (ZipFileToFileResource entry : archive.getZippedFilesToFileResourceList()) {
+    FileResource zippedFile = entry.getZippedFile();
+
+    System.out.println(
+        zippedFile.getOriginalFilename() +
+        " -> " +
+        zippedFile.getFullPath()
+    );
+}
+```
+
+## Fluent setters
+
+Several setters return the current object using a generic self type. This supports fluent construction, including when working with subclasses:
+
+```java
+ZipFile archive = new ZipFile()
+    .setOriginalFilename("bundle.zip")
+    .setDone(true)
+    .setUniqueFilesMd5("bundle-files-md5");
+```
+
+The ordinary `void` setters on `FileResource` can be used when fluent chaining is not needed.

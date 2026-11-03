@@ -1,0 +1,330 @@
+# reprounzip
+
+`reprounzip` provides Python APIs and command-oriented helpers for working with reproducibility packs: configuration, traced execution data, packaged files, input/output files, software packages, and execution environments.
+
+The library is organized around a pack abstraction (`RPZPack`), configuration serialization helpers, unpacking backends, file transfer hooks, package-installation helpers, and graph/provenance generation tools. It also includes general-purpose utilities for paths, downloads, ordered sets, logging, and usage reporting.
+
+## Main concepts
+
+### Packs and configuration
+
+The central pack-oriented API is available from `reprounzip.common`.
+
+- `RPZPack` represents a reproducibility pack and exposes operations for:
+  - reading or extracting configuration with `open_config()`, `extract_config()`, and `with_config()`;
+  - reading or extracting trace data with `extract_trace()` and `with_trace()`;
+  - listing, retrieving, extracting, or copying packaged data with `list_data()`, `data_filenames()`, `get_data()`, `extract_data()`, and `copy_data_tar()`;
+  - discovering extensions through `extensions()`;
+  - releasing resources with `close()`.
+
+- `File` and `Package` are data-model classes used by configuration readers and writers.
+  - `Package.add_file(file_)` associates a file with a package.
+
+- `InputOutputFile` represents a configured input or output file.
+
+- Configuration helpers:
+  - `load_config(filename, canonical, File=File, Package=Package)`
+  - `save_config(filename, runs, packages, other_files, reprozip_version, inputs_outputs=None, canonical=False, pack_id=None)`
+  - `read_files(files, File=File)`
+  - `read_packages(packages, File=File, Package=Package)`
+  - `load_iofiles(config, runs)`
+  - `write_file(fp, fi, indent=0)`
+  - `write_package(fp, pkg, indent=0)`
+
+`InvalidConfig` is raised for invalid configuration data.
+
+### Unpacking and environment helpers
+
+The `reprounzip.unpackers` APIs cover local-directory and chroot-style workflows, package installation, environment handling, file transfers, and X11 support.
+
+The default unpacker exposes command-style operations such as:
+
+- `directory_create(args)`, `directory_run(args)`, and `directory_destroy(args)`
+- `chroot_create(args)`, `chroot_mount(args)`, `chroot_run(args)`, and `chroot_destroy(args)`
+- `installpkgs(args)`
+- `upload(args)` and `download(args)`
+
+These functions accept an `args` object, making them suitable for integration with an argument parser or another command front end.
+
+Common unpacker helpers include:
+
+- `get_runs(runs, selected_runs, cmdline)` for selecting runs;
+- `add_environment_options(parser)` and `fixup_environment(environ, args)` for environment-related command options;
+- `shell_escape(s)` for shell-safe string handling;
+- `parse_ports(specifications)` for processing port specifications;
+- `interruptible_call(cmd, **kwargs)` for running external commands;
+- metadata helpers:
+  - `metadata_read(path, type_)`
+  - `metadata_write(path, dct, type_)`
+  - `metadata_initial_iofiles(config, dct=None)`
+  - `metadata_update_run(config, dct, runs)`
+
+`UsageError` represents user-facing unpacker errors.
+
+### Uploading and downloading files
+
+`FileUploader` and `FileDownloader` define extensible workflows for transferring input and output files.
+
+`FileUploader` provides:
+
+- `run(files)`
+- `get_config()`
+- `prepare_upload(files)`
+- `extract_original_input(input_name, input_path, temp)`
+- `upload_file(local_path, input_path)`
+- `finalize()`
+
+`FileDownloader` provides:
+
+- `run(files, all_)`
+- `get_config()`
+- `prepare_download(files)`
+- `download_and_print(remote_path)`
+- `download(remote_path, local_path)`
+- `finalize()`
+
+The default unpacker includes local implementations:
+
+- `LocalUploader`
+- `LocalDownloader`
+
+These classes override the preparation and transfer operations for local targets.
+
+### Package installers
+
+`reprounzip.unpackers.common.packages` contains installer abstractions:
+
+- `AptInstaller`
+- `YumInstaller`
+- `select_installer(pack, runs, target_distribution=THIS_DISTRIBUTION, check_distrib_compat=True)`
+
+Installer classes expose methods for installation, package information, update scripts, and install scripts:
+
+```python
+installer.install(packages, assume_yes=False)
+installer.get_packages_info(packages)
+installer.update_script()
+installer.install_script(packages)
+```
+
+`CantFindInstaller` is raised when no suitable installer can be selected.
+
+### Graph and provenance output
+
+The graph subsystem builds representations of runs, processes, packages, files, and input/output relationships.
+
+Key entry points include:
+
+- `generate(...)` for producing graph output;
+- `graph_dot(...)` for DOT output;
+- `graph_json(...)` for JSON output;
+- `graph(args)` for command-style integration;
+- `parse_levels(...)` for graph-detail level selection.
+
+Graph model classes include:
+
+- `Run`
+- `Process`
+- `Package`
+
+Each has methods for DOT and/or JSON rendering.
+
+A separate provenance-oriented generator is available through:
+
+- `reprounzip.unpackers.provviewer.generate(target, configfile, database)`
+- `provgraph(args)`
+
+### Utilities
+
+`reprounzip.utils` contains reusable helpers:
+
+- `OrderedSet` preserves insertion order while implementing the mutable-set interface.
+- `flatten(n, iterable)` flattens nested iterables.
+- `UniqueNames` and `make_unique_name(prefix)` help produce non-conflicting names.
+- `escape(s)` and `shell_escape(s)` handle escaped strings.
+- `normalize_path(path)` and `join_root(root, path)` work with paths.
+- `find_all_links()` and `find_all_links_recursive()` inspect linked files.
+- `copyfile()` and `download_file()` provide file-transfer utilities.
+- `hsize(nbytes)` formats byte counts.
+- `isodatetime()` and `tz_offset()` provide date/time-related values.
+
+## Usage examples
+
+### Write and load a configuration
+
+The configuration API can write a configuration with runs, packages, and additional files, then load it again.
+
+```python
+from reprounzip.common import load_config, save_config
+
+runs = []
+packages = []
+other_files = []
+
+save_config(
+    filename="experiment-config.yml",
+    runs=runs,
+    packages=packages,
+    other_files=other_files,
+    reprozip_version="1.0",
+    inputs_outputs=None,
+    canonical=True,
+    pack_id="example-experiment",
+)
+
+config = load_config(
+    filename="experiment-config.yml",
+    canonical=True,
+)
+
+print(config)
+```
+
+For non-empty configurations, populate `runs`, `packages`, and `other_files` with the appropriate configuration model objects before calling `save_config()`.
+
+### Extract configuration, traces, and data from a pack
+
+Code that already has an `RPZPack` instance can use it to inspect and extract pack contents.
+
+```python
+from reprounzip.common import RPZPack
+
+def extract_pack_contents(pack: RPZPack, destination: str) -> None:
+    try:
+        pack.extract_config(destination)
+        pack.extract_trace(destination)
+
+        members = list(pack.data_filenames())
+        if members:
+            pack.extract_data(destination, members)
+
+        print("Pack extensions:", pack.extensions())
+    finally:
+        pack.close()
+```
+
+If only a data archive copy is needed, use `copy_data_tar()` instead:
+
+```python
+pack.copy_data_tar("packed-data.tar")
+```
+
+### Generate a JSON graph
+
+The graph generator accepts a target, configuration file, execution database, and several options controlling graph detail.
+
+```python
+from reprounzip.unpackers.graph import generate
+
+generate(
+    target="graph-output.json",
+    configfile="experiment-config.yml",
+    database="trace.sqlite",
+    graph_format="json",
+    level_pkgs="file",
+    level_processes="thread",
+    level_other_files="all",
+)
+```
+
+For DOT output, omit `graph_format` or set it to `"dot"`.
+
+### Use an ordered set
+
+`OrderedSet` behaves like a mutable set while retaining insertion order.
+
+```python
+from reprounzip.orderedset import OrderedSet
+
+selected_runs = OrderedSet()
+
+selected_runs.add("run-0")
+selected_runs.add("run-1")
+selected_runs.add("run-0")  # Existing values are not duplicated
+
+for run in selected_runs:
+    print(run)
+
+last_run = selected_runs.pop()
+print("Removed:", last_run)
+```
+
+### Normalize and copy paths
+
+```python
+from reprounzip.utils import copyfile, join_root, normalize_path
+
+relative_path = normalize_path("results/../results/output.txt")
+target_path = join_root("/tmp/reproduction", relative_path)
+
+copyfile("output.txt", target_path)
+```
+
+### Register a signal callback
+
+`Signal` supports subscription management for callback functions.
+
+```python
+from reprounzip.signals import Signal
+
+signal = Signal()
+
+def on_event(*args, **kwargs):
+    print("Event received", args, kwargs)
+
+signal.subscribe(on_event)
+
+# Later, when the callback is no longer needed:
+signal.unsubscribe(on_event)
+```
+
+## Logging and usage reporting
+
+Logging support is exposed through:
+
+- `setup_logging(tag, verbosity)`
+- `LoggingDateFormatter`
+
+Usage reporting can be configured and submitted with:
+
+- `setup_usage_report(name, version)`
+- `enable_usage_report(enable)`
+- `record_usage(**kwargs)`
+- `record_usage_package(runs, packages, other_files, inputs_outputs, pack_id=None)`
+- `submit_usage_report(**kwargs)`
+
+Example:
+
+```python
+from reprounzip.common import enable_usage_report, setup_logging
+
+setup_logging(tag="reprounzip", verbosity=1)
+enable_usage_report(False)
+```
+
+## Command-line integration
+
+`reprounzip.main` provides command-line integration primitives:
+
+- `main()` is the main command entry point.
+- `RPUZArgumentParser` is a specialized `argparse.ArgumentParser`.
+- `get_plugins(entry_point_name)` discovers plugins.
+- `usage_report(args)` handles command-related usage reporting.
+
+Several unpacker and graph modules provide `setup(...)` or `setup_*()` functions for registering command-line subcommands and options with a parser.
+
+## API notes
+
+Some names intentionally appear in multiple domains. For example:
+
+- `reprounzip.common.Package` is a configuration/package model.
+- `reprounzip.unpackers.graph.Package` is a graph-rendering model.
+
+Import the fully qualified class appropriate to the task:
+
+```python
+from reprounzip.common import Package as ConfigPackage
+from reprounzip.unpackers.graph import Package as GraphPackage
+```
+
+For unpacking workflows, use the common helpers and default unpacker operations together: select runs, prepare the target environment, install packages where needed, run the selected execution, and transfer inputs or outputs through uploader/downloader implementations.

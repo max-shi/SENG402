@@ -1,0 +1,272 @@
+# micro-reactive
+
+`com.aol.microservices:micro-reactive` provides reactive-oriented utilities for building Java services around:
+
+- Keyed event queues and event consumption
+- Multiple reactive and asynchronous views of queued values
+- Scheduled jobs exposed as hot streams
+- Streaming HTTP requests and JSON responses
+- Framework plugin and responder configuration integration
+
+The library uses types from several reactive ecosystems, including `ReactiveSeq`, Reactor `Mono` and `Flux`, RxJava `Maybe`, `Future`, `FutureStream`, and Reactive Streams `Publisher`.
+
+## Core concepts
+
+### Event queues
+
+`EventQueueManager<T>` manages queues of values of type `T`, identified by a string key. Producers push values into a keyed queue, while consumers can process or expose those values through a range of asynchronous and reactive abstractions.
+
+```java
+EventQueueManager<OrderEvent> events =
+    EventQueueManager.of(executor, queueFactory);
+```
+
+Once created, register a queue key before using it:
+
+```java
+events.register("orders");
+```
+
+Publish values:
+
+```java
+events.push("orders", new OrderEvent("order-123", "CREATED"));
+```
+
+Consume values with a callback:
+
+```java
+events.forEach("orders", event -> {
+    System.out.println("Received: " + event);
+});
+```
+
+Or obtain a value source in the style best suited to the consuming application:
+
+```java
+Future<OrderEvent> next = events.future("orders", executor);
+
+Mono<OrderEvent> mono = events.mono("orders", executor);
+
+Flux<OrderEvent> flux = events.flux("orders");
+
+ReactiveSeq<OrderEvent> stream = events.stream("orders");
+
+Maybe<OrderEvent> maybe = events.maybe("orders");
+
+Eval<OrderEvent> lazy = events.lazy("orders");
+
+FutureStream<OrderEvent> futureStream = events.ioFutureStream("orders");
+```
+
+### Scheduled jobs
+
+`JobSchedular` schedules `ScheduledJob` instances and returns a `HotStream<SystemData<K, V>>`. A hot stream represents job output that can be observed as scheduling executions occur.
+
+Scheduling is available with an expression, a fixed delay, or a fixed rate:
+
+```java
+JobSchedular scheduler = new JobSchedular();
+
+HotStream<SystemData<String, Integer>> metrics =
+    scheduler.scheduleFixedRate(1_000L, job);
+```
+
+```java
+HotStream<SystemData<String, Integer>> delayed =
+    scheduler.scheduleFixedDelay(5_000L, job);
+```
+
+```java
+HotStream<SystemData<String, Integer>> cronLike =
+    scheduler.schedule("0/5 * * * * ?", job);
+```
+
+The exact expression format is determined by the scheduler implementation used by the application.
+
+### Reactive HTTP requests
+
+`ReactiveRequest` provides streaming HTTP operations. Construct it with read and connection timeout values in milliseconds:
+
+```java
+ReactiveRequest client = new ReactiveRequest(
+    10_000, // read timeout
+    2_000   // connect timeout
+);
+```
+
+Text-oriented request methods return `ReactiveSeq<String>`:
+
+```java
+ReactiveSeq<String> body = client.getTextStream(
+    "https://api.example.com/status"
+);
+
+ReactiveSeq<String> raw = client.getStream(
+    "https://api.example.com/events"
+);
+```
+
+POST, PUT, and DELETE request methods accept a request body and expose the response as a stream of strings:
+
+```java
+CreateOrder request = new CreateOrder("sku-42", 3);
+
+ReactiveSeq<String> created = client.postStream(
+    "https://api.example.com/orders",
+    request
+);
+
+ReactiveSeq<String> updated = client.putStream(
+    "https://api.example.com/orders/123",
+    request
+);
+
+ReactiveSeq<String> deleted = client.deleteStream(
+    "https://api.example.com/orders/123",
+    request
+);
+```
+
+For JSON responses, use the typed JSON methods. Supply either a `Class<T>` or a Jackson `JavaType` when a more specific generic type is needed.
+
+```java
+ReactiveSeq<Order> orders = client.getJsonStream(
+    "https://api.example.com/orders",
+    Order.class
+);
+```
+
+```java
+ReactiveSeq<Order> createdOrders = client.postJsonStream(
+    "https://api.example.com/orders",
+    new CreateOrder("sku-42", 3),
+    Order.class
+);
+```
+
+```java
+ReactiveSeq<Order> updatedOrders = client.putJsonStream(
+    "https://api.example.com/orders/123",
+    new UpdateOrder("SHIPPED"),
+    Order.class
+);
+```
+
+```java
+ReactiveSeq<Order> deletedOrders = client.deleteJsonStream(
+    "https://api.example.com/orders/123",
+    Order.class
+);
+```
+
+For generic JSON targets, use `JavaType`:
+
+```java
+JavaType orderListType = /* JavaType describing List<Order> */;
+
+ReactiveSeq<List<Order>> result = client.getJsonStream(
+    "https://api.example.com/orders",
+    orderListType
+);
+```
+
+## Producing streaming JSON responses
+
+`ReactiveResponse` converts a Java `Stream` or Reactive Streams `Publisher` into a `Response` that publishes JSON output.
+
+Use a standard Java stream:
+
+```java
+Stream<Order> orders = Stream.of(
+    new Order("order-1"),
+    new Order("order-2")
+);
+
+Response response = ReactiveResponse.streamAsJson(orders);
+```
+
+Or publish directly from a reactive source:
+
+```java
+Publisher<Order> orders = eventQueueManager.flux("orders");
+
+Response response = ReactiveResponse.publishAsJson(orders);
+```
+
+This makes `ReactiveResponse` a natural companion to `EventQueueManager`: events exposed as a `Flux<T>` can be returned as a JSON-published HTTP response.
+
+## Responder configuration
+
+`ResponderConfigurer<T>` exposes an `EventQueueManager<T>` through its `responder()` method:
+
+```java
+ResponderConfigurer<OrderEvent> configurer = /* obtain configuration */;
+
+EventQueueManager<OrderEvent> responder = configurer.responder();
+
+responder.forEach("orders", event -> {
+    // Handle incoming order events
+});
+```
+
+This type is useful where the surrounding application obtains its event responder through configuration rather than constructing an `EventQueueManager` directly.
+
+## Plugin support
+
+`ReactivePlugin` implements `Plugin` and exposes a set of Spring-related classes:
+
+```java
+ReactivePlugin plugin = new ReactivePlugin();
+
+PersistentSetX<Class> springClasses = plugin.springClasses();
+```
+
+This provides an integration point for environments that discover or register plugins and Spring classes.
+
+## End-to-end example
+
+The following example illustrates a possible flow:
+
+1. Create a keyed event queue for order events.
+2. Consume events through a `Flux`.
+3. Publish the same stream as JSON through a `Response`.
+4. Use a reactive HTTP client to send an order to a remote service.
+
+```java
+Executor executor = /* application executor */;
+QueueFactory<OrderEvent> queueFactory = /* queue factory */;
+
+EventQueueManager<OrderEvent> orders =
+    EventQueueManager.of(executor, queueFactory);
+
+orders.register("order-events");
+
+orders.push("order-events", new OrderEvent("order-1001", "CREATED"));
+
+Flux<OrderEvent> orderFlux = orders.flux("order-events");
+
+Response streamingResponse =
+    ReactiveResponse.publishAsJson(orderFlux);
+
+ReactiveRequest http = new ReactiveRequest(10_000, 2_000);
+
+ReactiveSeq<OrderResult> results = http.postJsonStream(
+    "https://orders.example.com/orders",
+    new CreateOrder("sku-42", 3),
+    OrderResult.class
+);
+
+results.forEach(System.out::println);
+```
+
+## API overview
+
+| Type | Purpose |
+|---|---|
+| `EventQueueManager<T>` | Creates and manages keyed queues of events, with callback, future, lazy, and reactive consumption APIs. |
+| `JobSchedular` | Schedules `ScheduledJob` instances and exposes their output through `HotStream<SystemData<K, V>>`. |
+| `ReactiveRequest` | Executes streaming HTTP GET, POST, PUT, and DELETE operations, including typed JSON variants. |
+| `ReactiveResponse` | Creates JSON-producing `Response` objects from `Stream<T>` or `Publisher<T>`. |
+| `ResponderConfigurer<T>` | Provides access to an `EventQueueManager<T>` responder. |
+| `ReactivePlugin` | Plugin integration type that exposes Spring-related classes. |

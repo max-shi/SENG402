@@ -1,0 +1,213 @@
+# pdocs
+
+`pdocs` is an API documentation generator for Python projects. It inspects
+your Python modules, packages, classes, and functions and turns them into
+browsable documentation — either as static HTML, static Markdown, or served
+live over HTTP. It's designed to work directly from your source code and
+docstrings, without requiring you to maintain separate documentation files.
+
+## Features
+
+- Generate static **HTML** documentation for one or more Python modules.
+- Generate static **Markdown** documentation, suitable for publishing on
+  sites like GitHub or MkDocs.
+- Run a **live documentation server** that renders modules on the fly, handy
+  while writing or reviewing docstrings.
+- Automatically discovers submodules, classes, functions, and variables and
+  builds a navigable hierarchy of documentation objects.
+- Supports custom templates so you can tailor how documentation is rendered.
+
+## Installation
+
+```bash
+pip install pdocs
+```
+
+## Core Concepts
+
+At the heart of `pdocs` is a small object model (in `pdocs.doc`) that
+mirrors the structure of your Python code:
+
+- **`Module`** — represents a Python module or package. It knows how to list
+  its `variables()`, `classes()`, and `functions()`, walk its submodules
+  (`allmodules()`), and resolve identifiers/classes within its scope
+  (`find_ident`, `find_class`, `mro`, `descendents`).
+- **`Class`** — represents a class definition, exposing its
+  `class_variables()`, `instance_variables()`, `methods()`, `functions()`,
+  constructor `params()`, method resolution order (`mro()`), and
+  `subclasses()`.
+- **`Function`** — represents a function or method, exposing its signature
+  information (`funcdef()`, `spec()`, `params()`, `return_annotation()`).
+- **`Variable`** — represents a module- or class-level variable.
+- **`External`** — represents a reference to an object defined outside the
+  documented package (e.g. a base class from a third-party library).
+
+All of these inherit from **`Doc`**, which provides shared behavior such as
+`source()` (retrieving source code), `refname()` (a fully-qualified
+reference name used for cross-linking), and `is_empty()`.
+
+These objects are produced by the extraction layer (`pdocs.extract`), styled
+and laid out by the rendering layer (`pdocs.render` and
+`pdocs.html_helpers`), and written to disk or served by the higher-level
+`pdocs.api` and `pdocs.static` functions.
+
+## Main Modules
+
+### `pdocs.api`
+
+The primary entry points most users will call:
+
+- **`as_html(modules, output_dir=..., overwrite=False, external_links=False, exclude_source=False, link_prefix='', template_dir='')`**
+  Renders the given list of module names (or import paths) to static HTML
+  files in `output_dir`.
+
+- **`as_markdown(modules, output_dir=..., overwrite=False, exclude_source=False, template_dir='')`**
+  Renders the given modules to static Markdown files.
+
+- **`server(modules, external_links=False, exclude_source=False, link_prefix='', template_dir='', open_browser=False, port=..., host=...)`**
+  Starts a local HTTP server that renders documentation for the given
+  modules on request — useful during development.
+
+### `pdocs.extract`
+
+Handles turning module names/specs into loaded, introspectable module
+objects:
+
+- **`split_module_spec(spec)`** — splits a module specification string
+  (e.g. `"package.module:Class"`) into its component parts.
+- **`load_module(basedir, module)`** — imports a module given a base
+  directory and dotted module name.
+- **`submodules(dname, mname)`** — lists submodules of a package.
+- **`extract_module(spec)`** — the high-level helper that loads a module
+  spec and returns a ready-to-render `Module` doc object.
+- **`ExtractError`** — raised when a module spec cannot be resolved or
+  imported.
+
+### `pdocs.html_helpers`
+
+Utility functions used internally (and available for custom templates) to
+process docstrings and build cross-links:
+
+- `mark(text, module_list=None, linky=True)` — renders docstring text
+  (e.g. Markdown) into HTML, optionally auto-linking references.
+- `link(parent, refname, link_prefix)` / `lookup(module, refname, link_prefix)`
+  — resolve and build hyperlinks between documented objects.
+- `linkify`, `module_url`, `external_url`, `is_external_linkable` — support
+  functions for generating correct links between internal and external
+  objects.
+- `glimpse(s, length=100)` — produces a short preview/snippet of text (e.g.
+  for summaries).
+- `clean_source_lines`, `sourceid`, `ident`, `decode` — formatting and
+  identification helpers used when rendering source code and anchors.
+
+### `pdocs.render`
+
+Turns `Module` doc objects into output strings:
+
+- **`html_index(roots, link_prefix='/')`** — renders an index/table of
+  contents page for a set of top-level modules.
+- **`html_module(mod, external_links=False, link_prefix='/', source=True)`**
+  — renders a single module as an HTML page.
+- **`text(mod, source=True)`** — renders a single module as Markdown/plain
+  text.
+
+### `pdocs.static`
+
+Handles writing rendered documentation out to the filesystem:
+
+- **`module_to_path(m, extension='html')`** — computes the output file path
+  for a given module.
+- **`path_to_module(roots, path)`** — the inverse lookup: given a path,
+  finds the corresponding `Module`.
+- **`would_overwrite(destination, roots)`** — checks whether generating docs
+  would clobber existing files.
+- **`html_out(dst, roots, external_links=True, link_prefix='', source=False)`**
+  — writes HTML documentation for a set of modules to `dst`.
+- **`md_out(dst, roots, externel_links=True, source=False)`** — writes
+  Markdown documentation for a set of modules to `dst`.
+- **`StaticError`** — raised on filesystem-related failures (e.g. attempting
+  to overwrite without permission).
+
+## Usage Examples
+
+### Generate static HTML docs
+
+```python
+from pdocs import api
+
+api.as_html(
+    modules=["my_package", "my_package.utils"],
+    output_dir="docs/html",
+    overwrite=True,
+    external_links=True,
+    exclude_source=False,
+)
+```
+
+### Generate Markdown docs
+
+```python
+from pdocs import api
+
+api.as_markdown(
+    modules=["my_package"],
+    output_dir="docs/markdown",
+    overwrite=True,
+)
+```
+
+### Serve documentation locally
+
+```python
+from pdocs import api
+
+api.server(
+    modules=["my_package"],
+    open_browser=True,
+    port=8080,
+    host="localhost",
+)
+```
+
+### Working with the object model directly
+
+```python
+from pdocs.extract import extract_module
+from pdocs import render
+
+mod = extract_module("my_package.utils")
+
+# List public classes and functions
+for cls in mod.classes():
+    print(cls.refname(), [m.refname() for m in cls.methods()])
+
+for func in mod.functions():
+    print(func.refname(), func.spec())
+
+# Render this single module to an HTML string
+html = render.html_module(mod, external_links=True, source=True)
+```
+
+### Writing output manually via `pdocs.static`
+
+```python
+import pathlib
+from pdocs.extract import extract_module
+from pdocs.static import html_out, would_overwrite
+
+roots = [extract_module("my_package")]
+dst = pathlib.Path("docs/html")
+
+if not would_overwrite(dst, roots):
+    html_out(dst, roots, external_links=True, source=True)
+```
+
+## Custom Templates
+
+Both `as_html` and `as_markdown` (and `server`) accept a `template_dir`
+argument, allowing you to override the default rendering templates used by
+`pdocs.render` to match your project's style or documentation site layout.
+
+## License
+
+See `LICENSE` for details.

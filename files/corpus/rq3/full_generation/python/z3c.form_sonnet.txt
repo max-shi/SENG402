@@ -1,0 +1,238 @@
+# z3c.form
+
+`z3c.form` is a form generation and processing library for building web
+forms on top of Zope schema fields. It provides a complete pipeline for
+turning schema fields into interactive HTML widgets, extracting and
+converting submitted data back into Python values, validating that data,
+applying it to content objects, and wiring up buttons/actions that drive
+form behavior (add, edit, cancel, etc.).
+
+The library is organized around a small number of cooperating concepts:
+
+- **Fields & Widgets** – schema fields are turned into widgets that know how
+  to render themselves and extract raw input from a request.
+- **Data Converters** – translate between the raw value a widget works with
+  and the value expected by the underlying schema field.
+- **Data Managers** – get/set values on arbitrary content objects
+  (attributes or dictionary items).
+- **Validators** – validate individual widget values and whole-form data
+  ("invariants").
+- **Actions & Buttons** – define submit buttons and dispatch to handler
+  methods when a particular button is pressed.
+- **Forms** – tie fields, widgets, actions and content together into
+  `Form`, `AddForm`, `EditForm`, `DisplayForm`, and `Group`/`GroupForm` for
+  composing sub-groups of fields.
+
+Browser-specific widget implementations (text inputs, checkboxes, radio
+buttons, selects, textareas, file/password inputs, multi and object
+widgets) live under `z3c.form.browser` and provide concrete HTML rendering
+on top of the abstract widget framework.
+
+## Core Concepts
+
+### Fields and Widgets
+
+`z3c.form.field.Fields` is a `SelectionManager` that collects
+`zope.schema` fields (wrapped as `z3c.form.field.Field` objects) that a form
+should render. You build a `Fields` collection from a schema and can
+`select()` or `omit()` particular field names:
+
+```python
+from z3c.form import field
+from my.package.interfaces import IPerson
+
+class PersonAddForm(...):
+    fields = field.Fields(IPerson)
+```
+
+`z3c.form.field.FieldWidgets` (a `Manager`) takes a `Fields` collection and
+a form/request and produces actual widget instances — one per field — using
+`z3c.form.widget.FieldWidget` factories. Each widget implements
+`IWidget`, exposing `update()`, `extract()`, `render()`, and `json_data()`.
+
+Widget flavors include:
+
+- `Widget` – the base widget.
+- `SequenceWidget` – for multi-valued/choice fields (checkboxes, radios,
+  selects).
+- `MultiWidget` – for collections of sub-widgets, with add/remove support.
+- `ObjectWidget` – renders a sub-form of widgets for an object-valued field.
+
+Browser implementations (in `z3c.form.browser`) supply concrete rendering:
+`TextWidget`, `TextAreaWidget`, `CheckBoxWidget`, `SingleCheckBoxWidget`,
+`RadioWidget`, `SelectWidget`, `OrderedSelectWidget`, `PasswordWidget`,
+`FileWidget`, `SubmitWidget`, `ButtonWidget`, `ImageWidget`, and
+`TextLinesWidget`. Each has a corresponding `*FieldWidget(field, request)`
+factory function used to bind a widget implementation to a field.
+
+### Data Conversion
+
+`z3c.form.converter` defines `IDataConverter` implementations that
+translate between a widget's string/raw representation and the field's
+native Python type: `FieldDataConverter`, `NumberDataConverter` (and its
+`IntegerDataConverter`, `FloatDataConverter`, `DecimalDataConverter`
+subclasses), `CalendarDataConverter` (`DateDataConverter`,
+`TimeDataConverter`, `DatetimeDataConverter`), `FileUploadDataConverter`,
+`SequenceDataConverter`, `CollectionSequenceDataConverter`,
+`TextLinesConverter`, `MultiConverter`, `DictMultiConverter`, and
+`BoolSingleCheckboxDataConverter`.
+
+### Data Managers
+
+`z3c.form.datamanager` provides `AttributeField` and `DictionaryField`,
+both implementing `get()`, `query()`, `set()`, `canAccess()`, and
+`canWrite()` to read/write a field's value on a content object or mapping.
+`z3c.form.form.applyChanges(form, content, data)` uses these to push
+extracted form data onto a content object.
+
+### Validation
+
+`z3c.form.validator` supplies `SimpleFieldValidator` /
+`StrictSimpleFieldValidator` for per-widget validation, `FileUploadValidator`
+for file fields, and `InvariantsValidator` for whole-form (schema
+invariant) validation. Validators are registered as adapters via
+`WidgetValidatorDiscriminators` / `WidgetsValidatorDiscriminators`.
+
+### Actions and Buttons
+
+`z3c.form.button.Button` is a `zope.schema.Field` describing a submit
+button; `Buttons` (a `SelectionManager`) collects them on a form, similarly
+to how `Fields` collects fields. The `handler(button)` decorator or
+`buttonAndHandler(title, **kwargs)` helper registers a callable to run when
+a button is pressed. `Handlers`/`Handler` manage the button → handler
+mapping, and `ButtonActions`/`ButtonAction`/`ImageButtonAction` render
+buttons as actions and execute the matching handler through
+`ButtonActionHandler`.
+
+### Forms
+
+`z3c.form.form.BaseForm` is the foundation: it fetches content
+(`getContent()`), builds widgets (`updateWidgets()`), extracts data
+(`extractData()`), and renders a template (`render()`/`json()`).
+
+- `Form` adds action/button support (`updateActions()`, `action`, `name`,
+  `id`).
+- `AddForm` implements the create/add workflow: `create(data)`,
+  `add(object)`, `createAndAdd(data)`, `nextURL()`.
+- `EditForm` implements `applyChanges(data)` and a bound `handleApply`
+  button handler.
+- `DisplayForm` renders read-only widgets.
+- `Group` / `GroupForm` let you compose a form out of nested field
+  groupings, each with their own widgets, validation, and change
+  application, aggregated into the parent form.
+
+`z3c.form.adding.AddForm` is a ready-made add form intended for use with
+container-style object publishing, exposing `add(object)` and `nextURL()`.
+
+`z3c.form.subform.EditSubForm` supports rendering an editable sub-form
+tied to a parent form's apply-changes cycle.
+
+## Example: A Simple Add Form
+
+```python
+import zope.interface
+import zope.schema
+from z3c.form import form, field, button
+
+
+class IPerson(zope.interface.Interface):
+    name = zope.schema.TextLine(title=u"Name")
+    age = zope.schema.Int(title=u"Age", required=False)
+
+
+class Person:
+    def __init__(self):
+        self.name = u""
+        self.age = None
+
+
+class PersonAddForm(form.AddForm):
+    fields = field.Fields(IPerson)
+
+    def create(self, data):
+        person = Person()
+        return person
+
+    def add(self, object):
+        self.context[object.name] = object
+
+    def nextURL(self):
+        return self.context.absolute_url()
+
+    @button.buttonAndHandler(u"Cancel")
+    def handleCancel(self, action):
+        self.request.response.redirect(self.nextURL())
+```
+
+`form.AddForm` already wires up an "Add" button (via `handleAdd`) that
+calls `createAndAdd`, which in turn calls `create()` and `add()` for you.
+
+## Example: An Edit Form
+
+```python
+from z3c.form import form, field
+
+
+class PersonEditForm(form.EditForm):
+    fields = field.Fields(IPerson)
+```
+
+`EditForm` automatically extracts submitted data, validates it, and calls
+`applyChanges(data)` — which uses `z3c.form.form.applyChanges` together
+with `AttributeField` data managers to update the underlying content object
+— when the built-in "Apply" button is pressed.
+
+## Example: Selecting a Subset of Fields
+
+```python
+from z3c.form import field
+
+# Only render the "name" field, omitting "age"
+fields = field.Fields(IPerson).select("name")
+
+# Or omit specific fields instead
+fields = field.Fields(IPerson).omit("age")
+```
+
+## Example: Custom Widget Assignment
+
+```python
+from z3c.form import field
+from z3c.form.browser.textarea import TextAreaFieldWidget
+
+fields = field.Fields(IPerson)
+fields["name"].widgetFactory = TextAreaFieldWidget
+```
+
+## Example: Grouping Fields
+
+```python
+from z3c.form import form, field, group
+
+
+class ContactGroup(group.Group):
+    fields = field.Fields(IPerson).select("age")
+
+
+class PersonForm(form.Form, group.GroupForm):
+    fields = field.Fields(IPerson).select("name")
+    groups = (ContactGroup,)
+```
+
+## Testing Support
+
+`z3c.form.testing` provides fixtures used throughout the library's own test
+suite — `setUp`/`tearDown`, `TestRequest`, sample content interfaces and
+classes (`IMyObject`/`MyObject`, etc.), and rendering helpers (`render`,
+`plainText`, `getSubmitValues`) — which can also be reused by consumers
+writing tests for forms built with this library.
+
+## Summary
+
+`z3c.form` cleanly separates the concerns of a form-processing pipeline:
+schema-driven **fields**, renderable **widgets**, **converters** for
+value translation, **data managers** for persistence, **validators** for
+correctness, and **actions/buttons** for user-triggered behavior — all
+composed together by `Form`, `AddForm`, `EditForm`, `DisplayForm`, and
+`Group`/`GroupForm` base classes that application code subclasses to build
+concrete forms.

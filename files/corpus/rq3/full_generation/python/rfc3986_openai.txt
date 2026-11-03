@@ -1,0 +1,301 @@
+# rfc3986
+
+`rfc3986` provides tools for parsing, constructing, normalizing, validating, and resolving URI and IRI references.
+
+The library exposes immutable reference objects for working with URI components, a builder for assembling URIs incrementally, parsing results with URL-style accessors, configurable validation, and standalone normalization and encoding helpers.
+
+## Overview
+
+### URI and IRI references
+
+The primary reference types are:
+
+- `URIReference` — a URI reference with `scheme`, `authority`, `path`, `query`, and `fragment` components.
+- `IRIReference` — an IRI reference that can be encoded into a URI reference.
+
+Create them from strings:
+
+```python
+from rfc3986.uri import URIReference
+from rfc3986.iri import IRIReference
+
+uri = URIReference.from_string(
+    "https://user@example.com:8443/docs/index.html?lang=en#installation"
+)
+
+iri = IRIReference.from_string("https://example.com/Документы")
+```
+
+Both reference types provide shared URI operations through `URIMixin`, including:
+
+- component access through `host()`, `port()`, and `userinfo()`;
+- validation through `is_valid()` and component-specific validation methods;
+- normalization-aware comparison through `normalized_equality()`;
+- resolution against a base URI through `resolve_with()`;
+- reconstruction through `unsplit()`;
+- immutable modification through `copy_with()`.
+
+`URIReference` additionally provides `normalize()`. `IRIReference` provides `encode()` for producing an encoded URI representation.
+
+### Convenience API
+
+The `rfc3986.api` module provides direct entry points for common operations:
+
+```python
+from rfc3986.api import (
+    iri_reference,
+    is_valid_uri,
+    normalize_uri,
+    uri_reference,
+    urlparse,
+)
+```
+
+- `uri_reference(uri)` creates a `URIReference`.
+- `iri_reference(iri)` creates an `IRIReference`.
+- `is_valid_uri(uri, **kwargs)` checks URI validity.
+- `normalize_uri(uri)` returns a normalized URI.
+- `urlparse(uri)` creates a parse result object.
+
+### Parse results
+
+`ParseResult` and `ParseResultBytes` provide structured URL-style parsing results.
+
+They can be created from complete strings or individual components:
+
+```python
+from rfc3986.parseresult import ParseResult
+
+result = ParseResult.from_string("https://example.com:443/search?q=python")
+
+print(result.scheme)
+print(result.hostname())
+print(result.netloc())
+print(result.path)
+print(result.query)
+print(result.geturl())
+```
+
+Use `ParseResultBytes` when working with byte-oriented URI data. Both parse result types support:
+
+- `from_string()` and `from_parts()`;
+- `authority()`;
+- `hostname()` and `netloc()`;
+- `copy_with()` for replacing selected components;
+- `unsplit()` and `geturl()` for serialization.
+
+`split_authority()` and `authority_from()` are also available for authority-specific parsing.
+
+### Validation
+
+For simple checks, use `is_valid_uri()`:
+
+```python
+from rfc3986.api import is_valid_uri
+
+if is_valid_uri("https://example.com/api/v1"):
+    print("The URI is valid")
+```
+
+For policy-based validation, configure a `Validator`:
+
+```python
+from rfc3986.api import uri_reference
+from rfc3986.validators import Validator
+
+reference = uri_reference("https://api.example.com:443/v1/projects")
+
+validator = Validator()
+validator.allow_schemes("https")
+validator.allow_hosts("api.example.com")
+validator.allow_ports(443)
+validator.require_presence_of("scheme", "host")
+validator.check_validity_of("scheme", "authority", "path")
+
+validator.validate(reference)
+```
+
+Validation failures may raise exceptions including:
+
+- `ValidationError`
+- `MissingComponentError`
+- `UnpermittedComponentError`
+- `PasswordForbidden`
+- `InvalidComponentsError`
+
+Authority and resolution-related errors are represented by:
+
+- `InvalidAuthority`
+- `InvalidPort`
+- `ResolutionError`
+
+All library-specific exceptions derive from `RFC3986Exception`.
+
+## Usage examples
+
+### Parse and inspect a URI
+
+```python
+from rfc3986.api import uri_reference
+
+reference = uri_reference(
+    "https://alice@example.com:8443/catalog/items?sort=name#details"
+)
+
+print(reference.host())
+print(reference.port())
+print(reference.userinfo())
+print(reference.path)
+print(reference.query)
+print(reference.fragment)
+
+if reference.is_absolute() and reference.is_valid():
+    print(reference.unsplit())
+```
+
+### Normalize a URI
+
+```python
+from rfc3986.api import normalize_uri
+
+value = "HTTP://EXAMPLE.COM/a/../b"
+normalized = normalize_uri(value)
+
+print(normalized)
+```
+
+For component-level normalization, use functions from `rfc3986.normalizers`:
+
+```python
+from rfc3986.normalizers import (
+    normalize_host,
+    normalize_path,
+    normalize_scheme,
+    remove_dot_segments,
+)
+
+scheme = normalize_scheme("HTTPS")
+host = normalize_host("EXAMPLE.COM")
+path = normalize_path("/docs/../guide")
+clean_path = remove_dot_segments("/docs/../guide")
+```
+
+Available normalizers cover schemes, authorities, usernames, passwords, hosts, paths, queries, fragments, percent characters, and URI-component encoding.
+
+### Resolve a relative reference
+
+```python
+from rfc3986.api import uri_reference
+
+base = uri_reference("https://example.com/docs/guide/")
+relative = uri_reference("../api/reference.html")
+
+resolved = relative.resolve_with(base)
+
+print(resolved.unsplit())
+```
+
+The `strict` argument can be supplied when resolution behavior needs to be controlled:
+
+```python
+resolved = relative.resolve_with(base, strict=True)
+```
+
+### Compare references using normalized equality
+
+```python
+from rfc3986.api import uri_reference
+
+first = uri_reference("HTTP://EXAMPLE.COM/docs/../index.html")
+second = uri_reference("http://example.com/index.html")
+
+if first.normalized_equality(second):
+    print("These references are equivalent after normalization")
+```
+
+### Work with an IRI and encode it
+
+```python
+from rfc3986.api import iri_reference
+
+reference = iri_reference("https://example.com/Документы/обзор")
+
+uri = reference.encode()
+
+print(uri.unsplit())
+```
+
+An optional `idna_encoder` can be supplied to `IRIReference.encode()` when custom host encoding behavior is needed.
+
+### Update selected components immutably
+
+```python
+from rfc3986.api import uri_reference
+
+reference = uri_reference("https://example.com/products?category=books")
+
+updated = reference.copy_with(
+    path="/products/42",
+    query="include=reviews",
+    fragment="summary",
+)
+
+print(updated.unsplit())
+```
+
+The `copy_with()` methods preserve unspecified components and replace only the values supplied by the caller.
+
+### Build a URI incrementally
+
+`URIBuilder` supports assembling or extending a URI through individual components:
+
+```python
+from rfc3986.api import uri_reference
+from rfc3986.builder import URIBuilder
+
+builder = URIBuilder.from_uri(uri_reference("https://example.com"))
+
+builder.add_path("/search")
+builder.add_query("q=rfc3986")
+builder.add_fragment("results")
+
+result = builder.finalize()
+
+print(result.unsplit())
+```
+
+The builder also supports:
+
+- `add_scheme()`
+- `add_credentials()`
+- `add_host()`
+- `add_port()`
+- `add_path()` and `extend_path()`
+- `add_query()` and `add_query_from()`
+- `extend_query_with()`
+- `add_fragment()`
+- `geturl()`
+
+### Convert between text and bytes
+
+Use the compatibility helpers when a URI workflow needs explicit text/byte conversion:
+
+```python
+from rfc3986.compat import to_bytes, to_str
+
+raw = to_bytes("https://example.com/path")
+text = to_str(raw)
+```
+
+Both helpers accept an `encoding` argument, defaulting to UTF-8.
+
+## Lower-level helpers
+
+The library also exposes focused helpers for applications that need finer-grained control:
+
+- `misc.merge_paths(base_uri, relative_path)` for URI path merging.
+- `normalizers.encode_component(uri_component, encoding)` for component encoding.
+- `parseresult.split_authority(authority)` for authority decomposition.
+- Validation helpers such as `authority_is_valid()`, `host_is_valid()`, `scheme_is_valid()`, `path_is_valid()`, `query_is_valid()`, and `fragment_is_valid()`.
+
+These functions are useful when building custom URI processing pipelines around individual URI components rather than complete references.

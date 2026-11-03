@@ -1,0 +1,274 @@
+# exhale
+
+**exhale** is a Sphinx extension that automatically generates a full,
+hyperlinked API reference from Doxygen XML output. It bridges Doxygen and
+Sphinx (via Breathe) by parsing the Doxygen-generated XML, building an
+internal object graph of your C/C++ API (namespaces, classes, structs,
+unions, enums, functions, files, and directories), and then generating a
+complete set of reStructuredText documents and hierarchy views that Sphinx
+can render — without you having to hand-write `.rst` files for every class
+and file in your project.
+
+## What it does
+
+At a high level, exhale:
+
+1. Runs Doxygen (or consumes existing Doxygen XML output) to produce an XML
+   description of your source tree.
+2. Parses that XML into a graph of nodes representing every documented
+   entity in your codebase.
+3. Cross-links and re-parents those nodes so that namespaces contain their
+   classes, files contain their functions, directories contain their files,
+   and so on.
+4. Generates individual reStructuredText pages for every node, plus
+   "hierarchy" pages (class hierarchy, file hierarchy, and page hierarchy)
+   and a root "API" landing page.
+5. Hooks into the Sphinx build lifecycle so all of this happens
+   automatically when you run `sphinx-build`.
+
+It is intended to be installed as a Sphinx extension and configured through
+your `conf.py`, rather than invoked directly from the command line.
+
+## Core components
+
+### `exhale` (extension entry points)
+
+The top-level package exposes the functions Sphinx calls directly:
+
+- `setup(app)` — registers exhale as a Sphinx extension, wiring up
+  configuration values and event callbacks. This is what you list in your
+  `conf.py`'s `extensions` list.
+- `environment_ready(app)` — invoked once the Sphinx build environment is
+  set up; this is where exhale kicks off Doxygen execution and the
+  generation of RST documents.
+- `cleanup_files(app, env, docname)` — removes generated intermediate
+  files after a build so your source tree isn't left cluttered with
+  exhale-generated artifacts.
+
+### `exhale.configs`
+
+- `apply_sphinx_configurations(app)` — validates and normalizes the
+  `exhale_args` (and related) settings found in `conf.py`, making sure
+  required options are present and consistent before generation begins.
+
+### `exhale.deploy`
+
+This module drives the actual generation process:
+
+- `generateDoxygenXML()` — executes Doxygen against your source tree (or
+  locates pre-generated XML) and prepares it for parsing.
+- `explode()` — the main orchestration function. It builds an
+  `ExhaleRoot`, parses the Doxygen XML into a graph, and writes out all of
+  the generated `.rst` documents, hierarchies, and the API root page.
+
+### `exhale.graph`
+
+This is the heart of the library — an in-memory representation of your
+documented API.
+
+- **`ExhaleNode`** represents a single documented entity (a class,
+  function, namespace, file, directory, enum, union, page, etc.). Nodes
+  know how to:
+  - Determine their Breathe directive identifier
+    (`breathe_identifier`) and full C++ signature (`full_signature`).
+  - Discover their nested children (`findNestedNamespaces`,
+    `findNestedClassLike`, `findNestedEnums`, `findNestedUnions`,
+    `findNestedDirectories`).
+  - Render themselves into hierarchy trees (`toHierarchy`) or debug output
+    (`toConsole`).
+  - Report whether they belong in the page, class, or file hierarchy
+    (`inPageHierarchy`, `inClassHierarchy`, `inFileHierarchy`,
+    `inHierarchy`).
+
+- **`ExhaleRoot`** owns the entire graph of `ExhaleNode` objects and drives
+  the multi-pass generation pipeline:
+  - `parse()` and `discoverAllNodes()` build the initial node graph from
+    Doxygen XML.
+  - The `reparent*` methods (`reparentAll`, `reparentUnions`,
+    `reparentClassLike`, `reparentDirectories`, `reparentNamespaces`) fix
+    up parent/child relationships so nodes appear nested correctly (e.g.,
+    a class inside its namespace, a file inside its directory).
+  - `renameToNamespaceScopes()` and `parseFunctionSignatures()` clean up
+    naming and signatures for display.
+  - `sortInternals()` / `deepSortList()` order children consistently.
+  - The `generate*` methods (`generateFullAPI`, `generateAPIRootHeader`,
+    `generateNodeDocuments`, `generatePageDocuments`,
+    `generateNamespaceNodeDocuments`, `generateFileNodeDocuments`,
+    `generateDirectoryNodeDocuments`, `generateAPIRootBody`,
+    `generateViewHierarchies`, `generateUnabridgedAPI`) produce the actual
+    RST files: one per node, plus root/overview pages and hierarchy trees.
+  - `toConsole()` / `consoleFormat()` print a debug view of the entire
+    parsed API tree, useful when diagnosing why something isn't showing up
+    correctly.
+
+### `exhale.parse`
+
+Helpers for converting Doxygen's XML descriptions (brief and detailed
+descriptions, embedded markup, etc.) into RST-compatible text:
+
+- `walk(textRoot, currentTag, level, ...)` — recursively traverses a
+  parsed XML/HTML soup tree, converting Doxygen's descriptive markup into
+  RST-friendly output.
+- `convertDescriptionToRST(textRoot, node, soupTag, heading)` — converts a
+  full description block (with an optional heading) into RST text attached
+  to a node.
+- `getBriefAndDetailedRST(textRoot, node)` — extracts and converts both the
+  brief and detailed description sections of a Doxygen entry.
+
+### `exhale.utils`
+
+A grab-bag of formatting, sanitization, and console-output utilities used
+throughout the rest of the library:
+
+- Text/formatting helpers: `heading_mark`, `time_string`, `get_time`,
+  `indent`, `contentsDirectiveOrNone`.
+- Name handling: `sanitize`, `sanitize_all`, `tokenize_template`,
+  `join_template_tokens` — used to normalize and re-assemble C++ template
+  names for safe use in filenames and RST references.
+- Doxygen/Breathe mapping: `doxygenLanguageToPygmentsLexer`, `qualifyKind`,
+  `kindAsBreatheDirective`, `specificationsForKind`,
+  `makeCustomSpecificationsMapping`, `nodeCompoundXMLContents` — translate
+  Doxygen's "kind" and language metadata into the right Breathe directives
+  and syntax-highlighting lexers.
+- Console output: `AnsiColors`, `colorize`, `progress`, `info`,
+  `critical`, `verbose_log`, `exclaim`, `prefix` — consistent, colorized
+  logging used during the build.
+- Error reporting: `fancyErrorString`, `fancyError` — produce nicely
+  formatted tracebacks/error messages when generation fails partway
+  through.
+
+## How the pieces fit together
+
+```
+conf.py (extensions = ["exhale"])
+        │
+        ▼
+exhale.setup(app)              # registers config values & event hooks
+        │
+        ▼
+exhale.configs.apply_sphinx_configurations(app)   # validates exhale_args
+        │
+        ▼
+exhale.environment_ready(app)
+        │
+        ▼
+exhale.deploy.generateDoxygenXML()   # run Doxygen / locate XML
+        │
+        ▼
+exhale.deploy.explode()
+        │
+        ├── ExhaleRoot().parse()             # build node graph from XML
+        ├── ExhaleRoot().reparentAll()       # nest nodes correctly
+        ├── ExhaleRoot().sortInternals()     # order children
+        └── ExhaleRoot().generateFullAPI()   # write out .rst files
+        │
+        ▼
+Sphinx renders the generated .rst files
+        │
+        ▼
+exhale.cleanup_files(app, env, docname)   # tidy up after the build
+```
+
+Internally, `exhale.parse` is used while building each `ExhaleNode`'s
+documentation body (turning Doxygen's brief/detailed XML descriptions into
+RST), and `exhale.utils` is used pervasively for name sanitization,
+Breathe directive selection, and console logging/error reporting.
+
+## Usage
+
+### Basic setup in `conf.py`
+
+```python
+extensions = [
+    "breathe",
+    "exhale",
+]
+
+# Breathe configuration (tells Sphinx where Doxygen's XML output lives)
+breathe_projects = {"MyProject": "./doxyoutput/xml"}
+breathe_default_project = "MyProject"
+
+# Exhale configuration
+exhale_args = {
+    "containmentFolder": "./api",
+    "rootFileName": "library_root.rst",
+    "rootFileTitle": "Library API",
+    "doxygenStripFromPath": "..",
+    "createTreeView": True,
+    "exhaleExecutesDoxygen": True,
+    "exhaleDoxygenStdin": "INPUT = ../include",
+}
+```
+
+With this in place, running a normal Sphinx build will:
+
+1. Trigger `exhale.setup` to register the extension.
+2. Call `apply_sphinx_configurations` to validate `exhale_args`.
+3. Run `generateDoxygenXML()` to produce Doxygen XML from your headers.
+4. Run `explode()` to parse that XML, build the `ExhaleRoot` graph, and
+   write out RST pages for every class, file, and namespace.
+5. Let Sphinx build those generated pages alongside your handwritten docs.
+
+```bash
+sphinx-build -b html source build
+```
+
+The generated root page (e.g. `api/library_root.rst`) can then be included
+in your `index.rst` toctree:
+
+```rst
+.. toctree::
+   :maxdepth: 2
+
+   api/library_root
+```
+
+### Inspecting the parsed API graph programmatically
+
+If you are extending or debugging exhale itself, you can drive the graph
+directly:
+
+```python
+from exhale.graph import ExhaleRoot
+
+root = ExhaleRoot()
+root.parse()              # parse Doxygen XML into nodes
+root.reparentAll()        # organize nodes into proper parent/child trees
+root.sortInternals()      # sort children alphabetically / by kind
+root.toConsole()          # print the whole discovered API tree for debugging
+```
+
+This is useful when diagnosing why a particular class or namespace isn't
+appearing where expected in the generated documentation.
+
+### Custom directive specifications
+
+`exhale.utils.makeCustomSpecificationsMapping` lets you supply your own
+function for controlling which Breathe directive options (e.g.,
+`:members:`, `:undoc-members:`) are applied per "kind" of entity (class,
+struct, file, etc.):
+
+```python
+from exhale import utils
+
+def my_specifications(kind):
+    if kind == "class":
+        return [":members:", ":protected-members:", ":undoc-members:"]
+    return utils.specificationsForKind(kind)
+
+exhale_args = {
+    # ... other args ...
+    "customSpecificationsMapping": utils.makeCustomSpecificationsMapping(
+        my_specifications
+    ),
+}
+```
+
+## Summary
+
+exhale automates the tedious work of writing Sphinx/Breathe `.rst` files
+for a C/C++ API: it runs Doxygen, parses the resulting XML into a rich
+object graph (`ExhaleRoot` / `ExhaleNode`), converts Doxygen's descriptive
+markup into RST (`exhale.parse`), and emits a full set of cross-linked
+documentation pages and hierarchy views — all triggered automatically as
+part of a normal Sphinx build.

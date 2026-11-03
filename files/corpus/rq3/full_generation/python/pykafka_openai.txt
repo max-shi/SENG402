@@ -1,0 +1,547 @@
+# pykafka
+
+`pykafka` is a Python library for working with Apache Kafka-style brokers, topics, partitions, producers, consumers, consumer groups, offsets, and protocol requests.
+
+The library provides both high-level topic, producer, and consumer APIs and lower-level broker, connection, and protocol APIs. It also includes utilities for compression, serialization, socket reads, error handling, and Kafka API-version handling.
+
+## Core concepts
+
+The main objects are arranged around a Kafka cluster:
+
+- **`KafkaClient`** manages cluster state through `update_cluster()`.
+- **`Cluster`** exposes broker and topic collections and resolves consumer-group services such as coordinators and offset managers.
+- **`Topic`** represents a named topic and provides access to partitions, producers, and consumers.
+- **`Partition`** represents a topic partition, its leader, replicas, in-sync replicas, and available offsets.
+- **`Producer`** publishes messages to a topic.
+- **`SimpleConsumer`** consumes messages from explicitly managed partitions.
+- **`BalancedConsumer`** consumes as part of a consumer group and manages partition balancing.
+- **`ManagedBalancedConsumer`** is a balanced-consumer variant with its own lifecycle handling.
+- **`Broker`** provides direct access to broker operations such as fetching, producing, metadata lookup, offset management, group membership, and topic administration.
+
+At the protocol level, the library provides request and response types for metadata, fetching, producing, offsets, consumer-group membership, and administrative operations.
+
+## Topics and partitions
+
+A `Topic` is the usual entry point for producing and consuming:
+
+```python
+# `topic` is a Topic obtained from the application's cluster/client setup.
+
+print(topic.name())
+print(topic.partitions())
+
+topic.update(metadata)
+```
+
+Topics can inspect offset boundaries across their partitions:
+
+```python
+earliest = topic.earliest_available_offsets()
+latest = topic.latest_available_offsets()
+
+# Query offset limits before a supplied offset value.
+limits = topic.fetch_offset_limits(offsets_before=123456, max_offsets=1)
+```
+
+A `Partition` exposes metadata and offset lookup for an individual partition:
+
+```python
+partition_id = partition.id()
+leader = partition.leader()
+replicas = partition.replicas()
+in_sync_replicas = partition.isr()
+
+earliest = partition.earliest_available_offset()
+latest = partition.latest_available_offset()
+
+limits = partition.fetch_offset_limit(
+    offsets_before=123456,
+    max_offsets=1,
+)
+```
+
+## Producing messages
+
+Create a producer from a topic with `get_producer()`:
+
+```python
+producer = topic.get_producer()
+
+producer.start()
+try:
+    # `message` is a message object suitable for the producer.
+    producer.produce(
+        message,
+        partition_key=b"customer-42",
+        timestamp=None,
+    )
+
+    # Delivery reports can be retrieved when needed.
+    report = producer.get_delivery_report(block=True, timeout=10)
+finally:
+    producer.stop()
+```
+
+For callers that prefer the topic’s synchronous-producer factory:
+
+```python
+producer = topic.get_sync_producer()
+
+producer.start()
+try:
+    producer.produce(message, partition_key=b"order-1001")
+finally:
+    producer.stop()
+```
+
+`Producer.produce()` accepts:
+
+- `message`: the message to publish.
+- `partition_key`: an optional key used while selecting a partition.
+- `timestamp`: an optional timestamp.
+
+Use `get_delivery_report()` to retrieve delivery results. It can block or return according to its `block` and `timeout` arguments.
+
+The library also exposes partitioner classes:
+
+- `BasePartitioner`
+- `RandomPartitioner`
+- `HashingPartitioner`
+- `GroupHashingPartitioner`
+
+These represent partition-selection strategies for producer workflows.
+
+## Consuming messages
+
+### Simple consumers
+
+A simple consumer is created from a topic:
+
+```python
+consumer = topic.get_simple_consumer(
+    consumer_group="analytics-workers",
+)
+
+consumer.start()
+try:
+    while True:
+        message = consumer.consume(block=True)
+        if message is None:
+            continue
+
+        # Process the consumed message here.
+        process(message)
+
+        # Persist the current consumer offsets when appropriate.
+        consumer.commit_offsets()
+finally:
+    consumer.stop()
+```
+
+A `SimpleConsumer` supports:
+
+- `start()` and `stop()` for lifecycle management.
+- `consume(block=True, unblock_event=None)` to consume a message.
+- `fetch()` to retrieve available messages.
+- `commit_offsets(partition_offsets=None)` to commit offsets.
+- `fetch_offsets()` to read stored offsets.
+- `reset_offsets(partition_offsets=None)` to reset offsets.
+- `held_offsets()` to inspect offsets currently held by the consumer.
+- `partitions()` to inspect its partitions.
+- `cleanup()` to release consumer resources.
+
+Example: reset selected partition offsets, then commit them:
+
+```python
+consumer.reset_offsets(partition_offsets=partition_offsets)
+consumer.commit_offsets(partition_offsets=partition_offsets)
+```
+
+### Balanced consumers
+
+Balanced consumers are intended for consumer-group use cases where partitions are assigned among participating consumers.
+
+```python
+consumer = topic.get_balanced_consumer(
+    consumer_group="billing-service",
+)
+
+consumer.start()
+try:
+    while True:
+        message = consumer.consume(block=True)
+        if message is not None:
+            process(message)
+
+        # Commit offsets at a point appropriate for the application.
+        consumer.commit_offsets()
+finally:
+    consumer.stop()
+```
+
+A `BalancedConsumer` provides:
+
+- `topic()`
+- `partitions()`
+- `held_offsets()`
+- `start()`
+- `stop()`
+- `consume(block=True)`
+- `commit_offsets(partition_offsets=None)`
+- `reset_offsets(partition_offsets=None)`
+
+To request the managed variant:
+
+```python
+managed_consumer = topic.get_balanced_consumer(
+    consumer_group="billing-service",
+    managed=True,
+)
+
+managed_consumer.start()
+try:
+    message = managed_consumer.consume()
+    if message is not None:
+        process(message)
+finally:
+    managed_consumer.stop()
+```
+
+Partition assignment helpers are also available:
+
+```python
+from pykafka.membershipprotocol import (
+    decide_partitions_range,
+    decide_partitions_roundrobin,
+)
+
+assigned_by_range = decide_partitions_range(
+    participants=participants,
+    partitions=partitions,
+    consumer_id=consumer_id,
+)
+
+assigned_by_roundrobin = decide_partitions_roundrobin(
+    participants=participants,
+    partitions=partitions,
+    consumer_id=consumer_id,
+)
+```
+
+## Cluster and broker operations
+
+`Cluster` exposes the current broker and topic collections:
+
+```python
+brokers = cluster.brokers()
+topics = cluster.topics()
+
+cluster.update()
+```
+
+It can also resolve services needed for consumer groups:
+
+```python
+offset_manager = cluster.get_offset_manager("analytics-workers")
+coordinator = cluster.get_group_coordinator("analytics-workers")
+
+groups = cluster.get_managed_group_descriptions()
+api_versions = cluster.fetch_api_versions()
+```
+
+A `Broker` exposes direct broker-level operations. This is useful for applications that need explicit control over Kafka requests:
+
+```python
+if not broker.connected():
+    broker.connect()
+
+metadata = broker.request_metadata(topics=[b"events"])
+
+broker.fetch_messages(
+    partition_requests=partition_requests,
+    timeout=30000,
+    min_bytes=1,
+)
+
+broker.produce_messages(produce_request)
+```
+
+Broker offset and consumer-group operations include:
+
+```python
+broker.request_offset_limits(partition_requests)
+
+broker.commit_consumer_group_offsets(
+    consumer_group="analytics-workers",
+    consumer_group_generation_id=generation_id,
+    consumer_id=consumer_id,
+    preqs=partition_offset_requests,
+)
+
+stored_offsets = broker.fetch_consumer_group_offsets(
+    consumer_group="analytics-workers",
+    preqs=partition_offset_fetch_requests,
+)
+```
+
+Broker group-membership methods include:
+
+- `join_group(...)`
+- `leave_group(...)`
+- `sync_group(...)`
+- `heartbeat(...)`
+- `list_groups()`
+- `describe_groups(group_ids)`
+
+Administrative topic operations are available directly from a broker:
+
+```python
+broker.create_topics(topic_reqs, timeout=0)
+broker.delete_topics(topics=[b"temporary-topic"], timeout=0)
+```
+
+## Protocol API
+
+The protocol layer provides request and response classes for applications that need to construct Kafka requests directly.
+
+Available request families include:
+
+| Area | Requests |
+|---|---|
+| Metadata | `MetadataRequest` |
+| Fetch | `FetchRequest`, `PartitionFetchRequest` |
+| Produce | `ProduceRequest` |
+| Offset lookup | `ListOffsetRequest`, `PartitionOffsetRequest` |
+| Offset commit/fetch | `OffsetCommitRequest`, `OffsetFetchRequest` |
+| Group coordination | `GroupCoordinatorRequest` |
+| Group membership | `JoinGroupRequest`, `SyncGroupRequest`, `HeartbeatRequest`, `LeaveGroupRequest` |
+| Administration | `ListGroupsRequest`, `DescribeGroupsRequest`, `CreateTopicsRequest`, `DeleteTopicsRequest`, `ApiVersionsRequest` |
+
+Requests generally support `get_bytes()` for serialization. Some request classes also provide helper methods:
+
+```python
+request = ProduceRequest()
+request.add_message(
+    message=message,
+    topic_name=b"events",
+    partition_id=0,
+)
+
+count = request.message_count()
+encoded_request = request.get_bytes()
+```
+
+For fetch requests:
+
+```python
+request = FetchRequest()
+request.add_request(partition_request)
+
+encoded_request = request.get_bytes()
+```
+
+Protocol responses inherit `raise_error(err_code, response)` behavior, allowing protocol error codes to be converted into library exceptions.
+
+## Message and serialization helpers
+
+The library includes message and message-set types:
+
+- `pykafka.common.Message`
+- `pykafka.protocol.message.Message`
+- `pykafka.protocol.message.MessageSet`
+
+Protocol messages support decoding, serialization, and timestamp handling:
+
+```python
+decoded = message.decode(buff, msg_offset=-1, partition_id=-1)
+
+message.set_timestamp(timestamp)
+timestamp_as_datetime = message.timestamp_dt()
+
+message.pack_into(buff, offset=0)
+```
+
+`MessageSet` can decode and serialize groups of messages:
+
+```python
+message_set = MessageSet.decode(buff, partition_id=0)
+
+for message in message_set.messages():
+    process(message)
+
+message_set.pack_into(buff, offset=0)
+```
+
+UTF-8 helpers are available:
+
+```python
+from pykafka.utils import deserialize_utf8, serialize_utf8
+
+encoded_value = serialize_utf8(value, partition_key)
+decoded_value = deserialize_utf8(encoded_value, partition_key)
+```
+
+## Compression helpers
+
+Compression utilities support gzip, snappy, and LZ4-related formats:
+
+```python
+from pykafka.utils.compression import (
+    decode_gzip,
+    decode_lz4_old_kafka,
+    decode_lz4f,
+    decode_snappy,
+    encode_gzip,
+    encode_lz4_old_kafka,
+    encode_snappy,
+)
+
+compressed = encode_gzip(buff)
+original = decode_gzip(compressed)
+
+snappy_data = encode_snappy(buff, xerial_compatible=False)
+original = decode_snappy(snappy_data)
+```
+
+## Connections, handlers, and asynchronous responses
+
+`BrokerConnection` manages a request/response connection:
+
+```python
+connection.connect(timeout=10, attempts=3)
+
+try:
+    connection.request(request)
+    response = connection.response()
+finally:
+    connection.disconnect()
+```
+
+Use `reconnect()` to re-establish a disconnected connection.
+
+Handlers provide concurrency and response coordination:
+
+```python
+future = ResponseFuture()
+
+future.set_response(response)
+result = future.get(timeout=5)
+```
+
+A future can also represent a failure:
+
+```python
+future.set_error(error)
+result = future.get()
+```
+
+`Handler` and `ThreadingHandler` provide `spawn()` methods for running work. `ThreadingHandler` additionally provides `sleep()` and `RLock()` helpers.
+
+`RequestHandler` manages request handling with:
+
+- `request(request, has_response=True)`
+- `start()`
+- `stop()`
+
+## SSL support
+
+`SslConfig` can wrap a socket before it is used for broker communication:
+
+```python
+secured_socket = ssl_config.wrap_socket(sock)
+```
+
+The RDKafka-oriented helper `rdk_ssl_config(cluster)` is also available for constructing SSL-related configuration from a cluster.
+
+## API-version support
+
+Several protocol classes provide version-aware behavior through:
+
+- `get_versions()`
+- `get_version_impl(api_versions)`
+
+The utility `msg_protocol_version(broker_version)` maps a broker version to a message protocol version.
+
+The following versioned protocol request/response families are exposed:
+
+- Metadata: `MetadataRequestV1` through `MetadataRequestV5`
+- Metadata responses: `MetadataResponseV1` through `MetadataResponseV5`
+- Fetch responses: `FetchResponseV1`, `FetchResponseV2`
+- List offsets: `ListOffsetRequestV1`, `ListOffsetResponseV1`
+- Offset fetch: `OffsetFetchRequestV1`, `OffsetFetchRequestV2`, `OffsetFetchResponseV1`, `OffsetFetchResponseV2`
+- API versions: `ApiVersionsResponseV1`
+
+## Exceptions
+
+All library-specific errors derive from `KafkaException` unless otherwise noted.
+
+Common exceptions include:
+
+- `NoBrokersAvailableError`
+- `LeaderNotFoundError`
+- `SocketDisconnectedError`
+- `ProduceFailureError`
+- `ProducerQueueFullError`
+- `ProducerStoppedException`
+- `ConsumerStoppedException`
+- `NoMessagesConsumedError`
+- `OffsetRequestFailedError`
+- `OffsetOutOfRangeError`
+- `PartitionOwnedError`
+- `MessageSetDecodeFailure`
+
+Protocol-related errors derive from `ProtocolClientError`, including:
+
+- `UnknownTopicOrPartition`
+- `LeaderNotAvailable`
+- `NotLeaderForPartition`
+- `RequestTimedOut`
+- `GroupCoordinatorNotAvailable`
+- `NotCoordinatorForGroup`
+- `IllegalGeneration`
+- `InconsistentGroupProtocol`
+- `UnknownMemberId`
+- `RebalanceInProgress`
+- `TopicAuthorizationFailed`
+- `GroupAuthorizationFailed`
+
+Example error handling:
+
+```python
+from pykafka.exceptions import (
+    ConsumerStoppedException,
+    OffsetOutOfRangeError,
+    ProduceFailureError,
+)
+
+try:
+    producer.produce(message)
+except ProduceFailureError:
+    handle_produce_failure()
+except OffsetOutOfRangeError:
+    reset_consumer_position()
+except ConsumerStoppedException:
+    shutdown_cleanly()
+```
+
+## Utility functions
+
+Additional utilities include:
+
+```python
+from pykafka.utils.compat import get_bytes, get_string
+from pykafka.utils.error_handlers import raise_error, valid_int
+from pykafka.utils.socket import recvall_into
+from pykafka.utils.struct_helpers import unpack_from
+
+value_as_bytes = get_bytes(value)
+value_as_string = get_string(value)
+
+valid_int(param, allow_zero=False, allow_negative=False)
+
+recvall_into(socket, bytea, size)
+
+values = unpack_from(fmt, buff, offset=0)
+```
+
+`handle_partition_responses()` and `build_parts_by_error()` can be used to organize partition-level protocol results and route errors to application-provided handlers.

@@ -1,0 +1,377 @@
+# drf-jwt
+
+`drf-jwt` provides JSON Web Token (JWT) authentication utilities for Django REST Framework applications.
+
+The library includes:
+
+- JWT creation, encoding, decoding, and validation helpers
+- Django REST Framework authentication classes and API views
+- Serializers for obtaining, verifying, refreshing, and impersonating authentication tokens
+- Permission classes for JWT-protected and privileged endpoints
+- Optional token blacklist support, including stale-token cleanup
+- Cookie compatibility helpers for returning JWTs in HTTP responses
+- Management commands for token-related maintenance
+
+## Overview
+
+A typical JWT flow uses the following pieces:
+
+1. A user is authenticated through `ObtainJSONWebTokenView` or `JSONWebTokenSerializer`.
+2. A payload is created with `jwt_create_payload(user)`.
+3. The payload is encoded into a token with `jwt_encode_payload(payload)`.
+4. Requests are authenticated by `JSONWebTokenAuthentication`.
+5. Protected endpoints can use standard DRF permission handling, including `IsSuperUser` and optional blacklist enforcement through `IsNotBlacklisted`.
+6. Tokens can be verified or refreshed through the corresponding API views and serializers.
+7. Applications using the blacklist feature can remove expired or stale records with `delete_stale_tokens`.
+
+## Core JWT utilities
+
+The utility functions provide the lower-level JWT workflow.
+
+```python
+from rest_framework_jwt.utils import (
+    jwt_create_payload,
+    jwt_encode_payload,
+    jwt_decode_token,
+    jwt_get_username_from_payload_handler,
+    jwt_create_response_payload,
+)
+```
+
+### Create and encode a token
+
+```python
+def issue_token_for_user(user, request=None):
+    payload = jwt_create_payload(user)
+    token = jwt_encode_payload(payload)
+
+    return jwt_create_response_payload(
+        token,
+        user=user,
+        request=request,
+    )
+```
+
+`jwt_create_response_payload()` is useful when constructing a response body after issuing a token.
+
+### Decode a token
+
+```python
+from rest_framework_jwt.utils import jwt_decode_token
+
+def inspect_token(token):
+    payload = jwt_decode_token(token)
+    return payload
+```
+
+### Resolve a username from a payload
+
+```python
+from rest_framework_jwt.utils import (
+    jwt_decode_token,
+    jwt_get_username_from_payload_handler,
+)
+
+def username_from_token(token):
+    payload = jwt_decode_token(token)
+    return jwt_get_username_from_payload_handler(payload)
+```
+
+### Supporting helpers
+
+| API | Purpose |
+|---|---|
+| `unix_epoch(datetime_object=None)` | Returns a Unix epoch value for a datetime-like value. |
+| `get_username_field()` | Retrieves the configured username field. |
+| `jwt_get_secret_key(payload=None)` | Retrieves the JWT secret key, optionally using payload information. |
+| `check_payload(token)` | Checks a token payload. |
+| `check_user(payload)` | Checks the user represented by a payload. |
+
+## Authentication
+
+`JSONWebTokenAuthentication` is the primary Django REST Framework authentication class.
+
+```python
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+```
+
+It provides methods for:
+
+- Extracting a token from a request
+- Reading authorization headers
+- Reading cookies
+- Decoding JWTs
+- Authenticating credentials represented by a JWT payload
+- Building authentication response payloads
+
+Important methods include:
+
+| Method | Purpose |
+|---|---|
+| `authenticate(request)` | Authenticates an incoming DRF request. |
+| `get_token_from_request(request)` | Retrieves a token from a request. |
+| `get_token_from_authorization_header(authorization_header)` | Extracts a token from an authorization header. |
+| `get_token_from_cookies(cookies)` | Extracts a token from cookies. |
+| `authenticate_credentials(payload)` | Authenticates the identity represented by a decoded payload. |
+| `authenticate_header(request)` | Returns authentication-header information for a request. |
+| `prefixes_match(prefix)` | Checks whether an authorization prefix matches an accepted prefix. |
+
+### Protecting an API view
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+
+
+class AccountView(APIView):
+    authentication_classes = [JSONWebTokenAuthentication]
+
+    def get(self, request):
+        return Response({
+            "user": str(request.user),
+        })
+```
+
+In this example, DRF delegates authentication to `JSONWebTokenAuthentication` before the view handler runs.
+
+## Token API views
+
+The library exposes several Django REST Framework views for common token operations:
+
+```python
+from rest_framework_jwt.views import (
+    ObtainJSONWebTokenView,
+    VerifyJSONWebTokenView,
+    RefreshJSONWebTokenView,
+    ImpersonateJSONWebTokenView,
+)
+```
+
+| View | Purpose |
+|---|---|
+| `ObtainJSONWebTokenView` | Obtains a JWT. |
+| `VerifyJSONWebTokenView` | Verifies a JWT. |
+| `RefreshJSONWebTokenView` | Refreshes a JWT. |
+| `ImpersonateJSONWebTokenView` | Creates a token through an impersonation flow. |
+
+The obtain, verify, and refresh views share `BaseJSONWebTokenAPIView`, which implements `post()` handling.
+
+### Registering token endpoints
+
+```python
+from django.urls import path
+
+from rest_framework_jwt.views import (
+    ObtainJSONWebTokenView,
+    VerifyJSONWebTokenView,
+    RefreshJSONWebTokenView,
+    ImpersonateJSONWebTokenView,
+)
+
+urlpatterns = [
+    path("auth/token/", ObtainJSONWebTokenView.as_view(), name="token-obtain"),
+    path("auth/token/verify/", VerifyJSONWebTokenView.as_view(), name="token-verify"),
+    path("auth/token/refresh/", RefreshJSONWebTokenView.as_view(), name="token-refresh"),
+    path("auth/token/impersonate/", ImpersonateJSONWebTokenView.as_view(), name="token-impersonate"),
+]
+```
+
+The request data expected by each endpoint is validated by its associated serializer.
+
+## Serializers
+
+The library includes serializers for token-related workflows:
+
+```python
+from rest_framework_jwt.serializers import (
+    JSONWebTokenSerializer,
+    VerifyAuthTokenSerializer,
+    RefreshAuthTokenSerializer,
+    ImpersonateAuthTokenSerializer,
+)
+```
+
+| Serializer | Purpose |
+|---|---|
+| `JSONWebTokenSerializer` | Validates data used to obtain a JWT. |
+| `VerifyAuthTokenSerializer` | Validates data used to verify a token. |
+| `RefreshAuthTokenSerializer` | Validates data used to refresh a token. |
+| `ImpersonateAuthTokenSerializer` | Validates data used for token impersonation. |
+
+`JSONWebTokenSerializer` also exposes `username_field()`, which can be used when integrating with applications that need to inspect the configured username field.
+
+### Using a serializer directly
+
+```python
+from rest_framework_jwt.serializers import VerifyAuthTokenSerializer
+
+def verify_token_data(data):
+    serializer = VerifyAuthTokenSerializer(data=data)
+    serializer.is_valid(raise_exception=True)
+    return serializer.validated_data
+```
+
+## Permissions
+
+### Superuser-only access
+
+`IsSuperUser` is a DRF permission class for endpoints restricted to superusers.
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+from rest_framework_jwt.permissions import IsSuperUser
+
+
+class AdministrationView(APIView):
+    authentication_classes = [JSONWebTokenAuthentication]
+    permission_classes = [IsSuperUser]
+
+    def get(self, request):
+        return Response({"status": "administration access granted"})
+```
+
+## Token blacklist support
+
+The blacklist feature provides models, permissions, serializers, views, exceptions, and cleanup tools for blocked tokens.
+
+Key APIs include:
+
+```python
+from rest_framework_jwt.blacklist.models import BlacklistedToken
+from rest_framework_jwt.blacklist.permissions import IsNotBlacklisted
+from rest_framework_jwt.blacklist.serializers import BlacklistTokenSerializer
+from rest_framework_jwt.blacklist.views import BlacklistView
+```
+
+### Blacklist model
+
+`BlacklistedToken` represents a token blacklist record.
+
+```python
+from rest_framework_jwt.blacklist.models import BlacklistedToken
+
+def token_is_blocked(token, payload):
+    return BlacklistedToken.is_blocked(token, payload)
+```
+
+Its manager exposes stale-token cleanup:
+
+```python
+from rest_framework_jwt.blacklist.models import BlacklistedToken
+
+BlacklistedToken.objects.delete_stale_tokens()
+```
+
+### Blacklist permission
+
+`IsNotBlacklisted` is a permission class intended for endpoints that should reject blocked tokens.
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+from rest_framework_jwt.blacklist.permissions import IsNotBlacklisted
+
+
+class ActiveTokenOnlyView(APIView):
+    authentication_classes = [JSONWebTokenAuthentication]
+    permission_classes = [IsNotBlacklisted]
+
+    def get(self, request):
+        return Response({"status": "token is accepted"})
+```
+
+### Blacklist API view
+
+`BlacklistView` is a `ModelViewSet` for blacklist records and supports custom `create()` behavior.
+
+```python
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+
+from rest_framework_jwt.blacklist.views import BlacklistView
+
+router = DefaultRouter()
+router.register("auth/blacklist", BlacklistView, basename="blacklist")
+
+urlpatterns = [
+    path("", include(router.urls)),
+]
+```
+
+### Blacklist exceptions
+
+The blacklist feature defines authentication failures for token-related errors:
+
+```python
+from rest_framework_jwt.blacklist.exceptions import (
+    MissingToken,
+    InvalidAuthorizationCredentials,
+)
+```
+
+- `MissingToken` indicates that a required token was not supplied.
+- `InvalidAuthorizationCredentials` indicates invalid authorization credentials.
+
+## Cookie helpers
+
+Cookie helpers are available for applications that return JWTs in cookies.
+
+```python
+from rest_framework_jwt.compat import (
+    has_set_cookie_samesite,
+    set_cookie_with_token,
+)
+```
+
+Example:
+
+```python
+from rest_framework.response import Response
+from rest_framework_jwt.compat import set_cookie_with_token
+
+def token_response(token):
+    response = Response({"token": token})
+    set_cookie_with_token(response, "auth_token", token)
+    return response
+```
+
+`has_set_cookie_samesite()` can be used to check whether SameSite cookie support is available.
+
+## JWT decoding compatibility helper
+
+A compatibility-level decoder is available when direct decoding behavior is needed:
+
+```python
+from rest_framework_jwt.compat import jwt_decode
+
+payload = jwt_decode(token, key, verify=True)
+```
+
+## Management commands
+
+The library provides a command for obtaining a token for a supplied primary key:
+
+```bash
+python manage.py obtain_token <pk>
+```
+
+Blacklist cleanup is also available through a stale-token deletion command:
+
+```bash
+python manage.py delete_stale_tokens
+```
+
+The same cleanup operation can be invoked programmatically:
+
+```python
+from rest_framework_jwt.blacklist.models import BlacklistedToken
+
+BlacklistedToken.objects.delete_stale_tokens()
+```

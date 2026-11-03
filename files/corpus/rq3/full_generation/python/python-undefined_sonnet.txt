@@ -1,0 +1,91 @@
+# python-undefined
+
+A tiny, focused library that provides a proper sentinel value for "undefined" in Python — distinct from `None`, `null`-like sentinels, or other ad-hoc markers.
+
+## Why?
+
+Python has `None` to represent the absence of a value, but sometimes `None` itself is a meaningful, valid value that a caller might explicitly pass. In those cases, you need a *second* sentinel to represent "this argument/field was never set" versus "this was explicitly set to nothing."
+
+`python-undefined` gives you exactly that: a singleton `Undefined` type and a type-safe helper to check for it.
+
+## Installation
+
+```bash
+pip install python-undefined
+```
+
+## API
+
+### `class Undefined`
+
+Represents the concept of "undefined" as a distinct value, separate from `None`. Instances of this class are meant to be used as default values or placeholders wherever you need to distinguish "not provided" from "explicitly set to `None`" (or any other falsy/empty value).
+
+### `is_undefined(o: object, /) -> TypeIs[Undefined]`
+
+A type-narrowing predicate that checks whether a given object is an `Undefined` instance. Because it's typed as a `TypeIs[Undefined]`, static type checkers (e.g. mypy, pyright) can use it to narrow the type of `o` in conditional branches, giving you accurate type inference alongside the runtime check.
+
+## Usage
+
+### Distinguishing "not provided" from "explicitly None"
+
+```python
+from undefined import Undefined, is_undefined
+
+def update_profile(name=Undefined(), bio=Undefined()):
+    if not is_undefined(name):
+        print(f"Updating name to: {name!r}")
+    if not is_undefined(bio):
+        print(f"Updating bio to: {bio!r}")
+
+# Only updates bio, leaves name untouched
+update_profile(bio=None)
+
+# Updates both, explicitly clearing bio
+update_profile(name="Ada Lovelace", bio=None)
+
+# No-op: nothing was provided
+update_profile()
+```
+
+### Type-safe narrowing
+
+```python
+from undefined import Undefined, is_undefined
+
+def describe(value: object) -> str:
+    if is_undefined(value):
+        # Type checkers know `value` is `Undefined` here
+        return "no value was given"
+    return f"value is {value!r}"
+
+print(describe(Undefined()))   # "no value was given"
+print(describe(None))          # "value is None"
+print(describe(42))            # "value is 42"
+```
+
+### Using as a sentinel default in class fields
+
+```python
+from undefined import Undefined, is_undefined
+
+class Config:
+    def __init__(self, timeout=Undefined(), retries=Undefined()):
+        self.timeout = None if is_undefined(timeout) else timeout
+        self.retries = 3 if is_undefined(retries) else retries
+
+cfg = Config(retries=5)
+print(cfg.timeout)  # None
+print(cfg.retries)  # 5
+```
+
+## When to use this
+
+Reach for `python-undefined` whenever `None` is a legitimate value in your domain, and you need a reliable way to detect "no argument was passed" — for example in:
+
+- Partial update / PATCH-style APIs
+- Configuration objects with optional overrides
+- Function signatures where `None` and "unset" must be treated differently
+
+## License
+
+MIT

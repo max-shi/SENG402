@@ -1,0 +1,196 @@
+# gravitee-am-plugins-handlers-api
+
+## Overview
+
+`gravitee-am-plugins-handlers-api` provides the core abstractions used to discover, load, configure, and validate Gravitee Access Management (AM) plugins at runtime. It builds on top of Gravitee's generic plugin framework (`AbstractPluginHandler`, `AbstractConfigurablePluginManager`, `AnnotationBasedPluginContextConfigurer`, etc.) and specializes it for AM plugins: identity providers, authentication providers, and other pluggable components that expose a "provider" implementation backed by a JSON/YAML configuration.
+
+The library covers three main concerns:
+
+1. **Plugin lifecycle & discovery** — registering plugins, looking them up by id, checking whether a plugin type is deployed, and retrieving its configuration schema.
+2. **Plugin context configuration** — wiring up an isolated Spring `ApplicationContext` for each plugin, based on annotations and bean post-processors.
+3. **Configuration parsing & validation** — turning raw plugin configuration (typically JSON) into strongly-typed configuration objects, optionally evaluating expressions in the configuration, and validating that configuration against a JSON schema.
+
+## Main Components
+
+### `AmPluginManager<TYPE>`
+
+The central registry abstraction for AM plugins. Any AM plugin subsystem (identity providers, factors, notifiers, etc.) implements this interface to:
+
+- `register(TYPE definition)` — register a plugin definition.
+- `findAll()` — list all registered plugin definitions.
+- `findById(String pluginId)` — resolve the `Plugin` metadata for a given plugin id.
+- `getSchema(String pluginId)` — retrieve the plugin's JSON configuration schema.
+- `isPluginDeployed(String pluginTypeId)` — check whether a given plugin type is currently deployed.
+
+### `ProviderPluginManager<INSTANCE, PROVIDER, PROVIDER_CONFIG>`
+
+An abstract extension of `AbstractConfigurablePluginManager` specialized for plugins that produce a runtime `PROVIDER` instance from a `ProviderConfiguration`. It ties together plugin discovery and provider instantiation:
+
+- `create(PROVIDER_CONFIG config)` — abstract factory method that builds a live provider instance (e.g. an identity provider client) from configuration.
+- `validate(PROVIDER_CONFIG config)` — validates the given configuration and returns a `ValidationResult`.
+- `findById(String pluginId)` / `isPluginDeployed(String pluginTypeId)` — plugin lookup/deployment helpers, consistent with `AmPluginManager`.
+
+This is the class you typically extend when adding a new category of AM plugin (e.g. identity providers) that both exposes metadata and creates runtime provider instances.
+
+### `ProviderConfiguration`
+
+A simple value object pairing a plugin `type` with its raw `configuration` string (typically JSON), used as input to `ProviderPluginManager.create(...)` and `.validate(...)`.
+
+```java
+public ProviderConfiguration(String type, String configuration);
+public String getType();
+public String getConfiguration();
+```
+
+### `AmPluginHandler<T extends AmPlugin<?, ?>>`
+
+An `AbstractPluginHandler` implementation that determines whether it can handle a given `Plugin` (via `canHandle(Plugin plugin)`). This is used by the plugin loading infrastructure to route discovered plugins to the appropriate `AmPluginManager`.
+
+### `AmPluginContextConfigurer<PROVIDER>`
+
+Configures a dedicated Spring `ApplicationContext` for a plugin, based on annotations found in the plugin's classes and a list of `BeanFactoryPostProcessor`s (e.g. to inject named beans).
+
+```java
+public AmPluginContextConfigurer(Plugin plugin, Class<PROVIDER> provider, List<? extends BeanFactoryPostProcessor> postProcessors);
+public Set<Class<?>> configurations();
+public ConfigurableApplicationContext applicationContext();
+public Class<PROVIDER> getProviderClass();
+```
+
+Use this when a plugin needs its own isolated Spring context (with its own beans, configuration classes, and post-processors) separate from the host application's context.
+
+### `NamedBeanFactoryPostProcessor<T>`
+
+A `BeanFactoryPostProcessor` used together with `AmPluginContextConfigurer` to customize how beans of type `T` are registered/renamed within a plugin's `ApplicationContext`.
+
+### `ConfigurationFactory<CONFIGURATION>`
+
+Turns raw configuration content (typically a JSON string) into a strongly-typed configuration object:
+
+```java
+public <T extends CONFIGURATION> T create(Class<T> clazz, String content);
+```
+
+Two implementations are provided:
+
+- **`ConfigurationFactoryImpl`** — straightforward deserialization of `content` into an instance of `clazz`.
+- **`EvaluatedConfigurationFactoryImpl`** — same as above, but also evaluates expressions embedded in the configuration (e.g. system properties, environment placeholders) before/after binding, delegating to a `PluginConfigurationEvaluator`.
+
+### `PluginConfigurationEvaluator`
+
+```java
+public <T> void evaluate(T configuration);
+```
+
+Applies expression evaluation/resolution logic to an already-bound configuration object, mutating it in place. Used internally by `EvaluatedConfigurationFactoryImpl`.
+
+### `PluginConfigurationValidator`
+
+Validates a raw plugin configuration string (JSON) against a JSON Schema:
+
+```java
+public static PluginConfigurationValidator defaultSchemaValidator(String pluginIdentifier, String schema);
+public Result validate(String pluginData);
+```
+
+Create one via `defaultSchemaValidator(pluginIdentifier, schema)`, supplying the plugin's identifier and its JSON schema (as typically returned by `AmPluginManager.getSchema(...)`), then call `validate(pluginData)` to check a candidate configuration.
+
+### `PluginConfigurationValidatorsRegistry`
+
+A registry of `PluginConfigurationValidator` instances, keyed by plugin id:
+
+```java
+public void put(PluginConfigurationValidator validator);
+public Optional<PluginConfigurationValidator> get(String id);
+```
+
+Allows validators to be registered once (e.g. at plugin load time) and looked up later whenever a configuration needs to be checked, without recompiling/re-parsing the schema each time.
+
+## How the pieces fit together
+
+A typical AM plugin subsystem is wired as follows:
+
+1. Plugins are discovered by the platform and routed through an `AmPluginHandler` to the appropriate `AmPluginManager` / `ProviderPluginManager` implementation, which calls `register(...)`.
+2. For plugins requiring an isolated Spring context, an `AmPluginContextConfigurer` builds the `ApplicationContext`, using `NamedBeanFactoryPostProcessor`s to wire named beans.
+3. When a runtime provider is needed, `ProviderPluginManager.create(ProviderConfiguration)` is called. Internally, the raw configuration string is parsed via a `ConfigurationFactory` into a typed configuration object.
+4. Before applying a configuration, `ProviderPluginManager.validate(...)` (backed by a `PluginConfigurationValidator` retrieved through `PluginConfigurationValidatorsRegistry`) checks the raw JSON against the plugin's schema.
+
+## Usage Examples
+
+### Creating and validating a provider configuration
+
+```java
+// Assume `idpPluginManager` is a ProviderPluginManager<MyIdpPlugin, MyIdentityProvider, ProviderConfiguration>
+ProviderConfiguration config = new ProviderConfiguration(
+    "my-identity-provider",
+    "{ \"clientId\": \"abc\", \"clientSecret\": \"xyz\" }"
+);
+
+ValidationResult result = idpPluginManager.validate(config);
+if (result.isValid()) {
+    MyIdentityProvider provider = idpPluginManager.create(config);
+    // use the provider instance
+} else {
+    // handle invalid configuration
+}
+```
+
+### Registering and looking up a plugin
+
+```java
+AmPluginManager<MyPluginDefinition> pluginManager = ...;
+
+pluginManager.register(myPluginDefinition);
+
+if (pluginManager.isPluginDeployed("my-plugin-type")) {
+    Plugin plugin = pluginManager.findById("my-plugin-type");
+    String schema = pluginManager.getSchema("my-plugin-type");
+    // expose schema to admin UI, feed it into a validator, etc.
+}
+```
+
+### Validating raw configuration against a plugin's schema
+
+```java
+String schema = pluginManager.getSchema("my-plugin-type");
+
+PluginConfigurationValidator validator =
+    PluginConfigurationValidator.defaultSchemaValidator("my-plugin-type", schema);
+
+PluginConfigurationValidatorsRegistry registry = new PluginConfigurationValidatorsRegistry();
+registry.put(validator);
+
+String candidateConfig = "{ \"clientId\": \"abc\" }";
+registry.get("my-plugin-type")
+        .ifPresent(v -> v.validate(candidateConfig));
+```
+
+### Parsing configuration into a typed object
+
+```java
+ConfigurationFactory<MyProviderConfig> factory = new EvaluatedConfigurationFactoryImpl<>();
+MyProviderConfig typedConfig = factory.create(MyProviderConfig.class, jsonConfigContent);
+```
+
+### Building a plugin-specific application context
+
+```java
+AmPluginContextConfigurer<MyIdentityProvider> configurer = new AmPluginContextConfigurer<>(
+    plugin,
+    MyIdentityProvider.class,
+    List.of(new NamedBeanFactoryPostProcessor<MyBeanType>())
+);
+
+Set<Class<?>> configClasses = configurer.configurations();
+ConfigurableApplicationContext context = configurer.applicationContext();
+Class<MyIdentityProvider> providerClass = configurer.getProviderClass();
+```
+
+## Extending this library
+
+To add support for a new category of AM plugins:
+
+1. Define a domain-specific plugin definition class and register it via an `AmPluginManager` implementation.
+2. Extend `ProviderPluginManager` to implement `create(...)` for your provider type, using a `ConfigurationFactory` to bind raw configuration and a `PluginConfigurationValidator` (registered in a `PluginConfigurationValidatorsRegistry`) to validate it.
+3. Implement `AmPluginHandler` so the platform's plugin loader can route discovered plugins to your manager.
+4. If your plugin requires isolated Spring beans, use `AmPluginContextConfigurer` with the relevant configuration classes and post-processors.

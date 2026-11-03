@@ -1,0 +1,334 @@
+timestamp,package_name,ecosystem,safe_name,n_prose_files,raw_char_count,word_count_post_clean,word_capped,english_fraction,paragraphs_checked,status,reason
+2026-08-05T07:06:43.487904+00:00,uri-bytestring,haskell,uri-bytestring,1,145,19,false,0.0,0,F5_fail,word_count_post_clean=19 < 500
+2026-08-05T07:06:43.510201+00:00,mime-types,haskell,mime-types,13,3424,554,false,0.964,28,ready,
+2026-08-05T07:06:43.666268+00:00,blaze-builder-enumerator,haskell,blaze-builder-enumerator,1,435,64,false,0.0,0,F5_fail,word_count_post_clean=64 < 500
+2026-08-05T07:06:43.668903+00:00,singletons,haskell,singletons,5,43460,6903,false,0.985,133,ready,
+2026-08-05T07:06:43.887040+00:00,relude,haskell,relude,1,12104,1993,false,0.96,124,ready,
+2026-08-05T07:06:44.102603+00:00,ini,haskell,ini,1,474,73,false,0.0,0,F5_fail,word_count_post_clean=73 < 500
+2026-08-05T07:06:44.106511+00:00,http-types,haskell,http-types,1,587,99,false,0.0,0,F5_fail,word_count_post_clean=99 < 500
+2026-08-05T07:06:44.109800+00:00,lifted-base,haskell,lifted-base,1,174,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T07:06:44.112192+00:00,hw-prim,haskell,hw-prim,1,116,9,false,0.0,0,F5_fail,word_count_post_clean=9 < 500
+2026-08-05T07:06:44.115908+00:00,parser-combinators,haskell,parser-combinators,2,676,105,false,0.0,0,F5_fail,word_count_post_clean=105 < 500
+2026-08-05T07:06:44.119813+00:00,versions,haskell,versions,1,1513,246,false,0.0,0,F5_fail,word_count_post_clean=246 < 500
+2026-08-05T07:06:44.123278+00:00,string-interpolate,haskell,string-interpolate,1,9776,1466,false,1.0,48,ready,
+2026-08-05T07:06:44.201254+00:00,massiv,haskell,massiv,6,32537,5624,false,1.0,145,ready,
+2026-08-05T07:06:44.431092+00:00,raw-strings-qq,haskell,raw-strings-qq,1,89,13,false,0.0,0,F5_fail,word_count_post_clean=13 < 500
+2026-08-05T07:06:44.433041+00:00,unliftio,haskell,unliftio,3,21104,3498,false,0.993,144,ready,
+2026-08-05T07:06:44.625543+00:00,singleton-bool,haskell,singleton-bool,1,35,4,false,0.0,0,F5_fail,word_count_post_clean=4 < 500
+2026-08-05T07:06:44.628045+00:00,core-text,haskell,core-text,1,5647,871,false,1.0,26,ready,
+2026-08-05T07:06:44.669225+00:00,simple-cmd-args,haskell,simple-cmd-args,1,391,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-08-05T07:06:44.671988+00:00,microlens-th,haskell,microlens-th,1,12510,2021,false,0.977,88,ready,
+2026-08-05T07:06:44.813657+00:00,blaze-builder-conduit,haskell,blaze-builder-conduit,6,34879,5948,false,1.0,154,ready,
+2026-08-05T07:06:45.033217+00:00,utf8-string,haskell,utf8-string,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:45.037146+00:00,comonad,haskell,comonad,1,1004,170,false,0.0,0,F5_fail,word_count_post_clean=170 < 500
+2026-08-05T07:06:45.040680+00:00,th-desugar,haskell,th-desugar,1,3213,520,false,1.0,21,ready,
+2026-08-05T07:06:45.069620+00:00,pretty,haskell,pretty,2,5940,993,false,0.962,52,ready,
+2026-08-05T07:06:45.157720+00:00,math-functions,haskell,math-functions,1,863,116,false,0.0,0,F5_fail,word_count_post_clean=116 < 500
+2026-08-05T07:06:45.161593+00:00,reflection,haskell,reflection,1,409,59,false,0.0,0,F5_fail,word_count_post_clean=59 < 500
+2026-08-05T07:06:45.163746+00:00,fsnotify,haskell,fsnotify,1,203,28,false,0.0,0,F5_fail,word_count_post_clean=28 < 500
+2026-08-05T07:06:45.165713+00:00,servant-swagger,haskell,servant-swagger,28,31026,4899,false,0.961,127,ready,
+2026-08-05T07:06:45.496620+00:00,hnix,haskell,hnix,1,3762,610,false,0.977,43,ready,
+2026-08-05T07:06:45.568323+00:00,network-uri,haskell,network-uri,1,797,131,false,0.0,0,F5_fail,word_count_post_clean=131 < 500
+2026-08-05T07:06:45.571251+00:00,bytestring-to-vector,haskell,bytestring-to-vector,1,184,26,false,0.0,0,F5_fail,word_count_post_clean=26 < 500
+2026-08-05T07:06:45.573502+00:00,prettyprinter,haskell,prettyprinter,8,14360,2218,false,1.0,96,ready,
+2026-08-05T07:06:45.703153+00:00,template-haskell-compat-v0208,haskell,template-haskell-compat-v0208,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:45.704702+00:00,HsYAML,haskell,HsYAML,1,996,141,false,0.0,0,F5_fail,word_count_post_clean=141 < 500
+2026-08-05T07:06:45.708490+00:00,parsers,haskell,parsers,1,386,56,false,0.0,0,F5_fail,word_count_post_clean=56 < 500
+2026-08-05T07:06:45.710786+00:00,finite-typelits,haskell,finite-typelits,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:45.712185+00:00,hinotify,haskell,hinotify,1,545,87,false,0.0,0,F5_fail,word_count_post_clean=87 < 500
+2026-08-05T07:06:45.715523+00:00,run-st,haskell,run-st,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:45.716747+00:00,random-fu,haskell,random-fu,120,156645,22344,false,0.964,84,ready,
+2026-08-05T07:06:46.401596+00:00,semigroups,haskell,semigroups,1,881,144,false,0.0,0,F5_fail,word_count_post_clean=144 < 500
+2026-08-05T07:06:46.404384+00:00,th-reify-many,haskell,th-reify-many,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:46.405866+00:00,conduit-extra,haskell,conduit-extra,6,34879,5948,false,1.0,154,ready,
+2026-08-05T07:06:46.623333+00:00,data-memocombinators,haskell,data-memocombinators,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:46.624858+00:00,intern,haskell,intern,1,235,33,false,0.0,0,F5_fail,word_count_post_clean=33 < 500
+2026-08-05T07:06:46.627113+00:00,xmlhtml,haskell,xmlhtml,1,2523,403,false,0.0,0,F5_fail,word_count_post_clean=403 < 500
+2026-08-05T07:06:46.653519+00:00,vault,haskell,vault,1,1067,186,false,0.0,0,F5_fail,word_count_post_clean=186 < 500
+2026-08-05T07:06:46.657784+00:00,hlint,haskell,hlint,2,24455,4090,false,0.981,155,ready,
+2026-08-05T07:06:46.881174+00:00,chronos,haskell,chronos,1,2378,346,false,0.0,0,F5_fail,word_count_post_clean=346 < 500
+2026-08-05T07:06:46.885576+00:00,syb,haskell,syb,1,1231,170,false,0.0,0,F5_fail,word_count_post_clean=170 < 500
+2026-08-05T07:06:46.889202+00:00,pipes-attoparsec,haskell,pipes-attoparsec,1,344,56,false,0.0,0,F5_fail,word_count_post_clean=56 < 500
+2026-08-05T07:06:46.891684+00:00,hslogger,haskell,hslogger,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:46.893884+00:00,gi-pango,haskell,gi-pango,5,5072,826,false,1.0,35,ready,
+2026-08-05T07:06:46.962096+00:00,cereal-text,haskell,cereal-text,1,57,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-08-05T07:06:46.963996+00:00,loch-th,haskell,loch-th,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:46.965116+00:00,crypto-random-api,haskell,crypto-random-api,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:46.966257+00:00,scientific,haskell,scientific,1,1052,168,false,0.0,0,F5_fail,word_count_post_clean=168 < 500
+2026-08-05T07:06:46.969394+00:00,cprng-aes,haskell,cprng-aes,1,318,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-08-05T07:06:46.971763+00:00,base-orphans,haskell,base-orphans,1,2431,493,false,0.0,0,F5_fail,word_count_post_clean=493 < 500
+2026-08-05T07:06:46.984105+00:00,cryptonite,haskell,cryptonite,1,2371,350,false,0.0,0,F5_fail,word_count_post_clean=350 < 500
+2026-08-05T07:06:46.997013+00:00,http-streams,haskell,http-streams,1,869,137,false,0.0,0,F5_fail,word_count_post_clean=137 < 500
+2026-08-05T07:06:46.999851+00:00,monoidal-containers,haskell,monoidal-containers,1,633,99,false,0.0,0,F5_fail,word_count_post_clean=99 < 500
+2026-08-05T07:06:47.002707+00:00,socks,haskell,socks,1,612,88,false,0.0,0,F5_fail,word_count_post_clean=88 < 500
+2026-08-05T07:06:47.005133+00:00,hint,haskell,hint,1,605,100,false,0.0,0,F5_fail,word_count_post_clean=100 < 500
+2026-08-05T07:06:47.007700+00:00,haskell-lexer,haskell,haskell-lexer,1,472,70,false,0.0,0,F5_fail,word_count_post_clean=70 < 500
+2026-08-05T07:06:47.009887+00:00,clock,haskell,clock,1,144,5,false,0.0,0,F5_fail,word_count_post_clean=5 < 500
+2026-08-05T07:06:47.011979+00:00,arithmoi,haskell,arithmoi,1,8,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T07:06:47.017142+00:00,co-log-core,haskell,co-log-core,1,787,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T07:06:47.020340+00:00,statistics,haskell,statistics,1,1135,158,false,0.0,0,F5_fail,word_count_post_clean=158 < 500
+2026-08-05T07:06:47.022860+00:00,optparse-applicative,haskell,optparse-applicative,1,6801,1136,false,1.0,52,ready,
+2026-08-05T07:06:47.101277+00:00,vector-th-unbox,haskell,vector-th-unbox,1,89,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T07:06:47.103133+00:00,polysemy-conc,haskell,polysemy-conc,3,506,67,false,0.0,0,F5_fail,word_count_post_clean=67 < 500
+2026-08-05T07:06:47.108486+00:00,with-utf8,haskell,with-utf8,1,2631,488,false,0.0,0,F5_fail,word_count_post_clean=488 < 500
+2026-08-05T07:06:47.113659+00:00,void,haskell,void,1,323,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-08-05T07:06:47.115877+00:00,hpqtypes,haskell,hpqtypes,2,1918,265,false,0.0,0,F5_fail,word_count_post_clean=265 < 500
+2026-08-05T07:06:47.122360+00:00,time,haskell,time,1,394,63,false,0.0,0,F5_fail,word_count_post_clean=63 < 500
+2026-08-05T07:06:47.126768+00:00,numhask,haskell,numhask,2,3663,555,false,1.0,29,ready,
+2026-08-05T07:06:47.173928+00:00,Chart-diagrams,haskell,Chart-diagrams,1,107,17,false,0.0,0,F5_fail,word_count_post_clean=17 < 500
+2026-08-05T07:06:47.180040+00:00,incipit-core,haskell,incipit-core,3,1531,273,false,0.0,0,F5_fail,word_count_post_clean=273 < 500
+2026-08-05T07:06:47.186333+00:00,cpu,haskell,cpu,1,158,23,false,0.0,0,F5_fail,word_count_post_clean=23 < 500
+2026-08-05T07:06:47.188450+00:00,hasql,haskell,hasql,1,4753,669,false,1.0,37,ready,
+2026-08-05T07:06:47.260785+00:00,tagged,haskell,tagged,1,51,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T07:06:47.262808+00:00,servant-swagger-ui-core,haskell,servant-swagger-ui-core,1,510,83,false,0.0,0,F5_fail,word_count_post_clean=83 < 500
+2026-08-05T07:06:47.268073+00:00,conduit-combinators,haskell,conduit-combinators,9,16900,2694,false,0.983,120,ready,
+2026-08-05T07:06:47.480058+00:00,ekg-core,haskell,ekg-core,1,45,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-08-05T07:06:47.483237+00:00,mono-traversable,haskell,mono-traversable,9,16900,2694,false,0.983,120,ready,
+2026-08-05T07:06:47.695496+00:00,crypton-connection,haskell,crypton-connection,1,689,111,false,0.0,0,F5_fail,word_count_post_clean=111 < 500
+2026-08-05T07:06:47.698332+00:00,hedgehog,haskell,hedgehog,4,6864,845,false,0.947,38,ready,
+2026-08-05T07:06:47.772322+00:00,NumInstances,haskell,NumInstances,1,90,12,false,0.0,0,F5_fail,word_count_post_clean=12 < 500
+2026-08-05T07:06:47.776297+00:00,terminal-progress-bar,haskell,terminal-progress-bar,2,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:47.778178+00:00,http-client,haskell,http-client,5,2055,259,false,0.0,0,F5_fail,word_count_post_clean=259 < 500
+2026-08-05T07:06:47.785502+00:00,pem,haskell,pem,1,66,9,false,0.0,0,F5_fail,word_count_post_clean=9 < 500
+2026-08-05T07:06:47.787574+00:00,flatparse,haskell,flatparse,1,5102,776,false,1.0,19,ready,
+2026-08-05T07:06:47.819607+00:00,unix,haskell,unix,1,283,52,false,0.0,0,F5_fail,word_count_post_clean=52 < 500
+2026-08-05T07:06:47.823479+00:00,nats,haskell,nats,1,211,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T07:06:47.825332+00:00,cassava,haskell,cassava,1,1799,282,false,0.0,0,F5_fail,word_count_post_clean=282 < 500
+2026-08-05T07:06:47.829282+00:00,om-show,haskell,om-show,1,255,44,false,0.0,0,F5_fail,word_count_post_clean=44 < 500
+2026-08-05T07:06:47.831504+00:00,ansi-wl-pprint,haskell,ansi-wl-pprint,1,101,15,false,0.0,0,F5_fail,word_count_post_clean=15 < 500
+2026-08-05T07:06:47.833377+00:00,JuicyPixels,haskell,JuicyPixels,1,2641,387,false,0.0,0,F5_fail,word_count_post_clean=387 < 500
+2026-08-05T07:06:47.845669+00:00,wide-word,haskell,wide-word,1,384,65,false,0.0,0,F5_fail,word_count_post_clean=65 < 500
+2026-08-05T07:06:47.848951+00:00,os-string,haskell,os-string,1,97,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-08-05T07:06:47.852535+00:00,lifted-async,haskell,lifted-async,1,306,46,false,0.0,0,F5_fail,word_count_post_clean=46 < 500
+2026-08-05T07:06:47.855767+00:00,comonad-transformers,haskell,comonad-transformers,1,365,54,false,0.0,0,F5_fail,word_count_post_clean=54 < 500
+2026-08-05T07:06:47.858663+00:00,polysemy-resume,haskell,polysemy-resume,2,6400,1092,false,1.0,54,ready,
+2026-08-05T07:06:47.928282+00:00,repline,haskell,repline,1,1953,318,false,0.0,0,F5_fail,word_count_post_clean=318 < 500
+2026-08-05T07:06:47.935039+00:00,monoid-subclasses,haskell,monoid-subclasses,1,2415,364,false,0.0,0,F5_fail,word_count_post_clean=364 < 500
+2026-08-05T07:06:47.939981+00:00,linear,haskell,linear,1,263,38,false,0.0,0,F5_fail,word_count_post_clean=38 < 500
+2026-08-05T07:06:47.942684+00:00,haskell-lsp-types,haskell,haskell-lsp-types,2,1258,171,false,0.0,0,F5_fail,word_count_post_clean=171 < 500
+2026-08-05T07:06:47.948175+00:00,bv-sized,haskell,bv-sized,1,91,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-08-05T07:06:47.950139+00:00,polysemy,haskell,polysemy,2,7071,1120,false,0.97,67,ready,
+2026-08-05T07:06:48.050974+00:00,criterion-measurement,haskell,criterion-measurement,2,16552,2730,false,0.992,125,ready,
+2026-08-05T07:06:48.214580+00:00,uniplate,haskell,uniplate,1,8033,1288,false,1.0,50,ready,
+2026-08-05T07:06:48.283068+00:00,formatting,haskell,formatting,2,7294,1381,false,0.927,55,ready,
+2026-08-05T07:06:48.410036+00:00,operational,haskell,operational,5,8354,1344,false,0.985,68,ready,
+2026-08-05T07:06:48.507629+00:00,http-common,haskell,http-common,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:48.509016+00:00,crypto-pubkey-types,haskell,crypto-pubkey-types,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:48.510640+00:00,hw-rankselect-base,haskell,hw-rankselect-base,1,2150,316,false,0.0,0,F5_fail,word_count_post_clean=316 < 500
+2026-08-05T07:06:48.515860+00:00,x509,haskell,x509,1,429,55,false,0.0,0,F5_fail,word_count_post_clean=55 < 500
+2026-08-05T07:06:48.519856+00:00,enclosed-exceptions,haskell,enclosed-exceptions,1,994,149,false,0.0,0,F5_fail,word_count_post_clean=149 < 500
+2026-08-05T07:06:48.522457+00:00,cookie,haskell,cookie,1,41,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-08-05T07:06:48.524672+00:00,singletons-base,haskell,singletons-base,5,43460,6903,false,0.985,133,ready,
+2026-08-05T07:06:48.757225+00:00,http-client-tls,haskell,http-client-tls,5,2055,259,false,0.0,0,F5_fail,word_count_post_clean=259 < 500
+2026-08-05T07:06:48.764894+00:00,scotty,haskell,scotty,1,1556,241,false,0.0,0,F5_fail,word_count_post_clean=241 < 500
+2026-08-05T07:06:48.771283+00:00,proto-lens,haskell,proto-lens,9,18793,3122,false,0.972,109,ready,
+2026-08-05T07:06:48.953928+00:00,hedis,haskell,hedis,1,1017,148,false,0.0,0,F5_fail,word_count_post_clean=148 < 500
+2026-08-05T07:06:48.958510+00:00,composite-base,haskell,composite-base,1,1354,207,false,0.0,0,F5_fail,word_count_post_clean=207 < 500
+2026-08-05T07:06:48.961245+00:00,hxt,haskell,hxt,42,143871,22304,false,0.941,170,ready,
+2026-08-05T07:06:49.441756+00:00,protolude,haskell,protolude,1,4106,633,false,1.0,40,ready,
+2026-08-05T07:06:49.515590+00:00,ascii-case,haskell,ascii-case,2,152,25,false,0.0,0,F5_fail,word_count_post_clean=25 < 500
+2026-08-05T07:06:49.521525+00:00,tmp-proc,haskell,tmp-proc,8,5832,938,false,1.0,56,ready,
+2026-08-05T07:06:49.607112+00:00,gi-gio,haskell,gi-gio,5,5072,826,false,1.0,35,ready,
+2026-08-05T07:06:49.675611+00:00,lsp,haskell,lsp,4,4077,617,false,0.926,27,ready,
+2026-08-05T07:06:49.744453+00:00,stache,haskell,stache,1,1595,224,false,0.0,0,F5_fail,word_count_post_clean=224 < 500
+2026-08-05T07:06:49.750398+00:00,binary-conduit,haskell,binary-conduit,1,227,18,false,0.0,0,F5_fail,word_count_post_clean=18 < 500
+2026-08-05T07:06:49.752652+00:00,retrie,haskell,retrie,1,4137,636,false,1.0,45,ready,
+2026-08-05T07:06:49.825530+00:00,reducers,haskell,reducers,1,265,37,false,0.0,0,F5_fail,word_count_post_clean=37 < 500
+2026-08-05T07:06:49.827951+00:00,dlist,haskell,dlist,1,137,20,false,0.0,0,F5_fail,word_count_post_clean=20 < 500
+2026-08-05T07:06:49.829808+00:00,mustache,haskell,mustache,1,953,140,false,0.0,0,F5_fail,word_count_post_clean=140 < 500
+2026-08-05T07:06:49.833651+00:00,universum,haskell,universum,1,9838,1651,false,0.99,104,ready,
+2026-08-05T07:06:50.013478+00:00,gi-glib,haskell,gi-glib,5,5072,826,false,1.0,35,ready,
+2026-08-05T07:06:50.081709+00:00,yaml,haskell,yaml,3,1619,249,false,0.0,0,F5_fail,word_count_post_clean=249 < 500
+2026-08-05T07:06:50.088150+00:00,trifecta,haskell,trifecta,1,253,37,false,0.0,0,F5_fail,word_count_post_clean=37 < 500
+2026-08-05T07:06:50.090883+00:00,liquid-base,haskell,liquid-base,96,372355,59226,false,0.966,119,ready,
+2026-08-05T07:06:51.586406+00:00,haskell-gi,haskell,haskell-gi,5,5072,826,false,1.0,35,ready,
+2026-08-05T07:06:51.651785+00:00,modern-uri,haskell,modern-uri,1,4442,739,false,0.95,40,ready,
+2026-08-05T07:06:51.711206+00:00,derive-storable,haskell,derive-storable,1,1096,174,false,0.0,0,F5_fail,word_count_post_clean=174 < 500
+2026-08-05T07:06:51.714712+00:00,bytestring,haskell,bytestring,1,876,131,false,0.0,0,F5_fail,word_count_post_clean=131 < 500
+2026-08-05T07:06:51.718362+00:00,ghc-lib-parser,haskell,ghc-lib-parser,1,6355,1097,false,0.971,34,ready,
+2026-08-05T07:06:51.765358+00:00,streaming-commons,haskell,streaming-commons,1,964,141,false,0.0,0,F5_fail,word_count_post_clean=141 < 500
+2026-08-05T07:06:51.768734+00:00,vector-sized,haskell,vector-sized,1,1353,215,false,0.0,0,F5_fail,word_count_post_clean=215 < 500
+2026-08-05T07:06:51.772213+00:00,regex-applicative,haskell,regex-applicative,1,884,138,false,0.0,0,F5_fail,word_count_post_clean=138 < 500
+2026-08-05T07:06:51.774624+00:00,transformers-base,haskell,transformers-base,1,138,18,false,0.0,0,F5_fail,word_count_post_clean=18 < 500
+2026-08-05T07:06:51.776689+00:00,atomic-primops,haskell,atomic-primops,6,5838,912,false,0.98,49,ready,
+2026-08-05T07:06:51.860342+00:00,microlens,haskell,microlens,1,12510,2021,false,0.977,88,ready,
+2026-08-05T07:06:52.001886+00:00,string-conversions,haskell,string-conversions,1,201,25,false,0.0,0,F5_fail,word_count_post_clean=25 < 500
+2026-08-05T07:06:52.004723+00:00,unix-compat,haskell,unix-compat,1,243,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T07:06:52.006719+00:00,type-set,haskell,type-set,1,8,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T07:06:52.008761+00:00,retry,haskell,retry,1,617,85,false,0.0,0,F5_fail,word_count_post_clean=85 < 500
+2026-08-05T07:06:52.011004+00:00,foreign-store,haskell,foreign-store,1,122,18,false,0.0,0,F5_fail,word_count_post_clean=18 < 500
+2026-08-05T07:06:52.012751+00:00,hoauth2,haskell,hoauth2,3,748,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-08-05T07:06:52.019470+00:00,quickcheck-instances,haskell,quickcheck-instances,1,517,82,false,0.0,0,F5_fail,word_count_post_clean=82 < 500
+2026-08-05T07:06:52.021778+00:00,algebraic-graphs,haskell,algebraic-graphs,1,3194,503,false,1.0,24,ready,
+2026-08-05T07:06:52.070581+00:00,ghcjs-base,haskell,ghcjs-base,2,5302,872,false,0.981,53,ready,
+2026-08-05T07:06:52.151643+00:00,primitive,haskell,primitive,1,132,17,false,0.0,0,F5_fail,word_count_post_clean=17 < 500
+2026-08-05T07:06:52.154432+00:00,timeit,haskell,timeit,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:06:52.155990+00:00,openapi3,haskell,openapi3,1,995,143,false,0.0,0,F5_fail,word_count_post_clean=143 < 500
+2026-08-05T07:06:52.159261+00:00,logict,haskell,logict,1,3310,497,false,0.0,0,F5_fail,word_count_post_clean=497 < 500
+2026-08-05T07:06:52.164080+00:00,gitrev,haskell,gitrev,1,839,152,false,0.0,0,F5_fail,word_count_post_clean=152 < 500
+2026-08-05T07:06:52.166026+00:00,mod,haskell,mod,1,3315,510,false,1.0,17,ready,
+2026-08-05T07:06:52.193965+00:00,contravariant,haskell,contravariant,1,227,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T07:06:52.195965+00:00,streamly-bytestring,haskell,streamly-bytestring,1,621,98,false,0.0,0,F5_fail,word_count_post_clean=98 < 500
+2026-08-05T07:06:52.198416+00:00,streaming,haskell,streaming,2,14969,2516,false,1.0,90,ready,
+2026-08-05T07:06:52.312055+00:00,parameterized-utils,haskell,parameterized-utils,1,7861,1167,false,1.0,39,ready,
+2026-08-05T07:06:52.369145+00:00,moffy,haskell,moffy,1,154,19,false,0.0,0,F5_fail,word_count_post_clean=19 < 500
+2026-08-05T07:06:52.371369+00:00,system-fileio,haskell,system-fileio,3,757,115,false,0.0,0,F5_fail,word_count_post_clean=115 < 500
+2026-08-05T07:06:52.374593+00:00,attoparsec-conduit,haskell,attoparsec-conduit,6,34879,5948,false,1.0,154,ready,
+2026-08-05T07:06:52.589736+00:00,unliftio-core,haskell,unliftio-core,3,21104,3498,false,0.993,144,ready,
+2026-08-05T07:06:52.780900+00:00,uniform-json,haskell,uniform-json,8,2896,457,false,0.0,0,F5_fail,word_count_post_clean=457 < 500
+2026-08-05T07:06:52.820335+00:00,wai-extra,haskell,wai-extra,13,3424,554,false,0.964,28,ready,
+2026-08-05T07:06:52.875975+00:00,ghcide,haskell,ghcide,22,59848,9825,false,0.985,135,ready,
+2026-08-05T07:06:53.157368+00:00,tasty-quickcheck,haskell,tasty-quickcheck,2,33284,5470,false,1.0,110,ready,
+2026-08-05T07:06:53.328396+00:00,HTTP,haskell,HTTP,1,485,81,false,0.0,0,F5_fail,word_count_post_clean=81 < 500
+2026-08-05T07:06:53.332414+00:00,asn1-types,haskell,asn1-types,2,251,35,false,0.0,0,F5_fail,word_count_post_clean=35 < 500
+2026-08-05T07:06:53.336254+00:00,asn1-encoding,haskell,asn1-encoding,2,251,35,false,0.0,0,F5_fail,word_count_post_clean=35 < 500
+2026-08-05T07:06:53.340132+00:00,type-flip,haskell,type-flip,1,33,9,false,0.0,0,F5_fail,word_count_post_clean=9 < 500
+2026-08-05T07:06:53.342342+00:00,safe,haskell,safe,1,787,142,false,0.0,0,F5_fail,word_count_post_clean=142 < 500
+2026-08-05T07:06:53.345875+00:00,xdg-basedir,haskell,xdg-basedir,1,598,98,false,0.0,0,F5_fail,word_count_post_clean=98 < 500
+2026-08-05T07:06:53.348663+00:00,exceptions,haskell,exceptions,1,308,42,false,0.0,0,F5_fail,word_count_post_clean=42 < 500
+2026-08-05T07:06:53.351165+00:00,byteable,haskell,byteable,1,44,5,false,0.0,0,F5_fail,word_count_post_clean=5 < 500
+2026-08-05T07:06:53.352703+00:00,random-source,haskell,random-source,3,20248,2879,false,1.0,12,ready,
+2026-08-05T07:06:53.380595+00:00,named,haskell,named,1,642,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-08-05T07:06:53.383033+00:00,terminfo,haskell,terminfo,1,305,51,false,0.0,0,F5_fail,word_count_post_clean=51 < 500
+2026-08-05T07:06:53.385645+00:00,megaparsec,haskell,megaparsec,3,11133,1709,false,0.967,90,ready,
+2026-08-05T07:06:53.536863+00:00,tomland,haskell,tomland,1,2834,459,false,0.0,0,F5_fail,word_count_post_clean=459 < 500
+2026-08-05T07:06:53.545272+00:00,exon,haskell,exon,2,705,121,false,0.0,0,F5_fail,word_count_post_clean=121 < 500
+2026-08-05T07:06:53.548924+00:00,conduit,haskell,conduit,6,34879,5948,false,1.0,154,ready,
+2026-08-05T07:06:53.765732+00:00,hls-graph,haskell,hls-graph,34,76208,12293,false,0.957,116,ready,
+2026-08-05T07:06:54.095289+00:00,boring,haskell,boring,1,131,23,false,0.0,0,F5_fail,word_count_post_clean=23 < 500
+2026-08-05T07:06:54.097431+00:00,insert-ordered-containers,haskell,insert-ordered-containers,1,91,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T07:06:54.099060+00:00,sendfile,haskell,sendfile,6,2637,370,false,0.0,0,F5_fail,word_count_post_clean=370 < 500
+2026-08-05T07:06:54.105100+00:00,invariant,haskell,invariant,1,28,3,false,0.0,0,F5_fail,word_count_post_clean=3 < 500
+2026-08-05T07:26:32.985448+00:00,dotgen,haskell,dotgen,1,215,34,false,0.0,0,F5_fail,word_count_post_clean=34 < 500
+2026-08-05T07:26:33.008031+00:00,base64-bytestring,haskell,base64-bytestring,1,385,60,false,0.0,0,F5_fail,word_count_post_clean=60 < 500
+2026-08-05T07:26:33.011253+00:00,liquidhaskell,haskell,liquidhaskell,96,367589,58482,false,0.978,134,ready,
+2026-08-05T07:26:34.595615+00:00,time-compat,haskell,time-compat,1,155,24,false,0.0,0,F5_fail,word_count_post_clean=24 < 500
+2026-08-05T07:26:34.600380+00:00,tagsoup,haskell,tagsoup,1,8956,1559,false,0.981,52,ready,
+2026-08-05T07:26:34.674319+00:00,barbies,haskell,barbies,1,674,96,false,0.0,0,F5_fail,word_count_post_clean=96 < 500
+2026-08-05T07:26:34.677952+00:00,cryptohash-sha256,haskell,cryptohash-sha256,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:34.679702+00:00,monad-time,haskell,monad-time,1,73,12,false,0.0,0,F5_fail,word_count_post_clean=12 < 500
+2026-08-05T07:26:34.681742+00:00,pqueue,haskell,pqueue,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:34.683067+00:00,heaps,haskell,heaps,1,287,39,false,0.0,0,F5_fail,word_count_post_clean=39 < 500
+2026-08-05T07:26:34.684985+00:00,crypto-api,haskell,crypto-api,1,335,51,false,0.0,0,F5_fail,word_count_post_clean=51 < 500
+2026-08-05T07:26:34.686562+00:00,stm-conduit,haskell,stm-conduit,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:34.687809+00:00,commonmark-extensions,haskell,commonmark-extensions,5,4931,769,false,0.955,44,ready,
+2026-08-05T07:26:34.772422+00:00,data-array-byte,haskell,data-array-byte,1,176,26,false,0.0,0,F5_fail,word_count_post_clean=26 < 500
+2026-08-05T07:26:34.774908+00:00,lattices,haskell,lattices,1,73,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T07:26:34.777084+00:00,hw-bits,haskell,hw-bits,1,42,5,false,0.0,0,F5_fail,word_count_post_clean=5 < 500
+2026-08-05T07:26:34.779794+00:00,monads-tf,haskell,monads-tf,2,368,54,false,0.0,0,F5_fail,word_count_post_clean=54 < 500
+2026-08-05T07:26:34.783343+00:00,gi-gobject,haskell,gi-gobject,5,5072,826,false,1.0,35,ready,
+2026-08-05T07:26:34.849790+00:00,mig,haskell,mig,22,62715,11206,false,0.98,151,ready,
+2026-08-05T07:26:35.123755+00:00,sandwich,haskell,sandwich,32,50290,7781,false,0.949,136,ready,
+2026-08-05T07:26:35.458036+00:00,gi-gdk,haskell,gi-gdk,5,5072,826,false,1.0,35,ready,
+2026-08-05T07:26:35.523741+00:00,ascii,haskell,ascii,2,2406,384,false,0.0,0,F5_fail,word_count_post_clean=384 < 500
+2026-08-05T07:26:35.529775+00:00,hashtables,haskell,hashtables,1,3229,491,false,0.0,0,F5_fail,word_count_post_clean=491 < 500
+2026-08-05T07:26:35.534445+00:00,fmt,haskell,fmt,1,4867,800,false,1.0,33,ready,
+2026-08-05T07:26:35.579111+00:00,mtl,haskell,mtl,2,4944,756,false,1.0,36,ready,
+2026-08-05T07:26:35.633633+00:00,base16,haskell,base16,1,590,83,false,0.0,0,F5_fail,word_count_post_clean=83 < 500
+2026-08-05T07:26:35.637057+00:00,HUnit,haskell,HUnit,1,15796,2572,false,1.0,109,ready,
+2026-08-05T07:26:35.768066+00:00,ieee754,haskell,ieee754,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:35.769070+00:00,text-manipulate,haskell,text-manipulate,1,363,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-08-05T07:26:35.770929+00:00,refined,haskell,refined,1,399,67,false,0.0,0,F5_fail,word_count_post_clean=67 < 500
+2026-08-05T07:26:35.772713+00:00,lucid,haskell,lucid,3,3356,546,false,0.933,45,ready,
+2026-08-05T07:26:35.867671+00:00,amazonka-core,haskell,amazonka-core,141,156691,22865,false,0.989,94,ready,
+2026-08-05T07:26:36.508622+00:00,core-program,haskell,core-program,1,5647,871,false,1.0,26,ready,
+2026-08-05T07:26:36.548853+00:00,mime-mail,haskell,mime-mail,2,623,97,false,0.0,0,F5_fail,word_count_post_clean=97 < 500
+2026-08-05T07:26:36.551669+00:00,tasty-hunit,haskell,tasty-hunit,2,33284,5470,false,1.0,110,ready,
+2026-08-05T07:26:36.720109+00:00,postgresql-libpq,haskell,postgresql-libpq,1,271,44,false,0.0,0,F5_fail,word_count_post_clean=44 < 500
+2026-08-05T07:26:36.721510+00:00,gi-gtk,haskell,gi-gtk,5,5072,826,false,1.0,35,ready,
+2026-08-05T07:26:36.785883+00:00,zstd,haskell,zstd,1,1231,196,false,0.0,0,F5_fail,word_count_post_clean=196 < 500
+2026-08-05T07:26:36.789450+00:00,Win32,haskell,Win32,1,744,111,false,0.0,0,F5_fail,word_count_post_clean=111 < 500
+2026-08-05T07:26:36.794287+00:00,aeson-pretty,haskell,aeson-pretty,1,943,138,false,0.0,0,F5_fail,word_count_post_clean=138 < 500
+2026-08-05T07:26:36.796742+00:00,SafeSemaphore,haskell,SafeSemaphore,1,2908,427,false,0.0,0,F5_fail,word_count_post_clean=427 < 500
+2026-08-05T07:26:36.799525+00:00,haskeline,haskell,haskeline,1,881,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T07:26:36.802532+00:00,edit-distance,haskell,edit-distance,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:36.803495+00:00,concurrency,haskell,concurrency,15,30647,4938,false,0.983,119,ready,
+2026-08-05T07:26:37.051525+00:00,attoparsec-aeson,haskell,attoparsec-aeson,2,1160,183,false,0.0,0,F5_fail,word_count_post_clean=183 < 500
+2026-08-05T07:26:37.068465+00:00,ansi-terminal,haskell,ansi-terminal,3,5194,803,false,0.98,49,ready,
+2026-08-05T07:26:37.168734+00:00,array-chunks,haskell,array-chunks,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:37.169733+00:00,resourcet,haskell,resourcet,6,34879,5948,false,1.0,154,ready,
+2026-08-05T07:26:37.387152+00:00,network-conduit,haskell,network-conduit,6,34879,5948,false,1.0,154,ready,
+2026-08-05T07:26:37.604488+00:00,aeson,haskell,aeson,2,1088,172,false,0.0,0,F5_fail,word_count_post_clean=172 < 500
+2026-08-05T07:26:37.621081+00:00,parallel-io,haskell,parallel-io,1,81,13,false,0.0,0,F5_fail,word_count_post_clean=13 < 500
+2026-08-05T07:26:37.622712+00:00,nonempty-containers,haskell,nonempty-containers,1,3694,543,false,1.0,27,ready,
+2026-08-05T07:26:37.663483+00:00,filepattern,haskell,filepattern,1,1653,271,false,0.0,0,F5_fail,word_count_post_clean=271 < 500
+2026-08-05T07:26:37.667993+00:00,skylighting,haskell,skylighting,8,10122,1455,false,0.943,70,ready,
+2026-08-05T07:26:37.809836+00:00,text-metrics,haskell,text-metrics,1,1278,168,false,0.0,0,F5_fail,word_count_post_clean=168 < 500
+2026-08-05T07:26:37.814482+00:00,serialise,haskell,serialise,1,1578,226,false,0.0,0,F5_fail,word_count_post_clean=226 < 500
+2026-08-05T07:26:37.821008+00:00,commonmark,haskell,commonmark,5,4931,769,false,0.955,44,ready,
+2026-08-05T07:26:37.902454+00:00,bytesmith,haskell,bytesmith,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:37.903737+00:00,servant-auth-client,haskell,servant-auth-client,28,31026,4899,false,0.961,127,ready,
+2026-08-05T07:26:38.186683+00:00,natural-arithmetic,haskell,natural-arithmetic,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:38.188132+00:00,th-lift-instances,haskell,th-lift-instances,1,74,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T07:26:38.189769+00:00,dunai,haskell,dunai,3,24712,3874,false,0.973,112,ready,
+2026-08-05T07:26:38.367062+00:00,text-rope,haskell,text-rope,1,207,32,false,0.0,0,F5_fail,word_count_post_clean=32 < 500
+2026-08-05T07:26:38.369969+00:00,exinst,haskell,exinst,6,685,111,false,0.0,0,F5_fail,word_count_post_clean=111 < 500
+2026-08-05T07:26:38.375270+00:00,what4,haskell,what4,4,14874,2308,false,1.0,90,ready,
+2026-08-05T07:26:38.500123+00:00,row-types,haskell,row-types,3,969,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T07:26:38.504957+00:00,interpolate,haskell,interpolate,1,713,87,false,0.0,0,F5_fail,word_count_post_clean=87 < 500
+2026-08-05T07:26:38.507404+00:00,hmatrix,haskell,hmatrix,3,1310,189,false,0.0,0,F5_fail,word_count_post_clean=189 < 500
+2026-08-05T07:26:38.514516+00:00,silently,haskell,silently,1,616,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-08-05T07:26:38.516052+00:00,base-noprelude,haskell,base-noprelude,1,333,63,false,0.0,0,F5_fail,word_count_post_clean=63 < 500
+2026-08-05T07:26:38.518159+00:00,profunctors,haskell,profunctors,1,216,30,false,0.0,0,F5_fail,word_count_post_clean=30 < 500
+2026-08-05T07:26:38.520007+00:00,doclayout,haskell,doclayout,1,475,70,false,0.0,0,F5_fail,word_count_post_clean=70 < 500
+2026-08-05T07:26:38.521799+00:00,network-bytestring,haskell,network-bytestring,1,1444,235,false,0.0,0,F5_fail,word_count_post_clean=235 < 500
+2026-08-05T07:26:38.524289+00:00,morley,haskell,morley,21,77920,12667,false,1.0,140,ready,
+2026-08-05T07:26:38.822373+00:00,prometheus-client,haskell,prometheus-client,1,1301,187,false,0.0,0,F5_fail,word_count_post_clean=187 < 500
+2026-08-05T07:26:38.826767+00:00,http-enumerator,haskell,http-enumerator,1,59,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T07:26:38.828186+00:00,opentracing,haskell,opentracing,9,881,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T07:26:38.833789+00:00,infinite-list,haskell,infinite-list,1,3025,502,false,0.87,23,ready,
+2026-08-05T07:26:38.889398+00:00,X11,haskell,X11,1,843,140,false,0.0,0,F5_fail,word_count_post_clean=140 < 500
+2026-08-05T07:26:38.892410+00:00,x509-system,haskell,x509-system,1,429,55,false,0.0,0,F5_fail,word_count_post_clean=55 < 500
+2026-08-05T07:26:38.895607+00:00,th-compat,haskell,th-compat,1,1200,223,false,0.0,0,F5_fail,word_count_post_clean=223 < 500
+2026-08-05T07:26:38.899324+00:00,Chart,haskell,Chart,1,107,17,false,0.0,0,F5_fail,word_count_post_clean=17 < 500
+2026-08-05T07:26:38.903607+00:00,StateVar,haskell,StateVar,1,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:38.905072+00:00,tls,haskell,tls,1,310,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-08-05T07:26:38.910316+00:00,data-fix,haskell,data-fix,1,564,86,false,0.0,0,F5_fail,word_count_post_clean=86 < 500
+2026-08-05T07:26:38.911971+00:00,lens,haskell,lens,2,4493,774,false,0.978,45,ready,
+2026-08-05T07:26:38.989039+00:00,bytestring-conversion,haskell,bytestring-conversion,1,85,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T07:26:38.990692+00:00,tonaparser,haskell,tonaparser,8,7830,1203,false,0.951,61,ready,
+2026-08-05T07:26:39.107463+00:00,network-conduit-tls,haskell,network-conduit-tls,6,34879,5948,false,1.0,154,ready,
+2026-08-05T07:26:39.324115+00:00,req,haskell,req,1,2587,421,false,0.0,0,F5_fail,word_count_post_clean=421 < 500
+2026-08-05T07:26:39.327824+00:00,deriving-compat,haskell,deriving-compat,1,1458,227,false,0.0,0,F5_fail,word_count_post_clean=227 < 500
+2026-08-05T07:26:39.332882+00:00,log-base,haskell,log-base,4,1064,164,false,0.0,0,F5_fail,word_count_post_clean=164 < 500
+2026-08-05T07:26:39.338521+00:00,leancheck,haskell,leancheck,5,19308,3058,false,0.985,136,ready,
+2026-08-05T07:26:39.566940+00:00,text-show,haskell,text-show,1,545,93,false,0.0,0,F5_fail,word_count_post_clean=93 < 500
+2026-08-05T07:26:39.573968+00:00,HDBC,haskell,HDBC,1,602,104,false,0.0,0,F5_fail,word_count_post_clean=104 < 500
+2026-08-05T07:26:39.576124+00:00,bytes,haskell,bytes,1,308,47,false,0.0,0,F5_fail,word_count_post_clean=47 < 500
+2026-08-05T07:26:39.577892+00:00,constraints-extras,haskell,constraints-extras,1,34,3,false,0.0,0,F5_fail,word_count_post_clean=3 < 500
+2026-08-05T07:26:39.579600+00:00,ascii-char,haskell,ascii-char,2,140,23,false,0.0,0,F5_fail,word_count_post_clean=23 < 500
+2026-08-05T07:26:39.581626+00:00,abstract-par,haskell,abstract-par,2,923,138,false,0.0,0,F5_fail,word_count_post_clean=138 < 500
+2026-08-05T07:26:39.587637+00:00,hasql-transaction,haskell,hasql-transaction,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:39.588853+00:00,blaze-builder,haskell,blaze-builder,1,1221,192,false,0.0,0,F5_fail,word_count_post_clean=192 < 500
+2026-08-05T07:26:39.592017+00:00,concurrent-extra,haskell,concurrent-extra,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:39.593428+00:00,dbus,haskell,dbus,1,502,78,false,0.0,0,F5_fail,word_count_post_clean=78 < 500
+2026-08-05T07:26:39.595434+00:00,crypto-random,haskell,crypto-random,1,892,137,false,0.0,0,F5_fail,word_count_post_clean=137 < 500
+2026-08-05T07:26:39.597665+00:00,pointed,haskell,pointed,1,232,34,false,0.0,0,F5_fail,word_count_post_clean=34 < 500
+2026-08-05T07:26:39.599451+00:00,MemoTrie,haskell,MemoTrie,1,338,53,false,0.0,0,F5_fail,word_count_post_clean=53 < 500
+2026-08-05T07:26:39.602596+00:00,hashable,haskell,hashable,1,253,43,false,0.0,0,F5_fail,word_count_post_clean=43 < 500
+2026-08-05T07:26:39.606455+00:00,http-conduit,haskell,http-conduit,5,2055,259,false,0.0,0,F5_fail,word_count_post_clean=259 < 500
+2026-08-05T07:26:39.613394+00:00,focus,haskell,focus,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:39.614203+00:00,ki,haskell,ki,2,1548,194,false,0.0,0,F5_fail,word_count_post_clean=194 < 500
+2026-08-05T07:26:39.620756+00:00,c-enum,haskell,c-enum,1,95,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-08-05T07:26:39.622691+00:00,keys,haskell,keys,1,397,64,false,0.0,0,F5_fail,word_count_post_clean=64 < 500
+2026-08-05T07:26:39.624432+00:00,svg-builder,haskell,svg-builder,1,68,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T07:26:39.626416+00:00,wai-websockets,haskell,wai-websockets,13,3424,554,false,0.964,28,ready,
+2026-08-05T07:26:39.680288+00:00,network-ip,haskell,network-ip,1,94,11,false,0.0,0,F5_fail,word_count_post_clean=11 < 500
+2026-08-05T07:26:39.682063+00:00,kan-extensions,haskell,kan-extensions,1,640,109,false,0.0,0,F5_fail,word_count_post_clean=109 < 500
+2026-08-05T07:26:39.684938+00:00,numhask-space,haskell,numhask-space,1,112,19,false,0.0,0,F5_fail,word_count_post_clean=19 < 500
+2026-08-05T07:26:39.687134+00:00,some,haskell,some,1,646,106,false,0.0,0,F5_fail,word_count_post_clean=106 < 500
+2026-08-05T07:26:39.689018+00:00,bifunctor-classes-compat,haskell,bifunctor-classes-compat,1,99,15,false,0.0,0,F5_fail,word_count_post_clean=15 < 500
+2026-08-05T07:26:39.690965+00:00,hs-opentelemetry-api,haskell,hs-opentelemetry-api,27,35003,5051,false,0.92,87,ready,
+2026-08-05T07:26:39.959891+00:00,cmdargs,haskell,cmdargs,1,4894,824,false,0.974,39,ready,
+2026-08-05T07:26:40.014929+00:00,js-jquery,haskell,js-jquery,1,596,95,false,0.0,0,F5_fail,word_count_post_clean=95 < 500
+2026-08-05T07:26:40.017307+00:00,hs-opentelemetry-sdk,haskell,hs-opentelemetry-sdk,27,35003,5051,false,0.92,87,ready,
+2026-08-05T07:26:40.278786+00:00,time-manager,haskell,time-manager,13,3424,554,false,0.964,28,ready,
+2026-08-05T07:26:40.332977+00:00,call-stack,haskell,call-stack,1,48,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T07:26:40.334400+00:00,test-framework-quickcheck2,haskell,test-framework-quickcheck2,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T07:26:40.336531+00:00,validation,haskell,validation,1,1083,185,false,0.0,0,F5_fail,word_count_post_clean=185 < 500
+2026-08-05T07:26:40.340230+00:00,doctemplates,haskell,doctemplates,1,8804,1472,false,1.0,64,ready,
+2026-08-05T07:26:40.424918+00:00,haskell-src-exts,haskell,haskell-src-exts,1,1557,225,false,0.0,0,F5_fail,word_count_post_clean=225 < 500
+2026-08-05T07:26:40.438488+00:00,singletons-th,haskell,singletons-th,5,43460,6903,false,0.985,133,ready,
+2026-08-05T07:26:40.654804+00:00,pa-prelude,haskell,pa-prelude,9,5959,1035,false,1.0,53,ready,
+2026-08-05T07:26:40.733300+00:00,crypto-pubkey,haskell,crypto-pubkey,1,832,113,false,0.0,0,F5_fail,word_count_post_clean=113 < 500
+2026-08-05T07:26:40.736622+00:00,generic-lens,haskell,generic-lens,1,1851,286,false,0.0,0,F5_fail,word_count_post_clean=286 < 500

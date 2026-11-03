@@ -1,9 +1,9 @@
 """
-confirmatory_preprocessor — Extract prose text from cloned libraries and
+confirmatory_preprocessor: Extract prose text from cloned libraries and
 apply F5 (word count) and F6 (English language) filters.
 
 Reads:
-    files/corpus/frame_YYYYMMDD/sample_manifest.csv
+    files/corpus/frame_<name>/sample_manifest.csv
         Only rows with role='primary' and status starting with
         'primary_cloned' are processed. Cloner + preprocessor form a
         two-step loop: any reserves promoted here are picked up by the
@@ -26,7 +26,7 @@ For each cloned repository, this script:
          F6: dominant paragraph language is English (>=50% by langdetect)
                                                   (fail: primary_failed_f6)
     5. Writes the cleaned text (post-cap) to:
-           files/corpus/frame_YYYYMMDD/text/<eco>/<safe_name>.txt
+           files/corpus/frame_<name>/text/<eco>/<safe_name>.txt
     6. Records outcome in preprocess_log.csv and updates the manifest.
 
 Failed rows (F5/F6) are appended to exclusion_log.csv under stage
@@ -35,7 +35,7 @@ fill vacated primary slots; those newly promoted rows need to be
 cloned by re-running confirmatory_cloner.py, then this script again.
 
 Usage:
-    venv/bin/python3 src/corpus/confirmatory_preprocessor.py [--freeze-date YYYYMMDD]
+    venv/bin/python3 src/corpus/confirmatory_preprocessor.py [--freeze-date <name>]
                                                              [--lang java|python|all]
                                                              [--limit N]
 """
@@ -64,14 +64,16 @@ DetectorFactory.seed = 0   # deterministic language detection
 
 # --- Reuse the pilot's pause helper -------------------------------------
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "src" / "crawl-clone"))
+sys.path[:0] = [str(p) for p in Path(__file__).resolve().parents[1].iterdir() if p.is_dir()]
 from pause_helper import PauseController  # noqa: E402
+
+from frame_config import load_n_target  # noqa: E402
 
 CORPUS_DIR = ROOT / "files" / "corpus"
 CLONE_ROOT = ROOT / "files" / "raw" / "confirmatory"
 
 WORD_MIN = 500                 # F5 threshold
-WORD_CAP = 100_000             # §7.6.5 per-library cap
+WORD_CAP = 100_000             # per-library cap
 ENGLISH_MIN_FRACTION = 0.5     # F6 threshold
 LANG_SAMPLE_PARAGRAPHS = 200   # cap on paragraphs sent to langdetect
 LANG_MIN_TOKENS = 5            # skip too-short paragraphs
@@ -141,6 +143,133 @@ IGNORE_SOFT = {
     "example", "examples", "sample", "samples", "demo", "demos",
     "benchmark", "benchmarks", "conftest",
 }
+
+
+# ---------------------------------------------------------------------------
+# Monorepo subpackage scoping
+#
+# Added after discovering that ~15% of the locked confirmatory
+# sample shares a repository_url across multiple sampled packages (Maven
+# multi-module projects, Python/Haskell monorepos), and, since nothing
+# below previously scoped which subdirectory belonged to which package,
+# 7.2% of the locked 400-library sample turned out to be byte-identical
+# duplicate text credited to different "libraries". A library that shares
+# its repo with siblings must have its own text scoped to its own
+# subdirectory, or be treated as having no distinct documentation (F5
+# fail), falling back to the shared repo root would just reproduce the
+# duplication bug for any package this can't confidently scope.
+# ---------------------------------------------------------------------------
+
+# Files whose presence in a directory marks it as a single package's own
+# root (as opposed to a repo root that merely contains several packages).
+_MANIFEST_EXACT = {
+    "python": ("setup.py", "setup.cfg", "pyproject.toml"),
+    "java": ("pom.xml", "build.gradle", "build.gradle.kts"),
+}
+_MANIFEST_SUFFIX = {
+    "haskell": (".cabal",),
+}
+
+_NORMALIZE_RE = re.compile(r"[-_.]+")
+
+
+def _normalize_for_match(s: str) -> str:
+    return _NORMALIZE_RE.sub("", s.lower())
+
+
+def _artifact_name(package_name: str, ecosystem: str) -> str:
+    """Bare artifact/module name used for directory matching. Java package
+    names are full 'group:artifact' GAV coordinates; only the artifact
+    segment is ever a plausible directory name."""
+    if ecosystem == "java" and ":" in package_name:
+        return package_name.rsplit(":", 1)[-1]
+    return package_name
+
+
+def _dir_has_own_manifest(d: Path, ecosystem: str) -> bool:
+    for name in _MANIFEST_EXACT.get(ecosystem, ()):
+        if (d / name).exists():
+            return True
+    for suffix in _MANIFEST_SUFFIX.get(ecosystem, ()):
+        try:
+            if any(f.suffix == suffix for f in d.iterdir() if f.is_file()):
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def _common_token_prefix(token_lists: list[list[str]]) -> list[str]:
+    """Longest common leading '-'-token sequence shared by every name in
+    `token_lists` (e.g. the 'camel-quarkus' shared by every artifact in
+    the camel-quarkus repo)."""
+    if not token_lists:
+        return []
+    prefix = token_lists[0]
+    for tokens in token_lists[1:]:
+        i = 0
+        while i < len(prefix) and i < len(tokens) and prefix[i] == tokens[i]:
+            i += 1
+        prefix = prefix[:i]
+    return prefix
+
+
+def find_scoped_root(clone_dir: Path, package_name: str, ecosystem: str,
+                     sibling_artifact_names: Iterable[str] = (),
+                     max_depth: int = 4) -> Path | None:
+    """Return the directory to search for this package's own prose.
+
+    If the repo isn't shared with any other sampled package
+    (`sibling_artifact_names` empty), the repo root is this package's own
+    root by construction, return it as-is, no search needed.
+
+    If it IS shared, only two match targets are trusted: the package's
+    full artifact name, and, since umbrella-project modules commonly
+    drop a shared project prefix in their own directory name (Maven's
+    'camel-quarkus-file' living in a directory named just 'file'), the
+    artifact name with the longest prefix common to *all* sibling
+    artifacts in this repo stripped off, derived from the actual sibling
+    set rather than a fixed single-token guess (a bare last-token match
+    was tried and produces false positives, e.g. 'attoparsec-conduit'
+    wrongly matching an unrelated 'conduit' directory).
+
+    Returns None (treat as F5 fail) if the repo is shared but no
+    confident, unique match exists, reading the shared root would just
+    attribute a sibling's package, or the umbrella project's own docs, to
+    this one.
+    """
+    siblings = list(sibling_artifact_names)
+    if not siblings:
+        return clone_dir
+
+    target = _artifact_name(package_name, ecosystem)
+    token_lists = [target.split("-")] + [s.split("-") for s in siblings]
+    common_prefix = _common_token_prefix(token_lists)
+    target_tokens = target.split("-")
+    stripped = ("-".join(target_tokens[len(common_prefix):])
+                if 0 < len(common_prefix) < len(target_tokens) else "")
+
+    match_targets = {_normalize_for_match(target)}
+    if stripped:
+        match_targets.add(_normalize_for_match(stripped))
+
+    matches: list[Path] = []
+    for depth in range(1, max_depth + 1):
+        for d in clone_dir.glob("/".join(["*"] * depth)):
+            if not d.is_dir():
+                continue
+            rel_parts = [p.lower() for p in d.relative_to(clone_dir).parts]
+            if any(seg in IGNORE_HARD or "test" in seg for seg in rel_parts):
+                continue
+            if not _dir_has_own_manifest(d, ecosystem):
+                continue
+            if _normalize_for_match(d.name) in match_targets:
+                matches.append(d)
+
+    unique = list({str(m): m for m in matches}.values())
+    if len(unique) != 1:
+        return None  # none, or ambiguous, don't guess
+    return unique[0]
 
 
 def find_prose_files(clone_dir: Path) -> list[Path]:
@@ -380,7 +509,7 @@ def save_csv(path: Path, fieldnames: list[str], rows: list[dict]) -> None:
         w.writerows(rows)
 
 
-N_TARGET = 200
+N_TARGET = 200  # overridden in main() from the frame's frame_metadata.json
 
 
 def promote_reserves(rows: list[dict]) -> int:
@@ -392,7 +521,8 @@ def promote_reserves(rows: list[dict]) -> int:
     ecosystem are marked primary; the rest reserve.
     """
     promoted = 0
-    for eco in ("python", "java"):
+    ecosystems = sorted({r["ecosystem"] for r in rows})
+    for eco in ecosystems:
         eco_rows = sorted(
             (r for r in rows if r["ecosystem"] == eco),
             key=lambda r: int(r["draw_order"]),
@@ -435,7 +565,8 @@ PREPROC_LOG_COLS = [
 ]
 
 
-def process_library(row: dict, text_root: Path) -> dict:
+def process_library(row: dict, text_root: Path,
+                    repo_artifact_names: dict[str, list[str]] | None = None) -> dict:
     """
     Extract prose, count/cap words, detect language, and write the
     per-library text file if F5+F6 pass. Returns a dict for the
@@ -462,7 +593,20 @@ def process_library(row: dict, text_root: Path) -> dict:
         row["status"] = "primary_failed_f4"  # treat missing clone as F4
         return entry
 
-    files = find_prose_files(clone_dir)
+    repo_url = row.get("repository_url", "")
+    siblings = [n for n in (repo_artifact_names or {}).get(repo_url, [])
+               if n != _artifact_name(pkg, eco)] if repo_url else []
+    scoped_dir = find_scoped_root(clone_dir, pkg, eco, siblings)
+    if scoped_dir is None:
+        entry["status"] = "F5_fail"
+        entry["reason"] = ("repo shared with other sampled packages; no "
+                           "confident per-package subdirectory match")
+        row["status"] = "primary_failed_f5"
+        row["word_count_post_clean"] = "0"
+        row["word_capped"] = "false"
+        return entry
+
+    files = find_prose_files(scoped_dir)
     entry["n_prose_files"] = len(files)
 
     # Extract in stable order until we hit the word cap. This means we
@@ -520,7 +664,7 @@ def process_library(row: dict, text_root: Path) -> dict:
         row["status"] = "primary_failed_f6"
         return entry
 
-    # Success — write the text file.
+    # Success, write the text file.
     dest = text_root / eco / f"{sname}.txt"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(capped_text, encoding="utf-8")
@@ -563,7 +707,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--freeze-date",
                     default=datetime.now(timezone.utc).strftime("%Y%m%d"))
-    ap.add_argument("--lang", choices=["java", "python", "all"], default="all")
+    ap.add_argument("--lang", choices=["java", "python", "haskell", "all"], default="all")
     ap.add_argument("--limit", type=int, default=0,
                     help="Process at most N libraries (for smoke tests).")
     ap.add_argument("--retry-failed", action="store_true",
@@ -578,6 +722,9 @@ def main() -> None:
     preproc_log_path = frame_dir / "preprocess_log.csv"
     text_root = frame_dir / "text"
 
+    global N_TARGET
+    N_TARGET = load_n_target(frame_dir)
+
     if not manifest_path.exists():
         raise SystemExit(f"manifest not found: {manifest_path}")
 
@@ -590,7 +737,9 @@ def main() -> None:
                  "undone reserve promotions; cleared preprocess-stage "
                  "exclusion-log entries.", n_reset)
 
-    ecosystems: Iterable[str] = ("java", "python") if args.lang == "all" else (args.lang,)
+    ecosystems: Iterable[str] = (
+        sorted({r["ecosystem"] for r in rows}) if args.lang == "all" else (args.lang,)
+    )
 
     # Rows to process: primaries currently at status starting with 'primary_cloned'
     # and whose word_count_post_clean is still empty (meaning we haven't
@@ -604,6 +753,16 @@ def main() -> None:
     ]
     if args.limit > 0:
         todo = todo[:args.limit]
+
+    repo_artifact_names: dict[str, list[str]] = {}
+    for r in rows:
+        u = r.get("repository_url", "")
+        if u:
+            repo_artifact_names.setdefault(u, []).append(
+                _artifact_name(r["package_name"], r["ecosystem"]))
+    n_shared = sum(1 for names in repo_artifact_names.values() if len(names) > 1)
+    log.info("%d repository_url(s) shared by >1 sampled package (any ecosystem)",
+             n_shared)
 
     log.info("preprocessing %d libraries (lang=%s)", len(todo), args.lang)
 
@@ -629,7 +788,7 @@ def main() -> None:
             eco = row["ecosystem"]
             log.info("[%d/%d] %s  (%s)", i, len(todo), pkg, eco)
 
-            entry = process_library(row, text_root)
+            entry = process_library(row, text_root, repo_artifact_names)
             log_writer.writerow(entry)
             log_fh.flush()
 

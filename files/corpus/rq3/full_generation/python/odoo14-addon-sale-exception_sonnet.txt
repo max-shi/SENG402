@@ -1,0 +1,111 @@
+# odoo14-addon-sale-exception
+
+## Overview
+
+This repository packages a large family of independent Odoo 14 addons that extend the Sales (`sale`) application. Its centerpiece — and the module that gives the package its name — is **`sale_exception`**, a generic framework for detecting and blocking problematic sales orders *before* they are confirmed or invoiced. Around this core, the repository bundles dozens of complementary addons that customize order workflows, pricing, delivery, invoicing, portal access, and reporting for sales orders. Each addon is self-contained and can be installed independently, but many build on top of `sale_exception`'s rule engine or on shared conventions (company/config settings models, wizards, hooks) used throughout the suite.
+
+This document focuses on the exception-detection framework provided by `sale_exception`, and gives a map of how the surrounding addons relate to it.
+
+## Core concepts: `sale_exception`
+
+### `ExceptionRule`
+
+`sale.exception.rule` is the model that stores a single "exception rule": a named condition that, when true, prevents a sales order from progressing (confirmation, invoicing, etc.). Rules are configured through the backend UI and evaluated by the sales order at key lifecycle points.
+
+### `SaleOrder`
+
+The `sale.order` model is extended with the exception-handling logic:
+
+- **`detect_exceptions()`** — evaluates all applicable exception rules against the order and returns/records the ones that are triggered.
+- **`sale_check_exception()`** — checks the order for active exceptions and flags it accordingly (used before confirmation or invoicing).
+- **`test_all_draft_orders()`** — a maintenance/cron-friendly method that re-runs exception detection across all draft orders, useful for re-validating orders after rule changes.
+- **`write(vals)`** — overridden so that relevant changes to the order automatically re-trigger exception detection.
+- **`action_confirm()`** — overridden so that confirming an order first checks for blocking exceptions; if any are found, confirmation is halted and the user is prompted (see the confirmation wizard below).
+- **`action_draft()`** — overridden to reset the exception state when an order is sent back to draft.
+
+### `SaleOrderLine`
+
+`sale.order.line` is extended so that exception rules can also be defined and evaluated at the line level (e.g. a rule that blocks a specific product/customer combination), not only at the order level.
+
+### `SaleExceptionConfirm` (wizard)
+
+`sale.exception.confirm` is a transient model that presents the user with the list of triggered exceptions when they attempt to confirm an order that has active exceptions.
+
+- **`action_confirm()`** — lets the user acknowledge/override the exceptions and proceed with confirming the underlying sales order.
+
+### Company-level configuration
+
+- **`ResCompany`** and **`ResConfigSettings`** add company-scoped settings that control global behavior of the exception framework (e.g. whether exceptions are mandatory or can be bypassed).
+
+## Extending the exception framework
+
+Other addons in the repository plug additional, domain-specific exception conditions into this same framework rather than reinventing order-blocking logic:
+
+- **`sale_exception_product_sale_manufactured_for`** — adds `SaleOrder.exception_partner_can_order_manufactured_for()`, a rule check that blocks confirmation when a customer is not authorized to order products manufactured "for" another party.
+
+New exception conditions are typically added by subclassing `sale.order` (or `sale.order.line`) and contributing an additional check method that participates in `detect_exceptions()`.
+
+## Typical usage
+
+### 1. Define an exception rule
+
+In the Odoo backend (Sales → Configuration → Exception Rules), create a rule with a Python domain or code snippet describing the condition that should block an order, and mark it active.
+
+### 2. Let the framework enforce it automatically
+
+No extra code is required for the default flow — once a rule exists, confirming an order automatically runs the check:
+
+```python
+order = env["sale.order"].browse(order_id)
+
+# This will internally call sale_check_exception() / detect_exceptions()
+# and raise the confirmation wizard if any rule is triggered.
+order.action_confirm()
+```
+
+### 3. Handle triggered exceptions programmatically
+
+```python
+order = env["sale.order"].browse(order_id)
+exceptions = order.detect_exceptions()
+
+if exceptions:
+    # Exceptions found: surface them to the user, e.g. via the wizard
+    wizard = env["sale.exception.confirm"].create({
+        "order_id": order.id,
+    })
+    # The user reviews the exceptions in the UI, then calls:
+    wizard.action_confirm()
+else:
+    order.action_confirm()
+```
+
+### 4. Re-validate all draft orders after changing rules
+
+```python
+env["sale.order"].test_all_draft_orders()
+```
+
+This is useful to run as a scheduled action after modifying or adding exception rules, so that any draft order affected by the new rule set is flagged immediately rather than waiting for the next confirmation attempt.
+
+### 5. Add a custom exception condition
+
+```python
+from odoo import models
+
+
+class SaleOrder(models.Model):
+    _inherit = "sale.order"
+
+    def exception_partner_has_valid_contract(self):
+        for order in self:
+            if not order.partner_id.contract_ids.filtered(lambda c: c.state == "open"):
+                return "Customer has no active contract."
+        return False
+```
+
+Register the method name on an `ExceptionRule` record so it is picked up by `detect_exceptions()` during confirmation.
+
+## Relationship to the rest of the suite
+
+While `sale_exception` provides the generic order-blocking mechanism described above, the repository also includes many unrelated but complementary sales addons — covering areas such as automatic workflows (`sale_automatic_workflow*`), pricelist caching (`pricelist_cache*`), invoicing plans (`sale_invoice_plan`), delivery blocking (`sale_stock_picking_blocking`), order splitting (`sale_order_split_strategy`), tier validation (`sale_tier_validation`), and portal customization (`portal_sale_order_search`, `portal_sale_personal_data_only`). These modules are independent of `sale_exception` and can be installed selectively based on the business requirements of a given Odoo deployment; several of them (e.g. `sale_exception_product_sale_manufactured_for`) explicitly extend the exception framework as shown above, while most others operate on their own model extensions and settings.

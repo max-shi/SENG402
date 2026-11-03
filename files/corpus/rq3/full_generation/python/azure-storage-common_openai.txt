@@ -1,0 +1,250 @@
+# azure-storage-common
+
+`azure-storage-common` provides shared client, authentication, retry, HTTP, configuration, and account-level primitives for Python applications that work with Azure Storage services.
+
+The library centers on:
+
+- Creating service-specific clients from a `CloudStorageAccount`
+- Generating account shared access signatures
+- Configuring common storage-client behavior such as protocol, timeouts, sessions, and proxies
+- Supplying retry policies for storage operations
+- Representing service configuration and monitoring models
+- Supporting token-based authenticated HTTP sessions
+
+## Core concepts
+
+### `CloudStorageAccount`
+
+`CloudStorageAccount` represents a storage account and acts as a factory for service clients:
+
+- `create_block_blob_service()`
+- `create_page_blob_service()`
+- `create_append_blob_service()`
+- `create_queue_service()`
+- `create_file_service()`
+
+It can also generate an account-level shared access signature with
+`generate_shared_access_signature(...)`.
+
+### `StorageClient`
+
+`StorageClient` is the common client base for storage service clients. It exposes configurable connection behavior:
+
+- `socket_timeout`
+- `protocol`
+- `request_session`
+- `set_proxy(host, port, user=None, password=None)`
+
+It also provides `extract_date_and_request_id(retry_context)` for obtaining request information from retry state.
+
+### Shared access signatures
+
+`SharedAccessSignature` generates account-level shared access signatures:
+
+```python
+generate_account(services, resource_types, permission, expiry,
+                 start=None, ip=None, protocol=None)
+```
+
+`CloudStorageAccount.generate_shared_access_signature(...)` provides a similar account-oriented API.
+
+The related model classes are:
+
+- `Services`
+- `ResourceTypes`
+- `AccountPermissions`
+- `Protocol`
+
+### Retry policies
+
+Retry behavior is represented by a `RetryContext` and can be supplied through one of the available policies:
+
+- `ExponentialRetry`
+- `LinearRetry`
+- `no_retry(context)`
+
+Both retry policy classes expose a `retry(context)` method.
+
+### Configuration models
+
+The library includes model classes for common storage service settings and responses:
+
+- `RetentionPolicy`
+- `DeleteRetentionPolicy`
+- `Logging`
+- `Metrics`
+- `CorsRule`
+- `StaticWebsite`
+- `ServiceProperties`
+- `ServiceStats`
+- `GeoReplication`
+- `AccessPolicy`
+- `LocationMode`
+
+### Authentication and HTTP support
+
+- `TokenCredential` can create an authenticated session with `signed_session(session=None)`.
+- `TokenCredential.token(new_value)` updates the credential token.
+- `HTTPRequest`, `HTTPResponse`, and `HTTPError` provide HTTP-related primitives.
+- `AzureSigningError` represents signing-related Azure exceptions.
+
+## Usage examples
+
+### Create a service client from an account
+
+Use a `CloudStorageAccount` to create the client for the storage service your application needs.
+
+```python
+# account is a configured CloudStorageAccount instance.
+account = get_storage_account()
+
+block_blob_service = account.create_block_blob_service()
+queue_service = account.create_queue_service()
+file_service = account.create_file_service()
+```
+
+The created service clients share the common storage-client behavior exposed by `StorageClient`.
+
+### Configure client networking behavior
+
+A storage client can be configured with a socket timeout, protocol, custom request session, and proxy settings.
+
+```python
+client = account.create_block_blob_service()
+
+client.socket_timeout = 30
+client.protocol = "https"
+
+client.set_proxy(
+    host="proxy.example.net",
+    port=8080,
+    user="proxy-user",
+    password="proxy-password",
+)
+```
+
+If your application manages its own HTTP session, assign it to the client:
+
+```python
+session = create_request_session()
+
+client.request_session = session
+```
+
+### Generate an account shared access signature
+
+Generate a shared access signature using the account or a `SharedAccessSignature` instance. The `services`, `resource_types`, and `permission` arguments are represented by the corresponding common model types.
+
+```python
+from datetime import datetime, timedelta
+
+account = get_storage_account()
+
+services = get_services_scope()
+resource_types = get_resource_types_scope()
+permissions = get_account_permissions()
+
+expiry = datetime.utcnow() + timedelta(hours=1)
+
+signature = account.generate_shared_access_signature(
+    services=services,
+    resource_types=resource_types,
+    permission=permissions,
+    expiry=expiry,
+    protocol="https",
+)
+```
+
+Optional restrictions can be supplied with `start`, `ip`, and `protocol`:
+
+```python
+signature = account.generate_shared_access_signature(
+    services=services,
+    resource_types=resource_types,
+    permission=permissions,
+    start=datetime.utcnow(),
+    expiry=datetime.utcnow() + timedelta(minutes=30),
+    ip="203.0.113.10",
+    protocol="https",
+)
+```
+
+### Use a token credential with an HTTP session
+
+`TokenCredential` can sign an existing session or create a signed session when none is supplied.
+
+```python
+credential = get_token_credential()
+
+signed_session = credential.signed_session()
+
+response = signed_session.get("https://example.storage.endpoint/")
+```
+
+Update the token when refreshed:
+
+```python
+credential.token(new_access_token)
+
+signed_session = credential.signed_session()
+```
+
+### Select retry behavior
+
+Retry policies operate on a `RetryContext`.
+
+```python
+retry_policy = ExponentialRetry()
+context = RetryContext()
+
+should_retry = retry_policy.retry(context)
+```
+
+For applications that need no retry behavior:
+
+```python
+should_retry = no_retry(context)
+```
+
+### Inspect retry request information
+
+When handling retries or failures, retrieve date and request ID information from a retry context:
+
+```python
+date, request_id = StorageClient.extract_date_and_request_id(context)
+
+print("Request date:", date)
+print("Request ID:", request_id)
+```
+
+## Error handling
+
+Handle signing failures separately from general HTTP failures when appropriate:
+
+```python
+try:
+    signature = account.generate_shared_access_signature(
+        services=services,
+        resource_types=resource_types,
+        permission=permissions,
+        expiry=expiry,
+    )
+except AzureSigningError:
+    # Handle signing or credential-related failures.
+    raise
+except HTTPError:
+    # Handle HTTP-level failures.
+    raise
+```
+
+## API summary
+
+| Area | Primary APIs |
+|---|---|
+| Account and service creation | `CloudStorageAccount` |
+| Shared access signatures | `SharedAccessSignature`, `Services`, `ResourceTypes`, `AccountPermissions`, `Protocol` |
+| Client configuration | `StorageClient` |
+| Retry handling | `ExponentialRetry`, `LinearRetry`, `no_retry`, `RetryContext` |
+| Authentication | `TokenCredential` |
+| HTTP primitives | `HTTPRequest`, `HTTPResponse`, `HTTPError` |
+| Service settings and status | `ServiceProperties`, `ServiceStats`, `Logging`, `Metrics`, `CorsRule`, `RetentionPolicy`, `DeleteRetentionPolicy`, `StaticWebsite`, `GeoReplication` |

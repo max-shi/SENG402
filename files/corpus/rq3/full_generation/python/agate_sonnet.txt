@@ -1,0 +1,255 @@
+# agate
+
+**agate** is a Python library for working with tabular data. It provides an
+immutable, in-memory `Table` data structure along with a rich collection of
+aggregations, computations, and data types that make it easy to load, clean,
+analyze, and export structured data — without the overhead of a full
+DataFrame library.
+
+agate tables are immutable: instead of mutating data in place, most
+operations return new `Table` or `TableSet` instances. This makes analysis
+pipelines predictable and easy to reason about.
+
+## Features
+
+- Flexible data loading from CSV, JSON, fixed-width files, and Python
+  objects
+- Automatic type detection via `TypeTester`, with explicit `DataType`
+  classes for full control
+- A large library of built-in `Aggregation` classes (sums, means, medians,
+  quartiles, standard deviation, etc.)
+- A library of `Computation` classes for deriving new columns (percent
+  change, rank, slugs, formulas, etc.)
+- Grouping data into a `TableSet` for aggregate comparisons across groups
+- Table reshaping: `pivot`, `normalize`, `denormalize`, `join`, `group_by`
+- Charting helpers (`bar_chart`, `column_chart`, `line_chart`,
+  `scatterplot`)
+- Pretty-printing to the console (`print_table`, `print_html`,
+  `print_structure`, `print_bars`) and export to CSV/JSON
+
+## Core Concepts
+
+### Table
+
+`Table` is the central data structure in agate. It holds a set of named,
+typed columns and a sequence of rows. Tables are typically constructed
+using one of the class methods:
+
+- `Table.from_csv(path, ...)`
+- `Table.from_json(path, ...)`
+- `Table.from_fixed(path, schema_path, ...)`
+- `Table.from_object(obj, ...)`
+- `Table.merge(tables, ...)`
+
+Once you have a `Table`, you can inspect its structure:
+
+```python
+table.column_names()
+table.column_types()
+table.row_names()
+table.columns()
+table.rows()
+```
+
+And transform it using methods such as `select`, `where`, `exclude`,
+`find`, `order_by`, `limit`, `distinct`, `group_by`, `join`, `pivot`,
+`normalize`, `denormalize`, `homogenize`, `bins`, `compute`, `rename`, and
+`aggregate`. Each of these returns a new `Table` (or, in the case of
+`group_by`, a `TableSet`) rather than modifying the original.
+
+Tables can be exported with `to_csv`, `to_json`, or printed directly with
+`print_csv`, `print_json`, `print_table`, `print_html`, `print_bars`, and
+`print_structure`. Several charting methods (`bar_chart`, `column_chart`,
+`line_chart`, `scatterplot`) render visualizations of the data.
+
+### Columns and Rows
+
+A `Table` is composed of `Column` and `Row` objects, both of which are
+`MappedSequence` instances — sequences that also support dictionary-style
+access by name. `Column` exposes helpers like `values()`,
+`values_without_nulls()`, `values_distinct()`, and sorted variants, which
+are used internally by aggregations but are also useful for direct
+inspection.
+
+### Data Types
+
+agate columns are strongly typed. The `DataType` base class defines the
+interface (`test`, `cast`, `csvify`, `jsonify`) implemented by:
+
+- `Boolean`
+- `Number`
+- `Text`
+- `Date`
+- `DateTime`
+- `TimeDelta`
+
+When loading data, if you don't specify `column_types` explicitly, agate
+uses `TypeTester` to sniff appropriate types for each column automatically.
+
+### Aggregations
+
+An `Aggregation` computes a single summary value from a table or column.
+Built-in aggregations include `Sum`, `Mean`, `Median`, `Mode`, `Min`, `Max`,
+`StDev`, `PopulationStDev`, `Variance`, `PopulationVariance`, `MAD`
+(median absolute deviation), `IQR`, `Percentiles`, `Quartiles`, `Quintiles`,
+`Deciles`, `Count`, `All`, `Any`, `First`, `HasNulls`, `MaxLength`,
+`MaxPrecision`, and `Summary` (for applying an arbitrary function).
+
+Aggregations are run against a table via `Table.aggregate(aggregations)`,
+which accepts either a single aggregation or a list of `(name, aggregation)`
+tuples and returns computed values (or a new row-like result for multiple
+aggregations).
+
+### Computations
+
+A `Computation` derives a new column of values for every row in a table.
+Built-in computations include `Change`, `PercentChange`, `Percent`, `Rank`,
+`PercentileRank`, `Formula` (apply an arbitrary row function), and `Slug`
+(generate URL-friendly identifiers).
+
+Computations are applied via `Table.compute(computations, replace=False)`,
+which accepts a list of `(new_column_name, computation)` tuples and returns
+a new `Table` with the computed columns added (or replacing existing ones).
+
+### TableSet
+
+`TableSet` is an ordered, named collection of tables that share a common
+structure, typically produced by `Table.group_by(key)`. It behaves like a
+`MappedSequence` of tables keyed by group value, and it exposes many of the
+same proxy methods as `Table` (`compute`, `where`, `select`, `join`,
+`pivot`, `order_by`, `distinct`, `find`, `exclude`, `limit`, `homogenize`,
+`normalize`, `denormalize`, `group_by`, `bins`) so operations can be applied
+uniformly across every group.
+
+`TableSet` adds group-aware operations:
+
+- `aggregate(aggregations)` — compute aggregate values for each group,
+  returning a summary `Table`
+- `having(aggregations, test)` — filter groups based on an aggregate
+  condition
+- `merge(groups=None, ...)` — flatten a `TableSet` back into a single
+  `Table`
+- `to_csv(dir_path, **kwargs)` / `to_json(path, **kwargs)` — export each
+  group
+- `print_structure(...)` — inspect group structure
+- Charting methods (`bar_chart`, `column_chart`, `line_chart`,
+  `scatterplot`)
+
+`TableSet` instances can also be built directly via `TableSet.from_csv` or
+`TableSet.from_json`, loading a directory of files or a nested JSON
+structure as separate groups.
+
+### Configuration
+
+Global library behavior (such as default locale or precision) can be read
+and modified using `get_option`, `set_option`, and `set_options` from the
+configuration module.
+
+### Errors and Warnings
+
+agate raises `CastError` when a value cannot be cast to a column's data
+type, `DataTypeError` for invalid type operations, and
+`UnsupportedAggregationError` when an aggregation cannot be applied to a
+`TableSet`. It also emits runtime warnings such as
+`NullCalculationWarning`, `DuplicateColumnWarning`, and
+`UnnamedColumnWarning` to flag likely data issues without halting
+execution.
+
+## Installation
+
+```bash
+pip install agate
+```
+
+## Usage
+
+### Loading data and inspecting structure
+
+```python
+import agate
+
+table = agate.Table.from_csv('employees.csv')
+
+print(table.column_names())
+print(table.column_types())
+
+table.print_table(max_rows=10)
+table.print_structure()
+```
+
+### Filtering, sorting, and selecting
+
+```python
+active = table.where(lambda row: row['status'] == 'active')
+top_paid = active.order_by('salary', reverse=True).limit(5)
+summary = top_paid.select(['name', 'department', 'salary'])
+
+summary.print_table()
+```
+
+### Aggregating data
+
+```python
+totals = table.aggregate([
+    ('total_salary', agate.Sum('salary')),
+    ('average_salary', agate.Mean('salary')),
+    ('employee_count', agate.Count()),
+])
+
+print(totals)
+```
+
+### Grouping and comparing groups
+
+```python
+by_department = table.group_by('department')
+
+department_summary = by_department.aggregate([
+    ('total_salary', agate.Sum('salary')),
+    ('average_salary', agate.Mean('salary')),
+])
+
+department_summary.print_table()
+
+high_paying = by_department.having([
+    ('average_salary', agate.Mean('salary')),
+], lambda row: row['average_salary'] > 75000)
+```
+
+### Adding computed columns
+
+```python
+new_table = table.compute([
+    ('salary_rank', agate.Rank('salary')),
+    ('salary_change', agate.PercentChange('salary_last_year', 'salary')),
+    ('name_slug', agate.Slug('name')),
+])
+```
+
+### Reshaping data
+
+```python
+pivoted = table.pivot(
+    key='department',
+    pivot='status',
+    aggregation=agate.Count()
+)
+
+normalized = table.normalize(
+    key='employee_id',
+    properties=['q1_sales', 'q2_sales', 'q3_sales', 'q4_sales']
+)
+```
+
+### Exporting and visualizing
+
+```python
+table.to_csv('output.csv')
+table.to_json('output.json')
+
+table.bar_chart(label='department', value='average_salary', path='chart.svg')
+```
+
+## License
+
+MIT

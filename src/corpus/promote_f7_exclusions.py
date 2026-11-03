@@ -1,5 +1,5 @@
 """
-promote_f7_exclusions — Close the loop after manual F7 review.
+promote_f7_exclusions: Close the loop after manual F7 review.
 
 After running apply_f7_manual_review.py you may have marked some
 primary_ready rows as `excluded_fork_mirror_stub`. This script:
@@ -23,7 +23,7 @@ exclusions have appeared since the last run. It never demotes an
 already-promoted reserve.
 
 Usage:
-    venv/bin/python3 src/corpus/promote_f7_exclusions.py [--freeze-date YYYYMMDD] [--dry-run]
+    venv/bin/python3 src/corpus/promote_f7_exclusions.py [--freeze-date <name>] [--dry-run]
 """
 
 from __future__ import annotations

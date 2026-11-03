@@ -1,0 +1,214 @@
+# json-schema-validator
+
+A Java library for validating JSON documents against [JSON Schema](https://json-schema.org/) definitions. It supports multiple JSON Schema draft specifications (Draft 4, 6, 7, 2019-09, 2020-12), OpenAPI 3.0/3.1 schema dialects, and provides rich, structured error reporting, schema "walking" (traversal with defaults application and listeners), annotation collection, and customizable output formats.
+
+## Features
+
+- **Multiple dialect support** — Draft 4/6/7/2019-09/2020-12, OpenAPI 3.0/3.1, and custom dialects.
+- **Flexible input** — validate JSON or YAML strings, `InputStream`s, `JsonNode`s, or remote/absolute IRIs.
+- **Rich error model** — structured `Error` objects with instance location, schema location, evaluation path, and localizable messages.
+- **Output formats** — list-style and hierarchical output units compatible with the JSON Schema output specification, plus custom `OutputFormat` implementations.
+- **Schema walking** — traverse a schema/instance pair, applying defaults and invoking listeners at the property, item, and keyword level, independent of validation.
+- **Annotation collection** — collect keyword annotations (e.g. from `unevaluatedProperties`, `title`, custom keywords) during evaluation.
+- **Pluggable regular expression engines** — JDK, ECMAScript (via GraalJS or Joni), with allow-listing support.
+- **Custom resource loading** — classpath, in-memory maps, or remote fetching, with schema ID resolution/rewriting.
+- **Internationalization** — locale-aware error messages via `MessageSource`.
+- **Custom keywords and formats** — extend the validator with your own `Keyword`, `KeywordValidator`, and `Format` implementations.
+
+## Core Concepts
+
+### `SchemaRegistry`
+
+The entry point for creating and caching `Schema` instances. A registry is bound to one or more `Dialect`s (JSON Schema draft versions) and is responsible for loading schema documents (from strings, streams, files, or IRIs) and turning them into `Schema` objects.
+
+```java
+SchemaRegistry registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+```
+
+You can also customize registry behavior (resource loaders, schema id resolvers, config) via `SchemaRegistry.builder()`.
+
+### `Schema`
+
+Represents a compiled schema (or sub-schema). Provides multiple overloads of `validate(...)` and `walk(...)` for different input types (`JsonNode`, `String` + `InputFormat`, `AbsoluteIri`) and output styles (`List<Error>` or a custom `OutputFormat<T>`).
+
+### `Dialect`
+
+Describes a JSON Schema specification version: which keywords it supports, vocabulary declarations, and how `$id`/`$anchor`/`$dynamicAnchor` are read. Built-in dialects are available via `Dialects`, or the per-draft classes (`Draft4`, `Draft6`, `Draft7`, `Draft201909`, `Draft202012`, `OpenApi30`, `OpenApi31`).
+
+### `ExecutionContext` / `ExecutionConfig`
+
+`ExecutionContext` carries per-validation-run state: collected errors, annotations, evaluation path, fail-fast behavior, and the `CollectorContext` (a general-purpose key/value bag for custom collectors). `ExecutionConfig` configures behavior such as locale, fail-fast mode, and annotation collection filters for a run.
+
+### `Error`
+
+A single validation failure, including the JSON Pointer-like `instanceLocation`, `evaluationPath`, `schemaLocation`, the offending keyword, message, and message arguments/details for i18n and tooling.
+
+### Keywords and Validators
+
+Each JSON Schema keyword (`properties`, `items`, `allOf`, `enum`, `pattern`, `format`, etc.) is represented by a `Keyword` implementation that produces a `KeywordValidator`. The library ships validators for all standard keywords across supported drafts (see the `com.networknt.schema.keyword` package), and you can register your own via a custom `Dialect` or `KeywordFactory`.
+
+### Formats
+
+`Format` implementations (`DateFormat`, `DateTimeFormat`, `EmailFormat`, `UriFormat`, `RegexFormat`, etc.) back the `format` keyword. Custom formats can be supplied via `FormatKeyword`.
+
+### Walking
+
+`Schema.walk(...)` traverses a schema together with a JSON instance without necessarily validating, invoking `WalkListener`s registered through `WalkConfig` at the keyword, property, or item level. This is useful for applying schema defaults to instance data or for custom processing (e.g., data masking, transformation) driven by schema structure.
+
+### Output Formats
+
+`OutputFormat<T>` lets you convert validation results into custom shapes. Built-in helpers `ListOutputUnitFormatter` and `HierarchicalOutputUnitFormatter` produce `OutputUnit` trees conforming to the JSON Schema specification's "List" and "Hierarchical" output formats.
+
+## Getting Started
+
+### Add the dependency
+
+```xml
+<dependency>
+    <groupId>com.networknt</groupId>
+    <artifactId>json-schema-validator</artifactId>
+    <version>VERSION</version>
+</dependency>
+```
+
+### Basic validation
+
+```java
+import com.networknt.schema.*;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.List;
+
+// Create a registry bound to a specific JSON Schema dialect
+SchemaRegistry registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+
+// Load a schema from a string
+String schemaJson = "{"
+    + "\"type\": \"object\","
+    + "\"properties\": {"
+    + "  \"name\": { \"type\": \"string\" },"
+    + "  \"age\": { \"type\": \"integer\", \"minimum\": 0 }"
+    + "},"
+    + "\"required\": [\"name\"]"
+    + "}";
+
+Schema schema = registry.getSchema(schemaJson);
+
+// Validate a JSON instance
+String instanceJson = "{ \"name\": \"Alice\", \"age\": -1 }";
+
+List<Error> errors = schema.validate(instanceJson, InputFormat.JSON);
+
+for (Error error : errors) {
+    System.out.println(error.getInstanceLocation() + ": " + error.getMessage());
+}
+```
+
+### Validating a `JsonNode`
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+ObjectMapper mapper = new ObjectMapper();
+JsonNode instance = mapper.readTree(instanceJson);
+
+List<Error> errors = schema.validate(instance);
+```
+
+### Producing structured output
+
+```java
+import com.networknt.schema.output.*;
+
+OutputUnit outputUnit = schema.validate(instanceJson, InputFormat.JSON,
+        (jsonSchema, executionContext, schemaContext) ->
+            ListOutputUnitFormatter.format(
+                jsonSchema.validate(executionContext, mapper.readTree(instanceJson)),
+                executionContext,
+                schemaContext,
+                null));
+
+System.out.println(outputUnit.isValid());
+```
+
+### Fail-fast validation
+
+```java
+List<Error> errors = schema.validate(instanceJson, InputFormat.JSON, executionContext -> {
+    executionContext.executionConfig(builder -> builder.failFast(true));
+});
+```
+
+### Custom message locale
+
+```java
+List<Error> errors = schema.validate(instanceJson, InputFormat.JSON, executionContext -> {
+    executionContext.executionConfig(builder -> builder.locale(Locale.FRENCH));
+});
+```
+
+### Walking a schema to apply defaults
+
+```java
+import com.networknt.schema.walk.*;
+
+WalkConfig walkConfig = WalkConfig.builder()
+        .applyDefaultsStrategy(ApplyDefaultsStrategy.builder()
+                .build())
+        .build();
+
+ExecutionContext executionContext = schema.createExecutionContext();
+executionContext.setWalkConfig(walkConfig);
+
+Result result = schema.walk(executionContext, instance, true);
+List<Error> walkErrors = result.getErrors();
+```
+
+### Loading schemas from remote locations
+
+```java
+SchemaRegistry registry = SchemaRegistry.builder()
+        .schemaLoader(SchemaLoader.getRemoteFetcher())
+        .build();
+
+Schema schema = registry.getSchema(SchemaLocation.of("https://example.com/schemas/person.json"));
+```
+
+### Custom resource loading (offline / classpath schemas)
+
+```java
+import com.networknt.schema.resource.*;
+
+Map<String, String> mappings = new HashMap<>();
+mappings.put("https://example.com/schemas/person.json", "classpath:schemas/person.json");
+
+SchemaLoader loader = SchemaLoader.builder()
+        .schemaIdResolver(new MapSchemaIdResolver(mappings))
+        .resourceLoader(ClasspathResourceLoader.getInstance())
+        .build();
+
+SchemaRegistry registry = SchemaRegistry.builder()
+        .schemaLoader(loader)
+        .build();
+```
+
+## Validating YAML input
+
+```java
+List<Error> errors = schema.validate(yamlString, InputFormat.YAML);
+```
+
+## Custom Keywords and Formats
+
+You can extend validation by implementing `Keyword` and `KeywordValidator` for custom keywords, or `Format` for custom `format` values, then registering them on a `Dialect` built via `Dialect.builder(...)`.
+
+```java
+Dialect customDialect = Dialect.builder("https://example.com/dialects/custom")
+        .keyword(new FormatKeyword(myFormatsMap))
+        .build();
+
+SchemaRegistry registry = SchemaRegistry.withDialect(customDialect);
+```
+
+## License
+
+See the `LICENSE` file for details.

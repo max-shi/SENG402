@@ -1,0 +1,530 @@
+# grimoire-elk
+
+`grimoire-elk` is a Python library for collecting, transforming, enriching, and managing software-development and community data in Elasticsearch.
+
+Its API is organized around two main data stages:
+
+- **Raw/Ocean stage** — connector-specific `*Ocean` classes ingest source data and store raw items in Elasticsearch.
+- **Enriched stage** — connector-specific `*Enrich` classes transform raw items into enriched documents, including identity, project, repository, metadata, event, and analytical fields.
+
+The library also provides Elasticsearch index utilities, mappings and analyzers, identity-management helpers, incremental processing support, and several higher-level studies such as demographic, activity, geolocation, forecasting, backlog, areas-of-code, and onion-style analyses.
+
+## Concepts
+
+### Elasticsearch indexes and aliases
+
+`ElasticSearch` is the low-level Elasticsearch helper. It provides operations for:
+
+- Creating indexes and mappings
+- Uploading documents in bulk
+- Managing aliases
+- Checking whether a cluster is reachable
+- Inspecting indexed properties
+- Reading the most recent indexed date, offset, or field value
+- Deleting documents based on retention periods
+
+The class appears throughout the library as the Elasticsearch-facing component used by ingestion, enrichment, and study workflows.
+
+### Raw data ingestion
+
+`ElasticOcean` is the base class for raw-data collectors. It inherits from `ElasticItems` and offers generic ingestion capabilities:
+
+- Configure the Elasticsearch connection
+- Derive connector parameters from source URLs
+- Feed items into Elasticsearch
+- Add update timestamps
+- Select an incremental starting point using dates or offsets
+- Upload batches of items
+
+Connector-specific raw classes include:
+
+- `GitOcean`
+- `GitHubOcean`
+- `GitHubQLOcean`
+- `GitLabOcean`
+- `GerritOcean`
+- `JiraOcean`
+- `BugzillaOcean`
+- `BugzillaRESTOcean`
+- `ConfluenceOcean`
+- `DiscourseOcean`
+- `GitterOcean`
+- `JenkinsOcean`
+- `MBoxOcean`
+- `MattermostOcean`
+- `MediaWikiOcean`
+- `MeetupOcean`
+- `PagureOcean`
+- `PhabricatorOcean`
+- `RocketChatOcean`
+- `SlackOcean`
+- `StackExchangeOcean`
+- `WeblateOcean`
+
+Several source-specific classes provide `get_perceval_params_from_url()` and, where needed, `get_p2o_params_from_url()` to derive backend parameters from a source URL.
+
+### Enrichment
+
+`Enrich` is the common base class for enrichment workflows. It extends `ElasticItems` and adds support for:
+
+- Reading raw documents and writing enriched documents
+- Mapping identities to unique identities and individuals
+- Retrieving SortingHat-related identity data
+- Extracting repository and project metadata
+- Building common Grimoire-style metadata fields
+- Incremental enrichment using the latest enriched date or offset
+- Enriching event records in addition to primary items
+- Creating UUIDs from source identity attributes
+- Adding repository labels, project levels, and metadata filters
+
+Connector-specific enrichers implement source-specific interpretations of authors, identities, item IDs, projects, comments, reviews, events, and rich item structures. Examples include:
+
+- `GitEnrich`
+- `GitHubEnrich`, `GitHubEnrich2`, and `GitHubQLEnrich`
+- `GitLabEnrich`
+- `GerritEnrich`
+- `JiraEnrich`
+- `BugzillaEnrich` and `BugzillaRESTEnrich`
+- `ConfluenceEnrich`
+- `DiscourseEnrich`
+- `MBoxEnrich`, plus `GroupsioEnrich`, `HyperKittyEnrich`, `NNTPEnrich`, and `PipermailEnrich`
+- `SlackEnrich`
+- `MattermostEnrich`
+- `MediaWikiEnrich`
+- `StackExchangeEnrich`
+- `MeetupEnrich`
+- `PagureEnrich`
+- `PhabricatorEnrich`
+- `WeblateEnrich`
+
+### Mappings and analyzers
+
+Most raw and enriched data-source modules expose a `Mapping` class with:
+
+```python
+Mapping.get_elastic_mappings(es_major)
+```
+
+This provides mappings appropriate for an Elasticsearch major version.
+
+The library-level `Mapping` and `Analyzer` classes provide general mapping and analyzer selection:
+
+```python
+from grimoire_elk.elastic_analyzer import Analyzer
+from grimoire_elk.elastic_mapping import Mapping
+
+analyzers = Analyzer.get_elastic_analyzers(es_major=8)
+mappings = Mapping.get_elastic_mappings(es_major=8)
+```
+
+Some data sources also define custom analyzer implementations, such as the Slack analyzer.
+
+### Identity operations
+
+The `SortingHat` helper offers class-level operations for working with identities, profiles, organizations, enrollments, and unique identities:
+
+- Add identities and identity IDs
+- Add organizations and enrollments
+- Retrieve entities, UUIDs, and unique identities
+- Update profiles
+- Search recently modified identities
+- Check background jobs
+- Determine whether a UUID is a bot
+- Remove identities
+- Run affiliation, auto-gender, and unification operations
+
+The `Identities` family provides source-specific anonymization support:
+
+- `GitIdentities`
+- `GitHubIdentities`
+- `GitlabIdentities`
+- `MeetupIdentities`
+- `StackExchangeIdentities`
+
+### Studies and analytical enrichment
+
+Several APIs support additional derived indexes and analytical workflows.
+
+Examples include:
+
+- **Onion studies** via `Enrich.enrich_onion()` and `onion_study()`
+- **Areas of code** via `GitEnrich.enrich_areas_of_code()` and `areas_of_code()`
+- **Demography** via `enrich_demography()` and `enrich_demography_contribution()`
+- **Forecast activity** via `enrich_forecast_activity()`
+- **Geolocation** via `enrich_geolocation()`
+- **Feelings/NLP enrichment** via `enrich_feelings()`
+- **GitHub backlog analysis** via `GitHubEnrich.enrich_backlog_analysis()`
+- **GitHub pull-request enrichment** via `GitHubEnrich.enrich_pull_requests()`
+- **GitHubQL duration and reference analyses**
+- **Cocom and Colic analyses**
+- **Git branch enrichment**
+
+The Ceres-style interfaces provide a generic block-processing model:
+
+- `Connector` reads and writes item blocks.
+- `CeresBase` analyzes a stream of blocks.
+- `ESConnector` implements an Elasticsearch-backed connector.
+- `SimpleCopy` copies processed blocks.
+- `AreasOfCode` and `OnionStudy` implement specialized studies.
+
+## Installation
+
+Install the package with your preferred Python package-management workflow:
+
+```bash
+pip install grimoire-elk
+```
+
+The library operates against an Elasticsearch service. Ensure that the target Elasticsearch endpoint is reachable and that the configured indexes, mappings, and aliases match your deployment requirements.
+
+## Quick start
+
+### Create an Elasticsearch index
+
+Use `ElasticSearch` to initialize an index, optionally with version-specific analyzers and mappings.
+
+```python
+from grimoire_elk.elastic import ElasticSearch
+from grimoire_elk.elastic_analyzer import Analyzer
+from grimoire_elk.elastic_mapping import Mapping
+
+es_major = 8
+
+analyzers = Analyzer.get_elastic_analyzers(es_major)
+mappings = Mapping.get_elastic_mappings(es_major)
+
+elastic = ElasticSearch()
+
+# Configure the client/index according to your application's setup.
+# Once configured, create the index and apply mappings.
+elastic.create_index(analyzers=analyzers, clean=False)
+elastic.create_mappings(mappings)
+```
+
+You can inspect or manage aliases after the index is available:
+
+```python
+aliases = elastic.list_aliases()
+
+if not elastic.alias_in_use("my-data"):
+    elastic.add_alias("my-data")
+```
+
+### Feed raw Git data
+
+`GitOcean` is a raw-data connector. Its `feed()` method supports date- and offset-based incremental collection.
+
+```python
+from grimoire_elk.raw.git import GitOcean
+
+ocean = GitOcean()
+
+# Configure the Elasticsearch target and source-specific parameters.
+ocean.set_elastic_url("https://elasticsearch.example.org")
+
+# A Git source URL can be converted into backend parameters.
+params = GitOcean.get_perceval_params_from_url(
+    "https://github.com/example/project.git"
+)
+
+# Parameter assignment is application-specific; feed starts collection.
+ocean.feed(
+    from_date="2024-01-01T00:00:00Z",
+    category="commit",
+    branches=["main"]
+)
+```
+
+For an incremental run, use the indexed update state:
+
+```python
+last_update = ocean.get_last_update_from_es()
+
+ocean.feed(
+    from_date=last_update,
+    category="commit"
+)
+```
+
+### Enrich raw Git items
+
+`GitEnrich` reads raw items from an Ocean backend and produces enriched documents.
+
+```python
+from grimoire_elk.enriched.git import GitEnrich
+
+enricher = GitEnrich()
+enricher.set_elastic_url("https://elasticsearch.example.org")
+
+# Enrich the raw items made available by the Ocean backend.
+enricher.enrich_items(ocean_backend=ocean, events=False)
+```
+
+The generic enrichment layer can also retrieve fields used by incremental processing:
+
+```python
+last_enriched = enricher.get_last_update_from_es()
+last_offset = enricher.get_last_offset_from_es()
+```
+
+### Run a complete backend workflow
+
+The top-level `feed_backend()` and `enrich_backend()` functions provide higher-level orchestration.
+
+```python
+from grimoire_elk.elk import feed_backend, enrich_backend
+
+feed_backend(
+    url="https://elasticsearch.example.org",
+    clean=False,
+    fetch_archive=True,
+    backend_name="git",
+    backend_params={
+        "gitpath": "https://github.com/example/project.git"
+    },
+    es_index="git_raw",
+    es_index_enrich="git_enriched",
+    project="example-project",
+    repo_labels=["example", "documentation"]
+)
+```
+
+Then run enrichment:
+
+```python
+enrich_backend(
+    url="https://elasticsearch.example.org",
+    clean=False,
+    backend_name="git",
+    backend_params={
+        "gitpath": "https://github.com/example/project.git"
+    },
+    cfg_section_name="example-project",
+    ocean_index="git_raw",
+    ocean_index_enrich="git_enriched",
+    no_incremental=False,
+    repo_labels=["example", "documentation"]
+)
+```
+
+The enrichment workflow also supports optional identity, project, study, filtering, and metadata-related arguments, including:
+
+- `only_identities`
+- `do_refresh_projects`
+- `do_refresh_identities`
+- `filter_raw`
+- `repo_spaces`
+- `projects_json_repo`
+- `last_enrich_date`
+- `studies`
+- `only_studies`
+- `studies_args`
+- `events_enrich`
+
+## Working with Elasticsearch documents
+
+### Bulk upload
+
+`ElasticSearch.bulk_upload()` uploads a collection of items using a chosen document ID field.
+
+```python
+from grimoire_elk.elastic import ElasticSearch
+
+elastic = ElasticSearch()
+
+items = [
+    {"id": "commit-1", "message": "Initial commit"},
+    {"id": "commit-2", "message": "Add documentation"},
+]
+
+elastic.bulk_upload(items, field_id="id")
+```
+
+### Read the latest indexed value
+
+Use the last-value helpers to support incremental collection or enrichment.
+
+```python
+latest_date = elastic.get_last_date(
+    field="metadata__updated_on",
+    filters_=[]
+)
+
+latest_offset = elastic.get_last_offset(
+    field="offset",
+    filters_=[]
+)
+
+latest_value = elastic.get_last_item_field(
+    field="metadata__updated_on",
+    offset=False
+)
+```
+
+### Apply retention
+
+Delete documents older than a retention threshold:
+
+```python
+elastic.delete_items(
+    retention_time=90,
+    time_field="metadata__updated_on"
+)
+```
+
+## Repository and source filtering
+
+`ElasticItems` provides raw filtering helpers for repository-oriented sources and Confluence spaces.
+
+```python
+from grimoire_elk.enriched.utils import (
+    get_repository_filter,
+    get_confluence_spaces_filter,
+)
+
+repository_filter = get_repository_filter(
+    perceval_backend="https://github.com/example/project",
+    perceval_backend_name="github",
+    term=False
+)
+
+spaces_filter = get_confluence_spaces_filter(
+    repo_spaces=["ENG", "DOCS"],
+    perceval_backend_name="confluence"
+)
+```
+
+You can apply a raw filter directly to an Ocean or Enrich instance:
+
+```python
+ocean.set_filter_raw(repository_filter)
+enricher.set_filter_raw(repository_filter)
+```
+
+## Identity and profile example
+
+Use `SortingHat` for identity-related operations.
+
+```python
+from grimoire_elk.enriched.sortinghat_gelk import SortingHat
+
+identity_id = SortingHat.add_id(
+    db=sortinghat_db,
+    source="github",
+    email="developer@example.org",
+    name="Example Developer",
+    username="exampledev"
+)
+
+SortingHat.add_identity(
+    db=sortinghat_db,
+    identity=identity_id,
+    backend="github"
+)
+
+uuid = SortingHat.get_uuid_from_id(
+    db=sortinghat_db,
+    sh_id=identity_id
+)
+
+if uuid is not None:
+    SortingHat.add_enrollment(
+        db=sortinghat_db,
+        uuid=uuid,
+        organization="Example Organization"
+    )
+```
+
+## Analytical-study example: areas of code
+
+The Git enrichment API includes an areas-of-code workflow. The Ceres connectors can be used for block-based processing.
+
+```python
+from grimoire_elk.enriched.git import GitEnrich
+from grimoire_elk.enriched.ceres_base import ESConnector
+from grimoire_elk.enriched.study_ceres_aoc import areas_of_code
+
+git_enrich = GitEnrich()
+
+input_connector = ESConnector()
+output_connector = ESConnector()
+
+areas_of_code(
+    git_enrich=git_enrich,
+    in_conn=input_connector,
+    out_conn=output_connector,
+    block_size=100
+)
+```
+
+## Utility functions
+
+The package exposes utilities for connector discovery, Elasticsearch setup, logging, URL anonymization, and date handling.
+
+```python
+from grimoire_elk.utils import (
+    config_logging,
+    get_connector_from_name,
+    get_connectors,
+    get_elastic,
+)
+
+config_logging(debug=True)
+
+available_connectors = get_connectors()
+git_connector = get_connector_from_name("git")
+
+elastic = get_elastic(
+    url="https://elasticsearch.example.org",
+    es_index="git_raw",
+    clean=False,
+    backend="git"
+)
+```
+
+Date and URL helpers are available from the enrichment utility API:
+
+```python
+from grimoire_elk.enriched.utils import (
+    anonymize_url,
+    fix_field_date,
+    get_diff_current_date,
+    get_time_diff_days,
+)
+
+safe_url = anonymize_url("https://user:token@example.org/repository")
+normalized_date = fix_field_date("2024-01-01T00:00:00Z")
+yesterday = get_diff_current_date(days=1)
+days = get_time_diff_days("2024-01-01", "2024-01-10")
+```
+
+## Error types
+
+The library defines a small error hierarchy:
+
+```python
+from grimoire_elk.errors import BaseError, ELKError, ElasticError
+```
+
+- `BaseError` is the common package exception base.
+- `ELKError` represents general library errors.
+- `ElasticError` represents Elasticsearch-related errors.
+
+## Extending the library
+
+A new source integration generally follows the existing class structure:
+
+1. Create a raw connector by subclassing `ElasticOcean`.
+2. Provide a `Mapping` implementation exposing `get_elastic_mappings(es_major)`.
+3. Implement URL-to-backend parameter conversion where applicable.
+4. Create an enrichment class by subclassing `Enrich`.
+5. Implement source-specific methods such as:
+   - `get_field_author()`
+   - `get_field_unique_id()`
+   - `get_identities()`
+   - `get_sh_identity()`
+   - `get_project_repository()`
+   - `get_rich_item()`
+6. Override `enrich_items()` when the source requires custom iteration, event handling, or child-document extraction.
+
+The base classes provide the reusable Elasticsearch, filtering, identity, project, and incremental-processing functionality needed by most connectors.

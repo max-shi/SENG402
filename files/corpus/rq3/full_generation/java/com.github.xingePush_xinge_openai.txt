@@ -1,0 +1,435 @@
+# xinge
+
+A Java library for building and sending application push notifications and managing device tags. It provides:
+
+- A convenience API for common Android and iOS push scenarios.
+- Typed request models for constructing application push payloads.
+- Models for Android/iOS notification content, click actions, scheduling, targeting, and tags.
+- Raw JSON entry points for callers that already build their own request payloads.
+
+## Main API
+
+### `XingeAppSimple`
+
+`XingeAppSimple` is the high-level convenience client. Construct it with an application ID and secret key, then use platform- and audience-specific helper methods.
+
+```java
+XingeAppSimple client = new XingeAppSimple(appid, secretKey);
+```
+
+An optional domain URL and HTTP proxy can also be supplied:
+
+```java
+XingeAppSimple client = new XingeAppSimple(
+    appid,
+    secretKey,
+    domainUrl,
+    proxy
+);
+```
+
+Available convenience operations include:
+
+| Audience | Android | iOS |
+|---|---|---|
+| One device token | `pushTokenAndroid` | `pushTokenIos` |
+| Token list | `pushTokenListAndroid` | `pushTokenListIos` |
+| One account | `pushAccountAndroid` | `pushAccountIos` |
+| Account list | `pushAccountListAndroid` | `pushAccountListIos` |
+| All devices | `pushAllAndroid` | `pushAllIos` |
+| Tag | `pushTagAndroid` | `pushTagIos` |
+
+All convenience push methods return a `JSONObject`.
+
+### `XingeApp`
+
+`XingeApp` is the lower-level client for submitting complete request payloads.
+
+```java
+XingeApp app = new XingeApp();
+app.setDomainUrl("https://example.invalid");
+```
+
+It supports:
+
+- `pushApp(String jsonRequest)` — send an already serialized request.
+- `pushApp(PushAppRequest pushAppRequest)` — send a typed push request.
+- `deviceTag(String jsonRequest)` — submit a device-tag request encoded as JSON.
+- `stringifyError(Throwable error)` — convert an error to a string representation.
+
+### Request and response models
+
+The primary typed push request is `PushAppRequest`.
+
+```java
+PushAppRequest request = new PushAppRequest();
+request.setPlatform(Platform.android);
+request.setAudience_type(AudienceType.token);
+request.setToken_list(tokens);
+request.setMessage_type(MessageType.notify);
+request.setMessage(message);
+```
+
+Related models include:
+
+- `Message` — common message title, content, accepted delivery time, and platform-specific content.
+- `MessageAndroid` — Android notification options, custom content, and click actions.
+- `MessageIOS` — iOS APNs-style content and custom payload data.
+- `ClickAction`, `Browser`, and `AtyAttr` — Android notification-click behavior.
+- `TagListObject` — tag targeting with `OR` or `AND` semantics.
+- `DeviceTagRequest` — typed representation of a device tag operation.
+- `PushAppResponse` and `DeviceTagResponse` — response-shaped models containing fields such as return code, error message, result, and request sequence.
+
+## Targeting and platform enums
+
+The library exposes enums to make request construction explicit.
+
+### Platforms
+
+```java
+Platform.android
+Platform.ios
+Platform.all
+```
+
+Other available platform values include `wns`, `web`, `email`, and `sms`.
+
+### Audience types
+
+```java
+AudienceType.all
+AudienceType.tag
+AudienceType.token
+AudienceType.token_list
+AudienceType.account
+AudienceType.account_list
+```
+
+### Message types
+
+```java
+MessageType.notify
+MessageType.message
+```
+
+### Environments
+
+```java
+Environment.product
+Environment.dev
+```
+
+### Account options
+
+- `AccountType` identifies account types such as `mobile`, `email`, `wx_openid`, `qq_openid`, and others.
+- `AccountPushType` controls whether delivery targets the latest device or all devices associated with an account.
+
+## Quick start: send to one Android token
+
+```java
+import com.tencent.xinge.XingeAppSimple;
+import org.json.JSONObject;
+
+public class SendAndroidPush {
+    public static void main(String[] args) {
+        String appid = "your-app-id";
+        String secretKey = "your-secret-key";
+        String token = "device-token";
+
+        XingeAppSimple client = new XingeAppSimple(appid, secretKey);
+
+        JSONObject response = client.pushTokenAndroid(
+            "Order update",
+            "Your order has shipped.",
+            token
+        );
+
+        System.out.println(response);
+    }
+}
+```
+
+## Send to multiple iOS devices
+
+The iOS convenience methods accept an environment string in addition to the title, content, and audience.
+
+```java
+import com.tencent.xinge.XingeAppSimple;
+import java.util.ArrayList;
+import org.json.JSONObject;
+
+public class SendIosPush {
+    public static void main(String[] args) {
+        XingeAppSimple client = new XingeAppSimple(
+            "your-app-id",
+            "your-secret-key"
+        );
+
+        ArrayList<String> tokens = new ArrayList<String>();
+        tokens.add("ios-device-token-1");
+        tokens.add("ios-device-token-2");
+
+        JSONObject response = client.pushTokenListIos(
+            "New message",
+            "You have a new message.",
+            tokens,
+            "product"
+        );
+
+        System.out.println(response);
+    }
+}
+```
+
+## Send to an Android tag
+
+```java
+import com.tencent.xinge.XingeAppSimple;
+import org.json.JSONObject;
+
+public class SendTagPush {
+    public static void main(String[] args) {
+        XingeAppSimple client = new XingeAppSimple(
+            "your-app-id",
+            "your-secret-key"
+        );
+
+        JSONObject response = client.pushTagAndroid(
+            "Weekly update",
+            "Your personalized weekly update is ready.",
+            "subscribed-users"
+        );
+
+        System.out.println(response);
+    }
+}
+```
+
+## Build a typed push request
+
+Use `PushAppRequest` when the convenience methods do not expose enough notification options.
+
+```java
+import com.tencent.xinge.XingeApp;
+import com.tencent.xinge.bean.AudienceType;
+import com.tencent.xinge.bean.Message;
+import com.tencent.xinge.bean.MessageAndroid;
+import com.tencent.xinge.bean.MessageType;
+import com.tencent.xinge.bean.Platform;
+import com.tencent.xinge.push.app.PushAppRequest;
+
+import java.util.ArrayList;
+
+import org.json.JSONObject;
+
+public class TypedAndroidPush {
+    public static void main(String[] args) {
+        ArrayList<String> tokens = new ArrayList<String>();
+        tokens.add("device-token-1");
+        tokens.add("device-token-2");
+
+        MessageAndroid android = new MessageAndroid();
+        android.setN_id(1001);
+        android.setRing(1);
+        android.setVibrate(1);
+        android.setLights(1);
+        android.setClearable(1);
+        android.setCustom_content("{\"source\":\"typed-request\"}");
+
+        Message message = new Message();
+        message.setTitle("Maintenance notice");
+        message.setContent("Scheduled maintenance starts tonight.");
+        message.setAndroid(android);
+
+        PushAppRequest request = new PushAppRequest();
+        request.setPlatform(Platform.android);
+        request.setAudience_type(AudienceType.token_list);
+        request.setToken_list(tokens);
+        request.setMessage_type(MessageType.notify);
+        request.setMessage(message);
+        request.setExpire_time(3600);
+
+        XingeApp app = new XingeApp();
+        JSONObject response = app.pushApp(request);
+
+        System.out.println(response);
+    }
+}
+```
+
+## Configure Android click behavior
+
+`MessageAndroid` can include a `ClickAction`. Depending on the selected action type, configure an activity, intent, or browser destination.
+
+```java
+import com.tencent.xinge.bean.ActionType;
+import com.tencent.xinge.bean.Browser;
+import com.tencent.xinge.bean.ClickAction;
+import com.tencent.xinge.bean.MessageAndroid;
+
+Browser browser = new Browser();
+browser.setUrl("https://example.com/news");
+browser.setConfirm(1);
+
+ClickAction action = new ClickAction();
+action.setAction_type(ActionType.OPEN_WEB.getType());
+action.setBrowser(browser);
+
+MessageAndroid android = new MessageAndroid();
+android.setAction(action);
+```
+
+Other `ActionType` values include:
+
+- `OPEN_ACTIVITY_BY_CLASS_NAME`
+- `OPEN_INTENT`
+- `OPEN_APP_BY_APK_NAME`
+- `OPEN_ACTIVITY_BY_ACTION`
+- `OPEN_RECEIVER_BY_ACTION`
+
+## Configure iOS notification content
+
+Use `MessageIOS`, `Aps`, and `Alert` to construct platform-specific iOS notification data.
+
+```java
+import com.tencent.xinge.bean.Message;
+import com.tencent.xinge.bean.MessageIOS;
+import com.tencent.xinge.bean.ios.Alert;
+import com.tencent.xinge.bean.ios.Aps;
+
+Alert alert = new Alert();
+alert.setTitle("Account notice");
+alert.setSubtitle("Action required");
+alert.setBody("Please review your account settings.");
+
+Aps aps = new Aps();
+aps.setAlert(alert);
+aps.setBadge_type(1);
+aps.setSound("default");
+aps.setCategory("account-notice");
+aps.setThread_id("account");
+
+MessageIOS ios = new MessageIOS();
+ios.setAps(aps);
+ios.setCustom("{\"screen\":\"account-settings\"}");
+
+Message message = new Message();
+message.setTitle("Account notice");
+message.setContent("Please review your account settings.");
+message.setIos(ios);
+```
+
+## Schedule and repeat delivery
+
+`PushAppRequest` includes fields for delayed and repeated delivery:
+
+```java
+PushAppRequest request = new PushAppRequest();
+
+request.setSend_time("2025-01-01 09:00:00");
+request.setLoop_times(3);
+request.setLoop_interval(3600);
+request.setExpire_time(86400);
+```
+
+The exact expected date-time format and interval units should match the push service configuration used by your application.
+
+## Restrict accepted delivery times
+
+`Message` accepts a list of `TimeInterval` instances.
+
+```java
+import com.tencent.xinge.bean.Message;
+import com.tencent.xinge.bean.TimeInterval;
+
+import java.util.ArrayList;
+
+ArrayList<TimeInterval> acceptTime = new ArrayList<TimeInterval>();
+acceptTime.add(new TimeInterval(9, 0, 18, 0));
+
+Message message = new Message();
+message.setAccept_time(acceptTime);
+```
+
+`TimeInterval` provides:
+
+- `isValid()` to validate an interval.
+- `toJsonObject()` to obtain its JSON representation.
+
+## Tag operations
+
+`DeviceTagRequest` represents a tag-management operation. It can contain:
+
+- A platform
+- An operator type
+- Device tokens
+- Tags
+- Tag/token pairs
+- Sequence and operation identifiers
+- An operation type string
+
+`OperatorType` defines operation categories such as:
+
+```java
+OperatorType.ADD_SINGLE_TAG_SINGLE
+OperatorType.DELE_SINGLE_TAG_SINGLE
+OperatorType.ADD_MULT_TAGS_SINGLE
+OperatorType.DELE_MULT_TAGS_SINGLE
+OperatorType.DELE_ALL_TAGS_SINGLE
+OperatorType.COVER_SINGLE_TAG
+OperatorType.ADD_SINGLE_TAG_MULT
+OperatorType.DELE_SINGLE_TAG_MULT
+OperatorType.ADD_BATCH_TAGS
+OperatorType.DELE_BATCH_TAGS
+```
+
+A request can be converted to a string with `toString()` and submitted through `XingeApp.deviceTag(...)`.
+
+```java
+import com.tencent.xinge.XingeApp;
+import com.tencent.xinge.bean.OperatorType;
+import com.tencent.xinge.bean.Platform;
+import com.tencent.xinge.device.tag.DeviceTagRequest;
+
+import java.util.ArrayList;
+
+DeviceTagRequest tagRequest = new DeviceTagRequest();
+tagRequest.setPlatform(Platform.android);
+tagRequest.setOperator_type(OperatorType.ADD_SINGLE_TAG_SINGLE.getType());
+
+ArrayList<String> tokens = new ArrayList<String>();
+tokens.add("device-token");
+
+ArrayList<String> tags = new ArrayList<String>();
+tags.add("beta-testers");
+
+tagRequest.setToken_list(tokens);
+tagRequest.setTag_list(tags);
+
+XingeApp app = new XingeApp();
+app.deviceTag(tagRequest.toString());
+```
+
+## Error handling
+
+Push and tag operations return `JSONObject` instances. Inspect the returned object according to the fields expected by your integration.
+
+For throwable-to-string conversion:
+
+```java
+try {
+    // Push or tag operation
+} catch (Throwable error) {
+    String details = XingeApp.stringifyError(error);
+    System.err.println(details);
+}
+```
+
+Typed response models also expose common response fields such as:
+
+- `ret_code`
+- `err_msg`
+- `result`
+- `seq`
+- `push_id`
+

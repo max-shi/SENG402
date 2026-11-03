@@ -1,0 +1,847 @@
+# odoo14-addon-configuration-helper
+
+A collection of Odoo extensions and developer utilities for configuring, operating, and maintaining an Odoo deployment.
+
+The available API spans several operational areas:
+
+- attachment processing, synchronization, retention, and deletion restrictions;
+- auditing and tracking;
+- scheduled jobs, backups, and database maintenance;
+- XLSX/Excel import, export, and reporting;
+- mail fetching and mail-attachment workflows;
+- model configuration helpers, sequence customization, search, and RPC controls;
+- upgrade and module analysis;
+- Sentry integration, session storage, vector fields, JSON serialization, and other platform utilities.
+
+Most APIs are implemented as Odoo models or mixins and are intended to be called through an Odoo environment (`env`), server actions, wizards, cron jobs, or module hooks.
+
+## Overview
+
+### Attachment management
+
+Attachment-related APIs provide queueing, synchronization, cleanup, and access restrictions.
+
+#### Attachment queues
+
+`AttachmentQueue` supports queued execution and lifecycle actions:
+
+```python
+queue = env["attachment.queue"].browse(queue_id)
+
+queue.button_reschedule()
+queue.button_manual_run()
+queue.run_as_job()
+queue.run()
+queue.set_done()
+```
+
+The corresponding rescheduling wizard exposes:
+
+```python
+wizard = env["attachment.queue.reschedule"].create({})
+wizard.reschedule()
+```
+
+The queue model also defines `create(vals_list)`, indicating queue records may apply initialization logic when created.
+
+#### Attachment synchronization tasks
+
+`AttachmentSynchronizeTask` provides import/export task execution:
+
+```python
+task = env["attachment.synchronize.task"].browse(task_id)
+
+task.run()
+task.run_import()
+task.run_export()
+```
+
+Tasks can also be scheduled for import:
+
+```python
+env["attachment.synchronize.task"].run_task_import_scheduler(
+    domain=[("active", "=", True)]
+)
+```
+
+Tasks may be duplicated using either:
+
+```python
+duplicate = task.button_duplicate_record()
+```
+
+or the standard Odoo copy API:
+
+```python
+duplicate = task.copy(default={"name": "Copied task"})
+```
+
+Storage backends expose actions for locating related tasks:
+
+```python
+storage = env["fs.storage"].browse(storage_id)
+
+storage.action_related_import_task()
+storage.action_related_export_task()
+```
+
+#### Attachment retention and cleanup
+
+The abstract `AutovacuumMixin` provides batch deletion and automated cleanup:
+
+```python
+records = env["some.model"].search([])
+records.batch_unlink()
+records.autovacuum(ttype="message")
+```
+
+`VacuumRule.retention_time_not_null()` is available for validating or checking retention-related rule data.
+
+Attachment deletion restrictions, unindexing hooks, language-aware mail-template attachments, and mail-message attachment cleanup are also included through extensions of standard Odoo models such as `ir.attachment`, `mail.message`, and `mail.template`.
+
+---
+
+### Audit logging and tracking
+
+The audit APIs provide configurable logging rules, HTTP request/session context, and maintenance tools.
+
+#### Audit rules
+
+`AuditlogRule` manages audit configuration and subscriptions:
+
+```python
+rule = env["auditlog.rule"].browse(rule_id)
+
+rule.subscribe()
+rule.unsubscribe()
+```
+
+Rules can retrieve tracked fields for a model:
+
+```python
+fields = rule.get_auditlog_fields("res.partner")
+```
+
+Custom audit entries can be created with `create_logs`:
+
+```python
+rule.create_logs(
+    uid=env.uid,
+    res_model="res.partner",
+    res_ids=[partner.id],
+    method="write",
+    old_values={"name": "Old name"},
+    new_values={"name": "New name"},
+    additional_log_values={"note": "Updated by integration"},
+)
+```
+
+The audit log models expose `create` and `write` overrides, while `AuditlogLog.show_res_ids()` is available to display related record identifiers.
+
+#### Request and session context
+
+Current HTTP context can be retrieved through:
+
+```python
+request_info = env["auditlog.http.request"].current_http_request()
+session_info = env["auditlog.http.session"].current_http_session()
+```
+
+#### Audit cleanup
+
+`AuditlogAutovacuum.autovacuum()` removes old audit data in optional chunks:
+
+```python
+env["auditlog.autovacuum"].autovacuum(days=90, chunk_size=1_000)
+```
+
+#### Record tracking
+
+Tracking-related model extensions provide Odoo lifecycle hooks for tracked records:
+
+- `Base.create(list_vals)`
+- `Base.write(vals)`
+- `Base.unlink()`
+- `Base.is_tracked_by_o2m()`
+
+Many-to-many values can be formatted with:
+
+```python
+from tracking_manager.tools import format_m2m
+
+value = format_m2m(partner.category_id)
+```
+
+---
+
+### Database backup, cleanup, and size analysis
+
+#### Backups
+
+`DbBackup` provides backup execution, logging, cleanup, and SFTP connectivity testing:
+
+```python
+backup = env["db.backup"].browse(backup_id)
+
+backup.action_sftp_test_connection()
+backup.action_backup()
+backup.cleanup()
+```
+
+Run backups for all configured backup records:
+
+```python
+env["db.backup"].action_backup_all()
+```
+
+Generate a backup filename:
+
+```python
+from datetime import datetime
+
+name = backup.filename(datetime.now(), ext="zip")
+```
+
+Obtain an SFTP connection through:
+
+```python
+connection = backup.sftp_connection()
+```
+
+#### Cleanup wizards
+
+Database-cleanup wizards follow a common workflow:
+
+1. Create or open a wizard.
+2. Discover removable/orphaned items with `find()`.
+3. Select generated lines.
+4. Purge selected lines or all lines.
+
+Example for orphaned columns:
+
+```python
+wizard = env["cleanup.purge.wizard.column"].create({})
+wizard.find()
+
+for line in wizard.line_ids:
+    line.purge()
+```
+
+The common purge API includes:
+
+```python
+wizard.select_lines()
+wizard.purge_all()
+action = wizard.get_wizard_action()
+```
+
+Specialized cleanup wizards are available for:
+
+- indexes;
+- columns;
+- data;
+- fields;
+- menus;
+- models;
+- modules;
+- tables.
+
+Most line models expose a `purge()` method.
+
+#### Database-size reports
+
+Database-size models provide record, relation, and index size information. The reporting model can open model-size results:
+
+```python
+report = env["ir.model.size.report"]
+report.action_open_model_sizes()
+```
+
+`IrModelSize.read_group()` is available for grouped size queries using the standard Odoo `read_group` calling convention.
+
+---
+
+### Excel import, export, and reports
+
+The Excel APIs provide reusable import/export templates, styles, expressions, and wizard-driven user flows.
+
+#### Exporting XLSX
+
+Use `XLSXExport.export_xlsx()` to export records with a template:
+
+```python
+exporter = env["xlsx.export"]
+
+content = exporter.export_xlsx(
+    template=template,
+    res_model="res.partner",
+    res_ids=[partner.id],
+)
+```
+
+Export evaluation and formatting helpers include:
+
+```python
+context = exporter.get_eval_context("res.partner", partner, partner.name)
+conditions = exporter.run_field_cond_dict(field)
+styles = exporter.run_field_style_dict(field)
+```
+
+For a wizard-driven export:
+
+```python
+wizard = env["export.xlsx.wizard"].with_context(
+    active_model="res.partner",
+    active_ids=[partner.id],
+).create({})
+
+wizard.action_export()
+```
+
+#### Importing XLSX
+
+`XLSXImport.import_xlsx()` imports a file using an import template:
+
+```python
+importer = env["xlsx.import"]
+
+result = importer.import_xlsx(
+    import_file=file_content,
+    template=template,
+    res_model="res.partner",
+)
+```
+
+The import wizard can provide a sample and execute an import:
+
+```python
+wizard = env["import.xlsx.wizard"].create({})
+wizard.get_import_sample()
+wizard.action_import()
+```
+
+#### XLSX reports
+
+`XLSXReport.report_xlsx()` produces a report from a report-oriented model:
+
+```python
+report = env["xlsx.report"].create({})
+report.report_xlsx()
+```
+
+The report wizard provides `action_report()` and `safe_domain(str_domain)` for report execution and domain handling.
+
+#### Template management
+
+`XLSXTemplate` manages import/export actions and report menus:
+
+```python
+template = env["xlsx.template"].browse(template_id)
+
+template.add_export_action()
+template.add_import_action()
+template.add_report_menu()
+```
+
+Remove generated actions or menus when they are no longer needed:
+
+```python
+template.remove_export_action()
+template.remove_import_action()
+template.remove_report_menu()
+```
+
+Templates may also be loaded programmatically:
+
+```python
+template.load_xlsx_template(template_ids=[template_id], addon=False)
+```
+
+#### Spreadsheet utility functions
+
+Utility functions support common spreadsheet tasks:
+
+```python
+from excel_import_export.models.common import (
+    adjust_cell_formula,
+    pos2idx,
+    split_row_col,
+    str_to_number,
+)
+
+updated_formula = adjust_cell_formula("=A1+B1", 2)
+column_index = pos2idx("C")
+row, column = split_row_col("B12")
+value = str_to_number("42.5")
+```
+
+---
+
+### Mail fetching and attachment matching
+
+Mail-fetching extensions add folder-specific IMAP operations and attachment workflows.
+
+#### Folder retrieval and matching
+
+`FetchmailServerFolder` supports a detailed fetching workflow:
+
+```python
+folder = env["fetchmail.server.folder"].browse(folder_id)
+
+criteria = folder.get_criteria()
+folder.fetch_mail()
+```
+
+Lower-level operations include:
+
+```python
+connection = ...
+folder.retrieve_imap_folder(connection)
+
+uids = folder.get_message_uids(connection, criteria)
+for uid in uids:
+    folder.apply_matching(connection, uid)
+```
+
+A folder can be confirmed, returned to draft state, or run manually:
+
+```python
+folder.button_confirm_folder()
+folder.set_draft()
+folder.button_attach_mail_manually()
+```
+
+#### Matching algorithms
+
+`EmailExact` and `EmailDomain` expose a common matching method:
+
+```python
+matcher = EmailExact()
+matches = matcher.search_matches(folder, message_dict)
+```
+
+```python
+matcher = EmailDomain()
+matches = matcher.search_matches(folder, message_dict)
+```
+
+#### Manual attachment wizard
+
+The manual attachment wizard provides defaults, view initialization, and execution:
+
+```python
+wizard = env["attach.mail.manually"].with_context(
+    active_ids=[folder_id],
+).create({})
+
+wizard.attach_mails()
+```
+
+---
+
+### Model and configuration helpers
+
+Several APIs extend core Odoo behavior around models, access, search, fields, sequences, and configuration.
+
+#### Model partitioning
+
+The `Base` partitioning mixin provides utilities for processing recordsets incrementally:
+
+```python
+records = env["res.partner"].search([])
+
+for partition in records.partition(lambda record: record.company_id):
+    # Process records sharing the same accessor value.
+    pass
+```
+
+Batch processing is available through:
+
+```python
+for batch in records.batch(batch_size=500):
+    batch.write({"active": True})
+```
+
+Read each record independently:
+
+```python
+for values in records.read_per_record(fields=["name", "email"]):
+    pass
+```
+
+#### Onchange execution
+
+`play_onchanges()` allows code to execute onchange logic against supplied values:
+
+```python
+result = env["res.partner"].play_onchanges(
+    values={"country_id": country.id},
+    onchange_fields=["country_id"],
+)
+```
+
+#### Remote and technical-user access
+
+The remote helper exposes:
+
+```python
+remote = env["some.model"].remote()
+```
+
+The technical-user helper exposes:
+
+```python
+technical_env = env["some.model"].sudo_tech(raise_if_missing=False)
+```
+
+#### Improved name search
+
+The extended base model provides an alternative `name_search` API:
+
+```python
+partners = env["res.partner"].name_search(
+    name="Acme",
+    args=[("active", "=", True)],
+    operator="ilike",
+    limit=20,
+)
+```
+
+The model configuration API includes:
+
+```python
+model = env["ir.model"].browse(model_id)
+model.update_search_wo_restart()
+model.check_name_search_domain()
+```
+
+#### Restricting model updates
+
+`IrModelAccess.check()` uses the familiar access-check interface:
+
+```python
+env["ir.model.access"].check(
+    model="res.partner",
+    mode="write",
+    raise_exception=True,
+)
+```
+
+#### Sequences and sequence options
+
+Extended sequence APIs accept an optional sequence date:
+
+```python
+sequence = env["ir.sequence"].browse(sequence_id)
+
+number = sequence.next_by_id(sequence_date=date_value)
+```
+
+```python
+number = env["ir.sequence"].next_by_code(
+    "sale.order",
+    sequence_date=date_value,
+)
+```
+
+`IrSequenceOptionLine` can retrieve options and choose a sequence for a record:
+
+```python
+line = env["ir.sequence.option.line"].browse(line_id)
+
+options = line.get_model_options("sale.order")
+sequence = line.get_sequence(order, options=options)
+```
+
+`sequence_python` adds:
+
+```python
+next_character = sequence.get_next_char(number_next=27)
+```
+
+#### Time windows
+
+`TimeWindowMixin` supports overlap validation and time conversion:
+
+```python
+record.check_window_no_overlaps()
+
+time_value = record.float_to_time(13.5)
+display_value = record.float_to_time_repr(13.5)
+
+start = record.get_time_window_start_time()
+end = record.get_time_window_end_time()
+```
+
+---
+
+### JSON serialization
+
+The JSON APIs build parser-driven representations of Odoo records.
+
+#### Serializing records
+
+Use `jsonify()` on a model recordset:
+
+```python
+partners = env["res.partner"].browse([partner_id])
+
+payload = partners.jsonify(
+    parser=["name", "email"],
+    one=True,
+    with_fieldname=True,
+)
+```
+
+`IrExports.get_json_parser()` retrieves a parser from an export definition:
+
+```python
+export = env["ir.exports"].browse(export_id)
+parser = export.get_json_parser()
+
+payload = partners.jsonify(parser, one=False)
+```
+
+#### Parser utilities
+
+Parser-related helper functions include:
+
+```python
+from jsonifier.models.ir_exports import field_dict, partition, update_dict
+from jsonifier.models.utils import convert_simple_to_full_parser
+
+full_parser = convert_simple_to_full_parser(["name", "email"])
+definition = field_dict("name")
+```
+
+`FieldResolver.resolve()` resolves a parser parameter against a recordset:
+
+```python
+resolver = env["ir.exports.resolver"]
+value = resolver.resolve(param, partners)
+```
+
+---
+
+### Vector fields
+
+The vector-field API adds a custom Odoo field type and a `VectorValue` representation.
+
+```python
+vector = VectorValue()
+
+dimensions = vector.dimensions()
+items = vector.to_list()
+value = vector.value()
+
+vector.pad(dimensions=128)
+```
+
+The `Vector` field supports database integration and standard Odoo conversion stages:
+
+- `vector_dimensions(record)`
+- `column_type()`
+- `update_db_column(model, column)`
+- `convert_to_cache(...)`
+- `convert_to_record(...)`
+- `convert_to_read(...)`
+- `convert_to_column(...)`
+- `convert_to_write(...)`
+
+Database adapters can be registered with:
+
+```python
+from field_vector.register import register_vector
+
+register_vector(env.cr)
+```
+
+---
+
+### Module automation and upgrade analysis
+
+#### Automatic module updates
+
+Module checksums can be upgraded using:
+
+```python
+module = env["ir.module.module"].browse(module_id)
+
+module.upgrade_changed_checksum(
+    overwrite_existing_translations=False,
+)
+```
+
+Ensure a collection of modules has a specific state:
+
+```python
+from module_auto_update.models.module import ensure_module_state
+
+ensure_module_state(env, modules, state="installed")
+```
+
+The update wizard provides an interactive flow:
+
+```python
+wizard = env["module.auto.update"].create({})
+
+wizard.action_get_modules_to_update()
+wizard.action_upgrade_module()
+```
+
+#### Module analysis
+
+Module code analysis can be triggered per module or in bulk:
+
+```python
+module.button_analyse_code()
+```
+
+```python
+env["ir.module.module"].cron_analyse_code(
+    domain=[("state", "=", "installed")]
+)
+```
+
+#### Upgrade analysis
+
+`UpgradeAnalysis` exposes high-level analysis and output generation:
+
+```python
+analysis = env["upgrade.analysis"].browse(analysis_id)
+
+analysis.analyze()
+analysis.generate_noupdate_changes()
+analysis.generate_module_coverage_file(
+    no_changes_modules=["base", "mail"],
+)
+```
+
+`UpgradeComparisonConfig` manages external comparison setup:
+
+```python
+config = env["upgrade.comparison.config"].browse(config_id)
+
+connection = config.get_connection()
+config.test_connection()
+analysis = config.new_analysis()
+config.action_show_analysis()
+```
+
+Record inspection helpers include:
+
+```python
+record = env["upgrade.record"].browse(record_id)
+
+dump = record.field_dump()
+modules = record.list_modules()
+xml_records = record.get_xml_records("some_module")
+```
+
+The installation wizard offers module-selection operations:
+
+```python
+wizard = env["upgrade.install.wizard"].create({})
+
+wizard.select_odoo_modules()
+wizard.select_oca_modules()
+wizard.select_other_modules()
+wizard.select_installable_modules()
+wizard.install_modules()
+```
+
+---
+
+### Sentry utilities
+
+The Sentry API provides configuration parsing, event preprocessing, request metadata, and sanitization processors.
+
+```python
+from sentry.const import get_sentry_options, select_transport
+from sentry.hooks import initialize_sentry
+
+options = get_sentry_options()
+transport = select_transport()
+initialize_sentry(config)
+```
+
+Event filtering is exposed as:
+
+```python
+from sentry.hooks import before_send
+
+filtered_event = before_send(event, hint)
+```
+
+Sanitization processors can be used directly:
+
+```python
+from sentry.processor import SanitizeKeysProcessor, SanitizePasswordsProcessor
+
+processor = SanitizeKeysProcessor()
+sanitized = processor.process(data)
+
+password_processor = SanitizePasswordsProcessor()
+sanitized = password_processor.process(data)
+```
+
+Request information helpers:
+
+```python
+from sentry.logutils import get_request_info, get_extra_context
+
+request_data = get_request_info(request)
+extra_context = get_extra_context(request)
+```
+
+---
+
+### PostgreSQL-backed sessions
+
+`PGSessionStore` implements the session-store interface using database-backed operations.
+
+```python
+store = session_store()
+
+session = store.get(sid)
+store.save(session)
+store.delete(session)
+```
+
+Maintenance operations include:
+
+```python
+store.vacuum()
+
+missing = store.get_missing_session_identifiers(
+    identifiers=["session-a", "session-b"],
+)
+
+store.delete_from_identifiers(
+    identifiers=["session-a", "session-b"],
+)
+```
+
+---
+
+## Hooks and framework integration
+
+Several extensions expose Odoo lifecycle hooks such as:
+
+- `post_init_hook(env)`
+- `pre_init_hook(env)`
+- `uninstall_hook(env)`
+- `post_load()`
+- migration functions in the form `migrate(env, version)` or `migrate(cr, version)`
+
+These functions are intended for Odoo module lifecycle integration rather than direct business-code invocation.
+
+---
+
+## Notes for developers
+
+- Most model methods should be invoked on Odoo recordsets obtained from `env["model.name"]`.
+- Methods named `create`, `write`, `unlink`, `copy`, `search`, `read_group`, and `default_get` extend standard Odoo ORM behavior.
+- Wizard classes derive from `models.TransientModel` and are generally used for short-lived interactive operations.
+- Abstract model classes are intended to be inherited by other Odoo models.
+- Methods returning actions, downloads, or UI results should generally be called from Odoo server-side UI flows, buttons, or server actions.

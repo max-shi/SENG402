@@ -1,0 +1,482 @@
+# webdataset
+
+`webdataset` provides iterable data pipelines for working with sharded datasets, especially datasets stored in tar archives. It includes tools for:
+
+- Expanding shard URL specifications and splitting work across nodes and workers
+- Opening local files, URLs, and command-backed streams
+- Iterating over tar files and grouping archive members into samples
+- Decoding common serialized data formats such as NumPy, Torch, MessagePack, CBOR, pickle, images, audio, and video
+- Composing, shuffling, batching, filtering, caching, and mixing iterable datasets
+- Writing encoded samples back into tar shards
+- Integrating pipelines with PyTorch-style `IterableDataset` objects
+
+The library is organized around streams of sample dictionaries. Tar iteration produces sample dictionaries, decoders transform their contents, filters reshape or batch samples, and pipeline classes provide reusable iterable dataset stages.
+
+## Core concepts
+
+### Shards and samples
+
+A **shard** is typically a tar archive containing related files. The tar iterator utilities open those archives and group files by a shared base name:
+
+- `shardlist(...)` creates an iterable of shard entries.
+- `url_opener(...)` opens URLs in shard entries.
+- `tar_file_iterator(...)` iterates archive members.
+- `tar_file_expander(...)` expands shard entries into archive members.
+- `group_by_keys(...)` groups related members into sample dictionaries.
+- `tarfile_samples(...)` combines the archive-processing stages into a sample stream.
+
+`base_plus_ext(path)` is the default key splitter used when grouping archive members.
+
+```python
+from webdataset.tariterators import shardlist, tarfile_samples
+
+shards = shardlist(
+    [
+        "data/train-000.tar",
+        "data/train-001.tar",
+    ],
+    shuffle=True,
+)
+
+samples = tarfile_samples(shards)
+
+for sample in samples:
+    # Each item is a dictionary assembled from files in a tar shard.
+    print(sample.keys())
+```
+
+### Decoding
+
+`webdataset.autodecode` provides loaders for several serialized formats:
+
+- `torch_loads`
+- `tenbin_loads`
+- `msgpack_loads`
+- `npy_loads`
+- `npz_loads`
+- `cbor_loads`
+- `unpickle_loads`
+
+The `Decoder` class applies decoding to individual sample values or complete sample dictionaries.
+
+```python
+from webdataset.autodecode import Decoder
+from webdataset.tariterators import shardlist, tarfile_samples
+
+samples = tarfile_samples(shardlist(["data/validation-000.tar"]))
+
+decoder = Decoder()
+
+for sample in samples:
+    decoded = decoder.decode(sample)
+    print(decoded)
+```
+
+For direct decoding of known payloads, call a format-specific loader:
+
+```python
+from webdataset.autodecode import npy_loads
+from webdataset.writer import numpy_dumps
+
+array_bytes = numpy_dumps(array)
+array = npy_loads(array_bytes)
+```
+
+`basichandlers(key, data)` and `handle_extension(...)` support dispatching decoding behavior based on a filename or extension. `imagehandler(...)` creates image-oriented decoding handlers, while `torch_video(...)` and `torch_audio(...)` provide Torch-oriented media decoding entry points.
+
+### Pipelines
+
+`DataPipeline` is the primary composable iterable pipeline type. It is both an `IterableDataset` and a `PipelineStage`.
+
+Important pipeline methods include:
+
+- `append(f)` — add a processing stage
+- `compose(*args)` — compose stages into a pipeline
+- `iterator()` / `iterator1()` — obtain iterators
+- `stage(i)` — access a pipeline stage
+- `with_length(n, silent=False)` — attach a known length
+- `with_epoch(nsamples=-1, nbatches=-1)` — constrain iteration to an epoch
+- `repeat(nepochs=-1, nbatches=-1)` — repeat a pipeline
+- `close()` — close pipeline resources
+
+`PipelineStage` defines the common `invoke(...)` interface used by pipeline components.
+
+The functional equivalent is `filters.pipeline(source, *args)`, which passes an iterable through processing stages.
+
+```python
+from webdataset.filters import pipeline, identity
+from webdataset.tariterators import shardlist, tarfile_samples
+
+source = tarfile_samples(shardlist(["data/train-000.tar"]))
+
+# A pipeline can be built from an iterable and one or more stages.
+processed = pipeline(source, identity)
+
+for sample in processed:
+    print(sample)
+```
+
+## Dataset and loader interfaces
+
+`WebDataset`, `WebLoader`, and `FluidWrapper` combine `DataPipeline` with `FluidInterface`.
+
+`FluidInterface` offers fluent dataset transformations:
+
+- `batched(batchsize, collation_fn=..., partial=True)`
+- `unbatched()`
+- `listed(batchsize, partial=True)`
+- `unlisted()`
+- `shuffle(size, **kw)`
+- `map(f, handler=...)`
+- `map_dict(handler=..., **kw)`
+- `select(predicate, **kw)`
+- `decode(...)`
+- `to_tuple(*args, **kw)`
+- `map_tuple(*args, handler=...)`
+- `slice(*args)`
+- `rename(**kw)`
+- `rename_keys(*args, **kw)`
+- `extract_keys(*args, **kw)`
+- `rsample(p=0.5)`
+- `mcached()`
+- `lmdb_cached(*args, **kw)`
+- `log_keys(logfile=None)`
+
+These methods are intended to make common dataset transformations readable when working with a dataset or pipeline object.
+
+```python
+# `dataset` is a WebDataset, WebLoader, FluidWrapper, or another
+# object implementing FluidInterface.
+
+training_batches = (
+    dataset
+    .shuffle(1000)
+    .decode()
+    .select(lambda sample: sample is not None)
+    .batched(32)
+)
+
+for batch in training_batches:
+    consume(batch)
+```
+
+## Filtering, mapping, and batching
+
+The `filters` module contains utilities for building and applying transformations.
+
+### Selection and transformation
+
+- `identity(x)` returns its input unchanged.
+- `compose2(f, g)` and `compose(*args)` compose functions.
+- `getfirst(a, keys, default=None, missing_is_error=True)` retrieves the first matching field.
+- `parse_field_spec(fields)` parses field specifications.
+- `transform_with(sample, transformers)` applies field transformations.
+- `pick(buf, rng)` selects an item from a buffer.
+- `tuple2dict(l)` and `dict2tuple(d)` convert between representations.
+
+### Collation
+
+`default_collation_fn(samples, combine_tensors=True, combine_scalars=True)` combines a sequence of samples into a batch. `combine_values(...)` provides the underlying value-combination behavior.
+
+```python
+from webdataset.filters import default_collation_fn
+
+samples = [
+    {"label": 0, "value": 1.0},
+    {"label": 1, "value": 2.0},
+]
+
+batch = default_collation_fn(samples)
+print(batch)
+```
+
+### Caching
+
+Two pipeline stages support caching:
+
+- `Cached`
+- `LMDBCached`
+
+`LMDBCached` additionally exposes:
+
+- `is_complete()`
+- `add_samples(samples)`
+- `run(source)`
+
+## Shard selection and distribution
+
+The `shardlists` module provides helpers for constructing and distributing shard streams.
+
+### URL expansion
+
+- `expand_urls(urls)`
+- `expand_source(source, max_urls=...)`
+- `expand(s)`
+- `shardspec(spec)`
+
+Environment-variable substitution is available through:
+
+- `envlookup(m)`
+- `envsubst(s)`
+
+Brace-aware matching helpers are also available:
+
+- `glob_with_braces(pattern)`
+- `fnmatch_with_braces(filename, pattern)`
+
+### Distributed and worker-aware splitting
+
+Use these functions to divide shard streams across execution environments:
+
+- `split_by_node(src, group=None)`
+- `single_node_only(src, group=None)`
+- `split_by_worker(src)`
+
+`pytorch_worker_info(group=None)` and `pytorch_worker_seed(group=None)` expose worker-related information and deterministic worker seeds.
+
+### Shard list datasets
+
+The following iterable dataset classes represent shard sources:
+
+- `SimpleShardList`
+- `ResampledShards`
+- `DirectoryShardList`
+- `MultiShardSample`
+
+Related helpers include:
+
+- `resampled_(src, n=...)`
+- `non_empty(src)`
+- `check_pid_is_running(pid)`
+- `without_last_extension(fname)`
+- `get_pid_from_filename(fname)`
+
+`DirectoryShardList` can recycle active shard files and clean up files left behind by inactive processes:
+
+```python
+shards.cleanup_files_without_processes()
+shards.recycle(activename)
+```
+
+`MultiShardSample` supports deterministic epoch selection:
+
+```python
+shards.set_epoch(seed)
+epoch_shards = shards.get_shards_for_epoch()
+```
+
+## Mixing datasets
+
+For multiple iterable sources, use the functions and iterable datasets in `mix`.
+
+- `round_robin_shortest(*sources)` stops when the shortest source is exhausted.
+- `round_robin_longest(*sources)` continues until the longest source is exhausted.
+- `RoundRobin` is an iterable dataset form of round-robin iteration.
+- `random_samples(sources, probs=None, longest=False)` randomly selects from sources.
+- `RandomMix` is an iterable dataset form of random mixing.
+
+```python
+from webdataset.mix import round_robin_shortest, random_samples
+
+source_a = iter([{"source": "a", "id": 1}, {"source": "a", "id": 2}])
+source_b = iter([{"source": "b", "id": 1}, {"source": "b", "id": 2}])
+
+for sample in round_robin_shortest(source_a, source_b):
+    print(sample)
+```
+
+```python
+from webdataset.mix import random_samples
+
+sources = [
+    iter(["a1", "a2", "a3"]),
+    iter(["b1", "b2", "b3"]),
+]
+
+for item in random_samples(sources, probs=[0.75, 0.25]):
+    print(item)
+```
+
+## Opening data
+
+`gopen` provides a generalized opener for local files, URLs, and pipe-like sources.
+
+```python
+from webdataset.gopen import gopen
+
+stream = gopen("data/train-000.tar", mode="rb")
+data = stream.read()
+stream.close()
+```
+
+Available openers include:
+
+- `gopen_file`
+- `gopen_pipe`
+- `gopen_curl`
+- `gopen_htgs`
+- `gopen_hf`
+- `gopen_gsutil`
+- `gopen_ais`
+
+Additional helpers:
+
+- `rewrite_url(url)`
+- `reader(url, **kw)`
+- `set_options(obj, timeout=None, ignore_errors=None, ignore_status=None, handler=None)`
+
+`Pipe` exposes stream operations and child-process status management:
+
+- `read(...)`
+- `write(...)`
+- `readLine(...)`
+- `close()`
+- `check_status()`
+- `wait_for_child()`
+
+## Caching downloaded shards
+
+The `cache` module includes utilities for local and remote data access.
+
+- `islocal(url)`
+- `get_filetype(fname)`
+- `magic_filetype(fname)`
+- `check_tar_format(fname)`
+- `url_to_cache_name(url, ndir=0)`
+- `download(url, dest, chunk_size=..., verbose=False)`
+
+`FileCache` maps a URL to a cached local filename:
+
+```python
+from webdataset.cache import FileCache
+
+cache = FileCache()
+local_path = cache.get_file("https://example.invalid/dataset-000.tar")
+print(local_path)
+```
+
+`LRUCleanup` provides cache-directory cleanup support through `set_cache_dir(...)` and `cleanup()`.
+
+## Writing shards
+
+The `writer` module serializes sample values and writes them to tar streams.
+
+### Encoders
+
+Available encoding helpers include:
+
+- `imageencoder(image, format="PNG")`
+- `bytestr(data)`
+- `torch_dumps(data)`
+- `numpy_dumps(data)`
+- `numpy_npz_dumps(data)`
+- `tenbin_dumps(data)`
+- `cbor_dumps(data)`
+- `mp_dumps(data)`
+
+`make_handlers()` creates extension handlers. `encode_based_on_extension1(...)` and `encode_based_on_extension(...)` select an encoder based on a target name or sample field. `make_encoder(spec)` constructs an encoder from a boolean, string, dictionary, or callable specification.
+
+```python
+from webdataset.writer import make_handlers, encode_based_on_extension
+
+handlers = make_handlers()
+
+sample = {
+    "array.npy": array,
+    "metadata.msgpack": {"split": "train"},
+}
+
+encoded_sample = encode_based_on_extension(sample, handlers)
+```
+
+### Tar writers
+
+`TarWriter` writes objects to a tar stream.
+
+- `write(obj)`
+- `close()`
+- `tarmode(fileobj, compress=None)`
+
+`ShardWriter` manages a sequence of shard streams.
+
+- `next_stream()`
+- `write(obj)`
+- `finish()`
+- `close()`
+
+```python
+# `writer` is a configured TarWriter or ShardWriter instance.
+writer.write(encoded_sample)
+writer.close()
+```
+
+## Tenbin serialization
+
+The `tenbin` module provides binary serialization helpers for lists and buffers.
+
+High-level file helpers:
+
+```python
+from webdataset.tenbin import save, load
+
+save("sample.tenbin", value1, value2)
+values = load("sample.tenbin")
+```
+
+Additional lower-level functions include:
+
+- `encode_list` / `decode_list`
+- `encode_buffer` / `decode_buffer`
+- `encode_chunks` / `decode_chunks`
+- `write_chunk` / `read_chunk`
+- `write` / `read`
+- `encode_header` / `decode_header`
+
+## Error handling
+
+Many iterator, decoding, and transformation functions accept a `handler` callable for controlling behavior after an exception.
+
+Built-in handlers are:
+
+- `reraise_exception(exn)` — propagate the exception
+- `ignore_and_continue(exn)` — ignore it and continue
+- `warn_and_continue(exn)` — warn and continue
+- `ignore_and_stop(exn)` — stop without raising
+- `warn_and_stop(exn)` — warn and stop
+
+```python
+from webdataset.handlers import warn_and_continue
+from webdataset.tariterators import shardlist, tarfile_samples
+
+samples = tarfile_samples(
+    shardlist(["data/train-000.tar"]),
+    handler=warn_and_continue,
+)
+
+for sample in samples:
+    process(sample)
+```
+
+`DecodingError` is available for decoding-specific failures. `Continue` can be used by decoding-related logic to indicate that processing should continue.
+
+## Utility functions
+
+Useful general helpers include:
+
+- `make_seed(*args)` for reproducible seed construction
+- `is_iterable(obj)`
+- `safe_eval(s, expr="{}")`
+- `lookup_sym(sym, modules)`
+- `guess_batchsize(batch)`
+- `compute_sample_weights(n_w_pairs)`
+- `repeatedly0(...)`
+- `repeatedly(...)`
+
+Dataset wrappers for iteration control are also available:
+
+- `repeatedly`
+- `with_epoch`
+- `with_length`
+- `MockDataset`
+
+Together, these components support complete workflows from selecting distributed tar shards, through decoding and batching samples, to caching and writing processed datasets.

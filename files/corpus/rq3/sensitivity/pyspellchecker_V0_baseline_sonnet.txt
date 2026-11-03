@@ -1,0 +1,211 @@
+# pyspellchecker
+
+`pyspellchecker` is a pure-Python spell checking library that uses word
+frequency statistics to detect misspelled words and suggest corrections. It
+implements a Levenshtein-distance based algorithm (similar in spirit to Peter
+Norvig's classic spell-correction approach) and ships with pre-built
+dictionaries for a number of languages.
+
+## Features
+
+- Detect unknown/misspelled words in text
+- Suggest the most likely correction for a misspelled word
+- Retrieve the full set of candidate corrections, not just the best guess
+- Work with edit distances of 1 or 2
+- Load and manage your own word frequency dictionaries (from JSON, plain
+  text, lists of words, or programmatically)
+- Export a word frequency dictionary for reuse or sharing
+- Supports multiple languages out of the box, and is easily extended with
+  custom vocabularies (e.g. domain-specific terms, product names, jargon)
+
+## Installation
+
+```bash
+pip install pyspellchecker
+```
+
+## Core Concepts
+
+### `SpellChecker`
+
+`SpellChecker` is the main entry point of the library. It wraps a
+`WordFrequency` instance and provides the high-level spell checking API:
+finding unknown words, generating correction candidates, and returning the
+single best correction.
+
+Key methods:
+
+- `known(words)` – filter an iterable of words down to those found in the
+  dictionary.
+- `unknown(words)` – filter an iterable of words down to those *not* found in
+  the dictionary (i.e. likely misspelled).
+- `correction(word)` – return the most probable correct spelling for a word.
+- `candidates(word)` – return the full set of possible corrections for a
+  word.
+- `edit_distance_1(word)` / `edit_distance_2(word)` – low-level helpers that
+  generate all strings within edit distance 1 or 2 of a word.
+- `split_words(text)` – tokenize a string of text into words the same way the
+  checker does internally.
+- `word_usage_frequency(word, total_words=None)` – get the relative frequency
+  of a word in the loaded corpus.
+- `distance` (property) – get or set the maximum edit distance used when
+  generating candidates.
+- `word_frequency` (property) – access the underlying `WordFrequency`
+  instance directly.
+- `export(filepath, encoding='utf-8', gzipped=True)` – persist the current
+  dictionary to disk.
+- `SpellChecker.languages()` – class method listing the language dictionaries
+  bundled with the library.
+
+### `WordFrequency`
+
+`WordFrequency` manages the underlying word/count dictionary that powers
+correction and lookup. A `SpellChecker` owns one of these, but it can also be
+used or manipulated directly for finer control over the vocabulary.
+
+Key methods:
+
+- `load_dictionary(filename, encoding='utf-8')` – load a pre-built dictionary
+  file (JSON, optionally gzipped).
+- `load_json(data)` – load word/frequency pairs from a Python dict.
+- `load_text_file(filename, encoding='utf-8', tokenizer=None)` – learn word
+  frequencies from a plain text file.
+- `load_text(text, tokenizer=None)` – learn word frequencies from a string.
+- `load_words(words)` – add a list/iterable of words (frequency 1 each,
+  incrementing on repeats).
+- `add(word, val=1)` – add/increment a single word's frequency.
+- `remove(word)` / `remove_words(words)` – delete specific words from the
+  dictionary.
+- `remove_by_threshold(threshold=5)` – prune words whose frequency is below a
+  given count.
+- `pop(key, default=None)` – remove and return a word's frequency.
+- `tokenize(text)` – split text into tokens using the configured tokenizer.
+- `dictionary`, `keys()`, `words()`, `items()` – inspect the underlying data.
+- `total_words()`, `unique_words()`, `letters()`, `longest_word_length()` –
+  summary statistics about the loaded corpus.
+
+### Utilities (`spellchecker.utils`)
+
+Internal helper functions used throughout the library, also usable directly:
+
+- `ensure_unicode(value, encoding='utf-8')` – normalize input to a `str`.
+- `load_file(filename, encoding)` / `write_file(filepath, encoding, gzipped,
+  data)` – read/write dictionary files, with optional gzip support.
+- `fail_after(version)` / `deprecated(message='')` – decorators used to mark
+  and manage deprecated functionality across library versions.
+
+### Dictionary Build Scripts (`scripts/build_dictionary.py`)
+
+The `scripts` directory contains the tooling used to build the bundled
+per-language dictionaries from raw corpora. These are primarily maintainer
+tools, but are useful as a reference if you want to build your own
+dictionary from scratch:
+
+- `load_file` / `load_include_exclude` – read source corpus and
+  include/exclude word lists.
+- `build_word_frequency(filepath, language, output_path)` – build a
+  `WordFrequency`-compatible dictionary from a raw text corpus.
+- `export_word_frequency(filepath, word_frequency)` – write a built
+  dictionary out to disk.
+- `export_misfit_words(...)` – report words that fail cleaning rules, for
+  manual review.
+- `clean_english`, `clean_spanish`, `clean_italian`, `clean_german`,
+  `clean_french`, `clean_portuguese`, `clean_russian`, `clean_arabic`,
+  `clean_basque`, `clean_latvian`, `clean_dutch`, `clean_persian` –
+  language-specific cleaning rules applied when building each bundled
+  dictionary (handling accents, script normalization, stopwords, etc.).
+
+## Usage Examples
+
+### Basic spell checking
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()  # defaults to English dictionary
+
+# find those words that may be misspelled
+misspelled = spell.unknown(["something", "is", "hapenning", "hear"])
+
+for word in misspelled:
+    # get the one `most likely` answer
+    print(word, "->", spell.correction(word))
+
+    # get a list of `likely` options
+    print("candidates:", spell.candidates(word))
+```
+
+### Using a different bundled language
+
+```python
+from spellchecker import SpellChecker
+
+# see available languages
+print(SpellChecker.languages())
+
+spell = SpellChecker(language="es")  # Spanish dictionary
+print(spell.correction("qeu"))
+```
+
+### Tuning edit distance
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker(distance=1)  # faster, less permissive
+print(spell.candidates("recieve"))
+
+spell.distance = 2  # allow more distant corrections
+print(spell.candidates("recieve"))
+```
+
+### Building and using a custom dictionary
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker(language=None)  # start with an empty dictionary
+
+# teach it your own vocabulary
+spell.word_frequency.load_text_file("my_corpus.txt")
+spell.word_frequency.load_words(["acme", "widgetify", "foobarbaz"])
+spell.word_frequency.add("gizmotron", val=10)
+
+# remove rare noise words
+spell.word_frequency.remove_by_threshold(2)
+
+print(spell.known(["acme", "widgetify", "unknownword"]))
+print(spell.unknown(["acme", "widgetify", "unknownword"]))
+
+# persist the resulting dictionary for later reuse
+spell.export("custom_dictionary.json.gz", gzipped=True)
+```
+
+### Loading a previously exported dictionary
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker(language=None)
+spell.word_frequency.load_dictionary("custom_dictionary.json.gz")
+
+print(spell.correction("widgetifyy"))
+```
+
+### Inspecting corpus statistics
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+wf = spell.word_frequency
+
+print("unique words:", wf.unique_words())
+print("total words:", wf.total_words())
+print("longest word length:", wf.longest_word_length())
+print("letters used:", wf.letters())
+```
+
+## License
+
+See `LICENSE` for details.

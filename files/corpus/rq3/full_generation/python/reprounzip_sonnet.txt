@@ -1,0 +1,199 @@
+# reprounzip
+
+**reprounzip** is a companion tool to [ReproZip](https://www.reprozip.org/) that unpacks and re-executes packed experiments (`.rpz` files) captured by ReproZip. It reads the configuration and traced execution data bundled into an `.rpz` package and lets you replay the original run in a variety of target environments: plain directories, chroots, and (via plugins) containers or cloud instances. It also provides tooling to inspect package contents, visualize execution traces as graphs, and manage file uploads/downloads for reproduced experiments.
+
+## Key concepts
+
+reprounzip is built around a small number of core ideas:
+
+- **The `.rpz` package** — a tar-based archive produced by ReproZip, containing a YAML configuration describing runs, packages (system dependencies), files, and input/output files, plus optionally a full trace database and a data payload with the captured files.
+- **Unpackers** — plugins that know how to take an `.rpz` package and materialize it into a runnable environment (a local directory, a chroot, a Docker container, a VM, etc.). reprounzip ships with `directory` and `chroot` unpackers built in; others are distributed as separate plugin packages and discovered through entry points.
+- **Signals** — a lightweight pub/sub mechanism used internally (and by plugins) to hook into stages of the pack/unpack lifecycle.
+
+## Main modules
+
+### `reprounzip.common`
+
+This module handles reading and writing the `.rpz` configuration format and the archive itself.
+
+- `File` / `Package` — in-memory representations of a traced file and a system package (e.g. an installed `.deb`/`.rpm`), respectively. `Package.add_file()` associates a `File` with a `Package`.
+- `read_files()` / `read_packages()` — parse configuration entries into `File`/`Package` objects.
+- `InputOutputFile` / `load_iofiles()` — represent and load the input/output file mappings declared for each run.
+- `load_config()` / `save_config()` — read and write the YAML configuration embedded in an `.rpz` package.
+- `write_file()` / `write_package()` — low-level helpers used by `save_config()` to serialize individual entries.
+- `RPZPack` — a convenience wrapper around an open `.rpz` archive. It exposes the configuration (`open_config()`, `extract_config()`, `with_config()`), the trace database (`extract_trace()`, `with_trace()`), and the data payload (`list_data()`, `data_filenames()`, `get_data()`, `extract_data()`, `copy_data_tar()`). `remove_data_prefix()` and `extensions()` are helpers for working with paths inside the archive. Always call `close()` (or use it as a context manager via the `with_*` helpers) when done.
+- `InvalidConfig` — raised when a package's configuration file cannot be parsed or is inconsistent.
+- Logging & usage reporting: `setup_logging()`, `LoggingDateFormatter`, `setup_usage_report()`, `enable_usage_report()`, `record_usage()`, `record_usage_package()`, `submit_usage_report()`, `get_reprozip_ca_certificate()` — used by the CLI to configure log output and optionally phone home anonymous usage statistics.
+
+### `reprounzip.main`
+
+The command-line entry point.
+
+- `main()` — parses arguments and dispatches to the selected unpacker/subcommand.
+- `get_plugins()` — discovers installed unpacker/tool plugins via setuptools entry points.
+- `RPUZArgumentParser` — an `argparse.ArgumentParser` subclass with reprounzip-specific error formatting.
+- `usage_report(args)` — CLI handler for enabling/disabling/viewing usage reporting.
+
+### `reprounzip.unpackers.default`
+
+The built-in unpackers: **directory** (unpack into a plain folder and run with `LD_LIBRARY_PATH`/env tricks) and **chroot** (unpack into a chroot jail, optionally mounting `/proc`, `/dev`, etc.).
+
+- `directory_create()`, `directory_run()`, `directory_destroy()` — lifecycle of the directory unpacker.
+- `chroot_create()`, `chroot_mount()`, `chroot_run()`, `chroot_unmount()`, `chroot_destroy()` (and its helpers `chroot_destroy_unmount`, `chroot_destroy_dir`) — lifecycle of the chroot unpacker.
+- `installpkgs(args)` — installs the system packages recorded in the configuration using the host's package manager.
+- `upload(args)` / `download(args)` with `LocalUploader` / `LocalDownloader` — copy input files into, or output files out of, an unpacked environment.
+- `test_same_pkgmngr()`, `test_linux_same_arch()` — compatibility checks run before unpacking.
+- `setup_installpkgs()`, `setup_directory()`, `setup_chroot()`, `chroot_setup()` — register these unpackers' CLI subcommands and options.
+- `get_elf_interpreter()`, `should_restore_owner()`, `should_mount_magic_dirs()` — lower-level helpers used by the chroot unpacker.
+
+### `reprounzip.unpackers.common`
+
+Shared building blocks used by any unpacker (built-in or plugin):
+
+- `misc`: generic helpers, including `load_config()`, `shell_escape()`, `make_unique_name()`/`unique_names()`, download URLs for helper binaries (`busybox_url()`, `sudo_url()`, `rpztar_url()`), the abstract `FileUploader`/`FileDownloader` base classes (subclassed by `LocalUploader`/`LocalDownloader` and by other unpacker plugins), `get_runs()`, environment option helpers (`add_environment_options()`, `fixup_environment()`), `interruptible_call()`, metadata persistence (`metadata_read()`, `metadata_write()`, `metadata_initial_iofiles()`, `metadata_update_run()`), `parse_ports()`, and the `UsageError` exception used for user-facing CLI errors.
+- `packages`: OS package manager abstraction — `AptInstaller`, `YumInstaller`, `select_installer()`, `CantFindInstaller` — used by `installpkgs` and unpacker plugins to reinstall the system packages recorded during tracing.
+- `x11`: X11 forwarding support for GUI applications — `X11Handler`/`BaseX11Handler`, `Xauth`, `LocalForwarder`/`BaseForwarder`.
+
+### `reprounzip.pack_info`
+
+Inspection utilities for `.rpz` files, exposed as CLI subcommands.
+
+- `get_package_info()` — reads summary metadata (runs, packages, files) from a pack.
+- `print_info(args)` / `showfiles(args)` — CLI handlers that print a human-readable summary or list of files.
+- `setup_info()` / `setup_showfiles()` — register these as CLI subcommands.
+
+### `reprounzip.unpackers.graph`
+
+Generates dependency/execution graphs from a trace database, in Graphviz (`dot`) or JSON form.
+
+- `Run`, `Process`, `Package` (graph module) — graph-node wrappers around runs, processes, and system packages, each with `.dot()`/`.json()` (and `.dot_endpoint()`/`.json_endpoint()`) serialization methods.
+- `generate()` — top-level entry point: reads the config and trace database and writes a graph file.
+- `graph_dot()` / `graph_json()` — format-specific rendering, called by `generate()`.
+- `read_events()`, `parse_levels()`, `format_argv()` — trace-parsing helpers.
+- `graph(args)` — CLI handler; `setup(parser, **kwargs)` registers the `graph` subcommand.
+
+### `reprounzip.unpackers.provviewer`
+
+Exports a trace as a PROV-style XML/graph document for provenance visualization tools.
+
+- `generate()` — builds the provenance document from the config and trace database.
+- `provgraph(args)` — CLI handler; `setup(parser, **kwargs)` registers the subcommand.
+- `xml_escape()` — helper for escaping content embedded in the XML output.
+
+### `reprounzip.parameters`
+
+- `update_parameters()` — refreshes a locally cached copy of reprounzip's parameter definitions (e.g. distro compatibility tables, download URLs).
+- `get_parameter(section)` — looks up a named section of these parameters, used by unpackers to decide package-manager compatibility, helper binary URLs, etc.
+
+### `reprounzip.signals`
+
+A minimal signal/slot implementation used to let plugins hook into reprounzip's lifecycle.
+
+- `Signal` — a signal object; `subscribe()`/`unsubscribe()` register/remove callback functions.
+- `SignalWarning` — emitted when signal handling encounters a problem (e.g. an exception in a subscriber).
+
+### `reprounzip.orderedset`
+
+- `OrderedSet` — a `MutableSet` implementation that preserves insertion order, used internally wherever deterministic ordering of packages/files matters. Supports `add()`, `discard()`, `pop()`, and `update()`.
+
+### `reprounzip.utils`
+
+General-purpose utilities used throughout the codebase:
+
+- Output: `StreamWriter` (unicode-safe stream wrapper).
+- Collections: `flatten()`, `UniqueNames` (with `insert()`), `optional_return_type()`.
+- Formatting: `escape()`, `hsize()` (human-readable byte sizes), `tz_offset()`, `isodatetime()`.
+- Filesystem: `normalize_path()`, `join_root()`, `find_all_links()`/`find_all_links_recursive()`, `make_dir_writable()`, `rmtree_fixed()`, `copyfile()`.
+- Networking: `download_file()` — fetches a URL to a local path, with optional caching and SSL verification control.
+
+## Installation
+
+```bash
+pip install reprounzip
+```
+
+Additional unpackers (Docker, Vagrant, cloud providers, etc.) are distributed as separate plugin packages that register themselves via entry points and become available as extra `reprounzip` subcommands automatically once installed.
+
+## Usage
+
+### Command line
+
+The most common way to use reprounzip is through its CLI, exposed via `main()`:
+
+```bash
+# Show information about a packed experiment
+reprounzip info experiment.rpz
+
+# List the files referenced by the pack
+reprounzip showfiles experiment.rpz
+
+# Unpack into a plain directory and run it
+reprounzip directory setup experiment.rpz mydir
+reprounzip directory run mydir
+reprounzip directory destroy mydir
+
+# Unpack into a chroot and run it
+reprounzip chroot setup experiment.rpz mychroot
+reprounzip chroot run mychroot
+reprounzip chroot destroy mychroot
+
+# Generate a dependency graph from the trace
+reprounzip graph output.dot experiment.rpz
+
+# Export provenance information
+reprounzip provgraph output.xml experiment.rpz
+```
+
+### Programmatic usage
+
+You can also use reprounzip's building blocks directly from Python, for example to inspect a pack's configuration:
+
+```python
+from reprounzip.common import RPZPack, load_config
+
+with RPZPack('experiment.rpz').with_config() as config_path:
+    config = load_config(config_path, canonical=True)
+
+    print("Runs:")
+    for run in config.runs:
+        print(" ", run.get('id'), run.get('argv'))
+
+    print("Packages:")
+    for pkg in config.packages:
+        print(" ", pkg.name, pkg.version)
+```
+
+Or to write a custom unpacker plugin, use the shared helpers in `reprounzip.unpackers.common`:
+
+```python
+from reprounzip.unpackers.common.misc import (
+    load_config, FileUploader, FileDownloader, UsageError,
+)
+from reprounzip.unpackers.common.packages import select_installer
+from reprounzip.signals import Signal
+
+# Subscribe to a lifecycle signal exposed by reprounzip or another plugin
+def on_pack_created(pack, **kwargs):
+    print("Pack created:", pack)
+
+some_signal = Signal()
+some_signal.subscribe(on_pack_created)
+
+class MyUploader(FileUploader):
+    def prepare_upload(self, files):
+        ...
+    def upload_file(self, local_path, input_path):
+        ...
+
+class MyDownloader(FileDownloader):
+    def prepare_download(self, files):
+        ...
+    def download(self, remote_path, local_path):
+        ...
+```
+
+Plugins typically register new subcommands by exposing a `setup(parser, **kwargs)` function through the appropriate entry point group, mirroring `setup_directory()`, `setup_chroot()`, and the `graph`/`provgraph` `setup()` functions shown above.
+
+## License
+
+See the `LICENSE` file in this repository for details.

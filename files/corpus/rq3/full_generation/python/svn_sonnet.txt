@@ -1,0 +1,179 @@
+# svn
+
+A Python wrapper around the Subversion (SVN) command-line client. `svn` lets you script common SVN operations — checking out repositories, committing changes, inspecting logs, diffing revisions, and managing repositories — from Python code instead of shelling out to `svn` and `svnadmin` manually.
+
+## Features
+
+- Work with local working copies (`LocalClient`) or remote repositories directly by URL (`RemoteClient`).
+- Create new repositories with `Admin`.
+- Query info, properties, status, logs, and diffs.
+- List files and directories, including recursive listing with filtering.
+- Export, checkout, add, commit, update, and clean up working copies.
+- A convenience factory (`get_client`) that figures out whether you're pointing at a local path or a remote URL.
+
+## Installation
+
+```bash
+pip install svn
+```
+
+(Requires the `svn` and `svnadmin` command-line tools to be installed and available on your system `PATH`.)
+
+## Overview of the API
+
+### `svn.common_base.CommonBase`
+
+The base class underlying all clients. It provides low-level helpers:
+
+- `external_command(cmd, success_code=0, do_combine=False, return_binary=False, environment={}, wd=None)` — runs an external command (e.g. `svn`, `svnadmin`) and returns its output.
+- `rows_to_dict(rows, lc=True)` — helper for converting tabular/parsed SVN output into dictionaries.
+
+You typically won't use `CommonBase` directly; it's inherited by `Admin` and `CommonClient`.
+
+### `svn.common.CommonClient`
+
+Shared functionality for interacting with an SVN working copy or repository, used as the base class for both `LocalClient` and `RemoteClient`. Key methods:
+
+- `run_command(subcommand, args, **kwargs)` — run an arbitrary `svn` subcommand.
+- `info(rel_path=None, revision=None)` — get metadata about a path/revision.
+- `properties(rel_path=None)` — get SVN properties on a path.
+- `cat(rel_filepath, revision=None)` — retrieve file contents at a given revision.
+- `log_default(...)` — retrieve commit log entries, with filtering by date range, revision range, path, limit, etc.
+- `export(to_path, revision=None, force=False)` — export a clean copy of the tree.
+- `status(rel_path=None)` — get working copy / repository status.
+- `list(extended=False, rel_path=None)` — list directory entries.
+- `list_recursive(rel_path=None, yield_dirs=False, path_filter_cb=None)` — recursively list entries, optionally including directories, with a custom filter callback.
+- `diff_summary(old, new, rel_path=None)` — summarize differences between two revisions.
+- `diff(old, new, rel_path=None)` — full diff between two revisions.
+- `url()` / `path()` — return the URL or local path this client is pointed at.
+
+### `svn.local.LocalClient`
+
+For working with a local SVN working copy. Extends `CommonClient` with:
+
+- `add(rel_path)` — schedule a file/directory for addition.
+- `commit(message, rel_filepaths=[])` — commit changes to the repository.
+- `update(rel_filepaths=[], revision=None)` — update the working copy.
+- `cleanup()` — clean up a working copy left in an inconsistent state (e.g. after an interrupted operation).
+
+### `svn.remote.RemoteClient`
+
+For working directly against a remote repository URL, without needing a local working copy. Extends `CommonClient` with:
+
+- `checkout(path, revision=None)` — check out the repository (or a revision of it) to a local path.
+
+### `svn.admin.Admin`
+
+Wraps `svnadmin` for repository administration tasks:
+
+- `create(path, svnadmin_filepath='svnadmin')` — create a new SVN repository at the given path.
+
+### `svn.utility.get_client(url_or_path, *args, **kwargs)`
+
+A convenience factory function that inspects `url_or_path` and returns either a `RemoteClient` (if it looks like a URL) or a `LocalClient` (if it looks like a local path), passing along any additional arguments.
+
+### `svn.exception.SvnException`
+
+Raised when an underlying `svn`/`svnadmin` command fails or returns unexpected output.
+
+## Usage Examples
+
+### Creating a repository and checking it out
+
+```python
+from svn.admin import Admin
+from svn.remote import RemoteClient
+
+# Create a new repository on disk
+admin = Admin()
+admin.create('/srv/svn/myrepo')
+
+# Check out a working copy from it
+remote = RemoteClient('file:///srv/svn/myrepo')
+remote.checkout('/home/user/myrepo-checkout')
+```
+
+### Working with a local working copy
+
+```python
+from svn.local import LocalClient
+
+client = LocalClient('/home/user/myrepo-checkout')
+
+# Add and commit a new file
+client.add('README.md')
+client.commit(message='Add README', rel_filepaths=['README.md'])
+
+# Update to the latest revision
+client.update()
+
+# Check status
+print(client.status())
+```
+
+### Inspecting history and diffs
+
+```python
+from svn.remote import RemoteClient
+
+client = RemoteClient('https://svn.example.com/repo/trunk')
+
+# Get recent log entries
+for entry in client.log_default(limit=10):
+    print(entry)
+
+# Diff between two revisions
+summary = client.diff_summary(old=100, new=105)
+print(summary)
+
+full_diff = client.diff(old=100, new=105, rel_path='src/module.py')
+print(full_diff)
+```
+
+### Using `get_client` to auto-detect local vs. remote
+
+```python
+from svn.utility import get_client
+
+# Works whether you pass a URL or a local path
+client = get_client('https://svn.example.com/repo/trunk')
+info = client.info()
+print(info)
+
+local_client = get_client('/home/user/myrepo-checkout')
+print(local_client.status())
+```
+
+### Listing repository contents recursively
+
+```python
+from svn.remote import RemoteClient
+
+client = RemoteClient('https://svn.example.com/repo/trunk')
+
+def only_python_files(entry):
+    return entry.get('name', '').endswith('.py')
+
+for item in client.list_recursive(yield_dirs=False, path_filter_cb=only_python_files):
+    print(item)
+```
+
+## Error Handling
+
+All SVN command failures are surfaced as `svn.exception.SvnException`. Wrap calls in a try/except block if you need to handle failures gracefully:
+
+```python
+from svn.exception import SvnException
+from svn.local import LocalClient
+
+client = LocalClient('/home/user/myrepo-checkout')
+
+try:
+    client.commit(message='Update files')
+except SvnException as e:
+    print(f'Commit failed: {e}')
+```
+
+## License
+
+See the `LICENSE` file for details.

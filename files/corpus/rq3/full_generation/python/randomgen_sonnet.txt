@@ -1,0 +1,134 @@
+# randomgen
+
+`randomgen` is a Python library for pseudo-random number generation, offering both a public testing/versioning surface used by the package itself and lower-level building blocks for constructing custom random number generators. Alongside its own test runner, `randomgen` ships developer tooling for generating build-time version metadata and for validating bit generators such as MT19937, as well as a "squares"-style counter-based random sequence generator (`SequenceSampled`) that can be used directly to produce random bits, random integers, and shuffled sequences.
+
+## Overview
+
+### Running the test suite
+
+```python
+def test(extra_args: str | list[str] | None = None, exit=True) -> None:
+```
+
+Calling `randomgen.test()` runs the library's internal test suite. You can pass additional arguments (a single string or a list of strings) through to the underlying test runner via `extra_args`, and control whether the process exits after the run completes with `exit`.
+
+### Build versioning utilities
+
+```python
+def get_version() -> tuple[str, tuple[int | str, ...]]:
+def write_version_file(filename: str, version: str, version_fields: tuple[int | str, ...]) -> None:
+```
+
+These helpers support the build process for `randomgen`. `get_version()` inspects the source tree (e.g. via git metadata) and returns a version string along with a tuple of parsed version fields (major, minor, patch, and any additional qualifiers). `write_version_file()` then persists this information to a Python file (`filename`) so that the installed package can report its own version and version fields at runtime without needing access to the original git history.
+
+These two functions are typically used together as part of a packaging/build step, rather than by end users of the library.
+
+### MT19937 jump-test tooling
+
+```python
+def save_state(bit_gen: MT19937, file_name: str) -> None:
+def parse_output(text: str) -> tuple[list[dict[str, list | int]], list[int]]:
+```
+
+`randomgen` includes tooling to validate the "jump" functionality of the MT19937 bit generator — the ability to advance a generator's state as if a large number of draws had been made, without generating each intermediate value. `save_state()` serializes the internal state of an `MT19937` bit generator instance to disk (`file_name`), which is useful for capturing known-good reference states. `parse_output()` takes raw text output (for example, from a reference implementation or test harness) and parses it into a list of state dictionaries plus a list of associated integer values, so that generated states can be compared against expected results.
+
+These utilities are primarily intended for library maintainers verifying the correctness of MT19937's jump-ahead behavior, but they illustrate the kind of state-inspection facilities available for bit generators in `randomgen`.
+
+### `SequenceSampled`: a squares-based random sequence generator
+
+```python
+class SequenceSampled:
+    def refill(self):
+    def gen_bits(self, nbits):
+    def random_inverval(self, max_value):
+    def shuffle(self, array):
+    def next_word(self):
+```
+
+`SequenceSampled` implements a counter-based ("squares") random generation scheme. It maintains an internal buffer of random words that is replenished on demand:
+
+- `next_word()` returns the next raw random word from the underlying squares-based sequence, generating a new one if necessary.
+- `refill()` refills the internal buffer/state once it has been exhausted, ensuring a continuous stream of random words is available.
+- `gen_bits(nbits)` extracts a specific number of random bits (`nbits`) from the generator's output stream, useful for building random integers of arbitrary width.
+- `random_inverval(max_value)` produces a random integer bounded by `max_value`, built on top of `gen_bits()`.
+- `shuffle(array)` randomly permutes the elements of `array` in place, using the generator's underlying random stream to drive the permutation (e.g., via a Fisher–Yates-style algorithm).
+
+`SequenceSampled` is the main user-facing generator class in this API: it can be used standalone to produce random bits, bounded random integers, and shuffled collections.
+
+## Usage Examples
+
+### Generating random bits and bounded integers
+
+```python
+from randomgen.src.squares.squares import SequenceSampled
+
+gen = SequenceSampled()
+
+# Ensure the internal buffer has data available
+gen.refill()
+
+# Grab the next raw random word
+word = gen.next_word()
+print("raw word:", word)
+
+# Generate a 16-bit random value
+bits16 = gen.gen_bits(16)
+print("16-bit value:", bits16)
+
+# Generate a random integer in [0, max_value)
+roll = gen.random_inverval(6)
+print("dice roll:", roll)
+```
+
+### Shuffling a collection
+
+```python
+from randomgen.src.squares.squares import SequenceSampled
+
+gen = SequenceSampled()
+
+deck = list(range(52))
+gen.shuffle(deck)
+
+print("shuffled deck:", deck)
+```
+
+### Running the library's test suite
+
+```python
+import randomgen
+
+# Run the full test suite and exit with the resulting status code
+randomgen.test()
+
+# Run a subset of tests, passing extra arguments to the test runner,
+# and keep the current process alive afterward
+randomgen.test(extra_args=["-k", "shuffle"], exit=False)
+```
+
+### Working with build-time version metadata
+
+```python
+from randomgen._build.git_version import get_version, write_version_file
+
+version_string, version_fields = get_version()
+print(f"Building randomgen version {version_string}")
+
+write_version_file("_version.py", version_string, version_fields)
+```
+
+### Validating MT19937 jump behavior (developer tooling)
+
+```python
+from randomgen.src.mt19937.generate_jump_test import save_state, parse_output
+
+# Persist the state of an MT19937 bit generator for later comparison
+save_state(mt19937_bit_generator, "mt19937_reference_state.json")
+
+# Parse reference output from an external tool for comparison
+states, values = parse_output(reference_text)
+```
+
+## Summary
+
+`randomgen` combines a self-contained test runner, build-time versioning helpers, developer tooling for verifying MT19937's jump-ahead behavior, and a standalone squares-based random generator (`SequenceSampled`) for producing random bits, bounded integers, and shuffled sequences. Most application developers will primarily interact with `SequenceSampled`, while the versioning and MT19937 jump-test utilities are geared toward those building or maintaining the library itself.

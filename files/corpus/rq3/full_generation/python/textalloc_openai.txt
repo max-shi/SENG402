@@ -1,0 +1,256 @@
+# textalloc
+
+`textalloc` helps place text labels on plots while reducing overlaps with other labels, scatter points, and line data.
+
+It is designed for plot annotations where labels have known anchor coordinates but should be moved to readable nearby positions. The main entry point works with a plotting axes object and supports 2D data as well as optional `z` coordinates.
+
+## Features
+
+- Allocate labels near supplied `(x, y)` anchor points.
+- Optionally work with `z` coordinates.
+- Avoid overlaps with:
+  - other allocated labels,
+  - scatter points,
+  - plot lines,
+  - existing scatter plot markers.
+- Configure label size, color, weight, placement direction, margins, and candidate search count.
+- Optionally draw connector lines between labels and their source points.
+- Convert between data and display coordinates when needed.
+- Access lower-level candidate generation and overlap-testing utilities.
+
+## Main API
+
+### `allocate`
+
+```python
+textalloc.allocate(
+    ax,
+    x,
+    y,
+    text_list,
+    z=None,
+    x_scatter=None,
+    y_scatter=None,
+    z_scatter=None,
+    x_lines=None,
+    y_lines=None,
+    z_lines=None,
+    scatter_sizes=None,
+    scatter_plot=None,
+    text_scatter_sizes=None,
+    textsize=10,
+    fontweight="normal",
+    margin=0.008,
+    min_distance=0.013,
+    max_distance=0.2,
+    verbose=False,
+    draw_lines=True,
+    linecolor="r",
+    draw_all=True,
+    nbr_candidates=200,
+    linewidth=1,
+    textcolor="k",
+    direction=None,
+    priority_strategy=None,
+    avoid_label_lines_overlap=False,
+    avoid_crossing_label_lines=False,
+    auto_ha=True,
+    xlims=None,
+    ylims=None,
+    plot_kwargs=None,
+    **kwargs,
+)
+```
+
+Allocate a list of labels around corresponding coordinates.
+
+The `x`, `y`, and `text_list` inputs are parallel sequences: each text item is associated with the point at the same index. Optional `z` values can be supplied for plots using three-dimensional coordinates.
+
+The function returns four collections:
+
+1. Allocated text positions, represented as `(x, y, z)` tuples.
+2. Connector-line endpoint information.
+3. A collection of created text-related objects.
+4. A collection of created line-related objects.
+
+The exact contents of the latter two collections depend on the plot and enabled options.
+
+Important configuration options include:
+
+| Parameter | Purpose |
+|---|---|
+| `textsize` | Label font size; may be a single value or a per-label list. |
+| `fontweight` | Font weight; may be a single value or a per-label list. |
+| `textcolor` | Label color; may be a single value or a per-label list. |
+| `margin` | Extra spacing around labels and avoided objects. |
+| `min_distance` / `max_distance` | Bounds for how far labels may be placed from their anchor positions. |
+| `nbr_candidates` | Number of candidate label placements considered. |
+| `direction` | Allowed placement direction or directions. |
+| `draw_lines` | Whether connector lines should be drawn. |
+| `linecolor` / `linewidth` | Connector-line styling. |
+| `draw_all` | Whether all labels should be drawn even when a non-overlapping position is difficult to find. |
+| `priority_strategy` | Controls the order in which labels are allocated. |
+| `avoid_label_lines_overlap` | Attempt to avoid labels overlapping connector lines. |
+| `avoid_crossing_label_lines` | Attempt to avoid connector lines crossing each other. |
+| `xlims` / `ylims` | Explicit plot bounds used during allocation. |
+| `plot_kwargs` | Additional plot-related keyword configuration. |
+
+### `allocate_text`
+
+```python
+textalloc.allocate_text(fig, ax, x, y, text_list, **kwargs)
+```
+
+A convenience entry point that accepts both a figure and axes object. It takes the same core label inputs as `allocate`; additional configuration is supplied through `**kwargs`.
+
+### Geometry and coordinate helpers
+
+```python
+textalloc.lines_to_segments(x_lines, y_lines)
+```
+
+Convert lists of line-coordinate arrays into line segments.
+
+```python
+textalloc.data_to_display(x, y, z, ax, transform=None)
+textalloc.display_to_data(x, y, z, ax, transform=None)
+```
+
+Convert coordinates between data space and display space.
+
+```python
+textalloc.get_scatter_bbs(sc, ax)
+```
+
+Get bounding boxes for a scatter plot object on an axes.
+
+## Basic example
+
+```python
+import matplotlib.pyplot as plt
+import textalloc
+
+x = [0.10, 0.25, 0.42, 0.66, 0.85]
+y = [0.45, 0.20, 0.72, 0.55, 0.38]
+labels = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"]
+
+fig, ax = plt.subplots()
+ax.scatter(x, y, color="steelblue")
+
+positions, line_endpoints, text_objects, line_objects = textalloc.allocate(
+    ax,
+    x,
+    y,
+    labels,
+    textsize=10,
+    textcolor="black",
+    linecolor="gray",
+    draw_lines=True,
+    margin=0.01,
+    min_distance=0.02,
+    max_distance=0.15,
+)
+
+ax.set_title("Automatically allocated labels")
+plt.show()
+```
+
+## Avoiding other plot elements
+
+Pass scatter-point and line information when labels should avoid those elements in addition to their own anchor points.
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+import textalloc
+
+# Points to label.
+x = np.array([1.0, 2.2, 3.0, 4.1])
+y = np.array([2.4, 1.6, 3.1, 2.0])
+labels = ["North", "East", "South", "West"]
+
+# Background scatter data that labels should avoid.
+x_scatter = np.linspace(0.5, 4.5, 30)
+y_scatter = 2.2 + 0.7 * np.sin(x_scatter * 2.0)
+
+# A line that labels should avoid.
+line_x = np.linspace(0.5, 4.5, 100)
+line_y = 2.2 + 0.4 * np.cos(line_x * 2.0)
+
+fig, ax = plt.subplots()
+
+scatter = ax.scatter(x_scatter, y_scatter, s=20, color="lightgray")
+ax.plot(line_x, line_y, color="tab:blue")
+ax.scatter(x, y, s=45, color="tab:red")
+
+textalloc.allocate(
+    ax,
+    x,
+    y,
+    labels,
+    x_scatter=x_scatter,
+    y_scatter=y_scatter,
+    x_lines=[line_x],
+    y_lines=[line_y],
+    scatter_plot=scatter,
+    textsize=11,
+    fontweight="bold",
+    textcolor="tab:red",
+    linecolor="tab:red",
+    draw_lines=True,
+    avoid_label_lines_overlap=True,
+    avoid_crossing_label_lines=True,
+    nbr_candidates=300,
+)
+
+plt.show()
+```
+
+## Per-label styling
+
+Several options accept either one value for all labels or a list of values for individual labels.
+
+```python
+textalloc.allocate(
+    ax,
+    x,
+    y,
+    ["One", "Two", "Three"],
+    textsize=[9, 11, 13],
+    fontweight=["normal", "bold", "bold"],
+    textcolor=["black", "tab:blue", "tab:orange"],
+    linecolor=["gray", "tab:blue", "tab:orange"],
+)
+```
+
+## Placement control
+
+Use `direction` to restrict where candidates may be generated relative to each point.
+
+```python
+textalloc.allocate(
+    ax,
+    x,
+    y,
+    labels,
+    direction=["north", "east"],
+    min_distance=0.01,
+    max_distance=0.12,
+)
+```
+
+A single direction value may be used when the same restriction applies to every label, while a list can be used for label-specific placement rules.
+
+## Lower-level utilities
+
+The package also exposes utilities for custom allocation workflows:
+
+- `generate_candidates(...)` creates candidate label positions.
+- `get_non_overlapping_boxes(...)` selects non-overlapping label boxes from candidate placements.
+- `find_nearest_point_on_box(...)` finds the point on a box nearest to a target coordinate.
+- `non_overlapping_with_points(...)`, `non_overlapping_with_lines(...)`, and `non_overlapping_with_boxes(...)` test candidate placements against plot geometry.
+- `inside_plot(...)` tests whether candidates remain inside plot bounds.
+- `line_intersect(...)` and `ccw(...)` provide line-intersection geometry operations.
+- `priority_strategy_largest(...)` provides a size-based priority strategy.
+
+These functions are useful when building custom annotation or layout behavior around the same placement primitives used by `allocate`.

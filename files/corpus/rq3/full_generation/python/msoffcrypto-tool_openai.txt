@@ -1,0 +1,427 @@
+# msoffcrypto-tool
+
+`msoffcrypto-tool` is a Python library for working with encrypted Microsoft Office documents. It provides a common file interface for loading encryption keys, checking whether a document is encrypted, and decrypting content into an output stream.
+
+The library also exposes format-specific support for legacy Office document formats and OOXML documents, plus lower-level cryptographic helpers for ECMA-376, RC4, CryptoAPI RC4, and XOR-obfuscated content.
+
+## Installation
+
+Install the package with your preferred Python package installer:
+
+```bash
+pip install msoffcrypto-tool
+```
+
+## Quick start
+
+Open an Office document with `OfficeFile`, load a password, and decrypt it into a binary output file:
+
+```python
+import msoffcrypto
+
+with open("protected-document.xlsx", "rb") as source:
+    office_file = msoffcrypto.OfficeFile(source)
+
+    if office_file.is_encrypted():
+        office_file.load_key(password="correct horse battery staple")
+
+        with open("decrypted-document.xlsx", "wb") as destination:
+            office_file.decrypt(destination)
+```
+
+`OfficeFile(file)` is the main entry point. It returns an appropriate Office file object for the supplied document, exposing the common operations:
+
+- `load_key(...)`
+- `decrypt(outfile)`
+- `is_encrypted()`
+
+## Main API
+
+### `OfficeFile(file)`
+
+Creates an Office document handler for `file`.
+
+```python
+import msoffcrypto
+
+office_file = msoffcrypto.OfficeFile(source)
+```
+
+The returned object supports the common `BaseOfficeFile` interface.
+
+### Common file interface
+
+All Office file handlers derive from `BaseOfficeFile` and provide these operations:
+
+```python
+class BaseOfficeFile:
+    def load_key(self):
+        ...
+    def decrypt(self, outfile):
+        ...
+    def is_encrypted(self) -> bool:
+        ...
+```
+
+#### Check encryption status
+
+```python
+if office_file.is_encrypted():
+    print("This document is encrypted.")
+else:
+    print("This document is not encrypted.")
+```
+
+#### Load a password and decrypt
+
+```python
+office_file.load_key(password="my-password")
+office_file.decrypt(outfile)
+```
+
+The exact `load_key` parameters depend on the document format.
+
+## Format-specific file classes
+
+The top-level `OfficeFile` factory is generally the preferred interface. Format-specific classes are also available when an application already knows the document type.
+
+### `Doc97File`
+
+Handles legacy Word document files.
+
+```python
+from msoffcrypto.format.doc97 import Doc97File
+
+document = Doc97File(source)
+document.load_key(password="password")
+document.decrypt(destination)
+```
+
+Methods:
+
+- `load_key(password=None)`
+- `decrypt(outfile)`
+- `is_encrypted()`
+
+### `Xls97File`
+
+Handles legacy Excel document files.
+
+```python
+from msoffcrypto.format.xls97 import Xls97File
+
+workbook = Xls97File(source)
+
+if workbook.is_encrypted():
+    workbook.load_key(password="password")
+    workbook.decrypt(destination)
+```
+
+Methods:
+
+- `load_key(password=None)`
+- `decrypt(outfile)`
+- `is_encrypted()`
+
+### `Ppt97File`
+
+Handles legacy PowerPoint document files.
+
+```python
+from msoffcrypto.format.ppt97 import Ppt97File
+
+presentation = Ppt97File(source)
+presentation.load_key(password="password")
+presentation.decrypt(destination)
+```
+
+Methods:
+
+- `load_key(password=None)`
+- `decrypt(outfile)`
+- `is_encrypted()`
+
+The module also provides:
+
+```python
+construct_persistobjectdirectory(data)
+```
+
+### `OOXMLFile`
+
+Handles OOXML Office documents and offers the most flexible key-loading and encryption API.
+
+```python
+from msoffcrypto.format.ooxml import OOXMLFile
+
+document = OOXMLFile(source)
+document.load_key(
+    password="password",
+    verify_password=True,
+)
+document.decrypt(destination, verify_integrity=True)
+```
+
+Methods:
+
+- `load_key(password=None, private_key=None, secret_key=None, verify_password=False)`
+- `decrypt(outfile, verify_integrity=False)`
+- `encrypt(password, outfile)`
+- `is_encrypted()`
+
+#### Password-based decryption
+
+```python
+from msoffcrypto.format.ooxml import OOXMLFile
+
+with open("encrypted.docx", "rb") as source:
+    document = OOXMLFile(source)
+
+    document.load_key(
+        password="password",
+        verify_password=True,
+    )
+
+    with open("decrypted.docx", "wb") as destination:
+        document.decrypt(destination, verify_integrity=True)
+```
+
+#### Decryption with a private or secret key
+
+`OOXMLFile.load_key` can also accept `private_key` or `secret_key`:
+
+```python
+document.load_key(private_key=my_private_key)
+document.decrypt(destination)
+```
+
+Or:
+
+```python
+document.load_key(secret_key=my_secret_key)
+document.decrypt(destination)
+```
+
+#### Encrypting an OOXML document
+
+```python
+from msoffcrypto.format.ooxml import OOXMLFile
+
+with open("plain.xlsx", "rb") as source:
+    document = OOXMLFile(source)
+
+    with open("encrypted.xlsx", "wb") as destination:
+        document.encrypt("new-password", destination)
+```
+
+## Error handling
+
+The library defines exceptions for format parsing, encryption, decryption, and invalid-key failures:
+
+```python
+from msoffcrypto.exceptions import (
+    FileFormatError,
+    ParseError,
+    DecryptionError,
+    EncryptionError,
+    InvalidKeyError,
+)
+```
+
+`InvalidKeyError` is a specialized `DecryptionError`.
+
+A typical decryption workflow may handle key and decryption failures separately:
+
+```python
+import msoffcrypto
+from msoffcrypto.exceptions import DecryptionError, InvalidKeyError
+
+try:
+    with open("protected.ppt", "rb") as source:
+        document = msoffcrypto.OfficeFile(source)
+        document.load_key(password="password")
+
+        with open("output.ppt", "wb") as destination:
+            document.decrypt(destination)
+
+except InvalidKeyError:
+    print("The supplied key or password was not accepted.")
+except DecryptionError:
+    print("The document could not be decrypted.")
+```
+
+## Lower-level cryptographic APIs
+
+Most applications should use `OfficeFile` or one of the format-specific file classes. The library additionally exposes cryptographic primitives for specialized integrations.
+
+### ECMA-376 Agile encryption
+
+`ECMA376Agile` provides helpers for encryption, decryption, key generation, password verification, integrity verification, and encryption metadata generation.
+
+```python
+from msoffcrypto.method.ecma376_agile import ECMA376Agile
+
+encrypted_stream = ECMA376Agile.encrypt(
+    key=key,
+    ibuf=input_stream,
+)
+
+decrypted_stream = ECMA376Agile.decrypt(
+    key=key,
+    keyDataSalt=key_data_salt,
+    hashAlgorithm=hash_algorithm,
+    ibuf=encrypted_stream,
+)
+```
+
+Available methods include:
+
+- `decrypt(key, keyDataSalt, hashAlgorithm, ibuf)`
+- `encrypt(key, ibuf, salt_value=None, spin_count=100000)`
+- `get_encryption_information(info, encrypted_data, secretKey)`
+- `generate_encryption_parameters(key, salt_value=None, spin_count=100000)`
+- `encrypt_payload(ibuf, params, secret_key, salt_value)`
+- `generate_integrity_parameter(encrypted_data, params, secret_key, salt_value)`
+- `verify_password(...)`
+- `verify_integrity(...)`
+- `makekey_from_privkey(privkey, encryptedKeyValue)`
+- `makekey_from_password(...)`
+
+Related data classes:
+
+- `ECMA376AgileCipherParams`
+- `ECMA376AgileEncryptionInfo`
+
+`ECMA376AgileEncryptionInfo` can generate an encryption descriptor:
+
+```python
+descriptor_header = info.getEncryptionDescriptorHeader()
+descriptor = info.toEncryptionDescriptor()
+```
+
+### ECMA-376 Standard encryption
+
+```python
+from msoffcrypto.method.ecma376_standard import ECMA376Standard
+
+key = ECMA376Standard.makekey_from_password(
+    password=password,
+    algId=alg_id,
+    algIdHash=alg_id_hash,
+    providerType=provider_type,
+    keySize=key_size,
+    saltSize=salt_size,
+    salt=salt,
+)
+
+is_valid = ECMA376Standard.verifykey(
+    key,
+    encryptedVerifier,
+    encryptedVerifierHash,
+)
+
+plaintext = ECMA376Standard.decrypt(key, encrypted_stream)
+```
+
+### RC4 methods
+
+`DocumentRC4` supports password verification and decryption:
+
+```python
+from msoffcrypto.method.rc4 import DocumentRC4
+
+valid = DocumentRC4.verifypw(
+    password,
+    salt,
+    encryptedVerifier,
+    encryptedVerifierHash,
+)
+
+plaintext = DocumentRC4.decrypt(
+    password,
+    salt,
+    encrypted_stream,
+)
+```
+
+`DocumentRC4CryptoAPI` provides similar operations with additional key and algorithm parameters:
+
+```python
+from msoffcrypto.method.rc4_cryptoapi import DocumentRC4CryptoAPI
+
+valid = DocumentRC4CryptoAPI.verifypw(
+    password,
+    salt,
+    keySize,
+    encryptedVerifier,
+    encryptedVerifierHash,
+)
+
+plaintext = DocumentRC4CryptoAPI.decrypt(
+    password,
+    salt,
+    keySize,
+    encrypted_stream,
+)
+```
+
+### XOR obfuscation
+
+`DocumentXOR` exposes password verification, key generation, bit rotation, and decryption utilities:
+
+```python
+from msoffcrypto.method.xor_obfuscation import DocumentXOR
+
+valid = DocumentXOR.verifypw(password, verificationBytes)
+
+xor_key = DocumentXOR.create_xor_key_method1(password)
+xor_array = DocumentXOR.create_xor_array_method1(password)
+```
+
+Available methods include:
+
+- `verifypw(password, verificationBytes)`
+- `xor_ror(byte1, byte2)`
+- `create_xor_key_method1(password)`
+- `create_xor_array_method1(password)`
+- `ror(n, rotations, width)`
+- `rol(n, rotations, width)`
+- `decrypt(password, ibuf, plaintext, records, base)`
+
+## Encrypted-container helpers
+
+The library includes APIs for constructing ECMA-376 encrypted containers.
+
+```python
+from msoffcrypto.method.container.ecma376_encrypted import ECMA376Encrypted
+
+container = ECMA376Encrypted()
+container.set_payload(
+    encryptedPackage=encrypted_package,
+    encryptionInfo=encryption_info,
+)
+container.write_to(output_buffer)
+```
+
+Additional container-related types include:
+
+- `Header`
+- `DirectoryEntry`
+- `ECMA376EncryptedLayout`
+- `RedBlack`
+- `DirectoryEntryType`
+- `SectorTypes`
+- `DSPos`
+- `DefaultContent`
+
+The module also provides `datetime2filetime(dt)` for converting a datetime value into a file-time value.
+
+## Command-line entry points
+
+The package exposes command-line-related functions:
+
+- `main()`
+- `is_encrypted(file)`
+- `ifWIN32SetBinary(io)`
+
+For Python-level use, prefer the `OfficeFile` interface and its `is_encrypted`, `load_key`, `decrypt`, and OOXML `encrypt` methods.

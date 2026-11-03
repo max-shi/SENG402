@@ -1,0 +1,16 @@
+class_positive,dimension,coefficient,abs_coefficient,fold_sd,sign_stable_across_folds
+python,emo_anger,0.3922,0.3922,0.214,True
+python,achieve,-0.2726,0.2726,0.1131,True
+python,emo_sad,-0.2268,0.2268,0.1514,True
+python,BigWords,-0.2092,0.2092,0.0601,True
+python,WPS,-0.1901,0.1901,0.1572,True
+python,ipron,0.1867,0.1867,0.0849,True
+python,tentat,0.1463,0.1463,0.0544,True
+python,certitude,-0.1354,0.1354,0.0563,True
+python,risk,0.1187,0.1187,0.0677,True
+python,conflict,0.1144,0.1144,0.2003,False
+python,emo_neg,-0.061,0.061,0.2571,False
+python,motion,-0.0377,0.0377,0.07,False
+python,curiosity,-0.0341,0.0341,0.063,False
+python,emotion,0.0156,0.0156,0.1336,False
+python,Tone,0.0051,0.0051,0.1101,False

@@ -1,0 +1,175 @@
+# org.wso2.carbon.event.ws
+
+## Introduction
+
+`org.wso2.carbon.event.ws` is a WSO2 Carbon component that implements the WS-Eventing protocol for the Carbon eventing (pub/sub) infrastructure. It provides the SOAP message parsing/building logic, message receivers, and notification dispatching needed to expose a WS-Eventing-compliant interface over an underlying `EventBroker`.
+
+Through this library, remote clients can:
+
+- **Subscribe** to topics using WS-Eventing `Subscribe` requests
+- **Renew** existing subscriptions
+- **Unsubscribe** from topics
+- **Query the status** of a subscription
+- **Retrieve a list** of active subscriptions
+- **Publish** events to a topic
+- Receive **notifications** when events are published, delivered over a WS-based dispatch mechanism
+
+The library sits on top of Carbon's Axis2-based messaging engine and its generic eventing/event-broker abstractions (`Subscription`, `EventBroker`, `Message`, `EventDispatcher`), adapting the WS-Eventing SOAP protocol to that abstraction.
+
+## Overview of Main Components
+
+### Command Builders (`internal.builders`)
+
+These classes translate between raw SOAP envelopes (WS-Eventing protocol messages) and the internal `Subscription` model used by the Carbon event broker. Each builder handles one WS-Eventing operation, converting incoming request envelopes into `Subscription` objects and converting `Subscription` state back into response envelopes.
+
+- **`SubscribeCommandBuilder`** — Parses `Subscribe` requests into a `Subscription` (`toSubscription`) and builds the corresponding `SubscribeResponse` envelope (`fromSubscription`). May throw `InvalidMessageException` or `InvalidExpirationTimeException` if the request is malformed or specifies an invalid expiration.
+- **`RenewCommandBuilder`** — Parses `Renew` requests and builds `RenewResponse` envelopes, with the same exception conditions as `SubscribeCommandBuilder`.
+- **`UnSubscribeCommandBuilder`** — Parses `Unsubscribe` requests and builds the corresponding response envelope.
+- **`GetStatusCommandBuilder`** — Parses `GetStatus` requests and builds `GetStatusResponse` envelopes describing a subscription's current state.
+- **`GetSubscriptionsCommandBuilder`** — A static utility that builds a response envelope listing multiple subscriptions, supporting pagination via `maxResultCount` and `startIndex`.
+
+All of the per-subscription builders extend a shared `CommandBuilderConstants` base (holding common protocol constants) and are constructed with the current `MessageContext`, from which they read SOAP headers/body content.
+
+### Builder Utilities and Exceptions
+
+- **`BuilderUtils`** — Shared helper methods used by the command builders:
+  - `getEndpointFromWSAAddress` extracts an endpoint URL from a WS-Addressing `EndpointReference` element.
+  - `genFaultResponse` constructs a SOAP fault envelope (SOAP 1.1 or 1.2) with a given code, subcode, reason, and detail.
+  - `createSubscription` builds a `Subscription` object from an endpoint, filter dialect, and topic, throwing `InvalidMessageException` if the inputs are invalid.
+- **Exceptions** (`internal.builders.exceptions`) — Represent specific WS-Eventing protocol error conditions:
+  - `BuilderException` — a general runtime error while building/parsing a message.
+  - `InvalidMessageException` — the incoming SOAP message doesn't conform to the expected structure.
+  - `InvalidExpirationTimeException` — an invalid or unsupported expiration time/duration was requested.
+  - `FilteringRequestedUnavailableException` — the client requested a filter dialect that isn't supported.
+
+### Message Receivers (`internal.receivers`)
+
+These are Axis2 `AbstractMessageReceiver` implementations that act as the entry point for incoming SOAP requests, wiring the command builders to the event broker.
+
+- **`CarbonEventingMessageReceiver`** — The main WS-Eventing service receiver. Its `invokeBusinessLogic` dispatches an incoming `MessageContext` to `processMessage`, which determines the WS-Eventing operation (Subscribe/Renew/Unsubscribe/GetStatus/GetSubscriptions) and delegates to the appropriate command builder, invoking the registered `EventBroker` accordingly. It also exposes `sortResults`, used to order a list of `Subscription` objects (e.g., for `GetSubscriptions` responses) according to a sorting instruction and direction.
+- **`PublishOnlyMessageReceiver`** — A lightweight receiver used for services that only accept published events (no eventing management operations), forwarding the payload to the event broker for publishing.
+
+### Notification Dispatch (`internal.notify`)
+
+- **`WSEventDispatcher`** — Implements the generic `EventDispatcher` interface. Its `notify` method is invoked by the event broker when a `Message` needs to be delivered to a `Subscription`, and it performs the actual WS-based delivery (sending the notification to the subscriber's endpoint).
+
+### Utilities (`internal.util`)
+
+- **`EventBrokerUtils`** — Assorted helper functions used throughout the component:
+  - `createMessageContext` builds an Axis2 `MessageContext` from a payload and topic `OMElement` for a given tenant, for use when publishing.
+  - `getSecureTopicRegistryPath` resolves the registry path used to store access-control information for a topic.
+  - `getLoggedInUserName` / `isSystemDefinedUser` / `isSystemAllowedRole` support authorization checks against the current user context.
+  - `extractTopicFromMessage` pulls the target topic out of an incoming `MessageContext`, throwing `WSEventException` if it cannot be determined.
+
+### Component Wiring
+
+- **`WSEventBrokerHolder`** — A singleton (`getInstance()`) that holds shared OSGi-provided services for the component:
+  - The active `EventBroker` instance (`getEventBroker` / `registerEventBroker`).
+  - The Carbon `ConfigurationContextService` (`getConfigurationContextService` / `registerConfigurationContextService`).
+  - `registerWSEventDispatcher()` wires up the `WSEventDispatcher` so that the event broker can deliver notifications over WS-Eventing.
+
+### Exceptions (top-level `internal.exception`)
+
+- **`EventBrokerException`** — General error thrown by event broker operations invoked from this component.
+- **`WSEventException`** — General error thrown during WS-Eventing message processing (e.g., malformed messages, missing topic information).
+
+## How It Fits Together
+
+1. A SOAP request (Subscribe, Renew, Unsubscribe, GetStatus, GetSubscriptions, or a plain publish) arrives at an Axis2 service backed by `CarbonEventingMessageReceiver` or `PublishOnlyMessageReceiver`.
+2. The receiver's `invokeBusinessLogic`/`processMessage` inspects the `MessageContext`, determines the operation, and hands off to the relevant command builder (`SubscribeCommandBuilder`, `RenewCommandBuilder`, etc.).
+3. The command builder parses the SOAP envelope into a `Subscription` object, using `BuilderUtils` for address extraction and subscription creation, and throwing one of the builder exceptions if the request is invalid.
+4. The receiver invokes the `EventBroker` obtained from `WSEventBrokerHolder` to register/renew/remove the subscription or to publish a message.
+5. The command builder then converts the resulting `Subscription` (or exception) back into a response `SOAPEnvelope`, which is returned to the caller — using `BuilderUtils.genFaultResponse` for error cases.
+6. When an event is published and matches an active subscription, the `EventBroker` calls `WSEventDispatcher.notify`, which delivers the `Message` to the subscriber's WS endpoint.
+
+## Usage Examples
+
+### Example 1: Handling a Subscribe request in a message receiver
+
+```java
+public class MyEventingReceiver extends CarbonEventingMessageReceiver {
+
+    public void invokeBusinessLogic(MessageContext mc) throws AxisFault {
+        try {
+            processMessage(mc);
+        } catch (WSEventException e) {
+            throw new AxisFault("Failed to process WS-Eventing message", e);
+        }
+    }
+}
+```
+
+### Example 2: Manually building a Subscribe response
+
+```java
+MessageContext messageCtx = ...; // obtained from Axis2 engine
+
+SubscribeCommandBuilder builder = new SubscribeCommandBuilder(messageCtx);
+
+try {
+    Subscription subscription = builder.toSubscription(messageCtx.getEnvelope());
+
+    // Register the subscription with the event broker
+    EventBroker eventBroker = WSEventBrokerHolder.getInstance().getEventBroker();
+    eventBroker.subscribe(subscription);
+
+    // Build the SOAP response to send back to the client
+    SOAPEnvelope response = builder.fromSubscription(subscription);
+    messageCtx.setEnvelope(response);
+
+} catch (InvalidMessageException | InvalidExpirationTimeException e) {
+    SOAPEnvelope fault = BuilderUtils.genFaultResponse(
+            "Sender", "InvalidMessage", e.getMessage(), null, false);
+    messageCtx.setEnvelope(fault);
+} catch (EventBrokerException e) {
+    // handle broker-level failure
+}
+```
+
+### Example 3: Listing subscriptions with pagination and sorting
+
+```java
+List<Subscription> subscriptions = eventBroker.getSubscriptions(topic);
+
+CarbonEventingMessageReceiver receiver = new CarbonEventingMessageReceiver();
+List<Subscription> sorted = receiver.sortResults("expires", true, subscriptions);
+
+SOAPEnvelope response =
+    GetSubscriptionsCommandBuilder.buildResponseforGetSubscriptions(sorted, 10, 0);
+```
+
+### Example 4: Registering the event broker and dispatcher at startup
+
+```java
+WSEventBrokerHolder holder = WSEventBrokerHolder.getInstance();
+holder.registerEventBroker(myEventBrokerInstance);
+holder.registerConfigurationContextService(myConfigContextService);
+holder.registerWSEventDispatcher();
+```
+
+### Example 5: Publishing a message programmatically
+
+```java
+OMElement payload = ...; // event payload
+OMElement topic = ...;   // topic element
+
+MessageContext publishCtx = EventBrokerUtils.createMessageContext(payload, topic, tenantId);
+
+PublishOnlyMessageReceiver publishReceiver = new PublishOnlyMessageReceiver();
+publishReceiver.invokeBusinessLogic(publishCtx);
+```
+
+## Error Handling
+
+Consumers of this API should be prepared to catch and translate the following exceptions into appropriate SOAP faults or log entries:
+
+| Exception | Raised when |
+|---|---|
+| `InvalidMessageException` | An incoming WS-Eventing SOAP message is malformed or missing required elements |
+| `InvalidExpirationTimeException` | A `Subscribe`/`Renew` request specifies an unsupported or invalid expiration |
+| `FilteringRequestedUnavailableException` | A client requests an unsupported filter dialect |
+| `BuilderException` | An unexpected error occurs while building a SOAP message |
+| `EventBrokerException` | The underlying event broker fails to perform an operation |
+| `WSEventException` | General failure while processing a WS-Eventing message (e.g., topic extraction failure) |
+
+Use `BuilderUtils.genFaultResponse` to convert these into standards-compliant SOAP 1.1/1.2 fault responses for clients.

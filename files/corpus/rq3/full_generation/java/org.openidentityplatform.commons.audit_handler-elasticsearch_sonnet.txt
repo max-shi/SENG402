@@ -1,0 +1,190 @@
+# handler-elasticsearch
+
+Elasticsearch audit event handler for the [OpenIdentityPlatform Commons Audit](https://github.com/OpenIdentityPlatform/commons) framework. This library provides an `AuditEventHandler` implementation that publishes, queries, and reads audit events stored in an Elasticsearch cluster, with support for batched event publication.
+
+## Overview
+
+Audit frameworks built on top of `commons-audit` allow applications to record and query audit events (e.g., access events, activity events, authentication events) across a configurable set of "topics". This library plugs an Elasticsearch backend into that framework.
+
+### Main components
+
+#### `ElasticsearchAuditEventHandler`
+
+The core handler class. It extends `AuditEventHandlerBase` (integrating with the generic audit event handler lifecycle) and implements `BatchConsumer`, meaning it can participate in buffered/batched publication of events rather than sending every event individually.
+
+Key responsibilities:
+
+- **Lifecycle management** — `startup()` and `shutdown()` initialize and release any resources (such as the underlying Elasticsearch `Client`) needed to communicate with the cluster.
+- **Publishing events** — `publishEvent(Context, String topic, JsonValue event)` sends a single audit event, under a given topic, to Elasticsearch.
+- **Batch publishing** — `addToBatch(String topic, JsonValue event, StringBuilder payload)` accumulates individual events into a shared payload buffer (e.g., for the Elasticsearch Bulk API), and `publishBatch(String payload)` flushes the accumulated payload to Elasticsearch in a single request.
+- **Querying events** — `queryEvents(Context, String topic, QueryRequest query, QueryResourceHandler handler)` executes a query against a topic's index/indices and streams matching results to the supplied handler.
+- **Reading events** — `readEvent(Context, String topic, String resourceId)` retrieves a single audit event by its resource identifier.
+
+The constructor takes:
+
+- `ElasticsearchAuditEventHandlerConfiguration configuration` — connection, indexing, and buffering settings.
+- `EventTopicsMetaData eventTopicsMetaData` — schema/metadata describing the audit topics the handler will process.
+- `Client client` — an Elasticsearch client used to communicate with the cluster.
+
+#### `ElasticsearchAuditEventHandlerConfiguration`
+
+Configuration object for the handler, extending the generic `EventHandlerConfiguration` used throughout the audit framework. It exposes three configurable sub-sections:
+
+- **`ConnectionConfiguration` (`getConnection` / `setConnection`)** — how the handler connects to the Elasticsearch cluster (e.g., host/port, credentials, and similar transport details expected by the `Client`).
+- **`IndexMappingConfiguration` (`getIndexMapping` / `setIndexMapping`)** — how audit topics are mapped to Elasticsearch indices/types, including any index naming or mapping strategy.
+- **`EventBufferingConfiguration` (`getBuffering` / `setBuffering`)** — whether and how events are buffered/batched before being sent to Elasticsearch, working in tandem with the handler's `BatchConsumer` methods (`addToBatch` / `publishBatch`).
+
+It also exposes `isUsableForQueries()`, which indicates whether this handler instance is eligible to service query requests (as opposed to write-only configurations).
+
+### How the pieces fit together
+
+```
+ElasticsearchAuditEventHandlerConfiguration
+        │
+        ├── ConnectionConfiguration       (cluster connectivity)
+        ├── IndexMappingConfiguration     (topic → index mapping)
+        └── EventBufferingConfiguration   (batching behavior)
+                    │
+                    ▼
+ElasticsearchAuditEventHandler(configuration, eventTopicsMetaData, client)
+        │
+        ├── startup() / shutdown()        (lifecycle)
+        ├── publishEvent(...)             (single event write)
+        ├── addToBatch(...) / publishBatch(...)  (batched write, via BatchConsumer)
+        ├── queryEvents(...)              (search)
+        └── readEvent(...)                (get by id)
+```
+
+The handler is typically instantiated once per audit topic set (or once globally, depending on how the surrounding audit service is configured), registered with the audit service's event handler registry, and then invoked by the audit framework whenever events are logged, queried, or read.
+
+## Usage
+
+### Configuring and constructing the handler
+
+```java
+import org.forgerock.audit.events.handlers.EventTopicsMetaData;
+import org.forgerock.audit.handlers.elasticsearch.ElasticsearchAuditEventHandler;
+import org.forgerock.audit.handlers.elasticsearch.ElasticsearchAuditEventHandlerConfiguration;
+import org.elasticsearch.client.Client;
+
+// Build the configuration
+ElasticsearchAuditEventHandlerConfiguration configuration = new ElasticsearchAuditEventHandlerConfiguration();
+
+ConnectionConfiguration connection = new ConnectionConfiguration();
+// ... set host, port, credentials, etc. on connection
+configuration.setConnection(connection);
+
+IndexMappingConfiguration indexMapping = new IndexMappingConfiguration();
+// ... configure index naming / mapping strategy
+configuration.setIndexMapping(indexMapping);
+
+EventBufferingConfiguration buffering = new EventBufferingConfiguration();
+// ... enable/tune batching behavior
+configuration.setBuffering(buffering);
+
+// Metadata describing available audit topics (access, activity, authentication, etc.)
+EventTopicsMetaData eventTopicsMetaData = /* obtained from your audit service configuration */;
+
+// Elasticsearch transport client
+Client client = /* obtain a configured Elasticsearch Client */;
+
+ElasticsearchAuditEventHandler handler =
+        new ElasticsearchAuditEventHandler(configuration, eventTopicsMetaData, client);
+
+handler.startup();
+```
+
+### Publishing an audit event
+
+```java
+import org.forgerock.json.JsonValue;
+import org.forgerock.services.context.RootContext;
+import org.forgerock.util.promise.Promise;
+import org.forgerock.json.resource.ResourceException;
+import org.forgerock.json.resource.ResourceResponse;
+
+JsonValue event = JsonValue.json(JsonValue.object(
+        JsonValue.field("_id", "12345"),
+        JsonValue.field("timestamp", "2024-01-01T00:00:00Z"),
+        JsonValue.field("userId", "alice")
+));
+
+Promise<ResourceResponse, ResourceException> promise =
+        handler.publishEvent(new RootContext(), "access", event);
+
+promise.thenOnResult(response -> {
+    System.out.println("Published event with id: " + response.getId());
+}).thenOnException(error -> {
+    System.err.println("Failed to publish event: " + error.getMessage());
+});
+```
+
+### Reading a single event
+
+```java
+Promise<ResourceResponse, ResourceException> readPromise =
+        handler.readEvent(new RootContext(), "access", "12345");
+
+readPromise.thenOnResult(response ->
+        System.out.println("Retrieved event: " + response.getContent()));
+```
+
+### Querying events
+
+```java
+import org.forgerock.json.resource.QueryRequest;
+import org.forgerock.json.resource.QueryResourceHandler;
+import org.forgerock.json.resource.QueryResponse;
+import org.forgerock.json.resource.Requests;
+
+QueryRequest query = Requests.newQueryRequest("access")
+        .setQueryFilter(org.forgerock.util.query.QueryFilter.<JsonPointer>alwaysTrue());
+
+QueryResourceHandler resultHandler = resource -> {
+    System.out.println("Matched event: " + resource.getContent());
+    return true; // continue streaming results
+};
+
+Promise<QueryResponse, ResourceException> queryPromise =
+        handler.queryEvents(new RootContext(), "access", query, resultHandler);
+
+queryPromise.thenOnResult(response ->
+        System.out.println("Query complete: " + response.getPagedResultsCookie()));
+```
+
+### Batched publishing
+
+When buffering is enabled via `EventBufferingConfiguration`, events are accumulated and flushed together rather than sent one-by-one:
+
+```java
+StringBuilder payload = new StringBuilder();
+
+handler.addToBatch("access", event, payload);
+handler.addToBatch("activity", anotherEvent, payload);
+
+handler.publishBatch(payload.toString()).thenOnResult(unused -> {
+    System.out.println("Batch published successfully");
+}).thenOnException(error -> {
+    System.err.println("Batch publish failed: " + error.getMessage());
+});
+```
+
+### Checking query support
+
+Some deployments configure multiple handlers where only one is designated to service queries (e.g., to avoid duplicate or conflicting query results across handlers writing to the same topics):
+
+```java
+if (configuration.isUsableForQueries()) {
+    // safe to route query requests to this handler
+}
+```
+
+### Shutting down
+
+```java
+handler.shutdown();
+```
+
+## Summary
+
+`handler-elasticsearch` bridges the generic ForgeRock/OpenIdentityPlatform commons audit framework and an Elasticsearch backend, providing configuration-driven connection, index-mapping, and buffering behavior alongside the standard publish/read/query operations expected of any audit event handler.

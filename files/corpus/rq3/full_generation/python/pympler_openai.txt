@@ -1,0 +1,529 @@
+# pympler
+
+`pympler` provides tools for inspecting Python memory usage, tracking object lifetimes, comparing object populations, and exploring reference relationships.
+
+Its API supports several complementary workflows:
+
+- Measure the memory footprint of individual objects and object graphs.
+- Inspect all currently reachable Python objects and summarize them by type.
+- Track selected objects or classes over time.
+- Compare memory snapshots to identify growth or change.
+- Inspect garbage-collection cycles and object references.
+- Produce console, HTML, and web-based profiling views.
+
+## Installation
+
+```bash
+pip install pympler
+```
+
+## Quick start
+
+Measure the size of an object graph:
+
+```python
+from pympler import asizeof
+
+data = {
+    "users": [
+        {"name": "Ada", "roles": ["admin", "editor"]},
+        {"name": "Lin", "roles": ["viewer"]},
+    ]
+}
+
+total_bytes = asizeof.asizeof(data)
+flat_bytes = asizeof.flatsize(data)
+
+print("Total size:", total_bytes)
+print("Flat size:", flat_bytes)
+```
+
+`asizeof.asizeof()` measures an object together with reachable referenced objects, while `flatsize()` measures the object’s own flat size.
+
+---
+
+## Memory sizing
+
+The `pympler.asizeof` API measures object sizes and inspects object references.
+
+### Convenience functions
+
+```python
+from pympler import asizeof
+
+size = asizeof.asizeof(obj)
+sizes = asizeof.asizesof(obj1, obj2, obj3)
+
+sized = asizeof.asized(obj)
+```
+
+Available helpers include:
+
+| Function | Purpose |
+|---|---|
+| `asizeof(*objs, **opts)` | Measure the combined size of one or more objects. |
+| `asizesof(*objs, **opts)` | Measure each supplied object. |
+| `asized(*objs, **opts)` | Return detailed sizing information as `Asized` objects. |
+| `basicsize(obj, **opts)` | Get an object’s basic size. |
+| `flatsize(obj, align=0, **opts)` | Get an object’s flat size. |
+| `itemsize(obj, **opts)` | Get the size of an item or element where applicable. |
+| `leng(obj, **opts)` | Get a length-like value for an object. |
+| `refs(obj, **opts)` | Get referenced objects. |
+| `named_refs(obj, **opts)` | Get references with names. |
+| `adict(*classes)` | Build a dictionary related to supplied classes. |
+
+### Detailed sizing with `Asized`
+
+`asized()` returns `Asized` results that can be inspected or formatted.
+
+```python
+from pympler import asizeof
+
+payload = {
+    "items": list(range(1_000)),
+    "metadata": {"source": "example"},
+}
+
+result = asizeof.asized(payload, detail=2)
+
+print(result.format())
+print(result.get("size"))
+print(result.get("flat"))
+```
+
+`Asized.format()` accepts formatting, depth, sort order, and indentation options:
+
+```python
+print(
+    result.format(
+        format="%(name)s: total=%(size)d flat=%(flat)d",
+        depth=2,
+        order_by="size",
+    )
+)
+```
+
+### Reusable measurement with `Asizer`
+
+Use `Asizer` when measuring repeatedly, configuring measurement behavior, excluding objects, or printing reports.
+
+```python
+from pympler.asizeof import Asizer
+
+sizer = Asizer()
+sizer.reset(detail=1, cutoff=10, stats=3)
+
+objects = [
+    {"kind": "small", "values": [1, 2, 3]},
+    {"kind": "large", "values": list(range(10_000))},
+]
+
+sizes = sizer.asizesof(*objects)
+
+for size in sizes:
+    print(size.format())
+
+print("Total:", sizer.total())
+
+sizer.print_summary()
+sizer.print_largest()
+sizer.print_stats()
+```
+
+Useful `Asizer` methods include:
+
+- `asizeof()`, `asizesof()`, and `asized()` for measurement.
+- `reset()` and `set()` for configuration.
+- `exclude_objs()`, `exclude_refs()`, and `exclude_types()` to omit values from sizing.
+- `print_summary()`, `print_largest()`, `print_profiles()`, `print_stats()`, and `print_typedefs()` for reports.
+- `total()`, `seen()`, `sized()`, `excluded()`, `ignored()`, and `missed()` for collected state.
+
+---
+
+## Object inspection and summaries
+
+The `pympler.muppy` and `pympler.summary` APIs can inspect currently available objects and aggregate them into compact summaries.
+
+```python
+from pympler import muppy, summary
+
+objects = muppy.get_objects()
+
+rows = summary.summarize(objects)
+summary.print_(rows, limit=20, sort="size", order="descending")
+```
+
+Filter and sort object collections before summarizing:
+
+```python
+from pympler import muppy, summary
+
+objects = muppy.get_objects(include_frames=False)
+
+lists = muppy.filter(objects, Type=list)
+lists = muppy.sort(lists)
+
+rows = summary.summarize(lists)
+formatted = summary.format_(rows, limit=10)
+
+print(formatted)
+```
+
+### Comparing object populations
+
+Take two object collections and compare them:
+
+```python
+from pympler import muppy, summary
+
+before = muppy.get_objects()
+
+# Run work expected to allocate objects.
+cache = [{"id": i, "payload": "x" * 100} for i in range(1_000)]
+
+after = muppy.get_objects()
+
+diff = summary.get_diff(
+    summary.summarize(before),
+    summary.summarize(after),
+)
+
+summary.print_(diff, limit=20)
+```
+
+`muppy.get_diff(left, right)` provides a lower-level comparison of object collections, while `summary.get_diff(left, right)` compares summary rows.
+
+Other object-inspection helpers:
+
+- `muppy.get_size(objects)` — measure a list of objects.
+- `muppy.get_referents(object, level=1)` — inspect references from an object.
+- `muppy.ignore_object(obj)` — determine whether an object should be ignored.
+- `muppy.print_summary()` — print an object summary directly.
+
+---
+
+## Snapshot-based tracking
+
+`SummaryTracker` stores summaries and compares them over time.
+
+```python
+from pympler.tracker import SummaryTracker
+
+tracker = SummaryTracker()
+
+before = tracker.create_summary()
+
+records = [{"id": i, "name": f"record-{i}"} for i in range(500)]
+
+after = tracker.create_summary()
+
+print(tracker.format_diff(before, after))
+```
+
+You can also save a named summary and later compare against it:
+
+```python
+from pympler.tracker import SummaryTracker
+
+tracker = SummaryTracker()
+
+tracker.store_summary("startup")
+
+temporary_data = [bytearray(4096) for _ in range(100)]
+
+tracker.print_diff()
+```
+
+`SummaryTracker` methods:
+
+- `create_summary()`
+- `store_summary(key)`
+- `diff(summary1=None, summary2=None)`
+- `format_diff(summary1=None, summary2=None)`
+- `print_diff(summary1=None, summary2=None)`
+
+### Object-level diffs
+
+`ObjectTracker` compares object-level state:
+
+```python
+from pympler.tracker import ObjectTracker
+
+tracker = ObjectTracker()
+
+# Perform work to inspect.
+items = [set(range(i)) for i in range(100)]
+
+print(tracker.format_diff())
+```
+
+Use `ignore` to omit selected objects from a comparison:
+
+```python
+diff = tracker.get_diff(ignore=(items,))
+tracker.print_diff(ignore=(items,))
+```
+
+---
+
+## Class and instance tracking
+
+`ClassTracker` tracks instances or complete classes over time. It can create snapshots, track changes, and provide statistics through `ConsoleStats`.
+
+```python
+from pympler.classtracker import ClassTracker
+
+class Session:
+    def __init__(self, user_id):
+        self.user_id = user_id
+        self.buffer = []
+
+tracker = ClassTracker()
+tracker.track_class(Session, name="session", resolution_level=1)
+
+sessions = [Session(i) for i in range(20)]
+for session in sessions:
+    session.buffer.extend(range(100))
+
+tracker.create_snapshot(
+    description="after session allocation",
+    compute_total=True,
+)
+
+stats = tracker.stats()
+stats.print_summary()
+stats.print_stats()
+
+tracker.close()
+```
+
+Track a specific object rather than every instance of a class:
+
+```python
+from pympler.classtracker import ClassTracker
+
+tracker = ClassTracker()
+
+state = {"events": [], "settings": {"enabled": True}}
+tracker.track_object(state, name="application state", keep=True)
+
+state["events"].append("started")
+tracker.track_change(state)
+
+tracker.create_snapshot("state updated")
+tracker.stats().print_summary()
+
+tracker.close()
+```
+
+### Periodic snapshots
+
+```python
+from pympler.classtracker import ClassTracker
+
+tracker = ClassTracker()
+tracker.track_class(dict, name="dictionaries")
+
+tracker.start_periodic_snapshots(interval=2.0)
+
+# Application work runs here.
+
+tracker.stop_periodic_snapshots()
+tracker.stats().print_summary()
+tracker.close()
+```
+
+`track_object()` and `track_class()` support:
+
+- `name` — an optional display name.
+- `resolution_level` — a tracking-resolution value.
+- `keep` — whether to retain tracked objects.
+- `trace` — whether to enable tracing for the tracked target.
+
+The tracker also supports `detach_class()`, `detach_all_classes()`, `detach_all()`, `clear()`, and `close()` for cleanup.
+
+### Working with tracking statistics
+
+`ClassTracker.stats()` returns `ConsoleStats`, which extends `Stats`.
+
+```python
+stats = tracker.stats()
+
+stats.sort_stats("classname")
+stats.annotate()
+
+for class_name in stats.tracked_classes():
+    print(class_name)
+
+stats.print_summary()
+stats.print_stats(limit=0.5)
+```
+
+Statistics can be serialized:
+
+```python
+stats.dump_stats("memory-tracking.dump")
+
+# Later:
+from pympler.classtracker_stats import ConsoleStats
+
+loaded = ConsoleStats()
+loaded.load_stats("memory-tracking.dump")
+loaded.print_summary()
+```
+
+For HTML reports, use `HtmlStats`:
+
+```python
+from pympler.classtracker_stats import HtmlStats
+
+html_stats = HtmlStats()
+html_stats.load_stats("memory-tracking.dump")
+html_stats.create_html("memory-report.html", title="Memory Tracking Report")
+```
+
+---
+
+## Garbage collection and reference graphs
+
+`GarbageGraph` extends `ReferenceGraph` and is intended for inspecting garbage-collection-related reference structures.
+
+```python
+from pympler.garbagegraph import start_debug_garbage, end_debug_garbage
+
+start_debug_garbage()
+
+# Run code that may produce unreachable or cyclic objects.
+
+end_debug_garbage()
+```
+
+Reference graph objects support operations for simplifying and exporting graphs:
+
+- `reduce_to_cycles()`
+- `split()`
+- `split_and_sort()`
+- `write_graph(filename)`
+- `render(filename, cmd='dot', format='ps', unflatten=False)`
+
+`GarbageGraph` additionally provides `print_stats()`.
+
+---
+
+## Reference browsing
+
+The reference-browser API provides tree-oriented inspection of object references.
+
+```python
+from pympler.refbrowser import ConsoleBrowser
+
+browser = ConsoleBrowser()
+tree = browser.get_tree()
+browser.print_tree(tree)
+```
+
+Available browser types:
+
+- `RefBrowser` — provides `get_tree()`.
+- `StreamBrowser` — prints a tree to a stream.
+- `ConsoleBrowser` — console-oriented stream browser.
+- `FileBrowser` — writes a tree to a file.
+- `InteractiveBrowser` — provides an interactive `main()` entry point.
+
+Utility functions include:
+
+```python
+from pympler.refbrowser import gui_default_str_function
+
+label = gui_default_str_function(some_object)
+```
+
+---
+
+## Optional web profiler
+
+`pympler.web` exposes functions for starting a profiler server and viewing tracking or garbage information through request handlers.
+
+```python
+from pympler.web import start_profiler
+
+start_profiler(
+    host="localhost",
+    port=8090,
+    debug=True,
+)
+```
+
+To start in the background:
+
+```python
+from pympler.web import start_in_background
+
+thread = start_in_background(host="localhost", port=8090)
+```
+
+The web API also includes handlers for tracker views, garbage views, object references, tracebacks, refresh requests, and static content.
+
+---
+
+## Process and formatting utilities
+
+### Thread information
+
+```python
+from pympler import process
+
+if process.is_available():
+    current_id = process.get_current_thread_id()
+
+    for thread in process.get_current_threads():
+        print(thread)
+```
+
+### Formatting sizes and timestamps
+
+```python
+from pympler.util.stringutils import pp, pp_timestamp, safe_repr, trunc
+
+print(pp(1_048_576))
+print(pp_timestamp(None))
+print(safe_repr({"large": list(range(100))}, clip=80))
+print(trunc("a very long message", max=12))
+```
+
+Available helpers:
+
+- `safe_repr(obj, clip=None)`
+- `trunc(obj, max, left=False)`
+- `pp(i, base=1024)`
+- `pp_timestamp(t)`
+
+---
+
+## API organization
+
+| Area | Primary API |
+|---|---|
+| Object sizing | `asizeof`, `Asizer`, `Asized` |
+| Object enumeration | `muppy` |
+| Type summaries | `summary` |
+| Summary comparison | `SummaryTracker` |
+| Object comparison | `ObjectTracker` |
+| Class/instance lifetime tracking | `ClassTracker`, `TrackedObject`, `Snapshot` |
+| Tracking reports | `Stats`, `ConsoleStats`, `HtmlStats` |
+| Garbage inspection | `GarbageGraph` |
+| Reference visualization | `ReferenceGraph` |
+| Reference browsing | `RefBrowser`, `ConsoleBrowser`, `FileBrowser`, `InteractiveBrowser` |
+| Web profiling | `start_profiler`, `start_in_background` |
+| Process inspection | `process` |
+
+## Typical workflow
+
+A practical investigation often combines the APIs:
+
+1. Capture a baseline with `SummaryTracker` or `muppy.get_objects()`.
+2. Run the workload suspected of retaining memory.
+3. Compare the before and after state with `SummaryTracker.print_diff()` or `summary.get_diff()`.
+4. Use `asizeof.asized()` or an `Asizer` to inspect large retained objects.
+5. Use `ClassTracker` when allocation and retention need to be observed over time.
+6. Use reference or garbage tools when investigating object relationships or cycles.

@@ -1,0 +1,116 @@
+# substeps-runner-common
+
+`com.technophobia.substeps:substeps-runner-common` provides a small Java API for obtaining a `SubstepsRunner` capable of running execution nodes.
+
+The library exposes a factory-based entry point rather than requiring callers to construct a runner directly. This keeps runner creation centralized and allows the underlying runner implementation to be selected or loaded by the library.
+
+## API overview
+
+### `ExecutionNodeRunnerFactory`
+
+```java
+public class ExecutionNodeRunnerFactory {
+    public static SubstepsRunner createRunner();
+}
+```
+
+The `ExecutionNodeRunnerFactory` is the main entry point for consumers.
+
+Use `createRunner()` to obtain a `SubstepsRunner`:
+
+```java
+SubstepsRunner runner = ExecutionNodeRunnerFactory.createRunner();
+```
+
+The returned runner can then be used according to the public API provided by the `SubstepsRunner` type.
+
+### `UnableToLoadExecutionNodeRunnerExeception`
+
+```java
+public class UnableToLoadExecutionNodeRunnerExeception extends RuntimeException {
+    public UnableToLoadExecutionNodeRunnerExeception(Throwable cause);
+}
+```
+
+`UnableToLoadExecutionNodeRunnerExeception` is an unchecked exception that indicates the library could not load or create the execution-node runner.
+
+Because it extends `RuntimeException`, callers are not required to declare or catch it. Applications that need to report initialization failures cleanly may catch it around runner creation.
+
+> Note: the public type name is spelled `Exeception` and should be used exactly as shown.
+
+## Usage
+
+### Create a runner
+
+```java
+import com.technophobia.substeps.runner.ExecutionNodeRunnerFactory;
+import com.technophobia.substeps.runner.SubstepsRunner;
+
+public final class RunnerBootstrap {
+
+    public SubstepsRunner createRunner() {
+        return ExecutionNodeRunnerFactory.createRunner();
+    }
+}
+```
+
+### Handle runner-loading failures
+
+```java
+import com.technophobia.substeps.runner.ExecutionNodeRunnerFactory;
+import com.technophobia.substeps.runner.SubstepsRunner;
+import com.technophobia.substeps.runner.UnableToLoadExecutionNodeRunnerExeception;
+
+public final class Application {
+
+    public static void main(String[] args) {
+        try {
+            SubstepsRunner runner = ExecutionNodeRunnerFactory.createRunner();
+
+            // Use the runner through the SubstepsRunner API.
+            System.out.println("Execution-node runner created: " + runner);
+        } catch (UnableToLoadExecutionNodeRunnerExeception e) {
+            System.err.println("Unable to create the execution-node runner.");
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+### Use a factory-created runner in application setup
+
+```java
+import com.technophobia.substeps.runner.ExecutionNodeRunnerFactory;
+import com.technophobia.substeps.runner.SubstepsRunner;
+
+public final class TestExecutionService {
+
+    private final SubstepsRunner runner;
+
+    public TestExecutionService() {
+        this.runner = ExecutionNodeRunnerFactory.createRunner();
+    }
+
+    public SubstepsRunner getRunner() {
+        return runner;
+    }
+}
+```
+
+## Error handling
+
+Runner creation may fail with `UnableToLoadExecutionNodeRunnerExeception`. Catch this exception when your application needs to:
+
+- display a startup or configuration error;
+- fail fast during application initialization;
+- attach additional logging or diagnostics;
+- provide a fallback behavior when a runner cannot be created.
+
+```java
+try {
+    SubstepsRunner runner = ExecutionNodeRunnerFactory.createRunner();
+    // Continue initialization.
+} catch (UnableToLoadExecutionNodeRunnerExeception e) {
+    throw new IllegalStateException("Runner initialization failed", e);
+}
+```

@@ -1,0 +1,442 @@
+# net.databinder:unfiltered-netty-server_2.9.1
+
+HTTP form-data and upload support for Java applications using Netty HTTP message types.
+
+This library provides APIs for:
+
+- Decoding HTTP POST request bodies, including multipart requests.
+- Accessing submitted form fields as `Attribute` objects.
+- Accessing uploaded files as `FileUpload` objects.
+- Storing request data in memory, on disk, or using size-based mixed storage.
+- Managing temporary upload data through `HttpDataFactory`.
+- Reading and writing common HTTP headers through `HttpHeaders`.
+
+## Core concepts
+
+### `InterfaceHttpData`
+
+`InterfaceHttpData` is the common base type for data decoded from a request body.
+
+```java
+public interface InterfaceHttpData extends Comparable<InterfaceHttpData> {
+    String getName();
+    HttpDataType getHttpDataType();
+}
+```
+
+Every decoded item has:
+
+- A form-field name, returned by `getName()`.
+- A data type, returned by `getHttpDataType()`.
+
+The two primary kinds of HTTP data are represented by `Attribute` and `FileUpload`.
+
+### `HttpData`
+
+`HttpData` extends `InterfaceHttpData` with content access and storage operations.
+
+It supports:
+
+- Replacing content with a buffer, file, or input stream.
+- Incrementally adding content.
+- Reading bytes, buffers, chunks, or strings.
+- Moving content to a destination file.
+- Checking whether data is complete or held in memory.
+- Deleting underlying stored content.
+
+```java
+HttpData data = ...;
+
+long size = data.length();
+boolean complete = data.isCompleted();
+boolean inMemory = data.isInMemory();
+
+byte[] bytes = data.get();
+String text = data.getString();
+ChannelBuffer buffer = data.getChannelBuffer();
+```
+
+## Form fields: `Attribute`
+
+`Attribute` represents a named request field with a string value.
+
+```java
+public interface Attribute extends HttpData {
+    String getValue() throws IOException;
+    void setValue(String value) throws IOException;
+}
+```
+
+Example:
+
+```java
+Attribute title = ...;
+
+String fieldName = title.getName();
+String value = title.getValue();
+
+title.setValue("Updated title");
+```
+
+Available implementations include:
+
+- `MemoryAttribute` — an in-memory attribute.
+- `DiskAttribute` — an attribute backed by disk storage.
+- `MixedAttribute` — an attribute that can use memory or disk storage depending on its configured limit.
+
+## Uploaded files: `FileUpload`
+
+`FileUpload` represents a file submitted through a request body.
+
+```java
+public interface FileUpload extends HttpData {
+    String getFilename();
+    void setFilename(String filename);
+
+    void setContentType(String contentType);
+    String getContentType();
+
+    void setContentTransferEncoding(String contentTransferEncoding);
+    String getContentTransferEncoding();
+}
+```
+
+Example:
+
+```java
+FileUpload upload = ...;
+
+String fieldName = upload.getName();
+String filename = upload.getFilename();
+String contentType = upload.getContentType();
+
+if (upload.isCompleted()) {
+    upload.renameTo(new File("/var/app/uploads/" + filename));
+}
+```
+
+Available implementations include:
+
+- `MemoryFileUpload` — keeps upload content in memory.
+- `DiskFileUpload` — stores upload content on disk.
+- `MixedFileUpload` — uses memory or disk storage depending on a configured size limit.
+
+## Decoding POST request bodies
+
+`HttpPostRequestDecoder` incrementally decodes an `HttpRequest` and subsequent `HttpChunk` objects.
+
+```java
+HttpPostRequestDecoder decoder =
+    new HttpPostRequestDecoder(request);
+```
+
+Alternative constructors allow a custom data factory and character set:
+
+```java
+HttpDataFactory factory = new DefaultHttpDataFactory();
+
+HttpPostRequestDecoder decoder =
+    new HttpPostRequestDecoder(factory, request, Charset.forName("UTF-8"));
+```
+
+### Decoder workflow
+
+1. Create a decoder for the incoming `HttpRequest`.
+2. Offer incoming `HttpChunk` instances as they arrive.
+3. Retrieve decoded values using lookup methods or iteration.
+4. Clean up managed data when request processing is complete.
+
+```java
+HttpPostRequestDecoder decoder =
+    new HttpPostRequestDecoder(request);
+
+try {
+    // Call this for each body chunk received for the request.
+    decoder.offer(chunk);
+
+    while (decoder.hasNext()) {
+        InterfaceHttpData item = decoder.next();
+
+        if (item instanceof Attribute) {
+            Attribute field = (Attribute) item;
+            System.out.println(field.getName() + " = " + field.getValue());
+        } else if (item instanceof FileUpload) {
+            FileUpload upload = (FileUpload) item;
+
+            System.out.println(
+                "Received file field " + upload.getName() +
+                ", filename=" + upload.getFilename() +
+                ", type=" + upload.getContentType() +
+                ", bytes=" + upload.length()
+            );
+        }
+    }
+} finally {
+    decoder.cleanFiles();
+}
+```
+
+The decoder exposes:
+
+```java
+boolean multipart = decoder.isMultipart();
+
+List<InterfaceHttpData> all = decoder.getBodyHttpDatas();
+List<InterfaceHttpData> named = decoder.getBodyHttpDatas("avatar");
+InterfaceHttpData first = decoder.getBodyHttpData("avatar");
+```
+
+Some retrieval operations can throw `NotEnoughDataDecoderException` when decoding has not yet received sufficient request content. Iteration ends with `EndOfDataDecoderException`.
+
+### Looking up specific fields
+
+```java
+HttpPostRequestDecoder decoder =
+    new HttpPostRequestDecoder(request);
+
+// Offer all relevant chunks before retrieving complete body data.
+decoder.offer(chunk);
+
+try {
+    InterfaceHttpData data = decoder.getBodyHttpData("email");
+
+    if (data instanceof Attribute) {
+        String email = ((Attribute) data).getValue();
+        System.out.println("Email: " + email);
+    }
+} finally {
+    decoder.cleanFiles();
+}
+```
+
+### Saving an uploaded file
+
+```java
+HttpPostRequestDecoder decoder =
+    new HttpPostRequestDecoder(request);
+
+try {
+    decoder.offer(chunk);
+
+    InterfaceHttpData data = decoder.getBodyHttpData("document");
+
+    if (data instanceof FileUpload) {
+        FileUpload document = (FileUpload) data;
+
+        if (document.isCompleted()) {
+            File destination = new File(
+                "/var/app/documents/" + document.getFilename()
+            );
+
+            boolean moved = document.renameTo(destination);
+
+            if (!moved) {
+                throw new IOException("Could not move uploaded file");
+            }
+        }
+    }
+} finally {
+    decoder.cleanFiles();
+}
+```
+
+## Configuring data storage
+
+`DefaultHttpDataFactory` creates attributes and file uploads for a request and tracks data for cleanup.
+
+```java
+HttpDataFactory factory = new DefaultHttpDataFactory();
+```
+
+The available constructors provide storage-policy choices:
+
+```java
+// Default configuration.
+HttpDataFactory defaultFactory = new DefaultHttpDataFactory();
+
+// Request disk-backed data.
+HttpDataFactory diskFactory = new DefaultHttpDataFactory(true);
+
+// Use a size threshold.
+HttpDataFactory thresholdFactory = new DefaultHttpDataFactory(1024 * 1024);
+```
+
+The factory can also be used directly:
+
+```java
+Attribute attribute = factory.createAttribute(request, "description", "Example");
+
+FileUpload upload = factory.createFileUpload(
+    request,
+    "attachment",
+    "report.pdf",
+    "application/pdf",
+    null,
+    Charset.forName("UTF-8"),
+    0L
+);
+```
+
+### Cleanup
+
+Factories provide request-specific and global cleanup operations:
+
+```java
+factory.cleanRequestHttpDatas(request);
+factory.cleanAllHttpDatas();
+```
+
+If an item should no longer be managed by the factory cleanup process:
+
+```java
+factory.removeHttpDataFromClean(request, upload);
+```
+
+The decoder offers equivalent cleanup controls for data it manages:
+
+```java
+decoder.removeHttpDataFromClean(data);
+decoder.cleanFiles();
+```
+
+## Working with content
+
+Both attributes and file uploads implement `HttpData`, so they share the same content APIs.
+
+### Read as text
+
+```java
+String text = data.getString();
+String utf8Text = data.getString(Charset.forName("UTF-8"));
+```
+
+### Read as bytes or a buffer
+
+```java
+byte[] bytes = data.get();
+ChannelBuffer content = data.getChannelBuffer();
+```
+
+### Read incrementally
+
+```java
+ChannelBuffer chunk = data.getChunk(8192);
+```
+
+### Provide content programmatically
+
+```java
+data.setContent(buffer);
+data.setContent(inputStream);
+data.setContent(file);
+
+// Add body content incrementally.
+data.addContent(buffer, false);
+data.addContent(lastBuffer, true);
+```
+
+### Delete stored content
+
+```java
+data.delete();
+```
+
+## HTTP header helpers
+
+`HttpHeaders` contains static utility methods for reading and writing headers on `HttpMessage` instances.
+
+### Standard headers
+
+```java
+String host = HttpHeaders.getHost(message);
+HttpHeaders.setHost(message, "example.test");
+
+HttpHeaders.setContentLength(message, 128);
+long length = HttpHeaders.getContentLength(message, 0L);
+
+HttpHeaders.setDate(message, new Date());
+Date date = HttpHeaders.getDate(message);
+```
+
+### Generic headers
+
+```java
+HttpHeaders.setHeader(message, "X-Request-Id", "abc123");
+
+String requestId = HttpHeaders.getHeader(
+    message,
+    "X-Request-Id",
+    "unknown"
+);
+
+HttpHeaders.addHeader(message, "X-Tag", "first");
+HttpHeaders.addHeader(message, "X-Tag", "second");
+
+HttpHeaders.removeHeader(message, "X-Tag");
+HttpHeaders.clearHeaders(message);
+```
+
+### Integer and date headers
+
+```java
+HttpHeaders.setIntHeader(message, "X-Retry-Count", 3);
+int retries = HttpHeaders.getIntHeader(message, "X-Retry-Count", 0);
+
+HttpHeaders.setDateHeader(message, "Expires", new Date());
+Date expires = HttpHeaders.getDateHeader(message, "Expires");
+```
+
+### Connection and `100 Continue` handling
+
+```java
+if (HttpHeaders.isKeepAlive(message)) {
+    // Keep the connection open.
+}
+
+HttpHeaders.setKeepAlive(message, true);
+
+if (HttpHeaders.is100ContinueExpected(message)) {
+    // Handle an expected 100-continue request.
+}
+
+HttpHeaders.set100ContinueExpected(message, true);
+```
+
+## Class relationships
+
+```text
+InterfaceHttpData
+├── HttpData
+│   ├── Attribute
+│   │   ├── MemoryAttribute
+│   │   ├── DiskAttribute
+│   │   └── MixedAttribute
+│   └── FileUpload
+│       ├── MemoryFileUpload
+│       ├── DiskFileUpload
+│       └── MixedFileUpload
+│
+└── HttpPostRequestDecoder
+    └── produces InterfaceHttpData instances
+
+HttpDataFactory
+└── DefaultHttpDataFactory
+    └── creates and manages Attribute and FileUpload instances
+```
+
+## Error handling
+
+Content access and mutation methods may throw `IOException`. POST decoding can report decoder-specific exceptions while constructing a decoder, offering chunks, retrieving decoded data, or iterating through results.
+
+Typical request handling should therefore ensure cleanup in a `finally` block:
+
+```java
+HttpPostRequestDecoder decoder = new HttpPostRequestDecoder(factory, request);
+
+try {
+    decoder.offer(chunk);
+    // Process decoded request data.
+} finally {
+    decoder.cleanFiles();
+}
+```

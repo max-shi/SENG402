@@ -1,0 +1,453 @@
+# google-cloud-securitycenter
+
+Python client library for working with Security Center resources and findings. The library provides synchronous and asynchronous clients for multiple API versions, along with typed protocol message classes, pagination helpers, resource-name builders, and selectable gRPC or REST transports.
+
+The API surface supports workflows such as:
+
+- Creating and managing sources and findings.
+- Listing and grouping assets and findings.
+- Updating finding state, mute state, security marks, and external-system data.
+- Managing mute configurations, notification configurations, and BigQuery exports.
+- Managing Security Health Analytics and Event Threat Detection custom modules.
+- Managing resource value configurations, valued resources, simulations, and attack paths.
+- Reading and updating IAM policies.
+- Running asset discovery and managing long-running operations.
+
+## Installation
+
+```bash
+pip install google-cloud-securitycenter
+```
+
+## Supported API versions
+
+The package exposes clients for several versions of the Security Center API:
+
+| Version | Primary client |
+| --- | --- |
+| v1 | `google.cloud.securitycenter_v1.services.security_center.client.SecurityCenterClient` |
+| v1 beta 1 | `google.cloud.securitycenter_v1beta1.services.security_center.client.SecurityCenterClient` |
+| v1p1 beta 1 | `google.cloud.securitycenter_v1p1beta1.services.security_center.client.SecurityCenterClient` |
+| v2 | `google.cloud.securitycenter_v2.services.security_center.client.SecurityCenterClient` |
+
+Each version also provides a corresponding `SecurityCenterAsyncClient`.
+
+Use the client and message types from the same API version in an application.
+
+## Quick start
+
+The synchronous client accepts request objects or dictionaries. Many request fields are also exposed as keyword arguments.
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient.from_service_account_file(
+    "service-account.json"
+)
+
+parent = "organizations/123456789"
+
+pager = client.list_findings(parent=parent)
+
+for page in pager.pages:
+    print(page)
+```
+
+The returned `ListFindingsPager` handles page traversal. Use the `pages` iterator when you need access to each raw response page.
+
+## Resource names
+
+`SecurityCenterClient` provides helpers for building and parsing common resource names.
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+finding_name = SecurityCenterClient.finding_path(
+    organization="123456789",
+    source="456",
+    finding="my-finding",
+)
+
+print(finding_name)
+
+parts = SecurityCenterClient.parse_finding_path(finding_name)
+print(parts["organization"])
+print(parts["source"])
+print(parts["finding"])
+```
+
+Available helpers vary by API version. Depending on the version, helpers are available for resources including:
+
+- Assets
+- Findings
+- Sources
+- Security marks
+- Mute configurations
+- Notification configurations
+- BigQuery exports
+- Resource value configurations
+- Simulations, valued resources, and attack paths
+- Security Health Analytics custom modules
+- Event Threat Detection custom modules
+- Common Google Cloud resources such as organizations, projects, folders, locations, and billing accounts
+
+## Main client classes
+
+### `SecurityCenterClient`
+
+The synchronous client exposes regular Python methods for API calls.
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient.from_service_account_info(
+    {
+        # Service account credential information.
+    }
+)
+
+source_name = SecurityCenterClient.source_path(
+    organization="123456789",
+    source="456",
+)
+
+source = client.get_source(name=source_name)
+print(source)
+```
+
+Most methods accept:
+
+- `request`: A typed request message or a dictionary.
+- Keyword-only request fields such as `parent`, `name`, `finding`, or `source`.
+- `retry`: Retry configuration.
+- `timeout`: Per-call timeout.
+- `metadata`: Additional request metadata.
+
+For example:
+
+```python
+source = client.get_source(
+    name="organizations/123456789/sources/456",
+    timeout=30.0,
+)
+```
+
+### `SecurityCenterAsyncClient`
+
+The asynchronous client mirrors the synchronous API and returns awaitable results or asynchronous pagers.
+
+```python
+import asyncio
+
+from google.cloud.securitycenter_v2.services.security_center.async_client import (
+    SecurityCenterAsyncClient,
+)
+
+
+async def main():
+    client = SecurityCenterAsyncClient.from_service_account_file(
+        "service-account.json"
+    )
+
+    pager = await client.list_findings(
+        parent="organizations/123456789"
+    )
+
+    async for page in pager.pages:
+        print(page)
+
+
+asyncio.run(main())
+```
+
+Use `await` for RPC methods. For pageable methods, await the initial call and then iterate over `pager.pages` with `async for`.
+
+## Working with findings
+
+Findings can be created, listed, grouped, updated, muted, and assigned a state.
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+from google.cloud.securitycenter_v2.types import finding as finding_types
+
+client = SecurityCenterClient()
+
+finding_name = SecurityCenterClient.finding_path(
+    organization="123456789",
+    source="456",
+    finding="example-finding",
+)
+
+updated_finding = client.set_finding_state(
+    name=finding_name,
+    state=finding_types.Finding.State.ACTIVE,
+)
+
+print(updated_finding)
+```
+
+The available finding operations vary by API version. Current-version clients include methods such as:
+
+- `create_finding`
+- `get_source`
+- `list_findings`
+- `group_findings`
+- `update_finding`
+- `set_finding_state`
+- `set_mute`
+- `bulk_mute_findings`
+
+## Listing and grouping resources
+
+List methods return pager objects, while grouping methods return group-result pagers.
+
+```python
+from google.cloud.securitycenter_v1.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient()
+
+# Traverse raw pages of sources.
+sources = client.list_sources(parent="organizations/123456789")
+
+for page in sources.pages:
+    print(page)
+
+# Group findings using a service-defined grouping expression.
+groups = client.group_findings(
+    parent="organizations/123456789/sources/-",
+    group_by="category",
+)
+
+for page in groups.pages:
+    print(page)
+```
+
+Pager classes are available for list and group methods, including:
+
+- `ListAssetsPager`
+- `ListFindingsPager`
+- `ListSourcesPager`
+- `GroupAssetsPager`
+- `GroupFindingsPager`
+- `ListMuteConfigsPager`
+- `ListNotificationConfigsPager`
+- `ListBigQueryExportsPager`
+- `ListResourceValueConfigsPager`
+- `ListValuedResourcesPager`
+- `ListAttackPathsPager`
+
+Async equivalents use the `AsyncPager` suffix.
+
+## Managing mute and notification configurations
+
+The v1 and v2 APIs expose configuration management methods for muting findings and delivering notifications.
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient()
+
+mute_config_name = SecurityCenterClient.mute_config_path(
+    organization="123456789",
+    mute_config="production-filter",
+)
+
+mute_config = client.get_mute_config(name=mute_config_name)
+print(mute_config)
+
+notification_config_name = SecurityCenterClient.notification_config_path(
+    organization="123456789",
+    location="global",
+    notification_config="security-alerts",
+)
+
+notification_config = client.get_notification_config(
+    name=notification_config_name
+)
+print(notification_config)
+```
+
+Relevant methods include:
+
+- `create_mute_config`
+- `get_mute_config`
+- `list_mute_configs`
+- `update_mute_config`
+- `delete_mute_config`
+- `create_notification_config`
+- `get_notification_config`
+- `list_notification_configs`
+- `update_notification_config`
+- `delete_notification_config`
+
+## BigQuery exports and resource valuation
+
+v1 and v2 clients provide APIs for BigQuery exports and resource value configuration.
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient()
+
+exports = client.list_big_query_exports(
+    parent="organizations/123456789/locations/global"
+)
+
+for page in exports.pages:
+    print(page)
+
+resource_value_configs = client.list_resource_value_configs(
+    parent="organizations/123456789"
+)
+
+for page in resource_value_configs.pages:
+    print(page)
+```
+
+The v2 API additionally provides paginated access to simulations, valued resources, and attack paths through methods such as:
+
+- `get_simulation`
+- `get_valued_resource`
+- `list_valued_resources`
+- `list_attack_paths`
+
+## Custom detection modules
+
+The v1 client includes support for two custom-module families:
+
+- Security Health Analytics custom modules.
+- Event Threat Detection custom modules.
+
+Available operations include create, get, list, update, delete, validation, simulation, descendant listing, and effective-module retrieval where applicable.
+
+```python
+from google.cloud.securitycenter_v1.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient()
+
+modules = client.list_security_health_analytics_custom_modules(
+    parent="organizations/123456789"
+)
+
+for page in modules.pages:
+    print(page)
+
+event_modules = client.list_event_threat_detection_custom_modules(
+    parent="organizations/123456789"
+)
+
+for page in event_modules.pages:
+    print(page)
+```
+
+## IAM policy operations
+
+Clients expose standard IAM policy operations for supported resources.
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient()
+
+resource = "organizations/123456789"
+
+policy = client.get_iam_policy(resource=resource)
+print(policy)
+
+permissions = client.test_iam_permissions(
+    resource=resource,
+    permissions=[
+        "securitycenter.findings.list",
+        "securitycenter.sources.get",
+    ],
+)
+
+print(permissions)
+```
+
+Available IAM methods are:
+
+- `get_iam_policy`
+- `set_iam_policy`
+- `test_iam_permissions`
+
+## Long-running operations
+
+Some operations return an operation wrapper, including:
+
+- `bulk_mute_findings`
+- `run_asset_discovery`
+
+The v1 and v2 clients also expose operation-management methods:
+
+- `list_operations`
+- `get_operation`
+- `cancel_operation`
+- `delete_operation`
+
+```python
+from google.cloud.securitycenter_v2.services.security_center.client import (
+    SecurityCenterClient,
+)
+
+client = SecurityCenterClient()
+
+operation = client.bulk_mute_findings(
+    parent="organizations/123456789"
+)
+
+print(operation)
+```
+
+## Typed message classes
+
+The library includes typed protocol message classes for requests, responses, and Security Center domain resources. Examples include:
+
+- `Finding`
+- `Source`
+- `Asset`
+- `Resource`
+- `SecurityMarks`
+- `MuteConfig`
+- `NotificationConfig`
+- `BigQueryExport`
+- `ResourceValueConfig`
+- `Simulation`
+- `ValuedResource`
+- `AttackPath`
+- `ExternalSystem`
+- `OrganizationSettings`
+
+Request and response messages are also available in each version’s `securitycenter_service` types module. For example, v2 includes `ListFindingsRequest`, `CreateFindingRequest`, `UpdateFindingRequest`, and `GroupFindingsResponse`.
+
+## Transport support
+
+The clients support gRPC, asynchronous gRPC, and REST transport implementations.
+
+Transport classes include:
+
+- `SecurityCenterGrpcTransport`
+- `SecurityCenterGrpcAsyncIOTransport`
+- `SecurityCenterRestTransport`
+
+The active transport is available through the client’s `transport` property. Transport classes expose lower-level callable RPC methods, an operations client, and channel or connection lifecycle methods such as `close()`.
+
+For most applications, use `SecurityCenterClient` or `SecurityCenterAsyncClient` directly rather than calling transports manually.

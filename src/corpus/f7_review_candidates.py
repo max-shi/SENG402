@@ -1,7 +1,7 @@
 """
-f7_review_candidates — Surface candidates for manual F7 review.
+f7_review_candidates: Surface candidates for manual F7 review.
 
-Post-crawl F7 (§7.6.4) requires human judgement to identify stubs,
+Post-crawl F7 requires human judgement to identify stubs,
 forks, and mirrors that automated pre-filters missed. Reading all 400
 docs manually is impractical, so this helper applies simple heuristics
 to the extracted text and surfaces likely-suspects for human review.
@@ -22,7 +22,7 @@ The output is a CSV of candidates; you review each and mark
 'excluded_fork_mirror_stub' with an evidence note.
 
 Usage:
-    venv/bin/python3 src/corpus/f7_review_candidates.py [--freeze-date YYYYMMDD]
+    venv/bin/python3 src/corpus/f7_review_candidates.py [--freeze-date <name>]
 """
 
 from __future__ import annotations
@@ -54,7 +54,7 @@ SUSPICIOUS_PHRASES = [
 ]
 PHRASE_RES = [re.compile(p, re.IGNORECASE) for p in SUSPICIOUS_PHRASES]
 
-# Only check the very top of each doc — abandonment / fork notices are
+# Only check the very top of each doc, abandonment / fork notices are
 # always in the first paragraph or two. 1500 chars ~= 250 words ~= first
 # 2 short paragraphs. Reduces false positives from example code that
 # happens to mention forks/mirrors deeper in the docs.

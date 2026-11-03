@@ -1,0 +1,221 @@
+# valor-sdk
+
+`valor-sdk` is a Java library for mapping structured, relational-style data onto heterogeneous storage backends (key-value stores, filesystems, JDBC databases, etc.) through a pluggable schema and serialization layer. It provides:
+
+- A **relation/schema metadata system** describing how logical relations map onto physical storage layouts.
+- A **formatter/holder framework** for encoding and decoding attribute values into byte-level record fields (with support for hashing, salting, JSON, maps, dates, and more).
+- A **query planning and optimization layer** that turns predicates and projections into executable scan/join plans against one or more schemas.
+- A **storage abstraction** (`Storage`, `StorageConnection`, `StorageConnectionFactory`) with concrete implementations for the filesystem and JDBC, plus a `KeyValueStorage` base for building your own key-value backends.
+- A **connection façade** (`ValorConnection`) that ties everything together for querying, inserting, updating, and deleting data.
+
+This library is best suited for building storage engines or data access layers where the same logical schema needs to be serialized in different physical layouts (e.g., wide-row key-value tables, relational tables, or flat files), with query planning that can pick or combine access paths.
+
+---
+
+## Core Concepts
+
+### ValorConnection & ValorConnectionFactory
+
+`ValorConnection` is the main entry point for interacting with relations: selecting, scanning, inserting, updating, and deleting tuples, as well as compiling and planning queries.
+
+```java
+ValorContext context = StandardContextFactory.create();
+ValorConnection conn = ValorConnectionFactory.create(context);
+
+List<Tuple> results = conn.select(
+    "myNamespace",
+    "users",
+    Arrays.asList("id", "name", "email"),
+    condition
+);
+```
+
+`ValorConnectionImpl` is the standard implementation, backed by a `SchemaRepository` for metadata and a set of `Storage` connections for data access.
+
+### Schema Repositories
+
+Schema metadata (relations, schemas, field layouts) is managed through implementations of `SchemaRepository`:
+
+- `InMemorySchemaRepository` — ephemeral, in-process metadata storage, useful for tests or dynamic schemas.
+- `FileSchemaRepository` / `HttpsSchemaRepository` — load schema definitions from files or remote endpoints.
+- `CompositeSchemaRepository` — aggregates multiple named repositories (namespaces) behind a single interface, delegating relation/schema operations to the appropriate child repository.
+- `SchemaRepositoryCache` — a TTL-based `Map` implementation useful for caching repository lookups.
+
+Metadata is serialized/deserialized via `MetadataJsonSerde`, `RelationDeserializer`, and `SchemaDescriptorDeserializer`, which read and write relation and schema definitions (including field layouts and formatters) to/from JSON.
+
+### Schemas
+
+A `Schema` (via `SchemaBase` and its subclasses) defines how a `Relation`'s tuples are serialized into and deserialized from storage `Record`s:
+
+- `SortedKeyValueSchema` / `SortedMonoKeyValueSchema` / `SortedMultiKeyValuesSchema` / `SortedCumulativeKeyValuesSchema` — schemas for sorted key-value storage, differing in how many records represent a tuple (a single record, multiple records, or an aggregated/cumulative set of values).
+- `RelationalSchema` — maps tuples onto rows/columns for relational (JDBC-style) storage.
+
+Each schema exposes `getTupleSerializer()`, `getTupleDeserializer()`, `getQuerySerializer()`, and mutation builders (`buildInsertMutation`, `buildUpdateMutation`, `buildDeleteMutation`) used internally when reading and writing data.
+
+### Formatters & Holders
+
+Formatters define how a logical attribute value is converted to/from bytes within a field, and how it participates in query serialization. All formatters extend the abstract `Formatter` base and implement `cutAndSet` (deserialization) and `accept` (serialization/query-building) methods.
+
+Common formatters:
+
+- `AttributeValueFormatter` / `AbstractAttributeValueFormatter` — direct pass-through of a named attribute's value.
+- `ConstantFormatter` — embeds a fixed constant value into a field.
+- `Number2StringFormatter`, `String2NumberFormatter`, `DateTime2LongFormatter`, `String2DateTimeFrameFormatter`, `UrlEncodeFormatter`, `NullableStringFormatter`, `ReverseLongFormatter` — type/format conversion formatters.
+- `Md5AttributeFormatter`, `Sha1AttributeFormatter`, `Murmur3AttributeFormatter` (via `AbstractHashFormatter`) — hash one or more attributes into a field, useful for building hashed row keys.
+- `Murmur3SaltFormatter` (via `SaltFormatter`) — adds a salt prefix/suffix to help distribute keys.
+- `MapKeyFormatter`, `MapValueFormatter`, `MapEntryFormatter`, `Murmur3MapKeyFormatter`, `Map2StringFormatter` — disassemble map-typed attributes into individual record fields (and reassemble them on read).
+- `MultiAttributeNamesFormatter`, `MultiAttributeValuesFormatter` (via `MultiAttributesFormatter`) — pack multiple attribute names/values into a single field.
+- `JsonFormatter`, `JqFormatter`, `FilterMapFormatter` — structured/JSON-aware formatting and filtering.
+- `CurrentTimeFormatter` — stamps the current time into a field.
+- `CumulativeValueFormatter<V>` — aggregates multiple stored values into one logical attribute value (used together with cumulative schemas).
+
+Holders wrap formatters and control how a field's byte segment is located within a larger record:
+
+- `FixedLengthHolder` — a field of fixed byte length.
+- `SuffixHolder` — a field identified by a fixed suffix.
+- `RegexpHolder` — a field extracted via a regular expression.
+- `VintSizePrefixHolder` — a field prefixed with a variable-length integer size.
+- `OptionalHolder` — a field that may or may not be present.
+
+### Serialization
+
+Tuple and query serialization/deserialization is handled through implementations of `TupleSerializer`, `TupleDeserializer`, and `QuerySerializer`:
+
+- `OneToOneTupleSerializer` / `OneToOneQuerySerializer` — one record per tuple/predicate.
+- `TreeBasedTupleSerializer` / `TreeBasedQuerySerialzier` (using `TreeNode`, `TreeNodeBase`, `RecordTreeNode`, `ScanTreeNode`) — build a tree representation of nested/composite fields (such as disassembled maps) before flattening to records or scans.
+- `TupleDeserializerBase` and its subclasses `OneToOneDeserializer`, `DisassembleDeserializer`, `ContinuousRecordsDeserializer`, `CumulativeRecordsDeserializer<V>` — reconstruct tuples from one or more storage records, including cumulative aggregation.
+
+### Query Planning
+
+Query planning turns a projection + predicate into an executable plan:
+
+- `Planner<T>` implementations — `PrimitivePlanner` (and its subclasses `NaivePrimitivePlanner`, `StaticCostBasedPrimitivePlanner`) plan single-schema access paths (`SimplePlan`); `JoinablePlanner` plans access across two schemas, producing `SimplePlan`, `HashJoinPlan`, or `MergeJoinPlan` as appropriate.
+- `QueryPlan` implementations (`SimplePlan`, `HashJoinPlan`, `MergeJoinPlan`) know how to build a `QueryRunner` and estimate result counts.
+- `Solver` implementations (`HeuristicCostSolver`, `HeuristicSpaceSolver`) choose the best `ScanPlan` per relation from a set of evaluated candidate plans.
+
+### Predicates and Functions
+
+Predicates used in query conditions are built from `PrimitivePredicate` implementations:
+
+- Comparison operators: `EqualOperator`, `NotEqualOperator`, `GreaterthanOperator`, `GreaterthanorequalOperator`, `LessthanOperator`, `LessthanorequalOperator`.
+- Pattern matching: `RegexpOperator`, `RegexpNotMatchOperator`, `LikeOperator`, `UnlikeOperator`.
+- Null checks: `IsNullOperator`, `IsNotNullOperator`.
+- Array containment: `ArrayContainsFunction`.
+
+User-defined functions (`Udf<T>`) — `UdfArrayContains`, `UdfArrayValue`, `UdfMapKeys`, `UdfMapValue` — provide array/map operations usable within expressions.
+
+Visitors (`LogicalPlanVisitor`, `LogicalPlanVisitorBase<T>`, `AttributeCollectVisitor`, `TrimByAttributesVisitor`) traverse predicate/expression trees, e.g. to collect referenced attributes or trim a plan down to only the attributes actually needed.
+
+### Storage Backends
+
+- `StorageBase` / `Storage` — base abstraction for a physical storage system, configured via `ValorConf`.
+- `KeyValueStorage` / `KeyValueStorageConnectionFactory` — base for key-value backends; `FsStorage`, `FsConnectionFactory`, `FsStorageConnection`, `FsCell`, `FsScan`, `FsScanner` implement a filesystem-backed key-value store.
+- `RelationalStorage` / `RelationalStorageConnection` — base for relational (SQL-style) backends; `JdbcStorage`, `JdbcConnectionFactory`, `JdbcStorageConnection`, `ResultSetRecord` implement a JDBC-backed relational store. `JdbcPlugin` exposes the JDBC storage factory as a pluggable `Plugin`.
+- `StorageConnectionWrapper` — a decorator for `StorageConnection` implementations, useful for adding cross-cutting behavior (retries, logging, metrics) around an existing connection.
+
+---
+
+## Usage Examples
+
+### 1. Creating a context and connection
+
+```java
+Map<String, String> conf = new HashMap<>();
+conf.put("valor.schema.repository.type", "memory");
+
+ValorContext context = StandardContextFactory.create(conf);
+ValorConnection conn = ValorConnectionFactory.create(context);
+```
+
+### 2. Defining and registering a relation/schema
+
+```java
+SchemaRepository repo = context.getSchemaRepository(); // via your context/config
+Relation usersRelation = ... // built via your relation model
+SchemaDescriptor descriptor = ... // describes field layouts/formatters
+
+repo.createRelation("app", usersRelation, false);
+repo.createSchema("app", "users", descriptor, false);
+```
+
+A typical schema descriptor combines holders and formatters, e.g. a fixed-length hashed row key followed by attribute value fields:
+
+```java
+Formatter idFormatter = AttributeValueFormatter.create("userId");
+Md5AttributeFormatter rowKeyHash = Md5AttributeFormatter.create(8, "userId");
+FixedLengthHolder rowKeyField = FixedLengthHolder.create(8, rowKeyHash);
+
+Formatter nameFormatter = AttributeValueFormatter.create("name");
+SuffixHolder nameField = SuffixHolder.create(":name", nameFormatter);
+```
+
+### 3. Inserting and querying data
+
+```java
+Tuple tuple = ... // build a tuple with attribute values
+conn.insert("app", "users", Collections.singletonList(tuple));
+
+PredicativeExpression condition =
+    new EqualOperator("userId", AttributeType.STRING, "u-1001");
+
+List<Tuple> rows = conn.select(
+    "app",
+    "users",
+    Arrays.asList("userId", "name", "email"),
+    condition
+);
+```
+
+### 4. Updating and deleting
+
+```java
+Map<String, Object> newValues = new HashMap<>();
+newValues.put("email", "new-email@example.com");
+
+int updated = conn.update("app", "users", newValues, condition);
+int deleted = conn.delete("app", "users", condition, 100);
+```
+
+### 5. Planning a query manually
+
+```java
+Query query = ... // build from projection items and condition
+QueryPlan plan = conn.plan(query);
+Optional<Long> estimatedCount = plan.count(conn);
+QueryRunner runner = plan.buildRunner(conn);
+```
+
+### 6. Using a filesystem-backed key-value store
+
+```java
+ValorConf storageConf = ... // filesystem storage configuration
+FsStorage storage = new FsStorage(storageConf);
+FsConnectionFactory connectionFactory = new FsConnectionFactory(storage);
+
+Schema schema = storage.buildSchema(usersRelation, descriptor);
+StorageConnection storageConn = connectionFactory.connect();
+```
+
+### 7. Using a JDBC-backed relational store
+
+```java
+ValorConf jdbcConf = ... // JDBC connection configuration
+JdbcStorage jdbcStorage = new JdbcStorage(jdbcConf);
+
+List<JdbcStorage.ColumnDesc> columns = ... // column definitions
+JdbcConnectionFactory jdbcFactory =
+    new JdbcConnectionFactory(jdbcStorage, "users_table", columns);
+
+StorageConnection jdbcConn = jdbcFactory.connect();
+```
+
+---
+
+## Extensibility
+
+- Implement `Formatter` subclasses to support custom attribute encodings.
+- Implement `Holder` subclasses to support custom field-location strategies within a record.
+- Implement `SchemaRepository` to back metadata with a custom store.
+- Implement `Storage`, `StorageConnectionFactory`, and `StorageConnection` to add support for new physical backends.
+- Implement `Solver` or `Planner<T>` to customize query plan selection and cost evaluation.
+- Implement `Udf<T>` to add custom functions usable in query expressions.

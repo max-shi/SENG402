@@ -1,0 +1,91 @@
+# pyspellchecker
+
+`pyspellchecker` is a pure-Python library for spelling correction and word-frequency-based text analysis. It uses word frequency lists and Levenshtein edit distance to identify misspelled words, suggest corrections, and provide statistics about word usage in a corpus. It ships with built-in dictionaries for several languages and supports loading custom dictionaries or text corpora.
+
+## Installation
+
+```bash
+pip install pyspellchecker
+```
+
+## Core Concepts
+
+### `SpellChecker`
+
+The main entry point for spell-checking. A `SpellChecker` instance wraps a `WordFrequency` object and provides methods to check words against it, find likely corrections, and generate candidate spellings using edit distance.
+
+Key methods:
+
+- `known(words)` / `unknown(words)` — filter an iterable of words into those present or absent from the dictionary.
+- `correction(word)` — return the most likely correct spelling for a word.
+- `candidates(word)` — return the full set of plausible correction candidates.
+- `edit_distance_1(word)` / `edit_distance_2(word)` — generate words one or two edits away from the input.
+- `split_words(text)` — tokenize a string into words.
+- `word_usage_frequency(word)` — return the relative frequency of a word in the dictionary corpus.
+- `distance` (property) — the maximum edit distance considered when generating candidates (typically 1 or 2).
+- `export(filepath)` — save the current word frequency dictionary to disk.
+- `languages()` (classmethod) — list built-in language dictionaries available.
+
+### `WordFrequency`
+
+Manages the underlying word/frequency data used by `SpellChecker`. Accessible via `SpellChecker.word_frequency`.
+
+Key methods:
+
+- `load_dictionary(filename)` / `load_json(data)` — load a prebuilt frequency dictionary.
+- `load_text_file(filename)` / `load_text(text)` — build frequency data from raw text, with optional custom tokenizer.
+- `load_words(words)` / `add(word)` — manually add words/counts.
+- `remove(word)` / `remove_words(words)` / `remove_by_threshold(threshold)` — prune the dictionary.
+- `keys()` / `words()` / `items()` / `dictionary` — inspect the loaded data.
+- `total_words`, `unique_words`, `letters`, `longest_word_length` — corpus statistics.
+
+## Usage Examples
+
+### Basic spell checking
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()  # loads default English dictionary
+
+misspelled = spell.unknown(["something", "is", "hapenning", "here"])
+
+for word in misspelled:
+    print(word, "->", spell.correction(word))
+    print("candidates:", spell.candidates(word))
+```
+
+### Using a different language
+
+```python
+print(SpellChecker.languages())  # e.g. ['en', 'es', 'de', 'fr', ...]
+
+spell = SpellChecker(language="es")
+print(spell.unknown(["mesa", "sillaa"]))
+```
+
+### Building a custom dictionary from text
+
+```python
+spell = SpellChecker(language=None)  # start empty
+spell.word_frequency.load_text_file("my_corpus.txt")
+spell.word_frequency.load_words(["custom", "domain", "terms"])
+
+spell.export("my_dictionary.gz")
+```
+
+### Adjusting edit distance
+
+```python
+spell = SpellChecker()
+spell.distance = 1  # faster, less permissive matching
+print(spell.candidates("wrold"))
+```
+
+## Building Dictionaries
+
+The `scripts/build_dictionary.py` module contains utilities used to construct and clean the bundled dictionaries from raw corpora, including language-specific cleaning functions (`clean_english`, `clean_spanish`, `clean_german`, etc.) that filter out noise words using include/exclude lists. These scripts are primarily intended for maintainers regenerating the shipped dictionary files, but can serve as a reference for building your own domain-specific dictionaries.
+
+## License
+
+See `LICENSE` for details.

@@ -1,0 +1,150 @@
+# micro-reactive
+
+**micro-reactive** is a lightweight library for building reactive, event-driven microservices in Java. It provides tools for:
+
+- Managing in-memory event queues and exposing them through a variety of reactive/async abstractions (`Future`, `Mono`, `Flux`, `ReactiveSeq`, `Maybe`, `Eval`, `FutureStream`).
+- Scheduling recurring jobs (cron-style, fixed delay, or fixed rate) whose output is exposed as a `HotStream`.
+- Making reactive, streaming HTTP calls (GET/POST/PUT/DELETE) with both raw text and JSON deserialization support.
+- Returning reactive/streamed HTTP responses (e.g. from JAX-RS style resources) built from `Stream` or `Publisher` sources.
+- Wiring the whole thing into a Spring-based microservice runtime via a `Plugin` implementation.
+
+It is designed to sit inside a microservice built on the `com.aol.microservices` family of libraries, giving you a consistent way to move data between internal event queues, scheduled jobs, and external HTTP APIs — all expressed in terms of reactive streams.
+
+---
+
+## Core Concepts
+
+### `EventQueueManager<T>`
+
+The central abstraction for in-process event queues. An `EventQueueManager` is backed by a `QueueFactory<T>` and an `Executor`, and lets you:
+
+- `push(key, value)` — publish a value onto the named queue.
+- `register(key)` — register a queue for a key before use.
+- `forEach(key, reactor)` — subscribe imperatively with a `Consumer`.
+- `future(key, ex)` / `mono(key, ex)` — get a single upcoming value as a `Future` or a Reactor `Mono`.
+- `flux(key)` — consume the queue as a Reactor `Flux`.
+- `stream(key)` — consume the queue as a `cyclops` `ReactiveSeq`.
+- `maybe(key)` / `lazy(key)` — get a lazily-evaluated `Maybe` or `Eval` wrapping the next value.
+- `ioFutureStream(key)` — consume the queue as an asynchronous `FutureStream`.
+
+This makes `EventQueueManager` a general-purpose bridge between "push"-style producers (e.g. schedulers, HTTP handlers, message listeners) and any reactive consumer style your code prefers.
+
+You typically create one with:
+
+```java
+EventQueueManager<String> queueManager =
+        EventQueueManager.of(executor, queueFactory);
+```
+
+### `ResponderConfigurer<T>`
+
+A small configuration helper that exposes a configured `EventQueueManager<T>` via `responder()`, intended to be wired up (e.g. as a Spring bean) so other components can push into, or subscribe from, a shared queue without needing to know how it was constructed.
+
+### `JobSchedular`
+
+Schedules recurring work (`ScheduledJob<T>`) using either:
+
+- `schedule(expression, job)` — cron-style expression scheduling.
+- `scheduleFixedDelay(fixedDelay, job)` — fixed delay between executions.
+- `scheduleFixedRate(fixedRate, job)` — fixed rate execution.
+
+Each scheduling method returns a `HotStream<SystemData<K, V>>` — a hot, already-running stream of the job's output that multiple subscribers can tap into, making it easy to fan job results out to other parts of the system (e.g. into an `EventQueueManager`, over HTTP, or into further reactive pipelines).
+
+### `ReactivePlugin`
+
+Implements the `Plugin` interface used by the surrounding microservice framework. `springClasses()` returns the set of classes that should be registered with Spring, allowing the reactive infrastructure (queues, schedulers, HTTP clients) to be auto-wired into a running service.
+
+### `ReactiveRequest`
+
+A reactive HTTP client for consuming external APIs as streams rather than single blocking responses. Constructed with explicit timeouts:
+
+```java
+ReactiveRequest client = new ReactiveRequest(5000, 2000); // read, connect timeouts
+```
+
+It supports:
+
+- Raw text/streamed responses: `getTextStream`, `getStream`, `postStream`, `putStream`, `deleteStream`.
+- JSON-deserialized streamed responses, using either a `Class<T>` or a Jackson `JavaType` for generic types: `getJsonStream`, `deleteJsonStream`, `postJsonStream`, `putJsonStream`.
+
+All methods return a `ReactiveSeq<T>`, so results can be composed, filtered, mapped, and combined with other reactive sources in your service (including queues from `EventQueueManager` and job output from `JobSchedular`).
+
+### `ReactiveResponse`
+
+Utility methods for producing HTTP responses from reactive sources, typically from within a REST endpoint:
+
+- `streamAsJson(Stream<T> json)` — build a streaming JSON `Response` from a plain `Stream`.
+- `publishAsJson(Publisher<T> json)` — build a streaming JSON `Response` from any Reactive Streams `Publisher` (e.g. a `Flux`, `Mono`, or `ReactiveSeq`).
+
+This lets you expose queues, job output, or downstream HTTP calls directly as streaming JSON endpoints.
+
+---
+
+## Usage Examples
+
+### 1. Pushing events into a queue and consuming them reactively
+
+```java
+EventQueueManager<String> queueManager =
+        EventQueueManager.of(executorService, queueFactory);
+
+queueManager.register("orders");
+
+// Consume as a Reactor Flux
+Flux<String> orderFlux = queueManager.flux("orders");
+orderFlux.subscribe(order -> System.out.println("Received order: " + order));
+
+// Consume as a cyclops ReactiveSeq
+ReactiveSeq<String> orderStream = queueManager.stream("orders");
+orderStream.forEach(order -> processOrder(order));
+
+// Elsewhere in the application
+queueManager.push("orders", "order-12345");
+```
+
+### 2. Scheduling a job and streaming its results
+
+```java
+JobSchedular scheduler = new JobSchedular();
+
+HotStream<SystemData<String, Integer>> inventoryUpdates =
+        scheduler.scheduleFixedRate(60_000L, inventoryCheckJob);
+
+inventoryUpdates.connect()
+        .forEach(data -> queueManager.push("inventory", data.toString()));
+```
+
+### 3. Calling an external service reactively and exposing it as a streaming JSON endpoint
+
+```java
+ReactiveRequest client = new ReactiveRequest(5000, 2000);
+
+ReactiveSeq<Product> products =
+        client.getJsonStream("https://catalog.example.com/api/products", Product.class);
+
+@GET
+@Path("/products")
+@Produces(MediaType.APPLICATION_JSON)
+public Response listProducts() {
+    ReactiveSeq<Product> filtered = products.filter(Product::isInStock);
+    return ReactiveResponse.streamAsJson(filtered);
+}
+```
+
+### 4. Wiring queue-backed events directly to a streaming endpoint
+
+```java
+@GET
+@Path("/orders/stream")
+@Produces(MediaType.APPLICATION_JSON)
+public Response streamOrders() {
+    Flux<String> orders = queueManager.flux("orders");
+    return ReactiveResponse.publishAsJson(orders);
+}
+```
+
+---
+
+## Integrating with Spring
+
+Register `ReactivePlugin` with your microservice's plugin mechanism so its `springClasses()` are picked up and the reactive infrastructure (event queues, responders, schedulers, HTTP clients) becomes available as managed beans throughout your application.

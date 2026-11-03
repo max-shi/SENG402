@@ -1,0 +1,71 @@
+# com.wordnik:swagger-jaxrs_2.11
+
+A Java library providing a Jackson-based JSON provider for JAX-RS applications.
+
+The library exposes `JacksonJsonProvider`, a concrete provider class that extends Jackson’s `JacksonJaxbJsonProvider`. It can be registered with a JAX-RS runtime to handle JSON serialization and deserialization using the Jackson provider infrastructure.
+
+## Requirements
+
+- Java
+- A JAX-RS-compatible runtime
+- Jackson JAX-RS provider classes, including `JacksonJaxbJsonProvider`
+
+## API Overview
+
+### `com.wordnik.swagger.jaxrs.json.JacksonJsonProvider`
+
+```java
+public class JacksonJsonProvider extends JacksonJaxbJsonProvider {
+    public JacksonJsonProvider();
+}
+```
+
+`JacksonJsonProvider` is a no-argument, concrete JSON provider. Because it inherits from `JacksonJaxbJsonProvider`, it can be used anywhere that a Jackson JAX-RS JSON provider is accepted.
+
+Create an instance with:
+
+```java
+JacksonJsonProvider jsonProvider = new JacksonJsonProvider();
+```
+
+## Usage
+
+### Register with a JAX-RS application
+
+In a JAX-RS application that supports programmatic provider registration, create and register the provider instance:
+
+```java
+import com.wordnik.swagger.jaxrs.json.JacksonJsonProvider;
+
+public class ApiApplication {
+    public void configure(Object jaxRsConfiguration) {
+        JacksonJsonProvider jsonProvider = new JacksonJsonProvider();
+
+        // Register jsonProvider using the registration mechanism provided
+        // by your JAX-RS runtime.
+    }
+}
+```
+
+The exact registration API depends on the JAX-RS implementation in use, but the provider instance is:
+
+```java
+new JacksonJsonProvider()
+```
+
+### Use as a Jackson JAX-RS provider
+
+Because `JacksonJsonProvider` extends `JacksonJaxbJsonProvider`, it may be passed to APIs expecting that parent type:
+
+```java
+import com.wordnik.swagger.jaxrs.json.JacksonJsonProvider;
+import com.fasterxml.jackson.jaxrs.json.JacksonJaxbJsonProvider;
+
+public class ProviderFactory {
+    public JacksonJaxbJsonProvider createJsonProvider() {
+        return new JacksonJsonProvider();
+    }
+}
+```
+
+This allows application code to depend on the standard Jackson JAX-RS provider type while using this library’s provider implementation.

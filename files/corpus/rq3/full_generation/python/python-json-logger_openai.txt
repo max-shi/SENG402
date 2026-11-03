@@ -1,0 +1,320 @@
+# python-json-logger
+
+`python-json-logger` provides logging formatters that produce JSON log output for Python’s standard `logging` framework.
+
+The library centers on `BaseJsonFormatter`, a `logging.Formatter` subclass that builds structured log records, merges application-provided fields, processes exceptions and stack information, and serializes the result. Concrete formatter implementations are available for the standard-library JSON encoder as well as `msgspec` and `orjson` backends.
+
+## Installation
+
+Install the package with your preferred Python package manager.
+
+Some formatter backends may require their corresponding serialization package to be installed. Use `package_is_available()` to check for an optional package before configuring that backend.
+
+## Quick start
+
+Configure a standard logging handler with `JsonFormatter`:
+
+```python
+import logging
+
+from pythonjsonlogger.json import JsonFormatter
+
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+
+logger = logging.getLogger("myapp")
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+
+logger.info(
+    "User signed in",
+    extra={
+        "user_id": 42,
+        "request_id": "req-123",
+    },
+)
+```
+
+Application fields supplied through `extra` can be included in the structured log record alongside standard logging information.
+
+## Formatters
+
+### `BaseJsonFormatter`
+
+```python
+from pythonjsonlogger.core import BaseJsonFormatter
+```
+
+`BaseJsonFormatter` is the common base class for JSON logging formatters. It extends `logging.Formatter` and defines the formatting pipeline used by the concrete serializers.
+
+Key extension points include:
+
+- `format(record)` — formats a standard `logging.LogRecord` as a string.
+- `parse()` — returns a list of parsed field names.
+- `add_fields(log_data, record, message_dict)` — adds fields from a record and message data to the output structure.
+- `process_log_record(log_data)` — processes the structured record before serialization.
+- `serialize_log_record(log_data)` — serializes structured log data.
+- `jsonify_log_record(log_data)` — converts structured log data to JSON.
+- `formatException(ei)` — formats exception information.
+- `formatStack(stack_info)` — formats stack information.
+
+Subclass `BaseJsonFormatter` when you need to control the fields or serialization behavior:
+
+```python
+import logging
+
+from pythonjsonlogger.core import BaseJsonFormatter
+
+
+class ApplicationFormatter(BaseJsonFormatter):
+    def process_log_record(self, log_data):
+        log_data["service"] = "billing"
+        return log_data
+
+
+handler = logging.StreamHandler()
+handler.setFormatter(ApplicationFormatter())
+
+logger = logging.getLogger("billing")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("Invoice created", extra={"invoice_id": "inv-1001"})
+```
+
+### `JsonFormatter`
+
+```python
+from pythonjsonlogger.json import JsonFormatter
+```
+
+`JsonFormatter` is a `BaseJsonFormatter` implementation that serializes records using JSON support from the Python standard library.
+
+```python
+import logging
+
+from pythonjsonlogger.json import JsonFormatter
+
+logging.basicConfig(level=logging.INFO)
+
+logger = logging.getLogger("example")
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logger.addHandler(handler)
+
+logger.warning("Rate limit approaching", extra={"limit": 100, "remaining": 5})
+```
+
+### `OrjsonFormatter`
+
+```python
+from pythonjsonlogger.orjson import OrjsonFormatter
+```
+
+`OrjsonFormatter` is a `BaseJsonFormatter` implementation backed by `orjson`.
+
+```python
+import logging
+
+from pythonjsonlogger.orjson import OrjsonFormatter
+from pythonjsonlogger.utils import package_is_available
+
+if package_is_available("orjson"):
+    handler = logging.StreamHandler()
+    handler.setFormatter(OrjsonFormatter())
+
+    logger = logging.getLogger("fast-json")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    logger.info("Using an orjson-backed formatter", extra={"enabled": True})
+```
+
+### `MsgspecFormatter`
+
+```python
+from pythonjsonlogger.msgspec import MsgspecFormatter
+```
+
+`MsgspecFormatter` is a `BaseJsonFormatter` implementation backed by `msgspec`.
+
+```python
+import logging
+
+from pythonjsonlogger.msgspec import MsgspecFormatter
+from pythonjsonlogger.utils import package_is_available
+
+if package_is_available("msgspec"):
+    handler = logging.StreamHandler()
+    handler.setFormatter(MsgspecFormatter())
+
+    logger = logging.getLogger("msgspec-json")
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+
+    logger.info("Structured event", extra={"event_type": "startup"})
+```
+
+## Structured log fields
+
+### `merge_record_extra`
+
+```python
+from pythonjsonlogger.core import merge_record_extra
+```
+
+```python
+merge_record_extra(record, target, reserved, rename_fields=None)
+```
+
+Merges extra values from a `logging.LogRecord` into a target dictionary.
+
+- `record` is the source `logging.LogRecord`.
+- `target` is the dictionary to update.
+- `reserved` identifies field names that should be treated as reserved.
+- `rename_fields` can map source field names to alternative output names.
+
+This function is useful when building a custom formatter or structured logging integration.
+
+```python
+import logging
+
+from pythonjsonlogger.core import merge_record_extra
+
+record = logging.makeLogRecord(
+    {
+        "msg": "Payment processed",
+        "order_id": "order-7",
+        "amount": 19.99,
+    }
+)
+
+output = {}
+merge_record_extra(
+    record,
+    output,
+    reserved={"msg", "levelname", "name"},
+    rename_fields={"order_id": "orderId"},
+)
+
+print(output)
+```
+
+## JSON encoding support
+
+### `JsonEncoder`
+
+```python
+from pythonjsonlogger.json import JsonEncoder
+```
+
+`JsonEncoder` extends `json.JSONEncoder` and provides custom handling through:
+
+- `default(o)` — converts otherwise unsupported objects.
+- `format_datetime_obj(o)` — formats `datetime.time`, `datetime.date`, and `datetime.datetime` values.
+
+Use it when directly encoding data with the standard library’s `json` module:
+
+```python
+import datetime
+import json
+
+from pythonjsonlogger.json import JsonEncoder
+
+payload = {
+    "event": "job_finished",
+    "finished_at": datetime.datetime.now(),
+}
+
+encoded = json.dumps(payload, cls=JsonEncoder)
+print(encoded)
+```
+
+### Backend default functions
+
+The alternative serializers expose default handlers:
+
+```python
+from pythonjsonlogger.msgspec import msgspec_default
+from pythonjsonlogger.orjson import orjson_default
+```
+
+These functions can be used when configuring the corresponding serializer directly, where that serializer accepts a fallback/default conversion callable.
+
+## Default value helpers
+
+The `pythonjsonlogger.defaults` module exposes conversion functions and matching predicates for common Python types.
+
+Available type families include:
+
+- Types: `use_type_default()` / `type_default()`
+- Dataclasses: `use_dataclass_default()` / `dataclass_default()`
+- Times: `use_time_default()` / `time_default()`
+- Dates: `use_date_default()` / `date_default()`
+- Datetimes: `use_datetime_default()` / `datetime_default()`
+- Any date/time object: `use_datetime_any()` / `datetime_any()`
+- Exceptions: `use_exception_default()` / `exception_default()`
+- Tracebacks: `use_traceback_default()` / `traceback_default()`
+- Enums: `use_enum_default()` / `enum_default()`
+- UUIDs: `use_uuid_default()` / `uuid_default()`
+- Bytes and bytearrays: `use_bytes_default()` / `bytes_default()`
+- Unknown objects: `unknown_default()`
+
+For example, values can be converted explicitly before being passed to another serialization layer:
+
+```python
+import datetime
+import uuid
+
+from pythonjsonlogger.defaults import (
+    datetime_default,
+    uuid_default,
+)
+
+event = {
+    "created_at": datetime_default(datetime.datetime.now()),
+    "request_id": uuid_default(uuid.uuid4()),
+}
+```
+
+`bytes_default()` accepts a `url_safe` argument:
+
+```python
+from pythonjsonlogger.defaults import bytes_default
+
+encoded = bytes_default(b"hello", url_safe=True)
+```
+
+## Optional package detection
+
+```python
+from pythonjsonlogger.utils import package_is_available
+```
+
+Use `package_is_available()` to determine whether a dependency is installed:
+
+```python
+from pythonjsonlogger.utils import package_is_available
+
+if package_is_available("orjson"):
+    print("orjson support is available")
+```
+
+Set `throw_error=True` when absence of the package should raise an error:
+
+```python
+package_is_available(
+    "orjson",
+    throw_error=True,
+    extras_name="orjson",
+)
+```
+
+The library defines these related exception types:
+
+```python
+from pythonjsonlogger.exception import MissingPackageError, PythonJsonLoggerError
+```
+
+- `PythonJsonLoggerError` is the library’s base exception type.
+- `MissingPackageError` represents a missing required package and is also an `ImportError`.

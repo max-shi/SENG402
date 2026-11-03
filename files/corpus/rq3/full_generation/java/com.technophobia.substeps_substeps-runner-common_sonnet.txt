@@ -1,0 +1,90 @@
+# substeps-runner-common
+
+Common runtime support classes for building and bootstrapping Substeps test runners.
+
+## Overview
+
+`com.technophobia.substeps:substeps-runner-common` provides shared infrastructure used to locate and instantiate a `SubstepsRunner` implementation at runtime. Rather than requiring calling code to know about concrete runner implementations, this library exposes a factory that resolves the appropriate `SubstepsRunner` for you, decoupling the caller from the underlying runner implementation classes.
+
+This is useful for integrations (build plugins, IDE integrations, custom test harnesses, etc.) that need to execute Substeps scenarios but don't want to hard-code a dependency on a specific runner implementation.
+
+## Main Components
+
+### `ExecutionNodeRunnerFactory`
+
+A static factory class responsible for creating instances of `SubstepsRunner`.
+
+```java
+public class ExecutionNodeRunnerFactory {
+    public static SubstepsRunner createRunner();
+}
+```
+
+- `createRunner()` — Locates and instantiates a `SubstepsRunner` implementation, returning it ready for use. This is the single entry point consumers should use to obtain a runner without needing to know how or where the runner implementation is loaded from.
+
+### `UnableToLoadExecutionNodeRunnerExeception`
+
+A runtime exception thrown when the factory is unable to locate or instantiate a `SubstepsRunner` implementation.
+
+```java
+public class UnableToLoadExecutionNodeRunnerExeception extends RuntimeException {
+    public UnableToLoadExecutionNodeRunnerExeception(Throwable cause);
+}
+```
+
+- Wraps an underlying cause (e.g. a class-loading or reflection failure) that prevented the runner from being created.
+- Since it extends `RuntimeException`, it is unchecked — callers are not required to catch it, but may choose to do so in order to provide clearer diagnostics or fail gracefully.
+
+## How It Fits Together
+
+`ExecutionNodeRunnerFactory.createRunner()` is the primary integration point. Internally it attempts to resolve a concrete `SubstepsRunner` implementation. If that resolution fails for any reason, it surfaces the failure to the caller as an `UnableToLoadExecutionNodeRunnerExeception`, preserving the original cause for debugging.
+
+This pattern allows tooling built on top of Substeps to remain agnostic of which runner implementation is present on the classpath, while still failing loudly and informatively if no suitable runner can be found.
+
+## Usage Example
+
+### Basic runner creation
+
+```java
+import com.technophobia.substeps.runner.ExecutionNodeRunnerFactory;
+import com.technophobia.substeps.runner.UnableToLoadExecutionNodeRunnerExeception;
+
+public class SubstepsExecutor {
+
+    public void execute() {
+        SubstepsRunner runner = ExecutionNodeRunnerFactory.createRunner();
+
+        // Use the runner to execute Substeps scenarios/features
+        // (configuration and execution details depend on SubstepsRunner's API)
+    }
+}
+```
+
+### Handling failures gracefully
+
+```java
+import com.technophobia.substeps.runner.ExecutionNodeRunnerFactory;
+import com.technophobia.substeps.runner.UnableToLoadExecutionNodeRunnerExeception;
+
+public class SubstepsExecutor {
+
+    public SubstepsRunner obtainRunner() {
+        try {
+            return ExecutionNodeRunnerFactory.createRunner();
+        } catch (UnableToLoadExecutionNodeRunnerExeception e) {
+            throw new IllegalStateException(
+                "Could not initialize Substeps runner. Ensure a compatible " +
+                "runner implementation is available on the classpath.", e);
+        }
+    }
+}
+```
+
+## Integration Notes
+
+- This library depends on a `SubstepsRunner` interface/type being available and resolvable at runtime; ensure a compatible runner implementation is present on your project's classpath.
+- Consumers should be prepared to handle `UnableToLoadExecutionNodeRunnerExeception` if runner availability cannot be guaranteed in their deployment environment.
+
+## License
+
+See the repository's `LICENSE` file for licensing details.

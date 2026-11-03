@@ -1,0 +1,285 @@
+# pusher-java-client
+
+A Java client library for connecting to [Pusher Channels](https://pusher.com/channels), a hosted service for adding realtime bidirectional functionality to applications via WebSockets. This library manages the WebSocket connection lifecycle, channel subscriptions (public, private, presence, and end-to-end encrypted), event binding/dispatch, and user authentication for client-to-client features.
+
+## Features
+
+- Connect to Pusher over WebSockets with automatic reconnection handling
+- Subscribe to public, private, presence, and private-encrypted channels
+- Bind to named events or all events on a channel
+- Authenticate/authorize private and presence channel subscriptions via HTTP endpoints or custom logic
+- Sign in as an authenticated user for user-level events
+- Track presence channel members
+- Transparent decryption of end-to-end encrypted channel payloads
+
+## Core Concepts
+
+### `Pusher`
+
+The main entry point. Implements the `Client` interface and is typically the only class you need to instantiate directly.
+
+```java
+Pusher pusher = new Pusher(apiKey);
+```
+
+or with options:
+
+```java
+Pusher pusher = new Pusher(apiKey, pusherOptions);
+```
+
+From a `Pusher` instance you can:
+
+- Manage the connection (`connect()`, `disconnect()`, `getConnection()`)
+- Subscribe to channels (`subscribe`, `subscribePrivate`, `subscribePresence`, `subscribePrivateEncrypted`)
+- Look up existing channel objects (`getChannel`, `getPrivateChannel`, `getPresenceChannel`, `getPrivateEncryptedChannel`)
+- Sign in as a user (`user()`, `signin()`) for user-scoped realtime events
+
+### `PusherOptions`
+
+Configuration object passed to the `Pusher` constructor. Supports a fluent builder-style API for setting:
+
+- Connection details: `setHost`, `setWsPort`, `setWssPort`, `setCluster`, `setEncrypted`, `setUseTLS`, `setProxy`
+- Reconnection behaviour: `setActivityTimeout`, `setPongTimeout`, `setMaxReconnectionAttempts`, `setMaxReconnectGapInSeconds`
+- Authentication/authorization: `setChannelAuthorizer`, `setUserAuthenticator`, `setAuthorizer` (legacy)
+
+### `Connection` / `ConnectionEventListener` / `ConnectionState`
+
+`Connection` (obtained via `pusher.getConnection()`) represents the underlying WebSocket connection. You can bind listeners to specific `ConnectionState` transitions (`CONNECTING`, `CONNECTED`, `DISCONNECTING`, `DISCONNECTED`, `RECONNECTING`, or `ALL`) using `ConnectionEventListener`, which receives a `ConnectionStateChange` describing the previous and current state, or an error via `onError`.
+
+### Channels
+
+All channel types extend the base `Channel` interface, which supports:
+
+- `bind(eventName, listener)` / `unbind(eventName, listener)` — listen for named events
+- `bindGlobal(listener)` / `unbindGlobal(listener)` — listen for all events on the channel
+- `isSubscribed()` — check subscription status
+- `getName()` — the channel's name
+
+Specializations:
+
+- **`PrivateChannel`** — adds `trigger(eventName, data)` for client-triggered events. Requires authorization via a `ChannelAuthorizer`.
+- **`PresenceChannel`** — extends `PrivateChannel`, adds `getUsers()` and `getMe()` to inspect channel membership.
+- **Private encrypted channels** (`subscribePrivateEncrypted`) — behave like private channels but transparently decrypt event payloads using `SecretBoxOpener`/`SecretBoxOpenerFactory` under the hood.
+
+Corresponding listener interfaces let you react to subscription lifecycle events:
+
+- `SubscriptionEventListener` — base interface with `onEvent(PusherEvent)` and an optional `onError`
+- `ChannelEventListener` — adds `onSubscriptionSucceeded(channelName)`
+- `PrivateChannelEventListener` — adds `onAuthenticationFailure(message, exception)`
+- `PresenceChannelEventListener` — adds `onUsersInformationReceived`, `userSubscribed`, `userUnsubscribed`
+- `PrivateEncryptedChannelEventListener` — adds `onDecryptionFailure(event, reason)`
+
+### `PusherEvent`
+
+Represents an event received on a channel (or globally). Provides access to the event name, channel name, associated user ID (for presence/user events), and the raw or structured `data` payload. Can be serialized to/from JSON via `toJson()` / `PusherEvent.fromJson(json)`.
+
+### Authorization & Authentication
+
+- **`ChannelAuthorizer`** — interface for authorizing private/presence channel subscriptions. Implement `authorize(channelName, socketId)` to return an auth signature, typically fetched from your backend.
+- **`HttpChannelAuthorizer`** / **`HttpAuthorizer`** — ready-made `ChannelAuthorizer` implementations that POST to an HTTP endpoint to obtain authorization.
+- **`UserAuthenticator`** — interface for authenticating a user for user-scoped signin, via `authenticate(socketId)`.
+- **`HttpUserAuthenticator`** — HTTP-based implementation of `UserAuthenticator`.
+- **`ConnectionFactory`** / **`UrlEncodedConnectionFactory`** — customize how authorization/authentication HTTP requests are built (body, content type, charset).
+
+### `User`
+
+Represents the signed-in user (accessed via `pusher.user()`), supporting event binding (`bind`, `bindGlobal`, `unbind`, `unbindGlobal`) and exposing `userId()`.
+
+### Exceptions
+
+- `AuthenticationFailureException` — thrown when user sign-in authentication fails.
+- `AuthorizationFailureException` — thrown when channel subscription authorization fails.
+
+## Usage Examples
+
+### Connecting and subscribing to a public channel
+
+```java
+import com.pusher.client.Pusher;
+import com.pusher.client.PusherOptions;
+import com.pusher.client.channel.Channel;
+import com.pusher.client.channel.ChannelEventListener;
+import com.pusher.client.connection.ConnectionEventListener;
+import com.pusher.client.connection.ConnectionState;
+import com.pusher.client.connection.ConnectionStateChange;
+
+PusherOptions options = new PusherOptions()
+    .setCluster("eu")
+    .setUseTLS(true);
+
+Pusher pusher = new Pusher("YOUR_APP_KEY", options);
+
+pusher.connect(new ConnectionEventListener() {
+    @Override
+    public void onConnectionStateChange(ConnectionStateChange change) {
+        System.out.println("State changed from " + change.getPreviousState()
+            + " to " + change.getCurrentState());
+    }
+
+    @Override
+    public void onError(String message, String code, Exception e) {
+        System.err.println("Connection error: " + message);
+    }
+}, ConnectionState.ALL);
+
+Channel channel = pusher.subscribe("my-channel", new ChannelEventListener() {
+    @Override
+    public void onSubscriptionSucceeded(String channelName) {
+        System.out.println("Subscribed to " + channelName);
+    }
+
+    @Override
+    public void onEvent(com.pusher.client.channel.PusherEvent event) {
+        System.out.println("Received event: " + event.getEventName()
+            + " with data: " + event.getData());
+    }
+}, "my-event");
+```
+
+### Subscribing to a private channel with an HTTP authorizer
+
+```java
+import com.pusher.client.PusherOptions;
+import com.pusher.client.channel.PrivateChannel;
+import com.pusher.client.channel.PrivateChannelEventListener;
+import com.pusher.client.channel.PusherEvent;
+import com.pusher.client.util.HttpChannelAuthorizer;
+
+PusherOptions options = new PusherOptions()
+    .setCluster("eu")
+    .setChannelAuthorizer(new HttpChannelAuthorizer("https://your-server.com/pusher/auth"));
+
+Pusher pusher = new Pusher("YOUR_APP_KEY", options);
+pusher.connect();
+
+PrivateChannel privateChannel = pusher.subscribePrivate("private-my-channel",
+    new PrivateChannelEventListener() {
+        @Override
+        public void onAuthenticationFailure(String message, Exception e) {
+            System.err.println("Auth failed: " + message);
+        }
+
+        @Override
+        public void onSubscriptionSucceeded(String channelName) {
+            System.out.println("Subscribed to " + channelName);
+        }
+
+        @Override
+        public void onEvent(PusherEvent event) {
+            System.out.println("Event: " + event.getData());
+        }
+    }, "my-private-event");
+
+privateChannel.trigger("client-my-event", "{\"message\":\"hello\"}");
+```
+
+### Subscribing to a presence channel
+
+```java
+import com.pusher.client.channel.PresenceChannel;
+import com.pusher.client.channel.PresenceChannelEventListener;
+import com.pusher.client.channel.PusherEvent;
+import com.pusher.client.channel.User;
+import java.util.Set;
+
+PresenceChannel presenceChannel = pusher.subscribePresence("presence-my-channel",
+    new PresenceChannelEventListener() {
+        @Override
+        public void onUsersInformationReceived(String channelName, Set<User> users) {
+            System.out.println("Initial members: " + users.size());
+        }
+
+        @Override
+        public void userSubscribed(String channelName, User user) {
+            System.out.println("User joined: " + user.getId());
+        }
+
+        @Override
+        public void userUnsubscribed(String channelName, User user) {
+            System.out.println("User left: " + user.getId());
+        }
+
+        @Override
+        public void onAuthenticationFailure(String message, Exception e) {
+            System.err.println("Auth failed: " + message);
+        }
+
+        @Override
+        public void onSubscriptionSucceeded(String channelName) {
+            System.out.println("Subscribed to " + channelName);
+        }
+
+        @Override
+        public void onEvent(PusherEvent event) {
+            System.out.println("Event: " + event.getData());
+        }
+    });
+
+System.out.println("Current user: " + presenceChannel.getMe().getId());
+```
+
+### Signing in as a user
+
+```java
+import com.pusher.client.PusherOptions;
+import com.pusher.client.util.HttpUserAuthenticator;
+import com.pusher.client.user.User;
+
+PusherOptions options = new PusherOptions()
+    .setCluster("eu")
+    .setUserAuthenticator(new HttpUserAuthenticator("https://your-server.com/pusher/user-auth"));
+
+Pusher pusher = new Pusher("YOUR_APP_KEY", options);
+pusher.connect();
+pusher.signin();
+
+User user = pusher.user();
+user.bind("my-user-event", event -> {
+    System.out.println("User event received: " + event.getData());
+});
+```
+
+### Subscribing to a private encrypted channel
+
+```java
+import com.pusher.client.channel.PrivateEncryptedChannel;
+import com.pusher.client.channel.PrivateEncryptedChannelEventListener;
+import com.pusher.client.channel.PusherEvent;
+
+PrivateEncryptedChannel encryptedChannel = pusher.subscribePrivateEncrypted(
+    "private-encrypted-my-channel",
+    new PrivateEncryptedChannelEventListener() {
+        @Override
+        public void onDecryptionFailure(String event, String reason) {
+            System.err.println("Failed to decrypt " + event + ": " + reason);
+        }
+
+        @Override
+        public void onAuthenticationFailure(String message, Exception e) {
+            System.err.println("Auth failed: " + message);
+        }
+
+        @Override
+        public void onSubscriptionSucceeded(String channelName) {
+            System.out.println("Subscribed to " + channelName);
+        }
+
+        @Override
+        public void onEvent(PusherEvent event) {
+            System.out.println("Decrypted event data: " + event.getData());
+        }
+    },
+    "my-encrypted-event");
+```
+
+## Disconnecting and Cleanup
+
+```java
+pusher.unsubscribe("my-channel");
+pusher.disconnect();
+```
+
+## License
+
+See the repository's license file for details.

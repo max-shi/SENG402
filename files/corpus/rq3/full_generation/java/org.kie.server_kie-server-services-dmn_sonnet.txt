@@ -1,0 +1,178 @@
+# kie-server-services-dmn
+
+## Overview
+
+`kie-server-services-dmn` is a KIE Server extension that adds DMN (Decision Model and Notation) evaluation capabilities to a running KIE Server instance. It plugs into the KIE Server extension lifecycle to expose DMN models deployed inside KIE containers as evaluable decision services, and provides the supporting infrastructure to:
+
+- Discover and introspect DMN artifacts (models, decisions, decision services, input data, and item definitions) packaged inside a KIE container.
+- Evaluate DMN decisions and decision services against a given input context.
+- Serialize/deserialize DMN evaluation results (contexts, decision results, messages) in a KIE Server–friendly format.
+- Generate OpenAPI (OAS) documentation describing the DMN models available in a container.
+
+This library is typically used as an internal extension of KIE Server rather than being consumed directly as an application-level API, but its service classes can also be used programmatically wherever a `KieServerRegistry` is available.
+
+## Main Components
+
+### `DMNKieServerExtension`
+
+The entry point that registers DMN support with KIE Server. It implements `KieServerExtension` and is responsible for:
+
+- Initializing and tearing down DMN support when containers are created, updated, or disposed (`init`, `destroy`, `createContainer`, `updateContainer`, `disposeContainer`, `isUpdateContainerAllowed`).
+- Reporting extension metadata such as capability name (`getImplementedCapability`), extension name (`getExtensionName`), and startup ordering (`getStartOrder`).
+- Exposing REST/other transport application components (`getAppComponents`) and internal services (`getServices`) so KIE Server can wire up DMN endpoints.
+- Reporting extension health via `healthCheck`.
+
+Most consumers of the extension mechanism will not call this class directly — KIE Server discovers and manages it automatically — but it is the class to look at to understand how DMN capability is wired into the server.
+
+### `ModelEvaluatorServiceBase`
+
+The core service used to inspect and evaluate DMN models within a container. Constructed with a `KieServerRegistry`, it provides:
+
+- **Model discovery**
+  - `getModels(containerId)` — lists DMN models available in a container as `DMNModelInfoList`.
+  - `getModel(containerId, modelId)` — returns detailed information about a single model.
+  - Static conversion helpers (`modelToInfo`, `decisionServiceToInfo`, `decisionToInfo`, `inputDataToInfo`, `itemDefinitionToInfo`) that turn DMN API domain objects (`DMNModel`, `DecisionServiceNode`, `DecisionNode`, `InputDataNode`, `ItemDefinition`) into serializable info DTOs (`DMNModelInfo`, `DMNDecisionServiceInfo`, `DMNDecisionInfo`, `DMNInputDataInfo`, `DMNItemDefinitionInfo`).
+
+- **Decision evaluation**
+  - `evaluateDecisions(containerId, contextPayload, marshallingType)` — evaluates all decisions in the (default) DMN model using the supplied context payload, returning a `DMNResultKS`.
+  - `evaluateModel(containerId, modelId, contextPayload, asDmnResult, decisionServiceId)` — evaluates a specific model, optionally targeting a specific decision service, and returns a raw HTTP-style `Response`.
+
+- **OpenAPI generation**
+  - `getOAS(containerId, asJSON)` — returns an OpenAPI description (JSON or YAML) of the DMN models in a container as a `Response`.
+
+- `getKieServerRegistry()` exposes the underlying registry for advanced use cases.
+
+### `DMNKieContainerCommandServiceImpl`
+
+Implements `KieContainerCommandService`, the generic KIE Server command dispatch mechanism, for DMN payloads. It delegates DMN-specific evaluation requests to `ModelEvaluatorServiceBase`:
+
+- `callContainer(containerId, payload, marshallingFormat, classType)` — handles a single marshalled command/request against a container and returns the marshalled response as a `String`.
+- `executeScript(commands, marshallingFormat, classType)` — executes a batch of commands (`CommandScript`) and returns a `ServiceResponsesList`.
+
+This class is the bridge between KIE Server's generic command/marshalling infrastructure and the DMN evaluation logic in `ModelEvaluatorServiceBase`.
+
+### `OASGenerator`
+
+A focused utility for producing OpenAPI specifications from a set of DMN models:
+
+- Constructed with a `containerId` and a `ReleaseId` (identifying the KJAR/container being described).
+- `generateOAS(models, asJSON)` takes a collection of `DMNModel` instances and produces an OpenAPI document as a `String`, either JSON or YAML depending on `asJSON`.
+
+`ModelEvaluatorServiceBase.getOAS` uses this internally to serve OAS documents over the container's `getOAS` endpoint.
+
+### `modelspecific` package — Result & Message Model
+
+These classes adapt DMN API result types into serializable structures suitable for transport over KIE Server, and implement Kogito-flavored DMN API interfaces:
+
+- **`KogitoDMNResult`** — implements `org.kie.dmn.api.core.DMNResult`. Wraps a namespace, model name, and the evaluated `DMNContext`, decision results, and messages. Provides:
+  - `of`-style construction via the two-argument constructor `(namespace, modelName, dmnResult)`.
+  - Accessors/mutators for context (`getDmnContext`/`setDmnContext`), decision results (`getDecisionResults`/`setDecisionResults`, plus lookup by name/id), and messages (`getMessages`/`setMessages`, filterable by `Severity`).
+  - `hasErrors()` for a quick error check.
+
+- **`KogitoDMNDecisionResult`** — implements `DMNDecisionResult`. Represents the outcome of evaluating a single decision: id, name, evaluation status, result value, and associated messages. Use the static `of(DMNDecisionResult)` factory to adapt an existing result.
+
+- **`KogitoDMNMessage`** — implements `DMNMessage`. Represents a single diagnostic/message produced during DMN evaluation (severity, message text, message type, source id/reference, FEEL event, exception, and line/column/path metadata). Use the static `of(DMNMessage)` factory to adapt an existing message.
+
+- **`DMNFEELComparablePeriodSerializer`** — a Jackson `StdSerializer<ComparablePeriod>` used to correctly serialize FEEL `ComparablePeriod` values (e.g., `years-and-months` durations) when marshalling DMN evaluation results to JSON.
+
+Together, these classes let evaluation results flow out of the DMN engine, be adapted into a stable serializable form, and be marshalled safely by KIE Server's JSON/XML infrastructure.
+
+## How the Pieces Fit Together
+
+```
+KIE Server
+   └── DMNKieServerExtension (lifecycle, capability registration)
+          ├── ModelEvaluatorServiceBase (model discovery & evaluation)
+          │        ├── uses OASGenerator (OpenAPI docs)
+          │        └── produces KogitoDMNResult / KogitoDMNDecisionResult / KogitoDMNMessage
+          └── DMNKieContainerCommandServiceImpl (generic command dispatch)
+                   └── delegates to ModelEvaluatorServiceBase
+```
+
+## Usage Examples
+
+### Programmatically evaluating a DMN decision
+
+```java
+import org.kie.server.services.api.KieServerRegistry;
+import org.kie.server.services.dmn.ModelEvaluatorServiceBase;
+import org.kie.server.api.model.ServiceResponse;
+import org.kie.server.api.model.dmn.DMNModelInfoList;
+import org.kie.server.api.model.dmn.DMNResultKS;
+
+// Registry is provided by the KIE Server runtime.
+KieServerRegistry registry = ...;
+
+ModelEvaluatorServiceBase evaluatorService = new ModelEvaluatorServiceBase(registry);
+
+// Discover DMN models deployed in a container
+ServiceResponse<DMNModelInfoList> modelsResponse = evaluatorService.getModels("my-dmn-container");
+if (modelsResponse.getType() == ServiceResponse.ResponseType.SUCCESS) {
+    modelsResponse.getResult().getModels()
+        .forEach(info -> System.out.println("Found model: " + info.getModelName()));
+}
+
+// Evaluate all decisions with a JSON context payload
+String contextPayload = "{ \"Age\": 30, \"Income\": 50000 }";
+ServiceResponse<DMNResultKS> evalResponse =
+        evaluatorService.evaluateDecisions("my-dmn-container", contextPayload, "JSON");
+
+if (evalResponse.getType() == ServiceResponse.ResponseType.SUCCESS) {
+    DMNResultKS result = evalResponse.getResult();
+    System.out.println("DMN evaluation result: " + result);
+}
+```
+
+### Retrieving an OpenAPI description for a container's DMN models
+
+```java
+import javax.ws.rs.core.Response;
+
+Response oasResponse = evaluatorService.getOAS("my-dmn-container", true /* asJSON */);
+String openApiJson = (String) oasResponse.getEntity();
+System.out.println(openApiJson);
+```
+
+### Generating OAS directly from a collection of DMN models
+
+```java
+import org.kie.server.services.dmn.modelspecific.OASGenerator;
+import org.kie.dmn.api.core.DMNModel;
+import org.kie.api.builder.ReleaseId;
+
+import java.util.Collection;
+
+Collection<DMNModel> models = ...; // obtained from the DMN runtime/KieContainer
+ReleaseId releaseId = ...;         // the container's release id
+
+OASGenerator oasGenerator = new OASGenerator("my-dmn-container", releaseId);
+String oasYaml = oasGenerator.generateOAS(models, false /* YAML output */);
+
+System.out.println(oasYaml);
+```
+
+### Adapting a raw DMN evaluation result for transport
+
+```java
+import org.kie.dmn.api.core.DMNResult;
+import org.kie.server.services.dmn.modelspecific.KogitoDMNResult;
+
+DMNResult rawResult = ...; // produced by the DMN engine
+
+KogitoDMNResult transportResult =
+        new KogitoDMNResult("https://example.com/dmn/namespace", "MyModel", rawResult);
+
+if (transportResult.hasErrors()) {
+    transportResult.getMessages().forEach(msg ->
+            System.err.println(msg.getSeverity() + ": " + msg.getText()));
+}
+```
+
+## When to Use This Library
+
+Use `kie-server-services-dmn` when:
+
+- You are extending or embedding KIE Server and need DMN decision evaluation exposed as a server capability.
+- You need to programmatically discover DMN model metadata (decisions, input data, item definitions, decision services) deployed in a KIE container.
+- You need to generate OpenAPI documentation for DMN-based decision services.
+- You need serializable, transport-safe representations of DMN evaluation results, decision results, and messages for use in REST/JSON responses.

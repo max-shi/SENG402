@@ -1,0 +1,304 @@
+# make-it-easy
+
+`com.natpryce:make-it-easy` is a small Java library for constructing test or sample objects declaratively.
+
+Define typed `Property` values for the configurable parts of an object, define an `Instantiator` that knows how to build the object from those properties, then use `Maker` instances to create configured objects. Values can be constants or `Donor`s, allowing values to be generated, reused, composed, or drawn from sequences.
+
+## Core concepts
+
+| Type | Purpose |
+| --- | --- |
+| `Property<T, V>` | A typed key representing a configurable value `V` on an object of type `T`. |
+| `Instantiator<T>` | Builds a `T` using a `PropertyLookup<T>`. |
+| `PropertyLookup<T>` | Lets an instantiator retrieve property values, with either a fixed default or a default `Donor`. |
+| `PropertyValue<T, V>` | Associates a `Property<T, V>` with a donor of values. |
+| `Maker<T>` | A configured object factory. It is both a `PropertyLookup<T>` and a `Donor<T>`. |
+| `Donor<T>` | A source of values, exposed through `value()`. |
+| `MakeItEasy` | Static factory and helper methods, including `a`, `an`, `with`, `make`, collection donors, and sequence donors. |
+
+## Basic usage
+
+Create one `Property` per configurable value, then define an `Instantiator` that uses those properties.
+
+```java
+import static com.natpryce.makeiteasy.MakeItEasy.*;
+import com.natpryce.makeiteasy.*;
+
+final class User {
+    static final Property<User, String> name = Property.newProperty();
+    static final Property<User, Integer> age = Property.newProperty();
+
+    final String nameValue;
+    final int ageValue;
+
+    User(String nameValue, int ageValue) {
+        this.nameValue = nameValue;
+        this.ageValue = ageValue;
+    }
+
+    static final Instantiator<User> UserInstantiator =
+        lookup -> new User(
+            lookup.valueOf(name, "Unknown"),
+            lookup.valueOf(age, 0)
+        );
+}
+```
+
+Build a `Maker<User>` with property values and create an object from it:
+
+```java
+Maker<User> adaMaker = a(
+    User.UserInstantiator,
+    with(User.name, "Ada"),
+    with(User.age, 36)
+);
+
+User ada = make(adaMaker);
+// equivalent: User ada = adaMaker.make();
+```
+
+`a(...)` and `an(...)` both create a `Maker`.
+
+## Deriving a variation with `but`
+
+A maker can be reused as a baseline. Call `but(...)` to create a maker with additional property values.
+
+```java
+Maker<User> defaultUser = a(
+    User.UserInstantiator,
+    with(User.name, "Anonymous")
+);
+
+Maker<User> adultUser = defaultUser.but(
+    with(User.age, 18)
+);
+
+User user = adultUser.make();
+```
+
+This is useful when most fields have shared defaults and individual examples vary only a few properties.
+
+## Supplying nested objects
+
+Because `Maker<T>` implements `Donor<T>`, one maker can provide a value to another object's property.
+
+```java
+final class Order {
+    static final Property<Order, User> customer = Property.newProperty();
+    static final Property<Order, String> reference = Property.newProperty();
+
+    final User customerValue;
+    final String referenceValue;
+
+    Order(User customerValue, String referenceValue) {
+        this.customerValue = customerValue;
+        this.referenceValue = referenceValue;
+    }
+
+    static final Instantiator<Order> OrderInstantiator =
+        lookup -> new Order(
+            lookup.valueOf(customer, a(User.UserInstantiator)),
+            lookup.valueOf(reference, "ORDER-DEFAULT")
+        );
+}
+```
+
+```java
+Maker<User> customer = a(
+    User.UserInstantiator,
+    with(User.name, "Ada")
+);
+
+Maker<Order> order = a(
+    Order.OrderInstantiator,
+    with(Order.customer, customer),
+    with(Order.reference, "ORDER-1001")
+);
+
+Order created = order.make();
+```
+
+The `with` methods accept either a direct value or a `Donor`:
+
+```java
+PropertyValue<User, String> namedAda =
+    with(User.name, "Ada");
+
+Donor<String> generatedName =
+    from("Ada", "Grace", "Lin");
+
+PropertyValue<User, String> namedFromDonor =
+    with(User.name, generatedName);
+```
+
+The reversed argument order is also available:
+
+```java
+with("Ada", User.name);
+with(generatedName, User.name);
+```
+
+Use `withNull(property)` when the intended property value is `null`.
+
+## Defaults in an instantiator
+
+An instantiator retrieves each property through `PropertyLookup`. A property can have a direct default:
+
+```java
+lookup.valueOf(User.name, "Unknown");
+```
+
+Or it can have a donor as its default:
+
+```java
+Donor<String> names = fromRepeating("Ada", "Grace");
+
+String name = lookup.valueOf(User.name, names);
+```
+
+A configured `with(...)` value takes the place of the default supplied by the instantiator.
+
+## Donors
+
+`Donor<T>` is the common abstraction for anything that can supply a value:
+
+```java
+Donor<String> fixedName = new SameValueDonor<>("Ada");
+
+String name = fixedName.value();
+```
+
+A `Maker<T>` is also a donor, so it can be passed anywhere a `Donor<T>` is expected:
+
+```java
+Maker<User> userMaker = a(User.UserInstantiator);
+Donor<User> userDonor = userMaker;
+
+User user = userDonor.value();
+```
+
+`MakeItEasy.theSame(...)` creates donor values from either an instantiator plus property values or from an existing donor:
+
+```java
+Donor<User> user = theSame(
+    User.UserInstantiator,
+    with(User.name, "Ada")
+);
+
+Donor<User> sameDonor = theSame(user);
+```
+
+## Collections
+
+The collection helpers produce donors for common collection types. Their elements are themselves donors.
+
+```java
+Donor<User> ada = a(
+    User.UserInstantiator,
+    with(User.name, "Ada")
+);
+
+Donor<User> grace = a(
+    User.UserInstantiator,
+    with(User.name, "Grace")
+);
+
+Donor<java.util.List<User>> users = listOf(ada, grace);
+
+java.util.List<User> value = users.value();
+```
+
+Equivalent helpers are available for sets:
+
+```java
+Donor<java.util.Set<User>> users = setOf(ada, grace);
+```
+
+For comparable element types, use `sortedSetOf`:
+
+```java
+Donor<java.util.SortedSet<String>> names =
+    sortedSetOf(
+        new SameValueDonor<>("Grace"),
+        new SameValueDonor<>("Ada")
+    );
+```
+
+`NewCollectionDonor<T, E>` is also available as a `Donor` for collection-oriented use cases. It accepts element donors as either varargs or an `Iterable`.
+
+## Value sequences
+
+The `from` and `fromRepeating` helpers create donors from supplied values:
+
+```java
+Donor<String> names = from("Ada", "Grace", "Lin");
+
+Donor<Integer> priorities = fromRepeating(1, 2, 3);
+```
+
+Both methods accept either varargs or an `Iterable`:
+
+```java
+java.util.List<String> values =
+    java.util.Arrays.asList("red", "green", "blue");
+
+Donor<String> colours = from(values);
+Donor<String> repeatingColours = fromRepeating(values);
+```
+
+The public sequence-related donor types are:
+
+- `SequenceDonor<T>`
+- `ChainedSequence<T>`
+- `ElementsSequence<T>`
+- `IndexedSequence<T>`
+
+All expose values through the `Donor<T>`-style `value()` method.
+
+## API quick reference
+
+### Creating makers
+
+```java
+Maker<T> maker = a(instantiator, propertyValues...);
+Maker<T> maker = an(instantiator, propertyValues...);
+```
+
+### Setting properties
+
+```java
+with(property, value);
+with(value, property);
+
+with(property, donor);
+with(donor, property);
+
+withNull(property);
+```
+
+### Creating values
+
+```java
+T object = make(maker);
+T object = maker.make();
+T object = maker.value();
+```
+
+### Reusing a maker
+
+```java
+Maker<T> variation = maker.but(propertyValues...);
+```
+
+### Creating donors
+
+```java
+Donor<T> donor = new SameValueDonor<>(value);
+
+Donor<T> donor = from(values...);
+Donor<T> donor = fromRepeating(values...);
+
+Donor<List<T>> list = listOf(donors...);
+Donor<Set<T>> set = setOf(donors...);
+Donor<SortedSet<T>> sortedSet = sortedSetOf(donors...);
+```

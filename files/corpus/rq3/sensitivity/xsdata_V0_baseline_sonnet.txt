@@ -1,0 +1,194 @@
+# xsdata
+
+**xsdata** is a Python library and command-line tool for working with XML and JSON data using Python dataclasses. It generates strongly-typed Python dataclasses from XML Schemas (XSD), DTDs, WSDL definitions, or even existing XML/JSON documents, and it provides high-performance parsers and serializers to bind data between those dataclasses and XML/JSON.
+
+## Features
+
+- **Code generation** from XSD schemas, DTDs, WSDL service definitions, and sample XML/JSON documents into Python dataclasses.
+- **XML binding** — parse XML documents directly into dataclass instances, and serialize dataclass instances back to XML.
+- **JSON binding** — parse and serialize dataclass instances to/from JSON.
+- **SOAP/WSDL client** support for calling web services described by WSDL.
+- **Pluggable architecture** — custom type converters, class type backends (e.g., dataclasses vs. attrs), and custom code generators can be registered.
+- **CLI** (`xsdata generate`, `xsdata download`, `xsdata init-config`) for driving code generation from the command line.
+
+## Installation
+
+```bash
+pip install xsdata[cli,lxml,soap]
+```
+
+## Command-line usage
+
+Generate Python dataclasses from an XSD schema:
+
+```bash
+xsdata generate schema.xsd --package myapp.models
+```
+
+Generate from a directory of schemas recursively:
+
+```bash
+xsdata generate ./schemas --package myapp.models --recursive
+```
+
+Download a schema and all of its includes/imports to a local directory:
+
+```bash
+xsdata download http://example.com/schema.xsd --output ./schemas
+```
+
+Create a reusable configuration file (`.xsdata.xml`) to store generator preferences:
+
+```bash
+xsdata init-config
+```
+
+The CLI is implemented on top of `click` (see `xsdata/cli.py`), and all generation options map to fields on `GeneratorConfig` (see below).
+
+## Core concepts
+
+### Code generation pipeline
+
+The code generation flow (driven by `ResourceTransformer` in `xsdata/codegen/transformer.py`) works roughly like this:
+
+1. **Parsing** — Source files (XSD, DTD, WSDL, XML, JSON) are parsed into intermediate models:
+   - `SchemaParser` / `xsdata.models.xsd.Schema` for XSD
+   - `DtdParser` / `xsdata.models.dtd.Dtd` for DTDs
+   - `DefinitionsParser` / `xsdata.models.wsdl.Definitions` for WSDL
+   - `ElementMapper` / `DictMapper` for raw XML/JSON sample documents
+2. **Mapping** — Mapper classes (`SchemaMapper`, `DtdMapper`, `DefinitionsMapper`, `ElementMapper`, `DictMapper`) convert those intermediate models into a common code-generation model: `xsdata.codegen.models.Class`, built from `Attr`, `AttrType`, `Extension`, and `Restrictions` objects.
+3. **Processing** — `ClassContainer` (in `xsdata/codegen/container.py`) runs a pipeline of `HandlerInterface` / `RelativeHandlerInterface` / `ContainerHandlerInterface` implementations (found under `xsdata/codegen/handlers/`) that normalize, flatten, deduplicate, and enrich the class model — resolving extensions, flattening groups, disambiguating choice elements, renaming duplicates, and more.
+4. **Resolving dependencies** — `DependenciesResolver` computes imports and topological ordering between generated classes/modules.
+5. **Writing** — `CodeWriter` renders the final `Class` objects using a registered `AbstractGenerator` (the default being `DataclassGenerator`, which uses Jinja2 templates and the `Filters` class for name/type formatting) and writes Python source files to disk.
+
+Most application code will not touch this pipeline directly — it's invoked through the CLI or `ResourceTransformer.process(...)`. It's exposed as public API primarily for extension (custom handlers, custom generators) and testing.
+
+### Configuration
+
+`xsdata.models.config.GeneratorConfig` is the central configuration object controlling code generation: output format, structure style (single package vs. per-module clusters vs. namespace clustering), naming conventions, docstring style, compound fields, aliases, extensions, and more. It can be created with defaults (`GeneratorConfig.create()`), loaded from disk (`GeneratorConfig.read(path)`), or serialized back out (`GeneratorConfig.write(out, config)`).
+
+### Runtime data binding
+
+Once dataclasses are generated (or hand-written using xsdata's field helpers), the runtime layer handles converting between XML/JSON and Python objects.
+
+- **`xsdata.formats.dataclass.context.XmlContext`** — Introspects dataclasses (via `XmlMetaBuilder` / `XmlVarBuilder`) and builds `XmlMeta`/`XmlVar` metadata describing how each field maps to XML elements, attributes, wildcards, or text content. This context is shared between parsers and serializers.
+- **Parsers** (`xsdata/formats/dataclass/parsers/`):
+  - `XmlParser` / `NodeParser` — parse XML into dataclass instances, using pluggable `XmlHandler` backends (`LxmlEventHandler`, `XmlEventHandler`).
+  - `JsonParser` / `DictDecoder` — parse JSON/dict data into dataclass instances.
+  - `ParserConfig` — controls parser behavior (fail-on-unknown-properties, class factories, etc.).
+- **Serializers** (`xsdata/formats/dataclass/serializers/`):
+  - `XmlSerializer` — renders dataclass instances to XML strings/streams via `EventGenerator` and pluggable `XmlWriter` backends (`LxmlEventWriter`, `XmlEventWriter`).
+  - `JsonSerializer` / `DictEncoder` — renders dataclass instances to JSON.
+  - `PycodeSerializer` — renders a Python object graph back into Python source code (useful for generating fixtures).
+  - `TreeSerializer` — renders to an `ElementTree`.
+  - `SerializerConfig` — controls indentation, namespaces, XML declaration, etc.
+- **`xsdata.formats.dataclass.client.Client`** — A SOAP client built from generated WSDL service classes, combining a `Config`, `Transport`, and the serializer/parser to send and receive envelope-wrapped requests.
+
+### Field helpers
+
+`xsdata.models.mixins` exposes `element()`, `attribute()`, `array_element()`, and `text_node()` helpers, used by generated dataclasses (and available for hand-written models) to declare XML binding metadata directly in `dataclasses.field(...)` calls.
+
+### Converters
+
+`xsdata.formats.converter.ConverterFactory` (with the module-level singleton typically accessed as `converter`) manages conversion between XML/JSON string representations and Python types (`int`, `float`, `Decimal`, `bool`, `bytes`, `QName`, `Enum`, date/time types, etc.). Custom types can be registered with `register_converter`.
+
+### Custom datatypes
+
+`xsdata.models.datatype` provides Python representations of XML Schema datatypes that don't map cleanly onto built-in Python types: `XmlDate`, `XmlDateTime`, `XmlTime`, `XmlDuration`, `XmlPeriod`, `XmlHexBinary`, `XmlBase64Binary`.
+
+## Usage examples
+
+### 1. Generate dataclasses from an XSD schema
+
+```bash
+xsdata generate ./schemas/purchase-order.xsd --package myapp.models
+```
+
+This produces Python modules under `myapp/models/` containing `@dataclass`-decorated classes with XML binding metadata attached via `field(metadata={...})`.
+
+### 2. Parse an XML document into dataclasses
+
+```python
+from pathlib import Path
+from xsdata.formats.dataclass.parsers import XmlParser
+from myapp.models import PurchaseOrder
+
+parser = XmlParser()
+order = parser.parse(Path("order.xml"), PurchaseOrder)
+
+print(order.customer.name)
+```
+
+### 3. Serialize a dataclass instance to XML
+
+```python
+from xsdata.formats.dataclass.serializers import XmlSerializer
+from xsdata.formats.dataclass.serializers.config import SerializerConfig
+from myapp.models import PurchaseOrder, Customer
+
+order = PurchaseOrder(customer=Customer(name="Jane Doe"))
+
+config = SerializerConfig(pretty_print=True)
+serializer = XmlSerializer(config=config)
+xml_string = serializer.render(order)
+print(xml_string)
+```
+
+### 4. Parse and serialize JSON
+
+```python
+from xsdata.formats.dataclass.parsers import JsonParser
+from xsdata.formats.dataclass.serializers import JsonSerializer
+from myapp.models import PurchaseOrder
+
+parser = JsonParser()
+order = parser.from_path("order.json", PurchaseOrder)
+
+serializer = JsonSerializer()
+print(serializer.render(order))
+```
+
+### 5. Call a SOAP web service generated from WSDL
+
+```python
+from xsdata.formats.dataclass.client import Client, Config
+from myapp.services import WeatherService
+
+config = Config.from_service(WeatherService.GetWeatherPort)
+client = Client(config=config)
+
+response = client.send(WeatherService.GetWeatherRequest(city="Athens"))
+print(response)
+```
+
+### 6. Programmatic code generation
+
+```python
+from xsdata.codegen.transformer import ResourceTransformer
+from xsdata.models.config import GeneratorConfig
+
+config = GeneratorConfig.create()
+config.output.package = "myapp.models"
+
+transformer = ResourceTransformer(config=config)
+transformer.process(["./schemas/order.xsd"])
+```
+
+## Extending xsdata
+
+- **Custom converters**: register a `Converter` subclass with `ConverterFactory.register_converter` to support custom scalar types.
+- **Custom class backends**: register a `ClassType` implementation with `ClassTypes.register` to support alternative class systems (e.g. `attrs`) instead of standard dataclasses.
+- **Custom generators**: implement `AbstractGenerator` and register it with `CodeWriter.register_generator` to emit output formats other than dataclasses (e.g. Pydantic models, PlantUML diagrams).
+- **Custom codegen handlers**: implement `HandlerInterface`, `RelativeHandlerInterface`, or `ContainerHandlerInterface` and wire it into `ClassContainer.process_class` / `process` for custom class model transformations.
+
+## Testing utilities
+
+`xsdata.utils.testing` provides factory classes (`ClassFactory`, `AttrFactory`, `AttrTypeFactory`, `ExtensionFactory`, `XmlVarFactory`, `XmlMetaFactory`, `DtdFactory`, etc.) for building `codegen` and runtime model instances in tests without hand-writing verbose object graphs.
+
+```python
+from xsdata.utils.testing import ClassFactory, AttrFactory
+
+target = ClassFactory.create(
+    attrs=AttrFactory.list(2, tag="Element"),
+)
+```

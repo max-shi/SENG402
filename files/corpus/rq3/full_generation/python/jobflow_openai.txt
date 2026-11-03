@@ -1,0 +1,467 @@
+# jobflow
+
+`jobflow` is a Python library for defining, organizing, executing, and persisting collections of jobs.
+
+A job is created from a Python callable with the `@job` decorator. Jobs can be grouped into `Flow` objects with the `@flow` decorator, forming a directed workflow. The library provides tools to:
+
+- Run workflows locally or convert them to FireWorks workflows.
+- Track job inputs and output references.
+- Store and retrieve job outputs through a `JobStore`.
+- Inspect and draw workflow graphs.
+- Update job arguments, metadata, configuration, and maker settings across a workflow.
+- Apply structured dictionary modifications to job settings and metadata.
+
+## Core concepts
+
+### Jobs
+
+Use `@job` to convert a callable into a job-producing function.
+
+```python
+import jobflow
+
+
+@jobflow.job
+def add(a, b):
+    return a + b
+
+
+addition = add(2, 3)
+```
+
+Calling `add(2, 3)` creates a `Job` rather than immediately executing the function. A `Job` records its function, inputs, configuration, metadata, and identity.
+
+Useful `Job` methods include:
+
+- `run(store, job_dir=None)` — execute the job and return a `Response`.
+- `resolve_args(store, inplace=True)` — resolve output references in job arguments.
+- `input_references` — output references used as inputs.
+- `input_uuids` — UUIDs of upstream jobs referenced by this job.
+- `graph` — a directed graph representation of the job.
+- `set_uuid(uuid)` — assign a new UUID.
+- `update_kwargs(...)` — update job function arguments.
+- `update_metadata(...)` — update job metadata.
+- `update_config(...)` — update execution configuration.
+- `append_name(...)` — add text to the job name.
+
+### Flows
+
+A `Flow` is an ordered collection of jobs and/or nested flows. Use `@flow` to define a function that builds a workflow.
+
+```python
+import jobflow
+
+
+@jobflow.job
+def prepare_data():
+    return {"status": "prepared"}
+
+
+@jobflow.job
+def analyze_data():
+    return {"status": "analyzed"}
+
+
+@jobflow.flow
+def analysis_workflow():
+    preparation = prepare_data()
+    analysis = analyze_data()
+    return [preparation, analysis]
+
+
+workflow = analysis_workflow()
+```
+
+A flow provides workflow-level operations:
+
+- `jobs` — the jobs and nested flows contained in the flow.
+- `job_uuids` — UUIDs for directly contained jobs.
+- `all_uuids` — UUIDs for all jobs, including nested flows.
+- `graph` — a directed graph of the workflow.
+- `draw_graph(**kwargs)` — visualize the workflow graph.
+- `iterflow()` — iterate through jobs in workflow order.
+- `add_jobs(...)` and `remove_jobs(...)` — modify the workflow contents.
+- `update_kwargs(...)`, `update_metadata(...)`, and `update_config(...)` — apply changes across matching jobs.
+- `update_maker_kwargs(...)` — update configuration on makers associated with jobs.
+- `append_name(...)` — rename matching jobs.
+- `add_hosts_uuids(...)` — associate host UUIDs with jobs or flows.
+
+Use `get_flow(...)` when an API accepts either a job, flow, or list of jobs and you need a normalized `Flow`.
+
+```python
+flow = jobflow.get_flow(workflow)
+```
+
+## Running workflows locally
+
+Use `run_locally` to execute a job, flow, or list of jobs in the current environment.
+
+```python
+import jobflow
+
+
+@jobflow.job
+def square(value):
+    return value * value
+
+
+@jobflow.job
+def greet(name):
+    return f"Hello, {name}!"
+
+
+@jobflow.flow
+def simple_flow():
+    return [
+        square(12),
+        greet("Ada"),
+    ]
+
+
+responses = jobflow.run_locally(
+    simple_flow(),
+    log=True,
+    create_folders=True,
+    root_dir="jobflow-runs",
+    ensure_success=True,
+)
+```
+
+`run_locally` returns responses organized by job UUID and execution index:
+
+```python
+dict[str, dict[int, jobflow.Response]]
+```
+
+Options include:
+
+- `log` — enable logging or provide a logging configuration value.
+- `store` — provide a `JobStore` for persisted outputs.
+- `create_folders` — create directories for individual job runs.
+- `root_dir` — choose the root run directory.
+- `ensure_success` — require successful job execution.
+- `allow_external_references` — allow references to outputs outside the submitted flow.
+- `raise_immediately` — raise execution errors as soon as they occur.
+
+## Persisting and retrieving outputs
+
+`JobStore` provides a storage interface for job documents and outputs.
+
+```python
+import jobflow
+
+
+store = jobflow.JobStore.from_file("jobstore.yaml")
+
+store.connect()
+
+results = jobflow.run_locally(
+    simple_flow(),
+    store=store,
+    ensure_success=True,
+)
+
+store.close()
+```
+
+A store can also be created from a dictionary specification:
+
+```python
+store = jobflow.JobStore.from_dict_spec(
+    {
+        # Store configuration
+    }
+)
+```
+
+Common `JobStore` operations include:
+
+```python
+# Count matching documents.
+count = store.count(criteria={"name": "square"})
+
+# Query stored job documents.
+for document in store.query(criteria={"name": "square"}):
+    print(document)
+
+# Retrieve one matching document.
+document = store.query_one(criteria={"uuid": "some-job-uuid"})
+
+# Retrieve a stored output.
+output = store.get_output("some-job-uuid", which="last")
+
+# Remove documents.
+store.remove_docs(criteria={"uuid": "some-job-uuid"})
+```
+
+`get_output` supports selecting an output with `which`, controlling loading behavior with `load`, and handling missing data with `on_missing`.
+
+## Output references and dependencies
+
+`OutputReference` represents a reference to output produced by another job. References can be resolved against a `JobStore`.
+
+```python
+reference = jobflow.OutputReference(...)
+value = reference.resolve(store)
+```
+
+References support configurable missing-output behavior through `OnMissing`:
+
+```python
+value = reference.resolve(
+    store,
+    on_missing=jobflow.OnMissing.ERROR,
+)
+```
+
+Reference utilities include:
+
+```python
+# Find references embedded in an object.
+references = jobflow.find_and_get_references(arguments)
+
+# Resolve all references embedded in an object.
+resolved_arguments = jobflow.find_and_resolve_references(
+    arguments,
+    store,
+)
+
+# Resolve a sequence of references at once.
+resolved = jobflow.resolve_references(
+    references,
+    store,
+)
+```
+
+A job exposes its detected references through:
+
+```python
+references = addition.input_references
+upstream_job_ids = addition.input_uuids
+references_by_uuid = addition.input_references_grouped
+```
+
+## Updating jobs and flows
+
+Jobs and flows can be modified after construction. Update operations can be restricted by job name, function, maker class, or callback.
+
+```python
+workflow.update_kwargs(
+    update={"value": 42},
+    name_filter="square",
+)
+```
+
+Apply metadata to matching jobs:
+
+```python
+workflow.update_metadata(
+    update={
+        "project": "demo",
+        "priority": "high",
+    },
+    name_filter="square",
+)
+```
+
+Append a suffix to names:
+
+```python
+workflow.append_name(" [test]")
+```
+
+Update configuration:
+
+```python
+workflow.update_config(
+    config={
+        # Job configuration values
+    },
+    attributes=["manager_config"],
+)
+```
+
+For dictionary-style updates, pass `dict_mod=True`:
+
+```python
+workflow.update_metadata(
+    update={"_set": {"priority": "urgent"}},
+    dict_mod=True,
+)
+```
+
+The same update operations are available directly on an individual `Job`.
+
+## Makers
+
+`Maker` provides a reusable object-oriented way to construct jobs or flows. A maker implements:
+
+```python
+class MyMaker(jobflow.Maker):
+    def make(self, *args, **kwargs):
+        ...
+```
+
+Makers can be updated recursively:
+
+```python
+updated_maker = maker.update_kwargs(
+    update={"setting": "new-value"},
+    nested=True,
+)
+```
+
+Use `recursive_call` to apply a transformation to a maker and, optionally, nested makers:
+
+```python
+updated = jobflow.recursive_call(
+    maker,
+    func=lambda current: current.update_kwargs({"setting": "value"}),
+    nested=True,
+)
+```
+
+## FireWorks integration
+
+Convert a jobflow workflow to a FireWorks `Workflow` with `flow_to_workflow`:
+
+```python
+workflow = jobflow.flow_to_workflow(
+    simple_flow(),
+    store=store,
+)
+```
+
+Convert a single job to a FireWorks `Firework`:
+
+```python
+firework = jobflow.job_to_firework(
+    square(5),
+    store=store,
+)
+```
+
+`JobFiretask` is the FireWorks task implementation used to execute jobflow jobs.
+
+## Graph utilities
+
+Jobs and flows can be represented as directed graphs.
+
+```python
+graph = workflow.graph
+workflow.draw_graph()
+```
+
+Additional graph helpers include:
+
+```python
+# Iterate over a directed graph.
+for node in jobflow.itergraph(graph):
+    print(node)
+
+# Render a graph.
+jobflow.draw_graph(graph)
+
+# Export a flow graph.
+dot_graph = jobflow.to_pydot(workflow)
+mermaid = jobflow.to_mermaid(workflow)
+```
+
+To include flow containers in Mermaid output:
+
+```python
+mermaid = jobflow.to_mermaid(
+    workflow,
+    show_flow_boxes=True,
+)
+```
+
+## Dictionary modifications
+
+`DictMods` provides common in-place dictionary operations:
+
+- `set`
+- `unset`
+- `push`
+- `push_all`
+- `inc`
+- `rename`
+- `add_to_set`
+- `pull`
+- `pull_all`
+- `pop`
+
+Apply a modification specification with `apply_mod`:
+
+```python
+settings = {
+    "resources": {
+        "cores": 4,
+    }
+}
+
+jobflow.apply_mod(
+    {
+        "_set": {
+            "resources.cores": 8,
+        }
+    },
+    settings,
+)
+```
+
+## Utility functions
+
+### Unique identifiers
+
+```python
+uid = jobflow.suid()
+uuid_value = jobflow.suuid()
+
+timestamp = jobflow.get_timestamp_from_uid(uid)
+```
+
+### Searching nested data
+
+```python
+locations = jobflow.find_key(data, "target")
+matching_locations = jobflow.find_key_value(data, "status", "complete")
+
+contains_work = jobflow.contains_flow_or_job(data)
+```
+
+### Logging
+
+```python
+logger = jobflow.initialize_logger()
+```
+
+## Settings and state
+
+`JobflowSettings` provides configurable settings based on `BaseSettings`. `State` represents resettable runtime state:
+
+```python
+state = jobflow.State()
+state.reset()
+```
+
+## Response handling
+
+Job execution returns a `Response`. A response can also be created from a job return value:
+
+```python
+response = jobflow.Response.from_job_returns(
+    job_returns={"result": 10},
+)
+```
+
+When an output schema is available, use `apply_schema` to apply it to a result:
+
+```python
+validated_output = jobflow.apply_schema(
+    output={"result": 10},
+    schema=MyOutputModel,
+)
+```
+
+Use `store_inputs` to prepare job inputs for storage, and `prepare_replace` when preparing a replacement job or flow for an existing job.

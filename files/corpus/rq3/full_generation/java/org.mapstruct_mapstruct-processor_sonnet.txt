@@ -1,0 +1,135 @@
+# mapstruct-processor
+
+`org.mapstruct:mapstruct-processor` is the Java annotation processor that powers [MapStruct](https://mapstruct.org), the code generator for type-safe, performant bean mapping. This artifact contains the internal machinery that scans `@Mapper`-annotated interfaces and classes at compile time, resolves the mapping methods, converts source properties to target properties (including primitive/wrapper conversions, date/time formatting, collection and map handling, enums, and more), and emits fully-implemented mapper classes as Java source.
+
+This library is not meant to be used directly as an API by application code — it is registered as a `javax.annotation.processing.Processor` and runs automatically during compilation whenever MapStruct annotations are present on the classpath. However, it exposes a rich internal model and several **SPI (Service Provider Interface) extension points** that allow advanced users to customize MapStruct's behavior.
+
+## How it works: the processing pipeline
+
+The generation of a mapper implementation happens as a sequence of `ModelElementProcessor` stages, orchestrated by the top-level `MappingProcessor` (an `AbstractProcessor`):
+
+```
+MethodRetrievalProcessor          -> discovers abstract mapping methods on a @Mapper type
+MapperCreationProcessor           -> builds the in-memory Mapper model (mapping methods, assignments, etc.)
+AnnotationBasedComponentModelProcessor -> wires the mapper into a DI component model (Spring, CDI, JSR 330, ...)
+MapperRenderingProcessor          -> renders the Mapper model into Java source via templates
+MapperServiceProcessor            -> registers the generated mapper as a service (META-INF/services) if requested
+```
+
+Each processor consumes the output of the previous one and hands its result to the next, threaded together by a `ProcessorContext` (implemented by `DefaultModelElementProcessorContext`) that carries shared state such as `TypeFactory`, `ElementUtils`, `TypeUtils`, `FormattingMessager`, and `Options`.
+
+### Core building blocks
+
+- **`org.mapstruct.ap.internal.util.TypeUtils` / `ElementUtils`** — thin, decoratable wrappers around `javax.lang.model.util.Types` / `Elements`, providing MapStruct-specific convenience methods (e.g. `isSubtypeErased`).
+- **`org.mapstruct.ap.internal.model.common.Type`** — a rich, cached representation of a Java type used throughout the model, exposing type parameters, accessors, enum constants, builder/implementation types, and assignability checks.
+- **`TypeFactory`** — the factory for creating `Type` instances from `TypeMirror`, `TypeElement`, or `Class<?>`, as well as resolving generic type parameters, parameters/return types of methods, and builder types.
+- **`org.mapstruct.ap.internal.model.source.Method`** (and implementations `SourceMethod`, `ForgedMethod`, `HelperMethod`, `BuiltInMethod`) — represents a candidate mapping method, whether hand-written by the user, synthesized ("forged") by the processor, or built into MapStruct itself.
+- **`org.mapstruct.ap.internal.model.source.MappingMethodOptions`** and the various `*Options` classes (`BeanMappingOptions`, `IterableMappingOptions`, `MapMappingOptions`, `EnumMappingOptions`, `MappingOptions`, `SubclassMappingOptions`, `ValueMappingOptions`, `MapperOptions`, `MapperConfigOptions`, `DefaultOptions`) — a hierarchy of decorators (`DelegatingOptions`) that model the effective configuration of a mapping method, taking into account annotations on the method itself, its `@MapperConfig`, and global processor options.
+- **`org.mapstruct.ap.internal.model.source.selector`** package — the method-resolution engine. A pipeline of `MethodSelector` implementations (`TypeSelector`, `QualifierSelector`, `MethodFamilySelector`, `TargetTypeSelector`, `InheritanceSelector`, `FactoryParameterSelector`, `CreateOrUpdateSelector`, `MostSpecificResultTypeSelector`, `SourceRhsSelector`) narrows down candidate methods for a given source/target type pair via `MethodSelectors`.
+- **`org.mapstruct.ap.internal.model`** package — the *output* model: `Mapper`, `Decorator`, `BeanMappingMethod`, `IterableMappingMethod`, `StreamMappingMethod`, `MapMappingMethod`, `ValueMappingMethod`, `PropertyMapping`, `MethodReference`, `Assignment` and its many wrappers (`SetterWrapper`, `AdderWrapper`, `Java8FunctionWrapper`, etc.). These classes model the generated Java code before it is rendered.
+- **`org.mapstruct.ap.internal.conversion`** package — built-in type conversions (`BigDecimalToStringConversion`, `PrimitiveToWrapperConversion`, `EnumStringConversion`, `DateToStringConversion`, etc.), all implementing `ConversionProvider`, and looked up via `Conversions`.
+- **`org.mapstruct.ap.internal.writer`** package — renders `ModelElement`s to `.java` source files using FreeMarker templates (`FreeMarkerModelElementWriter`, `ModelWriter`).
+
+### Extension points (SPI)
+
+Located under `org.mapstruct.ap.spi`, these interfaces let you customize processor behavior by registering implementations via `java.util.ServiceLoader`:
+
+| Interface | Purpose |
+|---|---|
+| `AccessorNamingStrategy` (default: `DefaultAccessorNamingStrategy`, `ImmutablesAccessorNamingStrategy`) | Customize how getters/setters/adders/presence-checkers are recognized and how property/element names are derived. |
+| `BuilderProvider` (default: `DefaultBuilderProvider`, `NoOpBuilderProvider`) | Teach MapStruct how to detect builder types for immutable classes. |
+| `EnumMappingStrategy` (default: `DefaultEnumMappingStrategy`) | Control enum constant name resolution and the default "unexpected value" exception type. |
+| `EnumTransformationStrategy` (`CaseEnumTransformationStrategy`, `PrefixEnumTransformationStrategy`, `SuffixEnumTransformationStrategy`, `StripPrefixEnumTransformationStrategy`, `StripSuffixEnumTransformationStrategy`) | Pluggable string transformations for `@EnumMapping` name mapping. |
+| `MappingExclusionProvider` | Exclude specific types from automatic sub-mapping generation. |
+| `AdditionalSupportedOptionsProvider` | Declare extra `-A` compiler options your SPI implementation understands. |
+| `AstModifyingAnnotationProcessor` | Coordinate with other annotation processors that modify the AST, so MapStruct can wait for types to stabilize. |
+
+All SPI implementations that need access to the compilation environment implement `MapStructProcessingEnvironment` initialization via their `init(...)` method, receiving `Elements`, `Types`, and processor options.
+
+## Usage
+
+### As an application developer
+
+You do not call this library's classes directly. Instead, you depend on the `mapstruct` runtime annotations artifact and add `mapstruct-processor` as an annotation-processor dependency, e.g. with Maven:
+
+```xml
+<dependency>
+    <groupId>org.mapstruct</groupId>
+    <artifactId>mapstruct</artifactId>
+    <version>${mapstruct.version}</version>
+</dependency>
+
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <configuration>
+        <annotationProcessorPaths>
+            <path>
+                <groupId>org.mapstruct</groupId>
+                <artifactId>mapstruct-processor</artifactId>
+                <version>${mapstruct.version}</version>
+            </path>
+        </annotationProcessorPaths>
+    </configuration>
+</plugin>
+```
+
+Then write a mapper interface as usual:
+
+```java
+@Mapper
+public interface CarMapper {
+
+    CarMapper INSTANCE = Mappers.getMapper( CarMapper.class );
+
+    @Mapping(source = "make", target = "manufacturer")
+    @Mapping(source = "numberOfSeats", target = "seatCount")
+    CarDto carToCarDto(Car car);
+}
+```
+
+During compilation, `MappingProcessor` picks up the `CarMapper` interface, runs it through `MethodRetrievalProcessor` → `MapperCreationProcessor` → `AnnotationBasedComponentModelProcessor` → `MapperRenderingProcessor` → `MapperServiceProcessor`, and produces a `CarMapperImpl` class implementing the interface, ready to be invoked at runtime.
+
+### Extending the processor via SPI
+
+To customize accessor naming (for example, to support a builder-style naming convention), implement `AccessorNamingStrategy`:
+
+```java
+package com.example.mapstruct.spi;
+
+import org.mapstruct.ap.spi.DefaultAccessorNamingStrategy;
+import javax.lang.model.element.ExecutableElement;
+
+public class WitherAccessorNamingStrategy extends DefaultAccessorNamingStrategy {
+
+    @Override
+    public boolean isSetterMethod(ExecutableElement method) {
+        return method.getSimpleName().toString().startsWith( "with" );
+    }
+}
+```
+
+Register it as a service so the processor discovers it via `ServiceLoader`:
+
+```
+src/main/resources/META-INF/services/org.mapstruct.ap.spi.AccessorNamingStrategy
+```
+
+```
+com.example.mapstruct.spi.WitherAccessorNamingStrategy
+```
+
+Place this SPI implementation on the **annotation processor path** (not the regular compile classpath) so that `mapstruct-processor` picks it up during compilation, alongside `mapstruct-processor` itself.
+
+Similarly, you can supply a custom `BuilderProvider` to teach MapStruct about a non-standard builder pattern, or an `EnumMappingStrategy` to control how enum constants and "unmapped value" exceptions are resolved for `@ValueMapping`/`@EnumMapping`.
+
+## Internal model at a glance
+
+For contributors working on the processor itself, the typical life of a mapping method looks like this:
+
+1. `MethodRetrievalProcessor` walks the `TypeElement` of the `@Mapper` interface and produces a `List<SourceMethod>`.
+2. `MapperCreationProcessor` builds a `MappingBuilderContext`, then uses builders such as `AbstractMappingMethodBuilder` subclasses (via `ContainerMappingMethodBuilder` for iterables/maps/streams, and dedicated builders for bean mappings) to construct `MappingMethod` instances (`BeanMappingMethod`, `IterableMappingMethod`, `MapMappingMethod`, `StreamMappingMethod`, `ValueMappingMethod`).
+3. Property-level assignments are resolved through `MappingResolverImpl`, which consults `Conversions` for built-in type conversions and the `MethodSelectors` pipeline for delegating to other mapping/factory/lifecycle methods.
+4. The resulting `Mapper` (a `GeneratedType`) is passed to `MapperRenderingProcessor`, which uses `FreeMarkerModelElementWriter` / `ModelWriter` to emit the final `.java` source file.
+
+This model-driven architecture is what allows MapStruct to generate plain, readable, dependency-free Java code instead of relying on reflection at runtime.

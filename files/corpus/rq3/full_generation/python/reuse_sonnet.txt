@@ -1,0 +1,238 @@
+# reuse
+
+`reuse` is a Python library and toolkit for managing copyright and licensing
+information across a software project. It helps you annotate source files
+with copyright and SPDX license headers, verify that your project's
+licensing is complete and unambiguous, download license texts, and generate
+license compliance reports (including SPDX bill-of-materials documents).
+
+The library follows the [REUSE specification](https://reuse.software/) model:
+every file in a project should have clear, machine-readable copyright and
+licensing information, either embedded directly in the file as a comment
+header, or declared externally via `.reuse/dep5`, `REUSE.toml`, or nested
+`.reuse.toml` files.
+
+## Core concepts
+
+### `Project`
+
+The `Project` class (in `reuse.project`) is the central entry point for
+working with a REUSE-compliant (or non-compliant) codebase.
+
+```python
+from reuse.project import Project
+
+project = Project.from_directory("path/to/repo")
+```
+
+A `Project` knows how to:
+
+- Walk all relevant files in a directory (`all_files`), respecting VCS
+  ignore rules, submodules, and Meson subprojects.
+- Restrict iteration to a subset of files (`subset_files`).
+- Resolve the effective `ReuseInfo` (copyright and license data) for any
+  given path (`reuse_info_of`), taking into account both in-file headers and
+  external global licensing declarations (dep5, `REUSE.toml`, nested
+  `.reuse.toml`).
+- Locate global licensing configuration files in the project
+  (`find_global_licensing`).
+
+### `ReuseInfo` and copyright/license primitives
+
+`reuse.copyright` provides the data model for copyright and licensing
+metadata:
+
+- `CopyrightNotice` — a parsed copyright statement (e.g. `Copyright 2020-2022
+  Jane Doe`), with support for parsing, merging duplicate notices, and
+  rendering back to a string (`from_string`, `merge`, `to_string`).
+- `YearRange` — a single year or year range (e.g. `2020-2022`), with parsing,
+  compaction of overlapping ranges, and string rendering.
+- `SpdxExpression` — a parsed SPDX license expression, with validation
+  (`is_valid`), extraction of individual license identifiers (`licenses`),
+  combination of multiple expressions (`combine`), and simplification
+  (`simplify`).
+- `CopyrightPrefix` — an enum of supported copyright prefix styles (e.g.
+  `Copyright`, `SPDX-FileCopyrightText`, `©`).
+- `ReuseInfo` — the aggregate container of copyright notices, SPDX license
+  expressions, and contributors, associated with a `SourceType` (e.g. an
+  in-file header vs. an external declaration). Supports combining
+  (`union`), copying with overrides (`copy`), and querying completeness
+  (`contains_copyright_or_licensing`, `contains_copyright_xor_licensing`,
+  `contains_info`).
+
+### Global licensing files
+
+`reuse.global_licensing` models the external declaration mechanisms:
+
+- `GlobalLicensing` — abstract base with `from_file` and `reuse_info_of`.
+- `ReuseDep5` — support for the legacy `.reuse/dep5` format (Debian
+  `copyright` format).
+- `ReuseTOML` — support for `REUSE.toml`, including annotation blocks
+  (`AnnotationsItem`) that match file path globs to copyright/license
+  metadata.
+- `NestedReuseTOML` — support for discovering and combining multiple nested
+  `.reuse.toml` files throughout a project tree (`find_reuse_tomls`).
+
+`reuse.convert_dep5.toml_from_dep5` converts a parsed dep5 `Copyright` object
+into an equivalent `REUSE.toml` string, to help migrate projects to the newer
+format.
+
+### Comment styles
+
+`reuse.comment` defines a large family of `CommentStyle` subclasses (for C,
+Python, HTML, TeX, Lisp, Haskell, Batch files, and many more), each knowing
+how to build (`create_comment`), parse (`parse_comment`), and detect headers
+in that language's comment syntax. `get_comment_style(path)` looks up the
+appropriate style for a file based on its name/extension, `is_uncommentable`
+and `has_style` answer related questions.
+
+### Extracting and writing headers
+
+`reuse.extract` scans raw file content (or bytes) for existing
+`SPDX-FileCopyrightText` / `SPDX-License-Identifier` style headers
+(`extract_reuse_info`, `reuse_info_of_file`, `contains_reuse_info`), and
+provides low-level helpers for detecting file encoding and newline style
+(`detect_encoding`, `detect_newline`).
+
+`reuse.header` builds new headers from `ReuseInfo` and comment styles
+(`create_header`), and inserts/replaces them in existing file text
+(`add_new_header`, `find_and_replace_header`, `place_header`).
+
+`reuse._annotate.add_header_to_file` ties this all together: given a path,
+`ReuseInfo`, and formatting options, it rewrites the file in place with an
+appropriate header, handling encoding, newline style, templates, and
+skip/merge behavior.
+
+### Reporting
+
+`reuse.report` computes REUSE compliance information for a project:
+
+- `FileReport.generate` — per-file report (license/copyright presence,
+  checksum, SPDX info).
+- `ProjectReport.generate` — full-project report, aggregating file reports,
+  used/bad/deprecated/unused licenses, missing licenses, invalid SPDX
+  expressions, and overall compliance (`is_compliant`). Can render a
+  bill-of-materials in SPDX format (`bill_of_materials`) or a dict for JSON
+  output (`to_dict_lint`).
+- `ProjectSubsetReport.generate` — the same kind of report restricted to a
+  subset of files.
+
+`reuse.lint` formats a `ProjectReport` as human-readable plain text
+(`format_plain`), JSON (`format_json`), or a compact per-line summary
+(`format_lines`, `format_lines_subset`).
+
+### Downloading licenses
+
+`reuse.download` fetches official license texts from the SPDX license list:
+
+```python
+from reuse.download import download_license, put_license_in_file
+
+text = download_license("MIT")
+put_license_in_file("MIT", destination="LICENSES/MIT.txt")
+```
+
+### VCS awareness
+
+`reuse.vcs` provides `VCSStrategy` implementations for Git, Mercurial,
+Jujutsu, and Pijul (plus a no-op `VCSStrategyNone`), used internally by
+`covered_files.iter_files` to skip ignored/untracked files and detect
+repository roots (`find_root`).
+
+### Command-line interface
+
+The `reuse.cli` subpackage implements the `reuse` command-line tool, built
+on top of the library described above:
+
+- `reuse annotate` — add or update headers on files (`cli.annotate.annotate`).
+- `reuse lint` / `reuse lint-file` — check project or file compliance.
+- `reuse download` — download license texts.
+- `reuse spdx` — generate an SPDX bill-of-materials document.
+- `reuse supported-licenses` — list supported SPDX license identifiers.
+- `reuse convert-dep5` — convert `.reuse/dep5` to `REUSE.toml`.
+
+These commands share a `ClickObj` context object that lazily constructs a
+`Project` for the current working directory.
+
+## Usage examples
+
+### Checking a project for compliance
+
+```python
+from reuse.project import Project
+from reuse.report import ProjectReport
+from reuse.lint import format_plain
+
+project = Project.from_directory(".")
+report = ProjectReport.generate(project)
+
+print(format_plain(report))
+
+if not report.is_compliant():
+    raise SystemExit(1)
+```
+
+### Inspecting reuse info for a single file
+
+```python
+from reuse.project import Project
+
+project = Project.from_directory(".")
+info = project.reuse_info_of("src/mymodule/core.py")
+
+for reuse_info in info:
+    print(reuse_info.copyright_notices, reuse_info.spdx_expressions)
+```
+
+### Adding a license header to a file programmatically
+
+```python
+from reuse.copyright import ReuseInfo, CopyrightNotice, SpdxExpression, SourceType
+from reuse._annotate import add_header_to_file
+
+reuse_info = ReuseInfo(
+    copyright_notices={CopyrightNotice.from_string("Copyright 2024 Jane Doe")},
+    spdx_expressions={SpdxExpression("MIT")},
+    source_type=SourceType.SOURCE_FILE,
+)
+
+add_header_to_file(
+    path="src/mymodule/core.py",
+    reuse_info=reuse_info,
+    template=None,
+    template_is_commented=False,
+    style=None,
+)
+```
+
+### Generating an SPDX bill of materials
+
+```python
+from reuse.project import Project
+from reuse.report import ProjectReport
+
+project = Project.from_directory(".")
+report = ProjectReport.generate(project, add_license_concluded=True)
+
+with open("bom.spdx", "w") as f:
+    f.write(report.bill_of_materials(creator_person="Jane Doe (jane@example.com)"))
+```
+
+### Downloading a missing license
+
+```python
+from reuse.download import put_license_in_file
+
+put_license_in_file("Apache-2.0", destination="LICENSES/Apache-2.0.txt")
+```
+
+## Error handling
+
+All library-specific errors derive from `reuse.exceptions.ReuseError`,
+including parsing errors for copyright notices and year ranges
+(`CopyrightNoticeParseError`, `YearRangeParseError`), comment
+creation/parsing failures (`CommentCreateError`, `CommentParseError`),
+global licensing configuration issues (`GlobalLicensingParseError` and its
+subclasses, `GlobalLicensingConflictError`), and missing SPDX identifiers or
+required licensing metadata (`SpdxIdentifierNotFoundError`,
+`MissingReuseInfoError`).

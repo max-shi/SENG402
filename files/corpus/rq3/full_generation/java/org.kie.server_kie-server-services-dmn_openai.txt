@@ -1,0 +1,348 @@
+# `org.kie.server:kie-server-services-dmn`
+
+Java services and integration components for working with DMN models through a KIE Server environment.
+
+The library provides APIs to:
+
+- Discover DMN models deployed in a container.
+- Evaluate DMN decisions and models using serialized context payloads.
+- Retrieve model metadata and generated OpenAPI descriptions.
+- Integrate DMN support into a KIE Server extension lifecycle.
+- Execute container commands and command scripts through a DMN-aware command service.
+- Represent DMN results, decision results, and messages in serializable model-specific forms.
+- Serialize FEEL `ComparablePeriod` values for JSON output.
+
+## Main components
+
+### `ModelEvaluatorServiceBase`
+
+`ModelEvaluatorServiceBase` is the primary service for inspecting and evaluating DMN models associated with a server container.
+
+```java
+ModelEvaluatorServiceBase evaluator =
+        new ModelEvaluatorServiceBase(kieServerRegistry);
+```
+
+Key operations include:
+
+| Method | Purpose |
+|---|---|
+| `getModels(String containerId)` | Returns metadata for DMN models in a container. |
+| `getModel(String containerId, String modelId)` | Retrieves a specific model. |
+| `evaluateDecisions(String containerId, String contextPayload, String marshallingType)` | Evaluates decisions using a serialized input context. |
+| `evaluateModel(String containerId, String modelId, String contextPayload, boolean asDmnResult, String decisionServiceId)` | Evaluates a model, optionally targeting a decision service and choosing whether the result is returned as a DMN result. |
+| `getOAS(String containerId, boolean asJSON)` | Produces an OpenAPI description for models in a container. |
+| `getKieServerRegistry()` | Returns the registry used by the service. |
+
+It also contains static conversion helpers for turning DMN runtime objects into metadata objects:
+
+- `modelToInfo(DMNModel)`
+- `decisionServiceToInfo(DecisionServiceNode)`
+- `decisionToInfo(DecisionNode)`
+- `inputDataToInfo(InputDataNode)`
+- `itemDefinitionToInfo(ItemDefinition)`
+
+### `DMNKieContainerCommandServiceImpl`
+
+`DMNKieContainerCommandServiceImpl` implements `KieContainerCommandService` for DMN-enabled containers.
+
+```java
+DMNKieContainerCommandServiceImpl commandService =
+        new DMNKieContainerCommandServiceImpl(kieServerRegistry, evaluator);
+```
+
+Its operations are:
+
+| Method | Purpose |
+|---|---|
+| `callContainer(...)` | Sends a payload to a specific container and returns a serialized service response. |
+| `executeScript(...)` | Executes a `CommandScript` and returns the responses for its commands. |
+
+Both methods accept a `MarshallingFormat` and a class-type value, allowing callers to control how payloads and responses are processed.
+
+### `DMNKieServerExtension`
+
+`DMNKieServerExtension` integrates DMN functionality into the KIE Server extension lifecycle.
+
+The extension exposes lifecycle operations for initialization, container creation, update, and disposal:
+
+- `init(...)`
+- `destroy(...)`
+- `createContainer(...)`
+- `updateContainer(...)`
+- `disposeContainer(...)`
+
+It also provides server integration and discovery methods:
+
+- `getAppComponents(...)`
+- `getServices()`
+- `getImplementedCapability()`
+- `getExtensionName()`
+- `getStartOrder()`
+- `healthCheck(boolean report)`
+
+Applications normally interact with this type through the KIE Server extension mechanism rather than invoking lifecycle methods directly.
+
+### Serializable DMN result types
+
+The `modelspecific` package contains serializable representations of DMN API types.
+
+#### `KogitoDMNResult`
+
+`KogitoDMNResult` implements `org.kie.dmn.api.core.DMNResult` and stores:
+
+- DMN namespace and model name.
+- A DMN context represented as `Map<String, Object>`.
+- DMN messages.
+- Decision results.
+
+It can be created empty or from an existing DMN result:
+
+```java
+KogitoDMNResult result = new KogitoDMNResult(
+        namespace,
+        modelName,
+        dmnResult
+);
+```
+
+Useful lookup methods include:
+
+```java
+DMNDecisionResult byName = result.getDecisionResultByName("Eligibility");
+DMNDecisionResult byId = result.getDecisionResultById("decision-id");
+boolean hasErrors = result.hasErrors();
+```
+
+#### `KogitoDMNDecisionResult`
+
+`KogitoDMNDecisionResult` implements `DMNDecisionResult` and captures the outcome of a single decision:
+
+- Decision ID and name.
+- Evaluation status.
+- Result value.
+- Associated messages.
+
+```java
+KogitoDMNDecisionResult decision =
+        KogitoDMNDecisionResult.of(existingDecisionResult);
+
+Object value = decision.getResult();
+boolean hasErrors = decision.hasErrors();
+```
+
+#### `KogitoDMNMessage`
+
+`KogitoDMNMessage` implements `DMNMessage` and exposes message severity, type, source, location, exception, and FEEL-event details.
+
+```java
+KogitoDMNMessage message = KogitoDMNMessage.of(existingMessage);
+
+System.out.println(message.getSeverity());
+System.out.println(message.getMessage());
+System.out.println(message.getPath());
+System.out.println(message.getLine());
+```
+
+### `OASGenerator`
+
+`OASGenerator` generates an OpenAPI description from a collection of DMN models.
+
+```java
+OASGenerator generator = new OASGenerator(containerId, releaseId);
+String openApiDocument = generator.generateOAS(models, true);
+```
+
+The `asJSON` argument selects the requested output representation.
+
+### `DMNFEELComparablePeriodSerializer`
+
+`DMNFEELComparablePeriodSerializer` is a Jackson serializer for FEEL `ComparablePeriod` values.
+
+```java
+ObjectMapper mapper = new ObjectMapper();
+SimpleModule module = new SimpleModule();
+
+module.addSerializer(
+        ComparablePeriod.class,
+        new DMNFEELComparablePeriodSerializer()
+);
+
+mapper.registerModule(module);
+```
+
+## Usage examples
+
+### List the DMN models in a container
+
+Create a `ModelEvaluatorServiceBase` using the server registry, then request the models for a container.
+
+```java
+import org.kie.server.services.dmn.ModelEvaluatorServiceBase;
+import org.kie.server.services.api.KieServerRegistry;
+import org.kie.server.api.model.ServiceResponse;
+import org.kie.server.api.model.dmn.DMNModelInfoList;
+
+KieServerRegistry registry = /* obtain the server registry */;
+
+ModelEvaluatorServiceBase evaluator =
+        new ModelEvaluatorServiceBase(registry);
+
+ServiceResponse<DMNModelInfoList> response =
+        evaluator.getModels("loan-container");
+
+// Inspect the ServiceResponse according to the surrounding server API.
+DMNModelInfoList models = response.getResult();
+```
+
+### Evaluate decisions from a serialized context
+
+Use `evaluateDecisions` when the input context is already available as a serialized payload.
+
+```java
+import org.kie.server.services.dmn.ModelEvaluatorServiceBase;
+import org.kie.server.api.model.ServiceResponse;
+import org.kie.server.api.model.dmn.DMNResultKS;
+
+ModelEvaluatorServiceBase evaluator =
+        new ModelEvaluatorServiceBase(registry);
+
+String contextPayload = """
+        {
+          "Applicant": {
+            "age": 42,
+            "income": 75000
+          },
+          "RequestedAmount": 150000
+        }
+        """;
+
+ServiceResponse<DMNResultKS> response =
+        evaluator.evaluateDecisions(
+                "loan-container",
+                contextPayload,
+                "JSON"
+        );
+
+DMNResultKS result = response.getResult();
+```
+
+### Evaluate a specific model or decision service
+
+`evaluateModel` accepts a model identifier and an optional decision-service identifier.
+
+```java
+import javax.ws.rs.core.Response;
+
+String contextPayload = """
+        {
+          "CustomerType": "STANDARD",
+          "OrderTotal": 250.00
+        }
+        """;
+
+Response response = evaluator.evaluateModel(
+        "pricing-container",
+        "pricing-model",
+        contextPayload,
+        true,
+        "pricing-decision-service"
+);
+```
+
+Pass the appropriate model identifier and decision-service identifier for the deployed DMN model. The `asDmnResult` argument controls whether the evaluation is requested as a DMN result.
+
+### Obtain an OpenAPI description
+
+A container-level OpenAPI description can be requested through the evaluator service.
+
+```java
+import javax.ws.rs.core.Response;
+
+Response openApiResponse = evaluator.getOAS(
+        "loan-container",
+        true
+);
+```
+
+Alternatively, generate documentation directly from an available collection of `DMNModel` instances.
+
+```java
+import org.kie.server.services.dmn.modelspecific.OASGenerator;
+import org.kie.api.builder.ReleaseId;
+import org.kie.dmn.api.core.DMNModel;
+
+Collection<DMNModel> models = /* deployed DMN models */;
+ReleaseId releaseId = /* release identifier */;
+
+OASGenerator generator =
+        new OASGenerator("loan-container", releaseId);
+
+String openApiJson = generator.generateOAS(models, true);
+```
+
+### Execute commands against a DMN-enabled container
+
+Create the command service with the same registry and model evaluator service.
+
+```java
+import org.kie.server.services.dmn.DMNKieContainerCommandServiceImpl;
+import org.kie.server.api.marshalling.MarshallingFormat;
+import org.kie.server.api.model.ServiceResponse;
+
+DMNKieContainerCommandServiceImpl commandService =
+        new DMNKieContainerCommandServiceImpl(registry, evaluator);
+
+String payload = """
+        {
+          "lookup": "default",
+          "commands": []
+        }
+        """;
+
+ServiceResponse<String> response = commandService.callContainer(
+        "loan-container",
+        payload,
+        MarshallingFormat.JSON,
+        "java.lang.String"
+);
+```
+
+For multiple commands represented by a `CommandScript`, use `executeScript`:
+
+```java
+import org.kie.server.api.model.instance.CommandScript;
+import org.kie.server.api.model.ServiceResponsesList;
+
+CommandScript script = /* construct or obtain a command script */;
+
+ServiceResponsesList responses = commandService.executeScript(
+        script,
+        MarshallingFormat.JSON,
+        "java.lang.String"
+);
+```
+
+## Result and message handling
+
+When working with a `KogitoDMNResult`, inspect both the decision outcomes and messages before consuming the result.
+
+```java
+KogitoDMNResult result = /* obtain or construct a result */;
+
+if (result.hasErrors()) {
+    for (DMNMessage message : result.getMessages()) {
+        System.err.println(message.getSeverity() + ": " + message.getMessage());
+    }
+} else {
+    DMNDecisionResult decision =
+            result.getDecisionResultByName("Eligibility");
+
+    if (decision != null) {
+        Object decisionValue = decision.getResult();
+        System.out.println("Eligibility: " + decisionValue);
+    }
+}
+```
+
+Use `getMessages(Severity... sevs)` to retrieve messages filtered by one or more DMN severity values.

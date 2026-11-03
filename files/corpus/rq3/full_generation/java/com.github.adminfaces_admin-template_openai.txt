@@ -1,0 +1,463 @@
+# Admin Template
+
+`com.github.adminfaces:admin-template` is a Java web-application support library centered on administrative UI concerns. Its public API provides state holders and utilities for:
+
+- Layout, skin, and sidebar preferences
+- Breadcrumb navigation
+- Application-wide template configuration
+- Login/session and logout support
+- Servlet filtering and application lifecycle integration
+- JSF exception handling and business-facing exceptions
+- Web application metadata such as welcome files, security constraints, and error pages
+
+The API is designed for applications using JSF and the Servlet API, as indicated by its use of `FacesContext`, `FacesMessage`, `SystemEventListener`, `Filter`, and related types.
+
+## Main components
+
+### UI state beans
+
+The `bean` package contains mutable, serializable state objects suitable for representing UI preferences.
+
+| Class | Purpose |
+|---|---|
+| `LayoutMB` | Holds template and layout options such as fixed layout, boxed layout, collapsed sidebar, and control-sidebar appearance. |
+| `SkinMB` | Holds and changes the currently selected skin. |
+| `BreadCrumbMB` | Maintains a list of breadcrumb entries. |
+
+#### `LayoutMB`
+
+`LayoutMB` manages template-selection and layout flags:
+
+```java
+LayoutMB layout = new LayoutMB();
+layout.init();
+
+layout.setFixedLayout(true);
+layout.setSidebarCollapsed(false);
+layout.setExpandOnHover(true);
+layout.setDarkControlSidebarSkin(true);
+
+layout.setTemplateTop();
+
+if (layout.isDefaultTemplate()) {
+    layout.toggleTemplate();
+}
+```
+
+Available layout options include:
+
+- `setLeftMenuTemplate(Boolean)`
+- `setFixedLayout(Boolean)`
+- `setBoxedLayout(Boolean)`
+- `setExpandOnHover(Boolean)`
+- `setSidebarCollapsed(Boolean)`
+- `setFixedControlSidebar(Boolean)`
+- `setDarkControlSidebarSkin(Boolean)`
+
+Use `restoreDefaults()` to reset layout state.
+
+#### `SkinMB`
+
+Use `SkinMB` to retrieve or update the active skin:
+
+```java
+SkinMB skin = new SkinMB();
+skin.init();
+
+skin.changeSkin("blue");
+String currentSkin = skin.getSkin();
+```
+
+The skin can also be assigned directly:
+
+```java
+skin.setSkin("dark");
+```
+
+#### `BreadCrumbMB` and `BreadCrumb`
+
+`BreadCrumb` is a simple navigation item containing a link and title. `BreadCrumbMB` manages a list of those items.
+
+```java
+BreadCrumbMB breadCrumbs = new BreadCrumbMB();
+breadCrumbs.init();
+
+breadCrumbs.add("/dashboard", "Dashboard", true);
+breadCrumbs.add("/users", "Users", false);
+breadCrumbs.add("/users/new", "New User", false);
+
+List<BreadCrumb> items = breadCrumbs.getBreadCrumbs();
+```
+
+The `clear` argument on `add` can be used when adding a breadcrumb should first clear the current collection:
+
+```java
+breadCrumbs.add("/reports", "Reports", true);
+```
+
+Create and manage breadcrumb objects directly when needed:
+
+```java
+BreadCrumb settings = new BreadCrumb("/settings", "Settings");
+
+breadCrumbs.add(settings);
+breadCrumbs.remove(settings);
+breadCrumbs.clearAndHome();
+```
+
+The overloaded `add` method accepts an additional conditional flag:
+
+```java
+boolean canViewAudit = true;
+breadCrumbs.add("/audit", "Audit Log", false, canViewAudit);
+```
+
+### Application configuration
+
+`AdminConfig` is a serializable configuration object covering common application and template behavior.
+
+It exposes settings for:
+
+- Login and index pages
+- Date formatting
+- Menu rendering and search
+- Breadcrumb rendering and maximum size
+- Messages and Ajax status rendering
+- Mobile-header behavior
+- Ripple effects
+- Template and skin values
+- URL extension handling
+- Loading image and loading behavior
+- Control-sidebar rendering
+
+Example:
+
+```java
+AdminConfig config = new AdminConfig();
+config.init();
+
+config.setLoginPage("/login");
+config.setIndexPage("/dashboard");
+config.setDateFormat("yyyy-MM-dd");
+
+config.setRenderBreadCrumb(true);
+config.setBreadCrumbMaxSize(6);
+
+config.setRenderMessages(true);
+config.setAutoHideMessages(true);
+config.setMessagesHideTimeout("5000");
+
+config.setEnableRipple(true);
+config.setRippleMobileOnly(false);
+
+config.setSkin("blue");
+config.setTemplatePath("/templates");
+```
+
+Restore default configuration values with:
+
+```java
+config.restoreDefaults();
+```
+
+Several configuration properties are available as boolean getters:
+
+```java
+boolean menuSearchEnabled = config.isRenderMenuSearch();
+boolean extensionLessUrls = config.isExtensionLessUrls();
+boolean showControlSidebar = config.isRenderControlSidebar();
+boolean showAjaxStatus = config.isRenderAjaxStatus();
+```
+
+### Control sidebar configuration
+
+`ControlSidebarConfig` represents sidebar-related layout settings and is constructed with all of its values:
+
+```java
+ControlSidebarConfig sidebarConfig = new ControlSidebarConfig(
+    true,   // showOnMobile
+    true,   // fixedLayout
+    false,  // boxedLayout
+    true,   // expandOnHover
+    false,  // sidebarCollapsed
+    true,   // fixed
+    true    // darkSkin
+);
+
+config.setControlSidebar(sidebarConfig);
+```
+
+Its properties can then be queried through getters such as `getShowOnMobile()`, `getFixed()`, and `getDarkSkin()`.
+
+## Session and authentication support
+
+### `AdminSession`
+
+`AdminSession` stores login and redirect state:
+
+```java
+AdminSession session = new AdminSession();
+
+session.setIsLoggedIn(true);
+session.setUserRedirected(false);
+
+if (session.isLoggedIn()) {
+    // Continue with the authenticated flow.
+}
+```
+
+### `LogoutMB`
+
+`LogoutMB` exposes a logout operation:
+
+```java
+LogoutMB logout = new LogoutMB();
+logout.doLogout();
+```
+
+`doLogout()` may throw `IOException`, so callers should handle or declare it as appropriate.
+
+## Exceptions and JSF exception handling
+
+### `BusinessException`
+
+`BusinessException` is a runtime exception intended to carry user-facing information such as summary, detail, JSF message severity, and a field identifier.
+
+```java
+import javax.faces.application.FacesMessage;
+
+BusinessException exception = new BusinessException(
+    "Validation failed",
+    "The email address is already registered",
+    FacesMessage.SEVERITY_ERROR
+);
+
+exception.setFieldId("userForm:email");
+throw exception;
+```
+
+It also supports chained, aggregated business exceptions:
+
+```java
+BusinessException validation = new BusinessException("Please correct the highlighted fields");
+
+validation.addException(
+    new BusinessException("Invalid name", "Name is required", "userForm:name")
+);
+
+validation.addException(
+    new BusinessException("Invalid email", "Email is required", "userForm:email")
+);
+
+validation.build();
+throw validation;
+```
+
+Available constructors support combinations of:
+
+- Summary
+- Detail
+- `FacesMessage.Severity`
+- Field identifier
+- Cause
+
+### `AccessDeniedException`
+
+Use `AccessDeniedException` when an operation should fail due to insufficient access:
+
+```java
+if (!allowed) {
+    throw new AccessDeniedException("Access denied");
+}
+```
+
+A cause may also be supplied:
+
+```java
+throw new AccessDeniedException(originalException);
+```
+
+### Exception handler integration
+
+The library provides a JSF exception-handler wrapper and factory:
+
+- `CustomExceptionHandler`
+- `CustomExceptionHandlerFactory`
+
+`CustomExceptionHandler` wraps an existing `ExceptionHandler` and implements `handle()`:
+
+```java
+ExceptionHandler wrappedHandler = /* existing handler */;
+CustomExceptionHandler handler = new CustomExceptionHandler(wrappedHandler);
+
+handler.handle();
+```
+
+`CustomExceptionHandlerFactory` wraps a parent `ExceptionHandlerFactory` and supplies an exception handler through `getExceptionHandler()`.
+
+## Servlet integration
+
+### `AdminFilter`
+
+`AdminFilter` implements the Servlet `Filter` contract:
+
+```java
+public class ApplicationFilterSetup {
+
+    private final AdminFilter filter = new AdminFilter();
+
+    public void initialize(FilterConfig filterConfig) {
+        filter.init(filterConfig);
+    }
+}
+```
+
+Its standard lifecycle methods are available:
+
+- `init(FilterConfig)`
+- `doFilter(ServletRequest, ServletResponse, FilterChain)`
+- `destroy()`
+
+### `AdminServletContextListener`
+
+`AdminServletContextListener` implements `ServletContextListener` and receives application lifecycle events:
+
+- `contextInitialized(ServletContextEvent)`
+- `contextDestroyed(ServletContextEvent)`
+
+### `AdminSystemEventListener`
+
+`AdminSystemEventListener` implements JSF’s `SystemEventListener` contract:
+
+```java
+AdminSystemEventListener listener = new AdminSystemEventListener();
+
+boolean supported = listener.isListenerForSource(source);
+listener.processEvent(event);
+```
+
+## Web application metadata
+
+`WebXml` is a singleton enum that provides access to selected web-application metadata after initialization.
+
+```java
+WebXml webXml = WebXml.INSTANCE.init(servletContext);
+
+String loginPage = webXml.getFormLoginPage();
+String loginErrorPage = webXml.getFormErrorPage();
+
+List<String> welcomeFiles = webXml.getWelcomeFiles();
+int sessionTimeout = webXml.getSessionTimeout();
+```
+
+It can also be used to inspect configured error pages and security rules:
+
+```java
+String errorLocation = webXml.findErrorPageLocation(exception);
+
+boolean allowed = webXml.isAccessAllowed("/admin/users", "ADMIN");
+
+Map<String, Set<String>> constraints = webXml.getSecurityConstraints();
+Map<Class<Throwable>, String> errorPages = webXml.getErrorPageLocations();
+```
+
+## Utilities
+
+### `AdminUtils`
+
+`AdminUtils` contains static web and JSF helpers.
+
+Redirect to a URL:
+
+```java
+AdminUtils.redirect("/dashboard");
+```
+
+Access the HTTP request associated with a JSF context:
+
+```java
+HttpServletRequest request = AdminUtils.getRequest(facesContext);
+```
+
+Encode a URL value:
+
+```java
+String encoded = AdminUtils.encodeURL("/users?status=active");
+```
+
+### `Assert`
+
+`Assert` provides lightweight presence and string checks.
+
+```java
+if (Assert.has(userName)) {
+    // userName is present
+}
+
+if (Assert.contains(path, "/admin")) {
+    // path contains the admin segment
+}
+
+if (Assert.startsWithOneOf(resource, "/javax.faces.resource/", "/resources/")) {
+    // resource matches one of the configured prefixes
+}
+```
+
+Supported checks include:
+
+```java
+Assert.has(object);
+Assert.has(text);
+Assert.has(array);
+Assert.has(collection);
+Assert.has(map);
+
+Assert.contains(textToSearch, substring);
+Assert.startsWithOneOf(string, prefixes);
+```
+
+## Internationalization
+
+`AdminUTF8Bundle` extends `ResourceBundle` and exposes resource keys through `getKeys()`:
+
+```java
+ResourceBundle bundle = new AdminUTF8Bundle();
+
+Enumeration<String> keys = bundle.getKeys();
+while (keys.hasMoreElements()) {
+    String key = keys.nextElement();
+    Object value = bundle.getObject(key);
+}
+```
+
+## Typical UI setup example
+
+The following example combines configuration, layout, skin, and breadcrumb state in an application-level setup flow:
+
+```java
+AdminConfig config = new AdminConfig();
+config.init();
+config.setLoginPage("/login");
+config.setIndexPage("/dashboard");
+config.setRenderBreadCrumb(true);
+config.setBreadCrumbMaxSize(5);
+config.setRenderMessages(true);
+config.setEnableRipple(true);
+
+LayoutMB layout = new LayoutMB();
+layout.init();
+layout.setFixedLayout(true);
+layout.setSidebarCollapsed(false);
+layout.setFixedControlSidebar(true);
+
+SkinMB skin = new SkinMB();
+skin.init();
+skin.changeSkin("blue");
+
+BreadCrumbMB navigation = new BreadCrumbMB();
+navigation.init();
+navigation.add("/dashboard", "Dashboard", true);
+navigation.add("/customers", "Customers", false);
+```
+
+This separates global template behavior (`AdminConfig`) from per-UI layout state (`LayoutMB`), skin selection (`SkinMB`), and current navigation context (`BreadCrumbMB`).

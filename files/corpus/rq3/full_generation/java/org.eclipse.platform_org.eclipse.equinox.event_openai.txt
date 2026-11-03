@@ -1,0 +1,376 @@
+# Eclipse Equinox Event
+
+`org.eclipse.platform:org.eclipse.equinox.event` provides event administration and event adaptation components for Java applications using the OSGi event model.
+
+At its core, the library exposes `EventAdmin` implementations that can send or post `Event` instances. It also includes support for tracking `EventHandler` services and for converting framework, bundle, and service lifecycle events into `Event` objects that can be delivered through an `EventAdmin`.
+
+## Overview
+
+The library is organized around three related responsibilities:
+
+- **Event delivery** — publish an `Event` synchronously or asynchronously through `EventAdmin`.
+- **Handler tracking and dispatch** — discover `EventHandler` services, determine which handlers apply to a topic, and invoke them.
+- **OSGi event adaptation** — convert `FrameworkEvent`, `BundleEvent`, and `ServiceEvent` instances into generic `Event` instances and redeliver them through an event administrator.
+
+## Main classes
+
+### Event administration
+
+#### `EventAdminImpl`
+
+```java
+public class EventAdminImpl implements EventAdmin {
+    public void postEvent(Event event);
+    public void sendEvent(Event event);
+}
+```
+
+`EventAdminImpl` is an `EventAdmin` implementation.
+
+- `postEvent(Event event)` submits an event for posting.
+- `sendEvent(Event event)` sends an event.
+
+Use this class where an `EventAdmin` implementation is required and event delivery is managed directly.
+
+#### `EventComponent`
+
+```java
+public class EventComponent implements EventAdmin {
+    public void postEvent(Event event);
+    public void sendEvent(Event event);
+}
+```
+
+`EventComponent` is another `EventAdmin` implementation with the same event-delivery operations as `EventAdminImpl`.
+
+Code that depends only on the `EventAdmin` interface can work with either implementation.
+
+---
+
+### Event handler tracking
+
+#### `EventHandlerTracker`
+
+```java
+public class EventHandlerTracker
+    extends ServiceTracker<EventHandler, EventHandlerWrapper>
+    implements EventDispatcher<EventHandlerWrapper, Permission, Event> {
+```
+
+`EventHandlerTracker` tracks `EventHandler` services and represents them as `EventHandlerWrapper` instances.
+
+```java
+public EventHandlerTracker(BundleContext context, LogTracker log);
+```
+
+The tracker is created with an OSGi `BundleContext` and a `LogTracker`.
+
+Key operations include:
+
+```java
+public EventHandlerWrapper addingService(ServiceReference<EventHandler> reference);
+public void modifiedService(ServiceReference<EventHandler> reference,
+                            EventHandlerWrapper service);
+public void removedService(ServiceReference<EventHandler> reference,
+                           EventHandlerWrapper service);
+```
+
+These methods manage the lifecycle of tracked event-handler services.
+
+```java
+public synchronized Set<EventHandlerWrapper> getHandlers(String topic);
+```
+
+Returns the tracked handler wrappers applicable to a topic.
+
+```java
+public void dispatchEvent(EventHandlerWrapper eventListener,
+                          Permission listenerObject,
+                          int eventAction,
+                          Event eventObject);
+```
+
+Dispatches an event to an individual wrapped handler. The `Permission` and action value are supplied by the caller’s dispatching context.
+
+#### `EventHandlerWrapper`
+
+```java
+public class EventHandlerWrapper {
+    public EventHandlerWrapper(ServiceReference<EventHandler> reference,
+                               BundleContext context,
+                               LogTracker log);
+```
+
+`EventHandlerWrapper` wraps an `EventHandler` service reference and provides access to its configured topics and event invocation behavior.
+
+```java
+public synchronized boolean init();
+```
+
+Initializes the wrapper. The returned boolean can be used by callers to determine whether initialization succeeded.
+
+```java
+public void flush();
+```
+
+Flushes the wrapper’s current state.
+
+```java
+public synchronized String[] getTopics();
+```
+
+Returns the topics associated with the wrapped handler.
+
+```java
+public void handleEvent(Event event, Permission perm);
+```
+
+Delivers an event to the wrapped handler, using the supplied permission context.
+
+---
+
+### Logging support
+
+#### `LogTracker`
+
+```java
+public class LogTracker extends ServiceTracker<LogService, LogService> {
+    public LogTracker(BundleContext context, PrintStream out);
+    public void error(String message);
+    public void error(String message, Throwable exception);
+}
+```
+
+`LogTracker` tracks an OSGi `LogService` and provides error-reporting helpers.
+
+- `error(String message)` reports an error message.
+- `error(String message, Throwable exception)` reports an error together with an exception.
+
+The constructor accepts a `BundleContext` and a `PrintStream`, allowing output to be available even when a tracked logging service is not being used by the caller.
+
+---
+
+### Event adapters
+
+#### `EventAdapter`
+
+```java
+public class EventAdapter {
+    public EventAdapter(EventAdmin eventAdmin);
+    public abstract Event convert();
+    public void redeliver();
+```
+
+`EventAdapter` is the base type for adapters that translate another event representation into an OSGi `Event`.
+
+- `convert()` produces the corresponding `Event`.
+- `redeliver()` converts and delivers the adapted event through the configured `EventAdmin`.
+
+It also provides helpers for building event property maps:
+
+```java
+public void putBundleProperties(Map<String, Object> properties, Bundle bundle);
+public void putExceptionProperties(Map<String, Object> properties, Throwable t);
+public void putServiceReferenceProperties(Map<String, Object> properties,
+                                          ServiceReference<?> ref);
+public String[] classes2strings(Class<?>[] classes);
+```
+
+These helpers can be used by adapter implementations to add information about bundles, exceptions, service references, and Java class arrays to event properties.
+
+#### `BundleEventAdapter`
+
+```java
+public class BundleEventAdapter extends EventAdapter {
+    public BundleEventAdapter(BundleEvent event, EventAdmin eventAdmin);
+    public Event convert();
+}
+```
+
+Converts a `BundleEvent` into an `Event`.
+
+#### `FrameworkEventAdapter`
+
+```java
+public class FrameworkEventAdapter extends EventAdapter {
+    public FrameworkEventAdapter(FrameworkEvent event, EventAdmin eventAdmin);
+    public Event convert();
+}
+```
+
+Converts a `FrameworkEvent` into an `Event`.
+
+#### `ServiceEventAdapter`
+
+```java
+public class ServiceEventAdapter extends EventAdapter {
+    public ServiceEventAdapter(ServiceEvent event, EventAdmin eventAdmin);
+    public Event convert();
+}
+```
+
+Converts a `ServiceEvent` into an `Event`.
+
+---
+
+### Automatic redelivery of framework events
+
+#### `EventRedeliverer`
+
+```java
+public class EventRedeliverer
+    implements FrameworkListener, BundleListener, AllServiceListener {
+```
+
+`EventRedeliverer` listens for framework, bundle, and service events and can redeliver them through an `EventAdmin`.
+
+```java
+public EventRedeliverer(BundleContext bc, EventAdmin eventAdmin);
+public void open();
+public void close();
+```
+
+- `open()` begins listener operation.
+- `close()` stops listener operation.
+
+The listener callbacks are:
+
+```java
+public void frameworkEvent(FrameworkEvent event);
+public void bundleChanged(BundleEvent event);
+public void serviceChanged(ServiceEvent event);
+```
+
+Each callback receives the corresponding OSGi lifecycle event, which can then be adapted and delivered through the configured event administrator.
+
+## Usage examples
+
+### Send or post an existing event
+
+When an `Event` is available, it can be delivered through any `EventAdmin` implementation.
+
+```java
+import org.eclipse.equinox.internal.event.EventAdminImpl;
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventAdmin;
+
+public final class EventPublisher {
+    private final EventAdmin eventAdmin;
+
+    public EventPublisher() {
+        this.eventAdmin = new EventAdminImpl();
+    }
+
+    public void publish(Event event) {
+        eventAdmin.postEvent(event);
+    }
+
+    public void publishImmediately(Event event) {
+        eventAdmin.sendEvent(event);
+    }
+}
+```
+
+The same code can depend on `EventAdmin` rather than a concrete implementation:
+
+```java
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventAdmin;
+
+public final class EventPublisher {
+    private final EventAdmin eventAdmin;
+
+    public EventPublisher(EventAdmin eventAdmin) {
+        this.eventAdmin = eventAdmin;
+    }
+
+    public void publish(Event event) {
+        eventAdmin.postEvent(event);
+    }
+}
+```
+
+### Convert and redeliver a bundle event
+
+A `BundleEventAdapter` converts an incoming `BundleEvent` to an `Event`. Use `convert()` when the converted event must be inspected or passed elsewhere, or use `redeliver()` to deliver it through the configured event administrator.
+
+```java
+import org.eclipse.equinox.internal.event.mapper.BundleEventAdapter;
+import org.osgi.framework.BundleEvent;
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventAdmin;
+
+public final class BundleEventPublisher {
+    private final EventAdmin eventAdmin;
+
+    public BundleEventPublisher(EventAdmin eventAdmin) {
+        this.eventAdmin = eventAdmin;
+    }
+
+    public Event convert(BundleEvent bundleEvent) {
+        BundleEventAdapter adapter =
+                new BundleEventAdapter(bundleEvent, eventAdmin);
+
+        return adapter.convert();
+    }
+
+    public void redeliver(BundleEvent bundleEvent) {
+        BundleEventAdapter adapter =
+                new BundleEventAdapter(bundleEvent, eventAdmin);
+
+        adapter.redeliver();
+    }
+}
+```
+
+### Listen for and redeliver OSGi lifecycle events
+
+`EventRedeliverer` can be used where a `BundleContext` and `EventAdmin` are available.
+
+```java
+import org.eclipse.equinox.internal.event.mapper.EventRedeliverer;
+import org.osgi.framework.BundleContext;
+import org.osgi.service.event.EventAdmin;
+
+public final class LifecycleEventBridge implements AutoCloseable {
+    private final EventRedeliverer redeliverer;
+
+    public LifecycleEventBridge(BundleContext context, EventAdmin eventAdmin) {
+        this.redeliverer = new EventRedeliverer(context, eventAdmin);
+    }
+
+    public void start() {
+        redeliverer.open();
+    }
+
+    @Override
+    public void close() {
+        redeliverer.close();
+    }
+}
+```
+
+### Inspect handlers for a topic
+
+`EventHandlerTracker` can be used to locate handler wrappers associated with a topic.
+
+```java
+import java.util.Set;
+
+import org.eclipse.equinox.internal.event.EventHandlerTracker;
+import org.eclipse.equinox.internal.event.EventHandlerWrapper;
+
+public final class HandlerLookup {
+    private final EventHandlerTracker tracker;
+
+    public HandlerLookup(EventHandlerTracker tracker) {
+        this.tracker = tracker;
+    }
+
+    public Set<EventHandlerWrapper> handlersFor(String topic) {
+        return tracker.getHandlers(topic);
+    }
+}
+```
+
+Each returned `EventHandlerWrapper` can expose its topics with `getTopics()` and can receive an event through `handleEvent(Event, Permission)` when the appropriate permission context is available.

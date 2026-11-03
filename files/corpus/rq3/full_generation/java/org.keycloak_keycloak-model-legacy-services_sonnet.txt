@@ -1,0 +1,203 @@
+# keycloak-model-legacy-services
+
+Legacy service provider implementations for Keycloak's realm export/import
+subsystem and a set of administrative REST resources for cache management
+and user storage provider operations. This module wires together the
+`ExportProvider`/`ImportProvider` SPI contracts with concrete
+file-based and directory-based implementations, and exposes admin REST
+endpoints for clearing caches and managing user storage providers.
+
+## Overview
+
+This library is organized into two functional areas:
+
+### 1. Export / Import providers
+
+These classes implement Keycloak's export/import SPI, allowing realm data
+(realms, clients, users, federated users, etc.) to be serialized to and
+from JSON, either as a single file or as a directory tree of files.
+
+- **`MultipleStepsExportProvider<T>`** — Base class for export providers
+  that perform export in multiple steps (e.g., realm metadata, then users
+  in batches). Supports configuring the realm name, the number of users
+  written per file, and the overall users-export strategy. Concrete
+  subclasses customize the actual file-writing behavior.
+
+- **`DirExportProvider`** — Exports realm(s) to a directory, with one file
+  per realm and (optionally) additional files for users, following the
+  `MultipleStepsExportProvider` step model. Provides a static utility
+  method for recursively deleting a directory (used for cleanup before a
+  fresh export).
+
+- **`DirExportProviderFactory`** — SPI factory that creates
+  `DirExportProvider` instances and exposes configuration metadata (e.g.,
+  target directory) through the standard Keycloak `Config.Scope`
+  mechanism.
+
+- **`SingleFileExportProvider`** — Exports the entire model (or a single
+  named realm) into one JSON file.
+
+- **`SingleFileExportProviderFactory`** — SPI factory for
+  `SingleFileExportProvider`.
+
+- **`AbstractFileBasedImportProvider`** *(extended by the classes below)*
+  — Common base for import providers that read realm/user representations
+  from files.
+
+- **`DirImportProvider`** — Imports realm(s) from a directory of files,
+  using a configurable `Strategy` (e.g., overwrite existing entities or
+  ignore them if they already exist). Can target one specific realm by
+  name or import everything found in the directory. Also reports whether
+  the master realm was found among the exported/imported data.
+
+- **`DirImportProviderFactory`** — SPI factory for `DirImportProvider`.
+
+- **`SingleFileImportProvider`** — Imports realm(s) from a single JSON
+  file using a configurable `Strategy`.
+
+- **`SingleFileImportProviderFactory`** — SPI factory for
+  `SingleFileImportProvider`.
+
+- **`ImportUtils`** — Static helper methods used internally (and
+  available for reuse) to parse and apply realm/user/federated-user
+  representations from JSON streams into the Keycloak model, including
+  batch import of multiple realms.
+
+- **`ExportImportSessionTask`** — A `KeycloakSessionTask` implementation
+  used to run export/import work within a properly scoped
+  `KeycloakSession`.
+
+### 2. Admin REST resources
+
+These classes back Keycloak's server administration REST API, exposing
+cache-clearing operations and user storage provider synchronization as
+realm-scoped admin resources. Each resource has a corresponding
+`*RealmAdminProvider` factory that registers it under the Keycloak admin
+REST tree.
+
+- **`ClearKeysCacheRealmAdminProvider` / `ClearKeysCacheResource`** —
+  Exposes an endpoint to clear the realm's public/signing keys cache.
+
+- **`ClearRealmCacheRealmAdminProvider` / `ClearRealmCacheResource`** —
+  Exposes an endpoint to clear the realm-level model cache.
+
+- **`ClearUserCacheRealmAdminProvider` / `ClearUserCacheResource`** —
+  Exposes an endpoint to clear the user cache for a realm.
+
+- **`UserStorageProviderRealmAdminProvider` / `UserStorageProviderResource`**
+  — Exposes endpoints to inspect and manage federated user storage
+  providers: fetching a human-readable name for a provider, triggering a
+  full or "changed users" sync, removing previously imported users,
+  unlinking federated users from their provider, and synchronizing mapper
+  data in a given direction.
+
+- **`ClientStorageProviderResource`** — Exposes a lookup endpoint to
+  retrieve a simple/display name for a client storage provider by id.
+
+## How the pieces fit together
+
+Export/import providers are registered via their factories with the
+Keycloak `KeycloakSessionFactory`. At runtime, Keycloak (or an
+administrator via CLI/admin console) requests an `ExportProvider` or
+`ImportProvider` instance by id (`"dir"` or `"singlefile"`), configures it
+(target file/directory, realm name, strategy), and invokes
+`exportModel()`/`exportRealm(...)` or `importModel()`/`importRealm(...)`.
+
+The admin REST resource classes are registered as
+`AdminRealmResourceProvider`s and become reachable under a realm's admin
+REST path. They rely on `AdminPermissionEvaluator` for authorization
+checks and `AdminEventBuilder` for admin event auditing, consistent with
+the rest of the Keycloak admin REST layer.
+
+## Usage examples
+
+### Exporting a realm to a single file
+
+```java
+KeycloakSessionFactory sessionFactory = ...; // obtained from Keycloak runtime
+
+SingleFileExportProviderFactory factory = new SingleFileExportProviderFactory();
+factory.init(config);
+factory.postInit(sessionFactory);
+
+try (ExportProvider exportProvider = factory.create(session)) {
+    ((SingleFileExportProvider) exportProvider)
+        .withFile(new File("/tmp/my-realm-export.json"))
+        .withRealmName("my-realm")
+        .exportModel();
+}
+```
+
+### Exporting all realms to a directory, split across multiple user files
+
+```java
+DirExportProvider exportProvider = new DirExportProvider(sessionFactory);
+exportProvider
+    .withDir("/opt/keycloak/export")
+    .withUsersPerFile(1000)
+    .exportModel();
+exportProvider.close();
+```
+
+### Importing a realm from a directory using a given strategy
+
+```java
+DirImportProvider importProvider =
+    new DirImportProvider(sessionFactory, Strategy.OVERWRITE_EXISTING);
+
+importProvider
+    .withDir("/opt/keycloak/export")
+    .withRealmName("my-realm")
+    .importRealm("my-realm", Strategy.OVERWRITE_EXISTING);
+
+if (importProvider.isMasterRealmExported()) {
+    // master realm data was present in the export and has been imported
+}
+
+importProvider.close();
+```
+
+### Importing realms and users directly from streams via `ImportUtils`
+
+```java
+try (InputStream is = new FileInputStream("realm-export.json")) {
+    Map<String, RealmRepresentation> realms =
+        ImportUtils.getRealmsFromStream(mapper, is);
+
+    ImportUtils.importRealms(session, realms.values(), Strategy.IGNORE_EXISTING);
+}
+
+try (InputStream usersStream = new FileInputStream("my-realm-users-0.json")) {
+    ImportUtils.importUsersFromStream(session, "my-realm", mapper, usersStream);
+}
+```
+
+### Triggering a user storage provider sync from an admin resource
+
+```java
+UserStorageProviderResource resource =
+    new UserStorageProviderResource(session, auth, adminEvent);
+
+// Trigger a full sync of a configured user storage provider
+SynchronizationResult result = resource.syncUsers(providerId, "triggerFullSync");
+
+// Or synchronize just the changed users since the last sync
+SynchronizationResult incremental = resource.syncUsers(providerId, "triggerChangedUsersSync");
+
+// Remove users that were imported from this provider
+resource.removeImportedUsers(providerId);
+
+// Unlink federated users without deleting them
+resource.unlinkUsers(providerId);
+```
+
+## Configuration
+
+Each provider factory (`DirExportProviderFactory`, `SingleFileExportProviderFactory`,
+`DirImportProviderFactory`, `SingleFileImportProviderFactory`) exposes its
+configuration options through `getConfigMetadata()`, returning a list of
+`ProviderConfigProperty` entries. These are configured through standard
+Keycloak server configuration (`Config.Scope`) and typically include
+settings such as the export/import directory or file path, and default
+strategy behavior. Consult your Keycloak server configuration reference
+for the exact property names supported by your deployment.

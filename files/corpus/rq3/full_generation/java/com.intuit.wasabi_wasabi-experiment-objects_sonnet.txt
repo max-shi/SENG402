@@ -1,0 +1,148 @@
+# wasabi-experiment-objects
+
+`wasabi-experiment-objects` provides the core domain model for Wasabi, an A/B testing and experimentation platform. This library defines the fundamental value objects, builders, and validators used to represent experiments, buckets, pages, and their relationships — independent of any storage, transport, or service layer.
+
+It is intended to be used as a shared dependency by services, clients, and tools that need to create, validate, and manipulate experiment definitions in a consistent way.
+
+## Overview
+
+The library is organized around a small number of core concepts:
+
+### Experiments
+
+- **`Experiment`** — The primary entity representing an A/B test. It carries identity (`Experiment.ID`), scheduling (`startTime`/`endTime`), targeting rules, sampling percentage, state, application association, personalization settings, and lifecycle metadata (creation/modification time, creator, tags, priority, etc.). Experiments are built using the `Experiment.withID(...)` or `Experiment.from(...)` builder entry points and support cloning and state-transition checks via `isStateTransitionValid`.
+- **`ExperimentBase`** — A common interface implemented by `Experiment`, `NewExperiment`, and `PrioritizedExperiment`, exposing the shared read-only accessors (ID, description, rule, timing, label, state, application name, personalization flag, tags) so that code can work generically across these variants.
+- **`NewExperiment`** — A lighter-weight representation used when creating a new experiment (e.g., from an incoming API request) before it becomes a fully-formed `Experiment`. Built via `NewExperiment.withID(...)`.
+- **`PrioritizedExperiment`** — Wraps an `Experiment` together with a `priority` value, used when experiments need to be ranked or ordered (e.g., for mutually-exclusive experiment selection). Built via `PrioritizedExperiment.from(experiment, priority)`.
+- **`PrioritizedExperimentList`** and **`ExperimentList`** / **`ExperimentIDList`** — Simple collection wrappers for grouping experiments or their identifiers, typically used as request/response payloads.
+
+### Buckets
+
+- **`Bucket`** — Represents a single variant/treatment within an experiment (identified by `Bucket.Label`, tied to an `Experiment.ID`), with an allocation percentage, control flag, description, payload, and state. Built via `Bucket.newInstance(...)` or `Bucket.from(...)`, and supports state-transition validation via `isStateTransitionValid`.
+- **`BucketList`** — A collection wrapper for a group of `Bucket` instances belonging to an experiment.
+
+### Pages and Batches
+
+- **`Page`** — Represents a page (identified by `Page.Name`) on which experiments can run.
+- **`ExperimentPage`** — Associates an experiment-relevant page with a flag indicating whether new assignments are allowed on it, from the experiment's perspective. Grouped via `ExperimentPageList`.
+- **`PageExperiment`** — The inverse association: ties a `Page` to a specific `Experiment.ID`/`Experiment.Label`, again with an `allowNewAssignment` flag. Useful for looking up which experiments run on a given page.
+- **`ExperimentBatch`** — Represents a batch request context, bundling together a set of experiment labels, a user profile, and personalization parameters — typically used when requesting/getting assignments for multiple experiments in one call.
+
+### Supporting Types
+
+- **`Context`** — Represents an execution context (e.g., `PROD`, `QA`) that can scope experiments and assignments. Built via `Context.valueOf(...)` or `Context.newInstance(...)`.
+- **`ExperimentValidator`** — Encapsulates validation rules for experiments and buckets: validating a full `Experiment` or `NewExperiment`, validating state transitions for experiments and buckets, validating a list of buckets, and ensuring required invariants (e.g., description non-empty, experiment in `DRAFT` state before certain operations).
+
+### Exceptions
+
+All exceptions extend `WasabiException` (itself carrying an `ErrorCode` and detail message):
+
+- **`InvalidExperimentStateException`** — Thrown when an experiment is not in a state required for an operation; can be constructed from either a single desired state or a collection of acceptable states versus the actual state.
+- **`InvalidExperimentStateTransitionException`** — Thrown when an illegal experiment state transition is attempted.
+- **`InvalidBucketStateTransitionException`** — Thrown when an illegal bucket state transition is attempted.
+- **`InvalidIdentifierException`** — Thrown when an identifier (e.g., experiment ID, label) fails validation.
+- **`ErrorCode`** — An enumeration of all error conditions recognized across the library (e.g., `EXPERIMENT_NOT_FOUND`, `BUCKET_NOT_FOUND`, `INVALID_EXPERIMENT_STATE_TRANSITION`), each associated with an HTTP-style response code via `getResponseCode()`.
+
+## Usage Examples
+
+### Creating a new experiment
+
+```java
+import com.intuit.wasabi.experimentobjects.*;
+
+import java.util.Date;
+
+Experiment.ID experimentId = Experiment.ID.newInstance();
+
+Experiment experiment = Experiment.withID(experimentId)
+        .withLabel(Experiment.Label.valueOf("checkout_button_color"))
+        .withApplicationName(Application.Name.valueOf("MyApp"))
+        .withDescription("Test whether a green checkout button increases conversions")
+        .withSamplingPercent(0.5)
+        .withStartTime(new Date())
+        .withState(Experiment.State.DRAFT)
+        .build();
+```
+
+*(Exact builder method names shown above are illustrative of the builder pattern exposed by `Experiment.withID(...)`; consult the generated Javadoc for the definitive fluent API.)*
+
+### Adding buckets to an experiment
+
+```java
+Bucket control = Bucket.newInstance(experimentId, Bucket.Label.valueOf("control"))
+        .withControl(true)
+        .withAllocationPercent(0.5)
+        .withDescription("Original blue button")
+        .build();
+
+Bucket treatment = Bucket.newInstance(experimentId, Bucket.Label.valueOf("green"))
+        .withControl(false)
+        .withAllocationPercent(0.5)
+        .withDescription("Green button variant")
+        .build();
+
+BucketList buckets = new BucketList();
+buckets.addBucket(control);
+buckets.addBucket(treatment);
+
+experiment.setBuckets(buckets.getBuckets());
+```
+
+### Validating an experiment before persisting it
+
+```java
+ExperimentValidator validator = new ExperimentValidator();
+
+validator.validateExperiment(experiment);
+validator.validateExperimentBuckets(experiment.getBuckets());
+validator.ensureStateIsDraft(experiment);
+```
+
+If validation fails, a `WasabiException` subclass (such as `InvalidExperimentStateException` or `InvalidIdentifierException`) is thrown, carrying an `ErrorCode` that callers can inspect to determine the appropriate response.
+
+### Prioritizing experiments
+
+```java
+PrioritizedExperiment prioritized = PrioritizedExperiment.from(experiment, 1);
+
+PrioritizedExperimentList list = new PrioritizedExperimentList();
+list.addPrioritizedExperiment(prioritized);
+```
+
+### Building a batch assignment request
+
+```java
+import java.util.HashSet;
+import java.util.Set;
+
+Set<Experiment.Label> labels = new HashSet<>();
+labels.add(Experiment.Label.valueOf("checkout_button_color"));
+
+ExperimentBatch batch = ExperimentBatch.newInstance()
+        .withLabels(labels)
+        .build();
+```
+
+### Associating an experiment with a page
+
+```java
+Page page = Page.withName(Page.Name.valueOf("checkout")).build();
+
+ExperimentPage experimentPage = ExperimentPage.withAttributes(
+        Page.Name.valueOf("checkout"), true).build();
+
+ExperimentPageList pageList = new ExperimentPageList();
+pageList.addPage(experimentPage);
+
+experiment.setExperimentPageList(pageList.getPages());
+```
+
+## Error Handling
+
+All domain-level errors surface as unchecked exceptions extending `WasabiException`, which exposes:
+
+- `getErrorCode()` — an `ErrorCode` enum value classifying the failure
+- `getDetailMessage()` — a detailed, developer-facing message
+- `getMessage()` — the standard exception message
+
+This allows calling services to map errors consistently (e.g., to HTTP status codes via `ErrorCode.getResponseCode()`) regardless of which specific validation or state-transition failure occurred.

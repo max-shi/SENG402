@@ -1,0 +1,321 @@
+# problem-spring-webflux
+
+`org.zalando:problem-spring-webflux` provides reactive WebFlux-oriented support for turning exceptions into `Problem` responses.
+
+The library is built around reusable *advice traits*: interfaces with default methods that map common exception types to `Mono<ResponseEntity<Problem>>`. It also includes handlers that bridge those `Problem` responses to a `ServerWebExchange`, including general WebFlux exception handling and Spring Security entry-point/access-denied handling.
+
+## Overview
+
+The central abstraction is `AdviceTrait`.
+
+```java
+public interface AdviceTrait extends org.zalando.problem.spring.common.AdviceTrait
+```
+
+It offers methods for creating, logging, negotiating, processing, and falling back from `Problem` responses:
+
+- Create a response from a `Throwable`, `ThrowableProblem`, `Problem`, or explicit `StatusType`.
+- Add `HttpHeaders` and/or a problem `URI` type while creating a response.
+- Negotiate an output `MediaType` from a `ServerWebExchange`.
+- Log a problem before returning it.
+- Process a completed `ResponseEntity<Problem>`.
+- Fall back when a problem cannot otherwise be handled.
+
+All response-producing APIs are reactive and return `Mono<ResponseEntity<Problem>>`.
+
+## Core APIs
+
+### `AdviceTrait`
+
+`AdviceTrait` is the common base for all exception-specific traits.
+
+```java
+Mono<ResponseEntity<Problem>> create(Throwable throwable, ServerWebExchange request);
+
+Mono<ResponseEntity<Problem>> create(
+        StatusType status,
+        Throwable throwable,
+        ServerWebExchange request);
+
+Mono<ResponseEntity<Problem>> create(
+        StatusType status,
+        Throwable throwable,
+        ServerWebExchange request,
+        HttpHeaders headers,
+        URI type);
+
+Mono<ResponseEntity<Problem>> process(
+        ResponseEntity<Problem> entity,
+        ServerWebExchange request);
+```
+
+Use these methods when an application needs to create a response for an exception that does not have a dedicated handler trait.
+
+### `SpringAdviceTrait`
+
+`SpringAdviceTrait` extends `AdviceTrait` with `HttpStatus` support.
+
+```java
+Mono<ResponseEntity<Problem>> create(
+        HttpStatus status,
+        Throwable throwable,
+        ServerWebExchange request);
+
+ThrowableProblem toProblem(Throwable throwable, HttpStatus status);
+
+StatusType toStatus(HttpStatus status);
+```
+
+This is useful for handlers that begin with Spring’s `HttpStatus` values rather than a `StatusType`.
+
+## Exception-specific advice traits
+
+Traits provide dedicated handler methods for exception categories. An application can use the traits relevant to its exception model.
+
+### General exceptions
+
+| Trait | Handler |
+|---|---|
+| `ProblemAdviceTrait` | `handleProblem(ThrowableProblem, ServerWebExchange)` |
+| `ThrowableAdviceTrait` | `handleThrowable(Throwable, ServerWebExchange)` |
+| `UnsupportedOperationAdviceTrait` | `handleUnsupportedOperation(UnsupportedOperationException, ServerWebExchange)` |
+
+### HTTP and request handling
+
+| Trait | Handler |
+|---|---|
+| `MethodNotAllowedAdviceTrait` | `handleRequestMethodNotSupportedException(MethodNotAllowedException, ServerWebExchange)` |
+| `NotAcceptableAdviceTrait` | `handleMediaTypeNotAcceptable(NotAcceptableStatusException, ServerWebExchange)` |
+| `ResponseStatusAdviceTrait` | `handleResponseStatusException(ResponseStatusException, ServerWebExchange)` |
+| `UnsupportedMediaTypeAdviceTrait` | `handleMediaTypeNotSupportedException(UnsupportedMediaTypeStatusException, ServerWebExchange)` |
+
+### Network failures
+
+| Trait | Handler |
+|---|---|
+| `CircuitBreakerOpenAdviceTrait` | `handleCircuitBreakerOpen(CircuitBreakerOpenException, ServerWebExchange)` |
+| `SocketTimeoutAdviceTrait` | `handleSocketTimeout(SocketTimeoutException, ServerWebExchange)` |
+
+`CircuitBreakerOpenAdviceTrait` additionally exposes:
+
+```java
+HttpHeaders retryAfter(long delay);
+```
+
+This can be used when a circuit-breaker response should include retry-related headers.
+
+### Security failures
+
+| Trait | Handler |
+|---|---|
+| `AuthenticationAdviceTrait` | `handleAuthentication(AuthenticationException, ServerWebExchange)` |
+| `AccessDeniedAdviceTrait` | `handleAccessDenied(AccessDeniedException, ServerWebExchange)` |
+
+### Validation failures
+
+| Trait | Handler |
+|---|---|
+| `BindAdviceTrait` | `handleBindingResult(WebExchangeBindException, ServerWebExchange)` |
+| `ConstraintViolationAdviceTrait` | `handleConstraintViolation(ConstraintViolationException, ServerWebExchange)` |
+| `OpenApiValidationAdviceTrait` | `handleInvalidRequest(InvalidRequestException, ServerWebExchange)` |
+| `OpenApiValidationAdviceTrait` | `handleInvalidResponse(InvalidResponseException, ServerWebExchange)` |
+
+Validation traits also expose helpers for creating `Violation` values:
+
+```java
+Violation createViolation(FieldError error);
+Violation createViolation(ObjectError error);
+List<Violation> createViolations(BindingResult result);
+
+Violation createViolation(ConstraintViolation violation);
+
+Violation createViolation(Message message);
+```
+
+`OpenApiValidationAdviceTrait` can construct a validation problem from a validation report:
+
+```java
+Mono<ResponseEntity<Problem>> newConstraintViolationProblem(
+        Exception exception,
+        ServerWebExchange request,
+        ValidationReport report);
+```
+
+## Writing a response to WebFlux
+
+### `ProblemExceptionHandler`
+
+`ProblemExceptionHandler` implements `WebExceptionHandler` and acts as the WebFlux-facing bridge for exception handling.
+
+```java
+ProblemExceptionHandler(ObjectMapper mapper, HttpAdviceTrait advice)
+```
+
+Its `handle` method receives the exchange and exception:
+
+```java
+Mono<Void> handle(ServerWebExchange exchange, Throwable throwable);
+```
+
+Use it where a `WebExceptionHandler` is required and where an `HttpAdviceTrait` supplies the problem-generation behavior.
+
+### `AdviceUtils`
+
+`AdviceUtils` contains a utility for writing an already-created problem response to the HTTP response:
+
+```java
+Mono<Void> setHttpResponse(
+        ResponseEntity<Problem> entity,
+        ServerWebExchange exchange,
+        ObjectMapper mapper);
+```
+
+This is useful when application code has already obtained a `ResponseEntity<Problem>` and needs to commit it to a `ServerWebExchange`.
+
+## Security integration
+
+`SecurityProblemSupport` implements both:
+
+- `ServerAuthenticationEntryPoint`
+- `ServerAccessDeniedHandler`
+
+It delegates authentication and authorization failures to a `SecurityAdviceTrait`.
+
+```java
+SecurityProblemSupport(SecurityAdviceTrait advice, ObjectMapper mapper)
+```
+
+The two entry points are:
+
+```java
+Mono<Void> commence(
+        ServerWebExchange exchange,
+        AuthenticationException exception);
+
+Mono<Void> handle(
+        ServerWebExchange exchange,
+        AccessDeniedException exception);
+```
+
+This allows the same problem-response approach to be used for both unauthenticated and forbidden requests.
+
+## Usage examples
+
+### Handle an exception with a specific advice trait
+
+If an application has an advice object that implements `UnsupportedOperationAdviceTrait`, it can delegate an unsupported operation directly to the trait:
+
+```java
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+import org.zalando.problem.Problem;
+import org.zalando.problem.spring.webflux.advice.general.UnsupportedOperationAdviceTrait;
+
+final class ApplicationAdvice implements UnsupportedOperationAdviceTrait {
+    // Application-specific configuration or inherited advice behavior may go here.
+}
+
+class OperationHandler {
+
+    private final ApplicationAdvice advice = new ApplicationAdvice();
+
+    Mono<ResponseEntity<Problem>> handle(
+            UnsupportedOperationException exception,
+            ServerWebExchange exchange) {
+
+        return advice.handleUnsupportedOperation(exception, exchange);
+    }
+}
+```
+
+The returned `Mono` can be composed into an existing reactive request-processing flow.
+
+### Create a problem response with an explicit status and headers
+
+An advice implementation can create a response from an exception while supplying a status, headers, and a problem type URI.
+
+```java
+import java.net.URI;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+import org.zalando.problem.Problem;
+import org.zalando.problem.StatusType;
+import org.zalando.problem.spring.webflux.advice.AdviceTrait;
+
+class ErrorResponder {
+
+    private final AdviceTrait advice;
+
+    ErrorResponder(AdviceTrait advice) {
+        this.advice = advice;
+    }
+
+    Mono<ResponseEntity<Problem>> respond(
+            StatusType status,
+            Throwable exception,
+            ServerWebExchange exchange) {
+
+        HttpHeaders headers = new HttpHeaders();
+        URI type = URI.create("https://example.invalid/problems/request-failed");
+
+        return advice.create(status, exception, exchange, headers, type);
+    }
+}
+```
+
+### Write a `ResponseEntity<Problem>` to the exchange
+
+Use `AdviceUtils` when a `ResponseEntity<Problem>` has already been produced:
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+import org.zalando.problem.Problem;
+import org.zalando.problem.spring.webflux.advice.utils.AdviceUtils;
+
+class ProblemResponseWriter {
+
+    private final ObjectMapper mapper;
+
+    ProblemResponseWriter(ObjectMapper mapper) {
+        this.mapper = mapper;
+    }
+
+    Mono<Void> write(
+            ResponseEntity<Problem> response,
+            ServerWebExchange exchange) {
+
+        return AdviceUtils.setHttpResponse(response, exchange, mapper);
+    }
+}
+```
+
+### Use security problem support
+
+`SecurityProblemSupport` can be used wherever both a `ServerAuthenticationEntryPoint` and a `ServerAccessDeniedHandler` are needed.
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.zalando.problem.spring.webflux.advice.security.SecurityProblemSupport;
+
+class SecurityConfigurationSupport {
+
+    private final SecurityProblemSupport problemSupport;
+
+    SecurityConfigurationSupport(SecurityAdviceTrait advice, ObjectMapper mapper) {
+        this.problemSupport = new SecurityProblemSupport(advice, mapper);
+    }
+
+    SecurityProblemSupport problemSupport() {
+        return problemSupport;
+    }
+}
+```
+
+The returned `SecurityProblemSupport` instance can handle both `AuthenticationException` and `AccessDeniedException` through its `commence` and `handle` methods.

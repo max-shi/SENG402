@@ -1,0 +1,508 @@
+# pyspellchecker
+
+`pyspellchecker` is a Python library for working with spelling dictionaries and word-frequency data. It provides tools to:
+
+- Check whether words are known or unknown.
+- Generate spelling candidates and corrections.
+- Calculate word usage frequencies.
+- Load, modify, and export frequency dictionaries.
+- Tokenize text and build custom dictionaries from text files or iterables.
+- Build and clean language dictionary data through helper scripts.
+
+## Core concepts
+
+The library centers on two classes:
+
+- **`SpellChecker`** — provides spelling-oriented operations such as finding unknown words, generating edit-distance candidates, and selecting a correction.
+- **`WordFrequency`** — stores a mapping of words to frequency counts and provides loading, mutation, tokenization, and inspection utilities.
+
+A `SpellChecker` exposes a `WordFrequency` instance through its `word_frequency` interface. Frequency data is used when selecting likely corrections and when calculating word usage frequency.
+
+## Installation
+
+```bash
+pip install pyspellchecker
+```
+
+## Quick start
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+words = ["this", "is", "a", "simple", "speling", "example"]
+
+print(spell.unknown(words))
+# {"speling"}
+
+print(spell.correction("speling"))
+# "spelling" (depending on the loaded dictionary)
+
+print(spell.candidates("speling"))
+# A set of possible dictionary words
+```
+
+## `SpellChecker`
+
+`SpellChecker` provides the main spelling-checking interface.
+
+### Available languages
+
+Use `languages()` to inspect the language dictionaries available to the library:
+
+```python
+from spellchecker import SpellChecker
+
+for language in SpellChecker.languages():
+    print(language)
+```
+
+### Check known and unknown words
+
+Pass an iterable of words to `known()` or `unknown()`:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+words = ["python", "dictionary", "teh", "spellchecker"]
+
+known_words = spell.known(words)
+unknown_words = spell.unknown(words)
+
+print(known_words)
+print(unknown_words)
+```
+
+`known()` returns words found in the active dictionary. `unknown()` returns words that are not found.
+
+### Find a correction
+
+Use `correction()` to request the most likely correction for a word:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+word = "recieve"
+suggestion = spell.correction(word)
+
+if suggestion is None:
+    print(f"No correction found for {word!r}")
+else:
+    print(f"Did you mean {suggestion!r}?")
+```
+
+### Inspect candidates
+
+Use `candidates()` when you need all candidate words rather than a single suggested correction:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+candidates = spell.candidates("speling")
+
+if candidates:
+    for candidate in sorted(candidates):
+        print(candidate)
+```
+
+`candidates()` returns a set of candidate words, or `None` when no candidates are available.
+
+### Edit-distance candidates
+
+The library exposes candidate generation at edit distance one and two:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+distance_one = spell.edit_distance_1("speling")
+distance_two = spell.edit_distance_2("speling")
+
+print(f"Distance 1 candidates: {len(distance_one)}")
+print(f"Distance 2 candidates: {len(distance_two)}")
+```
+
+- `edit_distance_1()` returns a `set[str]`.
+- `edit_distance_2()` returns a `list[str]`.
+
+### Split text into words
+
+Use `split_words()` to tokenize text with the spell checker’s word splitting behavior:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+text = "Spell checking text can include punctuation, numbers, and mixed-case words."
+words = list(spell.split_words(text))
+
+print(words)
+```
+
+### Word usage frequency
+
+`word_usage_frequency()` returns a word’s relative usage frequency:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+frequency = spell.word_usage_frequency("example")
+print(frequency)
+```
+
+Optionally provide a custom total-word count:
+
+```python
+frequency = spell.word_usage_frequency("example", total_words=1_000_000)
+```
+
+### Configure edit distance
+
+The `distance` interface controls the edit-distance behavior used by the spell checker:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+print(spell.distance)
+
+spell.distance = 1
+```
+
+### Export a dictionary
+
+Export the active word-frequency data for later reuse:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+spell.export(
+    filepath="custom_dictionary.json.gz",
+    encoding="utf-8",
+    gzipped=True,
+)
+```
+
+Set `gzipped=False` to write an uncompressed export:
+
+```python
+spell.export("custom_dictionary.json", gzipped=False)
+```
+
+## `WordFrequency`
+
+`WordFrequency` manages dictionary words and their integer frequency counts.
+
+A word-frequency instance is available from a spell checker:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+frequency = spell.word_frequency
+```
+
+### Inspect dictionary statistics
+
+```python
+from spellchecker import SpellChecker
+
+frequency = SpellChecker().word_frequency
+
+print(f"Total word count: {frequency.total_words}")
+print(f"Unique words: {frequency.unique_words}")
+print(f"Longest word length: {frequency.longest_word_length}")
+print(f"Letters: {sorted(frequency.letters)}")
+```
+
+The frequency object also exposes its underlying dictionary:
+
+```python
+dictionary = frequency.dictionary
+
+for word, count in dictionary.items():
+    print(word, count)
+```
+
+### Iterate over words and counts
+
+```python
+from spellchecker import SpellChecker
+
+frequency = SpellChecker().word_frequency
+
+for word in frequency.words():
+    print(word)
+
+for word, count in frequency.items():
+    print(f"{word}: {count}")
+```
+
+Other iteration helpers include:
+
+- `keys()` — iterate over dictionary keys.
+- `words()` — iterate over words.
+- `items()` — iterate over `(word, frequency)` pairs.
+
+### Add custom words
+
+Add a word with a default frequency of `1`:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+frequency = spell.word_frequency
+
+frequency.add("pyspellchecker")
+frequency.add("openai", val=10)
+```
+
+Adding domain-specific vocabulary allows it to be treated as known:
+
+```python
+spell.word_frequency.add("microservice", val=25)
+
+print(spell.unknown(["microservice", "microservce"]))
+# {"microservce"}
+```
+
+### Load words from an iterable
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+spell.word_frequency.load_words([
+    "container",
+    "kubernetes",
+    "microservice",
+    "observability",
+])
+```
+
+### Load text
+
+Build frequency data from text:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+text = """
+Python applications often need custom terminology.
+Custom terminology should be added to the dictionary.
+"""
+
+spell.word_frequency.load_text(text)
+```
+
+A custom tokenizer may also be supplied:
+
+```python
+def comma_tokenizer(text: str):
+    return (item.strip() for item in text.split(",") if item.strip())
+
+spell.word_frequency.load_text(
+    "alpha,beta,gamma,beta",
+    tokenizer=comma_tokenizer,
+)
+```
+
+### Load a text file
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+spell.word_frequency.load_text_file(
+    "project_terms.txt",
+    encoding="utf-8",
+)
+```
+
+A custom tokenizer can be used for file contents as well:
+
+```python
+spell.word_frequency.load_text_file(
+    "terms.csv",
+    tokenizer=lambda text: text.split(","),
+)
+```
+
+### Load dictionary data
+
+Load serialized dictionary data from a file:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+spell.word_frequency.load_dictionary(
+    "custom_dictionary.json.gz",
+    encoding="utf-8",
+)
+```
+
+Load frequency data directly from a Python dictionary:
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+spell.word_frequency.load_json({
+    "pyspellchecker": 100,
+    "spellchecking": 50,
+    "tokenizer": 25,
+})
+```
+
+### Remove words
+
+Remove a single word:
+
+```python
+frequency.remove("unwantedword")
+```
+
+Remove multiple words:
+
+```python
+frequency.remove_words([
+    "temporaryterm",
+    "deprecatedterm",
+])
+```
+
+Remove and retrieve a word’s stored frequency:
+
+```python
+count = frequency.pop("oldterm", default=0)
+print(count)
+```
+
+### Remove low-frequency words
+
+Use `remove_by_threshold()` to remove words whose frequency is below a threshold:
+
+```python
+from spellchecker import SpellChecker
+
+frequency = SpellChecker().word_frequency
+
+frequency.remove_by_threshold(threshold=5)
+```
+
+## Example: project-specific spell checking
+
+A common workflow is to start with a spell checker, add project terminology, then scan application text.
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+# Add terms used by this project.
+spell.word_frequency.load_words([
+    "pyspellchecker",
+    "microservice",
+    "postgresql",
+    "kubernetes",
+])
+
+document = """
+The microservce connects to Postgresql.
+Pyspellchecker validates project-specific vocabulary.
+"""
+
+words = spell.split_words(document)
+unknown = spell.unknown(words)
+
+for word in sorted(unknown):
+    print(f"Unknown word: {word}")
+    print(f"Suggested correction: {spell.correction(word)}")
+```
+
+## Utility functions
+
+The `spellchecker.utils` module provides lower-level helpers for text and file handling.
+
+```python
+from spellchecker.utils import ensure_unicode
+
+value = ensure_unicode(b"example", encoding="utf-8")
+print(value)
+```
+
+Available utilities include:
+
+- `ensure_unicode(value, encoding="utf-8")` — convert a value to Unicode text.
+- `load_file(filename, encoding)` — iterate over file contents.
+- `write_file(filepath, encoding, gzipped, data)` — write text, optionally compressed.
+- `deprecated(message="")` — create a deprecation decorator.
+- `fail_after(version)` — create a version-based failure/deprecation helper.
+
+## Dictionary-building scripts
+
+The `scripts/build_dictionary.py` module contains utilities intended for building and cleaning dictionary frequency data.
+
+### Build and export frequency data
+
+```python
+from scripts.build_dictionary import build_word_frequency
+
+build_word_frequency(
+    filepath="source_words.txt",
+    language="en",
+    output_path="dictionary.json.gz",
+)
+```
+
+### Export frequency data
+
+```python
+from scripts.build_dictionary import export_word_frequency
+
+export_word_frequency(
+    filepath="dictionary.json.gz",
+    word_frequency=spell.word_frequency,
+)
+```
+
+### Clean language dictionaries
+
+Language-specific cleaning helpers are available for English, Spanish, Italian, German, French, Portuguese, Russian, Arabic, Basque, Latvian, Dutch, and Persian.
+
+For example:
+
+```python
+from scripts.build_dictionary import clean_english
+
+clean_english(
+    word_frequency=spell.word_frequency,
+    filepath_exclude="exclude.txt",
+    filepath_include="include.txt",
+    filepath_dictionary="dictionary_words.txt",
+)
+```
+
+These functions are useful when maintaining or generating dictionary data from source word lists.

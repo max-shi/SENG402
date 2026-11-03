@@ -1,0 +1,163 @@
+# errorlib_2.10
+
+**de.fosd.typechef:errorlib_2.10** is a variability-aware C/C++ preprocessing and lexing toolkit built for the TypeChef project. It provides a feature-expression-aware C preprocessor (a Java reimplementation in the spirit of the classic JCPP preprocessor), a Java 1.5 lexer/parser front end, and a set of options/configuration classes for wiring these lexers into larger tools. The defining characteristic of this library is that every token, macro, and preprocessor directive can be associated with a `FeatureExpr` — a boolean feature expression — so that preprocessing can be performed *variationally*: a single pass over the source can produce results annotated with the conditions under which each token/branch is present, rather than requiring the caller to preprocess once per configuration.
+
+This makes the library particularly suited for analyzing configurable C code (e.g., code guarded by `#ifdef`/`#if` directives tied to build-time feature flags), where exploring all configurations individually would be combinatorially expensive.
+
+## Key Concepts
+
+- **`FeatureExpr`** (from the associated feature-expression library, exposed here via `FeatureExprLib`) represents a propositional formula over configuration options/features. Tokens, macros, and preprocessing branches are tagged with `FeatureExpr` instances describing under which configurations they are active.
+- **`FeatureModel`** constrains which combinations of features are valid (e.g., mutually exclusive options). Many lexer/preprocessor entry points accept an optional `FeatureModel`.
+- **`Conditional<T>`** is used to represent results (like `LexerResult`) that may differ depending on the active feature configuration.
+
+## Main Components
+
+### Preprocessor Core
+
+- **`Preprocessor`** — The central variability-aware C preprocessor. It manages macro definitions (each with an associated `FeatureExpr`), include paths, warnings, features, and the source stack. It implements `VALexer`, `Closeable`, and extends `DebuggingPreprocessor` for optional debug tracing (token streams, macro tables, source stack).
+- **`VALexer`** — The common interface implemented by both `Preprocessor` and `XtcPreprocessor`, abstracting over "variability-aware lexer" implementations. Defines operations for feeding input, defining/removing macros conditionally, managing include paths, and pulling tokens one at a time via `getNextToken()`.
+- **`XtcPreprocessor`** — An alternative `VALexer` implementation built atop an XTC-based preprocessing engine, offering the same conceptual interface as `Preprocessor`.
+- **`LexerFrontend`** — A high-level façade for running a preprocessor/lexer end-to-end against a file, string, input stream, or configured `ILexerOptions`, returning a `Conditional<LexerResult>`. Provides convenience methods (`parse`, `parseFile`, `parseStream`) for simple one-shot use without manually wiring up a `Preprocessor`.
+
+### Sources and Tokens
+
+- **`Source`** (abstract) — Represents a stream of tokens coming from some origin (a file, a string, a macro expansion, a token list, etc.). Concrete subclasses include:
+  - `FileLexerSource` — reads from a `File` or `InputStream` with a path.
+  - `InputLexerSource` — reads from a raw `InputStream`.
+  - `StringLexerSource` — reads from an in-memory `String`.
+  - `LexerSource` — a lower-level base providing raw C lexical tokenization.
+  - `UnnumberedUnexpandingTokenStreamSource` — wraps a pre-built `List<Token>` as a source without renumbering/macro-expanding it.
+- **`Token`** (abstract, `LexerToken`) — Represents a single lexical token, with position, text, value, and an associated `FeatureExpr`. `SimpleToken` is the standard concrete implementation; `FeatureExprToken` and `EOFToken` are specialized variants.
+- **`SourceIterator`** / **`Source#iterator()`** — Allow iterating over all tokens produced by a `Source`.
+- **`SourceManager`** — Manages the stack of active `Source`s for a `Preprocessor`, handling `#include` nesting and token retrieval.
+- **`TokenFilter`** — A simple utility for buffering tokens and reconstructing them line-by-line.
+
+### Macros
+
+- **`MacroData`** — Represents the definition of a macro: its argument list, variadic flag, and body tokens.
+- **`MacroConstraint`** and **`MacroConstraintKind`** — Express constraints on how/when macros may or must be defined, tied to a `FeatureExpr`.
+- **`MacroFilter`** — Used to selectively determine which macros are considered during preprocessing (referenced by `ILexerOptions` and `Preprocessor`).
+
+### Filesystem Abstraction
+
+- **`VirtualFileSystem`** / **`VirtualFile`** — Abstract away how include files are located and read, enabling the preprocessor to run against real filesystems or sandboxed/chrooted views.
+- **`JavaFileSystem`** — A straightforward `VirtualFileSystem` backed by the real filesystem.
+- **`ChrootFileSystem`** — Restricts file resolution to within a given root directory, useful for sandboxing include-path resolution.
+
+### Configuration & Options
+
+- **`ILexerOptions`** — The interface describing all configuration needed to run a lexer/preprocessor: macros, include paths, warnings, enabled `Feature`s, feature models, input sources, and behavioral flags (e.g., treat warnings as errors, return only language tokens).
+- **`LexerOptions`** — A concrete, mutable base implementation of `ILexerOptions`, typically populated via command-line parsing (`Options#parseOptions`).
+- **`FeatureModelOptions`** — Extends `LexerOptions` with support for "small" and "full" `FeatureModel`s and a `PartialConfiguration` (partial assignment of defined/undefined features plus a residual `FeatureExpr`), useful for incremental or constrained variability analysis.
+- **`FrontendOptions`** — A richer options class (extending `CAnalysisOptions`, implementing `ParserOptions`) tailored for a full analysis frontend: input file, feature presence conditions, serialized AST output, call/control-flow graph (CCFG) output, parser error rendering, and error XML reporting.
+- **`Options`** — The base command-line option parser (`parseOptions`, `getFiles`, `genOptionId`) that the above classes build upon.
+- **`OptionException`** — Thrown when command-line option parsing fails.
+
+### Warnings, Features, and Diagnostics
+
+- **`Feature`** (enum) — Toggles for preprocessor behavior: `DIGRAPHS`, `TRIGRAPHS`, `LINEMARKERS`, `CSYNTAX`, `KEEPCOMMENTS`, `KEEPALLCOMMENTS`, `INCLUDENEXT`, `GNUCEXTENSIONS`, plus various `DEBUG_*` flags for verbose diagnostics and debug file output.
+- **`Warning`** (enum) — Categories of preprocessor warnings (`TRIGRAPHS`, `UNDEF`, `ENDIF_LABELS`, `ERROR`), with `Warning.allWarnings()` returning the full set.
+- **`PreprocessorListener`** — Receives warning/error/source-change callbacks during preprocessing; tracks error/warning counts and can compute an aggregate `FeatureExpr` of invalid configurations encountered.
+- **`DebuggingPreprocessor`** — Base class offering hooks to open debug output files and record token/source events during preprocessing.
+- **`TokenMgrError`**, **`LexerException`**, **`InternalException`** — Exception types signaling lexer/tokenizer failures.
+
+### Java Parsing Support
+
+Separately from the C preprocessor, the library bundles a generated Java 1.5 lexer:
+
+- **`CharStream`** / **`OffsetCharStream`** — Low-level character stream abstractions feeding the generated lexer, tracking line/column/offset information.
+- **`Java15ParserTokenManager`** — The generated JavaCC-style token manager producing `Token`s from a `CharStream`.
+- **`Token`** (Java parser variant) — Represents a lexical token with offset tracking (`getEndOffset`/`setEndOffset`).
+- **`TokenMgrError`** — Signals lexical errors encountered by the Java token manager.
+
+## Usage Examples
+
+### 1. Quick one-shot parsing of a C snippet
+
+```java
+import de.fosd.typechef.lexer.LexerFrontend;
+import de.fosd.typechef.lexer.LexerToken;
+
+import java.util.List;
+
+LexerFrontend frontend = new LexerFrontend();
+
+String code =
+    "#define FOO 1\n" +
+    "#if FOO\n" +
+    "int x = FOO;\n" +
+    "#endif\n";
+
+List<LexerToken> tokens = frontend.parse(code);
+for (LexerToken t : tokens) {
+    System.out.println(t.getText() + " @ " + t.getFeature());
+}
+```
+
+### 2. Parsing a file with a custom include path and feature model
+
+```java
+import de.fosd.typechef.lexer.LexerFrontend;
+import de.fosd.typechef.lexer.LexerToken;
+import de.fosd.typechef.featureexpr.FeatureModel;
+
+import java.util.Arrays;
+import java.util.List;
+
+LexerFrontend frontend = new LexerFrontend();
+FeatureModel fm = null; // supply a real FeatureModel if configuration constraints are needed
+
+List<LexerToken> tokens = frontend.parseFile(
+        "src/main/c/module.c",
+        Arrays.asList("include", "third_party/include"),
+        fm);
+```
+
+### 3. Driving the `Preprocessor` directly for fine-grained control
+
+```java
+import de.fosd.typechef.lexer.*;
+import de.fosd.typechef.lexer.options.PartialConfiguration;
+
+Preprocessor pp = new Preprocessor(null, (de.fosd.typechef.featureexpr.FeatureModel) null);
+pp.setFileSystem(new JavaFileSystem());
+pp.addSystemIncludePath("/usr/include");
+pp.addFeature(Feature.GNUCEXTENSIONS);
+pp.addWarning(Warning.UNDEF);
+
+PreprocessorListener listener = new PreprocessorListener(pp, /* ILexerOptions */ myOptions);
+pp.setListener(listener);
+
+pp.addInput(new java.io.File("main.c"));
+
+Token tok;
+do {
+    tok = pp.getNextToken();
+    System.out.print(tok.getText());
+} while (!tok.isEOF());
+
+System.out.println("Errors: " + listener.getErrors() + ", Warnings: " + listener.getWarnings());
+pp.close();
+```
+
+### 4. Parsing command-line-driven options into a frontend configuration
+
+```java
+import de.fosd.typechef.options.FrontendOptions;
+import de.fosd.typechef.options.OptionException;
+
+FrontendOptions options = new FrontendOptions();
+try {
+    options.parseOptions(args);
+} catch (OptionException e) {
+    System.err.println("Invalid options: " + e.getMessage());
+    System.exit(1);
+}
+
+System.out.println("Input file: " + options.getFile());
+System.out.println("Feature model (small): " + options.getSmallFeatureModel());
+```
+
+## Notes on Feature-Awareness
+
+Unlike a conventional preprocessor, tokens produced here carry a `FeatureExpr` describing the conditions under which they are present (`Token#getFeature()` / `SimpleToken#setFeature`). Consumers that need results for a specific configuration can filter the token stream by evaluating each token's `FeatureExpr` against a chosen assignment, or use `LexerFrontend#conditionalResultToList` together with a target `FeatureExpr` to project a `Conditional<LexerResult>` down to a concrete token list.

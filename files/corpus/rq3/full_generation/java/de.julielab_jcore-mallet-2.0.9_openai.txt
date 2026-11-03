@@ -1,0 +1,507 @@
+# de.julielab:jcore-mallet-2.0.9
+
+A Java machine-learning toolkit centered on MALLET-style data representations such as `Instance`, `InstanceList`, `Pipe`, `Alphabet`, `FeatureVector`, and `Sequence`.
+
+The API supports several related areas:
+
+- **Supervised classification**: maximum entropy, Naive Bayes, decision trees, Winnow, boosting, bagging, ensembles, and baseline classifiers.
+- **Sequence modeling**: CRFs, HMMs, MEMMs, transducer training, Viterbi decoding, forward–backward lattices, tagging evaluation, and confidence estimation.
+- **Information extraction**: tokenization, labeled spans, document-level extractions, field matching, and extraction evaluation.
+- **Clustering**: k-means, greedy agglomerative clustering, neighbor evaluators, clustering utilities, and evaluation measures.
+- **Graphical models**: factor graphs, factors, variables, inference algorithms, samplers, junction trees, and approximate belief propagation.
+- **Feature processing**: reusable `Pipe` implementations for converting text, tokens, sequences, and feature representations.
+- **Optimization and regression**: gradient-based optimizers and linear-regression utilities.
+
+## Installation
+
+The library artifact is:
+
+```xml
+<dependency>
+  <groupId>de.julielab</groupId>
+  <artifactId>jcore-mallet</artifactId>
+  <version>2.0.9</version>
+</dependency>
+```
+
+## Core concepts
+
+### `Instance`, `InstanceList`, and `Pipe`
+
+Most APIs operate on MALLET data containers:
+
+- `Instance` represents one example.
+- `InstanceList` is a collection of examples.
+- `Pipe` transforms instances and owns the data and target alphabets used to map symbolic features and labels to indices.
+- `Alphabet` and `LabelAlphabet` provide the feature and label dictionaries.
+
+A `Pipe` can process a single instance via `pipe(Instance)` or a stream through `newIteratorFrom(Iterator<Instance>)`. `SerialPipes` combines multiple processing stages into a pipeline.
+
+Common pipeline stages include:
+
+| Goal | Useful pipes |
+|---|---|
+| Read input as text | `Input2CharSequence`, `Filename2CharSequence` |
+| Tokenize text | `CharSequence2TokenSequence`, `SimpleTokenizer` |
+| Normalize text | `CharSequenceLowercase`, `TokenSequenceLowercase` |
+| Remove stop words | `TokenSequenceRemoveStopwords` |
+| Build document features | `TokenSequence2FeatureSequence`, `FeatureSequence2FeatureVector` |
+| Build token-level features | `Token2FeatureVector`, `TokenSequence2FeatureVectorSequence` |
+| Convert targets | `Target2Label`, `Target2LabelSequence`, `Target2FeatureSequence` |
+| Add sequence features | classes in `cc.mallet.pipe.tsf`, such as `TokenText`, `FeaturesInWindow`, and `OffsetConjunctions` |
+
+### Classification
+
+`Classifier` is the base type for classifiers. It exposes:
+
+- `classify(Instance)` for a single prediction;
+- `classify(InstanceList)` and `classify(Instance[])` for batches;
+- metrics including accuracy, precision, recall, F1, and average rank;
+- access to the input `Pipe`, feature alphabet, and label alphabet.
+
+A prediction is represented by `Classification`:
+
+```java
+Classification prediction = classifier.classify(instance);
+
+Labeling distribution = prediction.getLabeling();
+boolean correct = prediction.bestLabelIsCorrect();
+double correctLabelValue = prediction.valueOfCorrectLabel();
+```
+
+`Trial` is a collection of classifications produced by applying a classifier to an `InstanceList`; it provides aggregate evaluation metrics.
+
+### Trainer lifecycle
+
+Most learning APIs follow this pattern:
+
+1. Build or obtain a processed `InstanceList`.
+2. Construct a trainer.
+3. Call `train(...)`.
+4. Obtain and use the trained model.
+
+`ClassifierTrainer<C>` is the common base for classification trainers:
+
+```java
+C model = trainer.train(trainingSet);
+C sameModel = trainer.getClassifier();
+```
+
+Some trainers expose iteration counts, optimizers, validation data, or incremental training.
+
+## Classification models
+
+### Maximum entropy
+
+`MaxEnt` is a feature-based classifier with parameter access and scoring methods:
+
+- `getClassificationScores(...)`
+- `getUnnormalizedClassificationScores(...)`
+- `getClassificationScoresWithTemperature(...)`
+- `getParameters()` / `setParameters(...)`
+- feature-selection support through `FeatureSelection`
+
+Training options include:
+
+- `MaxEntTrainer` — configurable Gaussian prior, L1 weight, and number of iterations.
+- `MaxEntL1Trainer` — L1-oriented optimization.
+- `MaxEntGETrainer` and `MaxEntGERangeTrainer` — generalized-expectation constraint training.
+- `MaxEntPRTrainer` — posterior-regularization constraint training.
+- `RankMaxEnt` and `RankMaxEntTrainer` — ranking-oriented maximum-entropy models.
+- `MCMaxEnt` and `MCMaxEntTrainer` — multi-conditional maximum entropy.
+
+### Naive Bayes
+
+`NaiveBayes` exposes priors, class-conditional multinomials, classification, and log-likelihood calculations.
+
+Available trainers:
+
+- `NaiveBayesTrainer` — standard and incremental training.
+- `NaiveBayesEMTrainer` — iterative training with unlabeled-data weighting options.
+
+### Trees and linear-style classifiers
+
+- `DecisionTree` / `DecisionTreeTrainer`
+- `C45` / `C45Trainer`
+- `Winnow` / `WinnowTrainer`
+- `BalancedWinnow` / `BalancedWinnowTrainer`
+
+Tree trainers offer options such as maximum depth, pruning, minimum instance counts, and information-gain thresholds.
+
+### Ensembles and baselines
+
+- `AdaBoost` / `AdaBoostTrainer`
+- `AdaBoostM2` / `AdaBoostM2Trainer`
+- `BaggingClassifier` / `BaggingTrainer`
+- `ClassifierEnsemble` / `ClassifierEnsembleTrainer`
+- `MostFrequentClassifier` / `MostFrequentClassAssignmentTrainer`
+- `RandomClassifier` / `RandomAssignmentTrainer`
+- `ConfidencePredictingClassifier` / `ConfidencePredictingClassifierTrainer`
+
+`AdaBoost` and `AdaBoostM2` can create a trimmed ensemble with `getTrimmedClassifier(int)`.
+
+## Example: train and evaluate a maximum-entropy classifier
+
+The following example assumes that `training`, `validation`, and `testing` are already processed `InstanceList` objects that share a compatible pipe/alphabet setup.
+
+```java
+import cc.mallet.classify.Classification;
+import cc.mallet.classify.MaxEnt;
+import cc.mallet.classify.MaxEntTrainer;
+import cc.mallet.classify.Trial;
+import cc.mallet.types.Instance;
+
+// Configure a trainer.
+MaxEntTrainer trainer = new MaxEntTrainer()
+        .setGaussianPriorVariance(10.0)
+        .setNumIterations(100);
+
+// Validation data is optional.
+trainer.setValidationInstances(validation);
+
+// Train.
+MaxEnt classifier = trainer.train(training);
+
+// Evaluate the full testing collection.
+Trial trial = new Trial(classifier, testing);
+
+System.out.println("Accuracy:  " + trial.getAccuracy());
+System.out.println("Avg. rank: " + trial.getAverageRank());
+
+// Classify an individual, already-piped instance.
+Instance example = testing.get(0);
+Classification result = classifier.classify(example);
+
+System.out.println("Predicted labeling: " + result.getLabeling());
+System.out.println("Best label correct: " + result.bestLabelIsCorrect());
+```
+
+## Example: build a text feature pipeline
+
+`SerialPipes` can compose document-level preprocessing steps. This pipeline converts text to a token sequence, lowercases tokens, removes stop words, turns tokens into a feature sequence, and finally produces a feature vector.
+
+```java
+import cc.mallet.pipe.CharSequence2TokenSequence;
+import cc.mallet.pipe.FeatureSequence2FeatureVector;
+import cc.mallet.pipe.Pipe;
+import cc.mallet.pipe.SerialPipes;
+import cc.mallet.pipe.TokenSequence2FeatureSequence;
+import cc.mallet.pipe.TokenSequenceLowercase;
+import cc.mallet.pipe.TokenSequenceRemoveStopwords;
+import cc.mallet.pipe.Target2Label;
+
+import java.util.ArrayList;
+import java.util.List;
+
+List<Pipe> stages = new ArrayList<Pipe>();
+
+stages.add(new CharSequence2TokenSequence());
+stages.add(new TokenSequenceLowercase());
+stages.add(new TokenSequenceRemoveStopwords());
+stages.add(new TokenSequence2FeatureSequence());
+stages.add(new FeatureSequence2FeatureVector());
+stages.add(new Target2Label());
+
+Pipe pipe = new SerialPipes(stages);
+```
+
+The resulting `pipe` can be associated with input data and used by classifiers that require document-level feature vectors, such as `MaxEnt`, `NaiveBayes`, or `DecisionTree`.
+
+## Sequence models
+
+The `cc.mallet.fst` package provides transducer-based sequence modeling.
+
+### Main model types
+
+- `Transducer` — abstract base for sequence transducers.
+- `CRF` — conditional random field model.
+- `MEMM` — maximum-entropy Markov model extending `CRF`.
+- `HMM` — hidden Markov model.
+- `FeatureTransducer` — a configurable feature-based transducer.
+
+A transducer can label an `Instance`, transduce an input `Sequence`, compute average token accuracy, and produce paths.
+
+### CRFs
+
+`CRF` provides state and weight configuration methods:
+
+- `addState(...)`
+- `addFullyConnectedStates(...)`
+- `addFullyConnectedStatesForLabels()`
+- `addStatesForLabelsConnectedAsIn(...)`
+- `addOrderNStates(...)`
+- `setWeights(...)`, `getWeights(...)`, and `setParameter(...)`
+- `predict(InstanceList)`
+
+CRF training options include:
+
+- `CRFTrainerByLabelLikelihood`
+- `CRFTrainerByL1LabelLikelihood`
+- `CRFTrainerByStochasticGradient`
+- `CRFTrainerByThreadedLabelLikelihood`
+- `CRFTrainerByValueGradients`
+- semi-supervised trainers such as `CRFTrainerByEntropyRegularization`, `CRFTrainerByGE`, `CRFTrainerByLikelihoodAndGE`, and `CRFTrainerByPR`
+
+### Lattices and decoding
+
+The transducer APIs expose max-product and sum-product lattice abstractions:
+
+- `MaxLattice` / `MaxLatticeDefault` for best-path decoding and N-best output sequences.
+- `SumLattice` / `SumLatticeDefault`, `SumLatticeScaling`, and `SumLatticeBeam` for forward–backward quantities, gamma probabilities, and xi probabilities.
+- `MaxLatticeFactory` and `SumLatticeFactory` for customizing lattice creation.
+
+### Example: configure and train a CRF
+
+```java
+import cc.mallet.fst.CRF;
+import cc.mallet.fst.CRFTrainerByLabelLikelihood;
+import cc.mallet.fst.Transducer;
+import cc.mallet.pipe.Pipe;
+
+// featurePipe and trainingSequences are assumed to be prepared already.
+Pipe featurePipe = /* feature-processing pipe */;
+CRF crf = new CRF(featurePipe, null);
+
+// Create a state structure based on labels observed in training data.
+crf.addFullyConnectedStatesForLabels();
+
+// Train by label likelihood.
+CRFTrainerByLabelLikelihood trainer =
+        new CRFTrainerByLabelLikelihood(crf);
+
+trainer.setGaussianPriorVariance(10.0);
+trainer.train(trainingSequences, 100);
+
+Transducer model = trainer.getTransducer();
+```
+
+For evaluation during training, attach a `TransducerEvaluator`:
+
+```java
+import cc.mallet.fst.TokenAccuracyEvaluator;
+
+TokenAccuracyEvaluator evaluator =
+        new TokenAccuracyEvaluator(testingSequences, "test");
+
+trainer.addEvaluator(evaluator);
+trainer.train(trainingSequences, 100);
+
+System.out.println("Test accuracy: " + evaluator.getAccuracy("test"));
+```
+
+## Information extraction
+
+The extraction APIs convert sequence-model predictions into document-level labeled spans and fields.
+
+Key types:
+
+- `Extractor` — common extraction interface.
+- `CRFExtractor` — extraction wrapper around a `CRF`.
+- `Extraction` — collection of extracted documents and records.
+- `DocumentExtraction` — prediction and target information for one document.
+- `LabeledSpan` and `LabeledSpans` — labeled text regions.
+- `Field` and `Record` — extracted field values organized by label.
+- `Tokenization` and `StringTokenization` — input text represented as spans.
+- `TokenizationFilter` — converts predicted label sequences into spans.
+
+Available tokenization filters include:
+
+- `DefaultTokenizationFilter`
+- `BIOTokenizationFilter`
+- `HierarchicalTokenizationFilter`
+- `ConfidenceTokenizationFilter`
+
+Extraction evaluation includes:
+
+- `PerFieldF1Evaluator`
+- `PerDocumentF1Evaluator`
+- `AccuracyCoverageEvaluator`
+
+Field values can be compared using:
+
+- `ExactMatchComparator`
+- `PunctuationIgnoringComparator`
+
+and normalized through `FieldCleaner`, such as `RegexFieldCleaner`.
+
+## Clustering
+
+Clustering revolves around `Clusterer` and `Clustering`.
+
+- `Clustering` associates each instance with an integer cluster label.
+- `Clusterer.cluster(InstanceList)` creates a clustering.
+- `KBestClusterer` additionally exposes `clusterKBest(...)`.
+- `ClusterUtils` offers merging, splitting, relabeling, random initialization, and singleton clustering utilities.
+
+Available algorithms:
+
+- `KMeans`
+- `GreedyAgglomerative`
+- `GreedyAgglomerativeByDensity`
+
+Agglomerative methods use `NeighborEvaluator` implementations to score candidate changes:
+
+- `ClassifyingNeighborEvaluator`
+- `PairwiseEvaluator`
+- `MedoidEvaluator`
+- `RankingNeighborEvaluator`
+- `RandomEvaluator`
+
+Evaluation options include:
+
+- `AccuracyEvaluator`
+- `BCubedEvaluator`
+- `MUCEvaluator`
+- `PairF1Evaluator`
+- `ClusteringEvaluators` for combining several evaluators
+
+### Example: k-means clustering
+
+```java
+import cc.mallet.cluster.Clustering;
+import cc.mallet.cluster.KMeans;
+import cc.mallet.types.InstanceList;
+import cc.mallet.types.Metric;
+import cc.mallet.pipe.Pipe;
+
+// instances and a metric are assumed to be available.
+Pipe pipe = instances.getPipe();
+Metric metric = /* metric implementation */;
+
+KMeans kmeans = new KMeans(pipe, 8, metric);
+Clustering result = kmeans.cluster(instances);
+
+System.out.println("Clusters: " + result.getNumClusters());
+System.out.println("Instances: " + result.getNumInstances());
+
+for (int cluster = 0; cluster < result.getNumClusters(); cluster++) {
+    System.out.println(
+        "Cluster " + cluster + " size: " + result.size(cluster)
+    );
+}
+```
+
+## Graphical models and inference
+
+The `cc.mallet.grmm` APIs support probabilistic graphical models.
+
+### Model representation
+
+- `Variable` represents a discrete or continuous variable.
+- `VarSet` represents a set of variables.
+- `Assignment` represents one or more assignments.
+- `Factor` is the central interface for potentials and distributions.
+- `FactorGraph` combines variables and factors.
+- `DirectedModel` uses conditional probability tables (`CPT`).
+- `UndirectedModel` and `UndirectedGrid` represent undirected graphical models.
+
+Common factors include:
+
+- `TableFactor`
+- `LogTableFactor`
+- `ConstantFactor`
+- `UniformFactor`
+- `NormalFactor` and `UniNormalFactor`
+- `BetaFactor`
+- `BoltzmannUnaryFactor` and `BoltzmannPairFactor`
+- `PottsTableFactor`
+
+### Inference and sampling
+
+`Inferencer` implementations compute marginals and joint values:
+
+- `BruteForceInferencer`
+- `VariableElimination`
+- `JunctionTreeInferencer`
+- `LoopyBP`
+- `ResidualBP`
+- `TreeBP`
+- `TRP`
+- `ParentChildGBP`
+- `SamplingInferencer`
+
+Sampling interfaces and implementations:
+
+- `Sampler`
+- `ExactSampler`
+- `GibbsSampler`
+
+`Models`, `Factors`, `RandomGraphs`, and `Utils` provide utilities for evidence, model comparison, factor operations, and inference diagnostics.
+
+## ACRF support
+
+`ACRF` provides an additional factor-graph-based sequence learning API.
+
+Important classes:
+
+- `ACRF` — model configured with templates and inference engines.
+- `ACRFTrainer` — trainer interface.
+- `DefaultAcrfTrainer` — default training implementation.
+- `PiecewiseACRFTrainer`
+- `PseudolikelihoodACRFTrainer`
+- `PwplACRFTrainer`
+- `ACRFEvaluator` and `AcrfSerialEvaluator`
+- `ACRFExtractor` and `ACRFExtractorTrainer`
+
+`ACRF` supports configurable inference and Viterbi inference, fixed potentials, Gaussian priors, unrolled graphs, best assignments, and text weight import/export.
+
+## Optimization
+
+The `cc.mallet.optimize` package defines shared optimization abstractions used by several trainers.
+
+Core interfaces:
+
+- `Optimizable`
+- `Optimizer`
+- `LineOptimizer`
+
+Available optimizers include:
+
+- `LimitedMemoryBFGS`
+- `OrthantWiseLimitedMemoryBFGS`
+- `ConjugateGradient`
+- `GradientAscent`
+- `AGIS`
+- `StochasticMetaAscent`
+
+Many trainer classes expose their current optimizer through methods such as `getOptimizer()` and permit replacing it with `setOptimizer(...)`.
+
+## Regression
+
+The regression API includes:
+
+- `LinearRegression` — prediction using a learned parameter vector.
+- `LinearRegressionTrainer` — an `Optimizable.ByGradientValue` objective.
+- `LeastSquares` — least-squares fitting, parameter inspection, p-values, and summaries.
+- `CoordinateDescent` — coordinate-descent fitting with an L1 weight.
+
+Example:
+
+```java
+import cc.mallet.regression.LeastSquares;
+import cc.mallet.regression.LinearRegression;
+
+// data is an InstanceList with numeric targets.
+LeastSquares fit = new LeastSquares(data, 0.1);
+
+fit.printSummary();
+
+LinearRegression regression = fit.getRegression();
+double prediction = regression.predict(data.get(0));
+
+System.out.println("Prediction: " + prediction);
+```
+
+## Command-line entry points
+
+The API also exposes several `main`-based utilities for vector conversion, classification, clustering, regression, tagging, and ACRF extraction. Examples include:
+
+- Classification/vector tools: `Text2Vectors`, `Csv2Vectors`, `Vectors2Classify`, `Classifier2Info`
+- Clustering tools: `Text2Clusterings`, `Clusterings2Clusterer`, `Clusterings2Info`
+- Sequence tagging: `SimpleTagger`, `SimpleTaggerWithConstraints`
+- Regression: `Regression`, `RegressionImporter`
+- ACRF extraction: `AcrfExtractorTui`, `GenericAcrfTui`
+
+## Notes on compatibility
+
+Models, trainers, and data collections rely on compatible alphabets and pipes. Several core types implement `AlphabetCarrying` and provide `alphabetsMatch(...)`; use these methods when combining trained models, pipelines, and instance lists created in different contexts.

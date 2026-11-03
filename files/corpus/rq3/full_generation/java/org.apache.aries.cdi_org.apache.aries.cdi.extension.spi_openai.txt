@@ -1,0 +1,222 @@
+# org.apache.aries.cdi:org.apache.aries.cdi.extension.spi
+
+This library provides SPI types for adapting CDI extension processing and extension registration.
+
+Its API centers on CDI annotated-type processing:
+
+- wrapping a `ProcessAnnotatedType<?>` event as a potential service,
+- preparing a request to merge service types for a processed annotated type, and
+- registering observers associated with a CDI `Extension`.
+
+The library is intended for code that participates in CDI extension lifecycle processing rather than for ordinary application bean code.
+
+## Main types
+
+### `ProcessPotentialService`
+
+`ProcessPotentialService` wraps a CDI `ProcessAnnotatedType<?>` event.
+
+```java
+public ProcessPotentialService(ProcessAnnotatedType<?> processAnnotatedType)
+```
+
+Use it when an annotated type being processed should be treated as a potential service candidate.
+
+Available accessors:
+
+| Method | Description |
+|---|---|
+| `getProcessAnnotatedType()` | Returns the wrapped CDI processing event. |
+| `getAnnotatedType()` | Returns the annotated type currently associated with the event. |
+| `configureAnnotatedType()` | Returns an `AnnotatedTypeConfigurator<?>` for configuring the annotated type. |
+| `toString()` | Returns a diagnostic string representation. |
+
+### `MergeServiceTypes`
+
+`MergeServiceTypes` represents service types associated with a processed annotated type.
+
+| Method | Description |
+|---|---|
+| `getTypes()` | Returns the configured service types as `Class<?>[]`. |
+| `getProcessAnnotatedType()` | Returns the related `ProcessAnnotatedType<?>` event. |
+| `toString()` | Returns a diagnostic string representation. |
+
+Instances are prepared through a builder obtained from one of the static factory methods:
+
+```java
+MergeServiceTypes.forEvent(processAnnotatedType);
+MergeServiceTypes.forEvent(processPotentialService);
+```
+
+The second overload is useful when code has already wrapped the CDI event in a `ProcessPotentialService`.
+
+### `RegisterExtension`
+
+`RegisterExtension` associates registration work with a CDI `Extension`.
+
+```java
+public RegisterExtension(Extension extension)
+```
+
+It exposes observer registrations through `ObserverBuilder` instances:
+
+| Method | Description |
+|---|---|
+| `getExtension()` | Returns the extension supplied to the constructor. |
+| `registerObserver()` | Creates and returns an `ObserverBuilder`. |
+| `getBuilders()` | Returns the collection of observer builders registered so far. |
+
+## Typical flow
+
+A typical integration flow is:
+
+1. Receive a CDI `ProcessAnnotatedType<?>` event.
+2. Wrap it in `ProcessPotentialService`.
+3. Inspect the current `AnnotatedType<?>` or obtain an `AnnotatedTypeConfigurator<?>`.
+4. Create a `MergeServiceTypes` builder for the same event when service types need to be merged.
+5. Register extension observers using `RegisterExtension`.
+
+## Examples
+
+### Wrap and inspect a processed annotated type
+
+The following example shows how an extension-processing callback can create a `ProcessPotentialService` from a CDI annotated-type event.
+
+```java
+import org.apache.aries.cdi.extension.spi.adapt.ProcessPotentialService;
+
+// ProcessAnnotatedType, AnnotatedType, and AnnotatedTypeConfigurator
+// are CDI SPI types.
+
+void processType(ProcessAnnotatedType<?> event) {
+    ProcessPotentialService potentialService =
+        new ProcessPotentialService(event);
+
+    AnnotatedType<?> annotatedType =
+        potentialService.getAnnotatedType();
+
+    AnnotatedTypeConfigurator<?> configurator =
+        potentialService.configureAnnotatedType();
+
+    // Inspect annotatedType and apply CDI type configuration through
+    // configurator as appropriate for the extension.
+}
+```
+
+The original CDI event remains available when needed:
+
+```java
+void processType(ProcessAnnotatedType<?> event) {
+    ProcessPotentialService potentialService =
+        new ProcessPotentialService(event);
+
+    ProcessAnnotatedType<?> originalEvent =
+        potentialService.getProcessAnnotatedType();
+
+    System.out.println(potentialService);
+    System.out.println(originalEvent);
+}
+```
+
+### Prepare service-type merging for an event
+
+Create a merge request directly from the CDI event:
+
+```java
+import org.apache.aries.cdi.extension.spi.adapt.MergeServiceTypes;
+
+void prepareMerge(ProcessAnnotatedType<?> event) {
+    MergeServiceTypes.forEvent(event);
+
+    // Use the returned MergeServiceTypes.Builder according to the
+    // builder API available in the consuming environment.
+}
+```
+
+If the event has already been wrapped, use the overload accepting
+`ProcessPotentialService`:
+
+```java
+import org.apache.aries.cdi.extension.spi.adapt.MergeServiceTypes;
+import org.apache.aries.cdi.extension.spi.adapt.ProcessPotentialService;
+
+void prepareMerge(ProcessAnnotatedType<?> event) {
+    ProcessPotentialService potentialService =
+        new ProcessPotentialService(event);
+
+    MergeServiceTypes.forEvent(potentialService);
+}
+```
+
+A completed `MergeServiceTypes` object exposes both the associated event and
+the resulting types:
+
+```java
+void inspectMerge(MergeServiceTypes merge) {
+    ProcessAnnotatedType<?> event = merge.getProcessAnnotatedType();
+
+    for (Class<?> type : merge.getTypes()) {
+        System.out.println(type.getName());
+    }
+}
+```
+
+### Register observers for an extension
+
+`RegisterExtension` can be used to create and retain observer registrations
+for an existing CDI `Extension`.
+
+```java
+import java.util.Collection;
+
+import org.apache.aries.cdi.extension.spi.adapt.RegisterExtension;
+
+// Extension and ObserverBuilder are CDI-related types.
+
+void registerObservers(Extension extension) {
+    RegisterExtension registration =
+        new RegisterExtension(extension);
+
+    ObserverBuilder firstObserver =
+        registration.registerObserver();
+
+    ObserverBuilder secondObserver =
+        registration.registerObserver();
+
+    Collection<ObserverBuilder> observers =
+        registration.getBuilders();
+
+    System.out.println("Registered observer builders: " + observers.size());
+}
+```
+
+The extension associated with the registration can be retrieved later:
+
+```java
+void inspectRegistration(RegisterExtension registration) {
+    Extension extension = registration.getExtension();
+
+    System.out.println(extension);
+    System.out.println(registration.getBuilders());
+}
+```
+
+## API summary
+
+```java
+ProcessPotentialService potential =
+    new ProcessPotentialService(processAnnotatedType);
+
+AnnotatedType<?> type = potential.getAnnotatedType();
+AnnotatedTypeConfigurator<?> configurator =
+    potential.configureAnnotatedType();
+
+MergeServiceTypes.forEvent(processAnnotatedType);
+MergeServiceTypes.forEvent(potential);
+
+RegisterExtension registration =
+    new RegisterExtension(extension);
+
+ObserverBuilder observer = registration.registerObserver();
+Collection<ObserverBuilder> observers = registration.getBuilders();
+```

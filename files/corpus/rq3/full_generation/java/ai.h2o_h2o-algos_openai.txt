@@ -1,0 +1,585 @@
+# h2o-algos
+
+`ai.h2o:h2o-algos` is a Java library of machine-learning algorithms, model utilities, scoring components, model export writers, and distributed frame-processing tasks.
+
+The public API indicates that the library is designed around a common model-building framework:
+
+- **Model builders** configure and train algorithm-specific models.
+- **Model classes** provide scoring, metrics, transformations, explanations, and model export.
+- **Distributed tasks** operate over `Frame`, `Vec`, and `Chunk` data structures.
+- **MOJO/POJO support** enables portable model representation and scoring for many algorithms.
+- **Schemas and handlers** integrate algorithms with REST-style APIs and model schemas.
+
+The library uses H2O core types such as `Frame`, `Vec`, `Chunk`, `Key`, `Job`, `Model`, `ModelBuilder`, and `ModelMetrics`.
+
+## Included algorithm families
+
+### Supervised learning
+
+| Algorithm | Builder | Model | Notable API |
+|---|---|---|---|
+| AdaBoost | `AdaBoost` | `AdaBoostModel` | Model summary support |
+| ANOVA GLM | `ANOVAGLM` | `ANOVAGLMModel` | ANOVA-oriented model output and result frames |
+| Cox proportional hazards | `CoxPH` | `CoxPHModel` | MOJO export via `CoxPHMojoWriter` |
+| Deep Learning | `DeepLearning` | `DeepLearningModel` | Deep features, autoencoder scoring, contributions |
+| GAM | `GAMModel` | `GAMModel` | Spline transformations and GLM-based scoring |
+| GLM support | — | — | Metrics, scoring, dispersion estimation, Tweedie likelihood |
+| Hierarchical GLM | `HGLM` | `HGLMModel` | Fixed/random-effect utilities and scoring |
+| Isotonic Regression | `IsotonicRegression` | `IsotonicRegressionModel` | `IsotonicCalibrator` conversion |
+| K-Nearest Neighbors | `KNN` | `KNNModel` | Euclidean, Manhattan, and cosine distances |
+| Naive Bayes | `NaiveBayes` | `NaiveBayesModel` | Supervised classification model |
+| PSVM | `PSVM` | `PSVMModel` | Kernel and bulk support-vector scoring |
+| RuleFit | `RuleFit` | `RuleFitModel` | Rule extraction, rule prediction, importance tables |
+| Random Forest | `DRF` | `DRFModel` | Contributions and MOJO/POJO generation |
+| GBM | `GBM` | `GBMModel` | Contributions, staged predictions, interactions |
+| Decision Tree | `DT` | `DTModel` | Compact-tree prediction and rule extraction |
+| Uplift DRF | `UpliftDRF` | `UpliftDRFModel` | Uplift-tree modeling and divergence metrics |
+| Word2Vec | `Word2Vec` | `Word2VecModel` | Word/vector transforms and synonym search |
+
+### Unsupervised learning and dimensionality reduction
+
+| Algorithm | Builder | Model | Notable API |
+|---|---|---|---|
+| Aggregator | `Aggregator` | `AggregatorModel` | Exemplar frames and exemplar mappings |
+| GLRM | `GLRM` | `GLRMModel` | Latent representation and reconstruction scoring |
+| K-Means | `KMeans` | `KMeansModel` | Cluster indicator and ratio scoring |
+| PCA | `PCA` | `PCAModel` | Multiple PCA decomposition backends |
+| SVD | `SVD` | `SVDModel` | Matrix factorization |
+| Isolation Forest | `IsolationForest` | `IsolationForestModel` | Anomaly-model metrics |
+| Extended Isolation Forest | `ExtendedIsolationForest` | `ExtendedIsolationForestModel` | Compressed isolation trees |
+| Grep | `Grep` | `GrepModel` | Pattern-oriented model builder |
+
+### Generic model import
+
+`Generic` and `GenericModel` provide a model wrapper for imported scoring artifacts:
+
+```java
+GenericModel model = Generic.importMojoModel("/models/model.zip", false);
+```
+
+A URI-based overload is also available:
+
+```java
+GenericModel model = Generic.importMojoModel(
+    java.net.URI.create("file:///models/model.zip")
+);
+```
+
+`GenericModel` supports model metrics, likelihood/AIC access, MOJO export, optional POJO support, and contribution scoring:
+
+```java
+Frame contributions = model.scoreContributions(inputFrame, destinationKey);
+```
+
+## Core architecture
+
+### Model builders
+
+Algorithm builder classes extend `ModelBuilder` or a specialization such as `SharedTree` or `ClusteringModelBuilder`. Builders expose common capabilities such as:
+
+- supported model categories through `can_build()`;
+- supervised/unsupervised classification through `isSupervised()`;
+- initialization and validation through `init(boolean expensive)`;
+- MOJO and POJO capability checks through `haveMojo()` and `havePojo()`;
+- UI/API visibility through `builderVisibility()` where applicable.
+
+Representative builder types include:
+
+```java
+AdaBoost
+DeepLearning
+KMeans
+PCA
+GBM
+DRF
+IsolationForest
+Word2Vec
+```
+
+Many builders accept their corresponding nested parameter type, for example:
+
+```java
+new PCA(PCAModel.PCAParameters parms)
+new KMeans(KMeansModel.KMeansParameters parms)
+new GBM(GBMModel.GBMParameters parms)
+new DeepLearning(DeepLearningModel.DeepLearningParameters parms)
+```
+
+### Models
+
+Models extend `Model` or an algorithm-specific base class and expose scoring, metrics, transformations, or model-specific functionality.
+
+Examples include:
+
+- `DeepLearningModel.scoreAutoEncoder(...)`
+- `DeepLearningModel.scoreDeepFeatures(...)`
+- `GLRMModel.transform(...)`
+- `GLRMModel.scoreReconstruction(...)`
+- `RuleFitModel.predictRules(...)`
+- `GBMModel.scoreStagedPredictions(...)`
+- `GBMModel.rowToTreeAssignment(...)`
+- `SharedTreeModel.scoreLeafNodeAssignment(...)`
+- `SharedTreeModel.scoreFeatureFrequencies(...)`
+- `Word2VecModel.transform(...)`
+- `Word2VecModel.findSynonyms(...)`
+
+### MOJO writers
+
+Models with MOJO support expose a model-specific writer through `getMojo()` or a dedicated writer class. Examples include:
+
+```java
+PCAMojoWriter
+KMeansMojoWriter
+GLMMojoWriter
+DeepLearningMojoWriter
+GbmMojoWriter
+DrfMojoWriter
+GlrmMojoWriter
+Word2VecMojoWriter
+```
+
+Shared-tree models use the reusable `SharedTreeMojoWriter` base class. Some multi-model algorithms use `MultiModelMojoWriter`, including `RuleFitMojoWriter` and `StackedEnsembleMojoWriter`.
+
+## Working with frames and feature metadata
+
+### `DataInfo`
+
+`DataInfo` is a central representation of feature preparation metadata. It supports categorical expansion, numeric normalization, missing-value handling, interaction columns, response columns, offsets, weights, folds, and treatment columns.
+
+Useful operations include:
+
+```java
+DataInfo dinfo = new DataInfo(
+    trainFrame,
+    validFrame,
+    true,                         // useAllFactorLevels
+    DataInfo.TransformType.STANDARDIZE,
+    false,                        // skipMissing
+    true,                         // imputeMissing
+    false                         // missingBucket
+);
+
+String[] coefficientNames = dinfo.coefNames();
+int expandedColumnCount = dinfo.fullN();
+
+DataInfo.Row row = dinfo.newDenseRow();
+```
+
+`DataInfo` can also be adapted for scoring:
+
+```java
+DataInfo scoringInfo = dinfo.scoringInfo(columnNames, scoringFrame);
+```
+
+### `FrameTask` and `FrameTask2`
+
+`FrameTask` and `FrameTask2` are reusable distributed task bases for algorithms that process `Frame` data through `Chunk` arrays.
+
+- `FrameTask` uses a `DataInfo` instance and provides `map(Chunk[], NewChunk[])`.
+- `FrameTask2` provides lifecycle methods such as `chunkInit()`, `chunkDone()`, and `setupLocal()` and supports sparse-data configuration.
+
+These classes are useful when implementing algorithms that need consistent feature expansion and row extraction.
+
+## PCA decomposition utilities
+
+PCA decomposition is available through a small shared interface:
+
+```java
+public interface PCAInterface {
+    double[] getVariances();
+    double[][] getPrincipalComponents();
+}
+```
+
+Available implementations are:
+
+- `PCAJama`
+- `PCA_MTJ_EVD_DenseMatrix`
+- `PCA_MTJ_EVD_SymmMatrix`
+- `PCA_MTJ_SVD_DenseMatrix`
+
+Choose an implementation explicitly with `PCAImplementation`:
+
+```java
+PCAImplementation fastest = PCAImplementation.getFastestImplementation();
+```
+
+### Example: compute principal components from a Gram matrix
+
+```java
+import hex.pca.PCAInterface;
+import hex.pca.jama.PCAJama;
+
+double[][] gramMatrix = {
+    { 2.0, 0.5 },
+    { 0.5, 1.0 }
+};
+
+PCAInterface pca = new PCAJama(gramMatrix);
+
+double[] variances = pca.getVariances();
+double[][] components = pca.getPrincipalComponents();
+```
+
+The same usage pattern applies to the MTJ-based implementations:
+
+```java
+import hex.pca.PCAInterface;
+import hex.pca.mtj.PCA_MTJ_EVD_SymmMatrix;
+
+PCAInterface pca = new PCA_MTJ_EVD_SymmMatrix(gramMatrix);
+double[] variances = pca.getVariances();
+```
+
+## KNN distance functions
+
+The KNN package provides distance accumulators implementing `KNNDistance`:
+
+- `EuclideanDistance`
+- `ManhattanDistance`
+- `CosineDistance`
+
+Each distance implementation supports incremental calculation:
+
+```java
+import hex.knn.EuclideanDistance;
+import hex.knn.KNNDistance;
+
+KNNDistance distance = new EuclideanDistance();
+distance.initializeValues();
+
+distance.calculateValues(1.0, 4.0);
+distance.calculateValues(2.0, 6.0);
+
+double result = distance.result();
+```
+
+`KNNDistanceTask` and `KNNScoringTask` provide distributed nearest-neighbor calculation and scoring over chunks.
+
+## Word2Vec operations
+
+`Word2VecModel` exposes APIs for looking up and transforming word vectors.
+
+### Find similar words
+
+```java
+Map<String, Float> synonyms = word2VecModel.findSynonyms("example", 10);
+```
+
+### Transform a single token
+
+```java
+float[] vector = word2VecModel.transform("example");
+```
+
+### Export the learned vocabulary/vector representation
+
+```java
+Frame vectors = word2VecModel.toFrame();
+```
+
+### Transform a vector of words
+
+```java
+Frame transformed = word2VecModel.transform(
+    wordVec,
+    aggregateMethod
+);
+```
+
+The model also has REST handler support through `Word2VecHandler`:
+
+```java
+Word2VecHandler handler = new Word2VecHandler();
+
+Word2VecSynonymsV3 synonyms =
+    handler.findSynonyms(version, synonymArguments);
+
+Word2VecTransformV3 transformed =
+    handler.transform(version, transformArguments);
+```
+
+## Tree-model inspection and scoring
+
+Shared-tree algorithms (`GBM`, `DRF`, `IsolationForest`, and uplift DRF) build on common tree infrastructure.
+
+### Access a compact tree
+
+```java
+SharedTreeSubgraph tree = model.getSharedTreeSubgraph(treeIndex, classIndex);
+```
+
+### Leaf-node assignments
+
+```java
+Frame leafAssignments = model.scoreLeafNodeAssignment(
+    inputFrame,
+    leafNodeAssignmentType,
+    destinationKey
+);
+```
+
+### Feature frequencies
+
+```java
+Frame featureFrequencies = model.scoreFeatureFrequencies(
+    inputFrame,
+    destinationKey
+);
+```
+
+### Feature contributions
+
+Models based on `SharedTreeModelWithContributions`, including GBM and DRF, can score feature contributions:
+
+```java
+Frame contributions = gbmModel.scoreContributions(
+    inputFrame,
+    destinationKey
+);
+```
+
+For more control, use contribution options and a scoring job:
+
+```java
+Frame contributions = drfModel.scoreContributions(
+    inputFrame,
+    destinationKey,
+    job,
+    options
+);
+```
+
+### GBM staged predictions and interaction inspection
+
+```java
+Frame stagedPredictions = gbmModel.scoreStagedPredictions(
+    inputFrame,
+    destinationKey
+);
+
+FeatureInteractions interactions = gbmModel.getFeatureInteractions(
+    3,  // maxInteractionDepth
+    5,  // maxTreeDepth
+    2   // maxDeepening
+);
+```
+
+`GBMModel` can also compute the Friedman–Popescu H statistic:
+
+```java
+double h = gbmModel.getFriedmanPopescusH(
+    inputFrame,
+    new String[] { "feature_a", "feature_b" }
+);
+```
+
+## RuleFit rules
+
+The RuleFit API represents learned rules as `Rule` objects composed of `Condition` objects.
+
+A `RuleEnsemble` can transform a frame into rule features:
+
+```java
+Frame ruleFeatures = ruleEnsemble.transform(inputFrame);
+```
+
+It can also create a GLM-oriented training frame:
+
+```java
+Frame glmTrainFrame = ruleEnsemble.createGLMTrainFrame(
+    inputFrame,
+    4,                  // depth
+    100,                // ntrees
+    classNames,
+    weightsColumn,
+    true                // calculateSupport
+);
+```
+
+A trained `RuleFitModel` can score selected rules directly:
+
+```java
+Frame rulePredictions = ruleFitModel.predictRules(
+    inputFrame,
+    new String[] { "rule_1", "rule_2" }
+);
+```
+
+Rule importance is exposed as a `TwoDimTable`:
+
+```java
+TwoDimTable importance = ruleFitModel.getRuleImportanceTable();
+```
+
+## GLRM transformations and reconstruction
+
+`GLRMModel` provides APIs for obtaining a lower-dimensional representation and reconstruction-related output:
+
+```java
+Frame representation = glrmModel.transform(inputFrame);
+
+Frame reconstruction = glrmModel.scoreReconstruction(
+    inputFrame,
+    destinationKey,
+    true
+);
+
+Frame archetypes = glrmModel.scoreArchetypes(
+    inputFrame,
+    destinationKey,
+    false
+);
+```
+
+Metrics can be computed without producing a prediction frame:
+
+```java
+ModelMetricsGLRM metrics = glrmModel.scoreMetricsOnly(inputFrame);
+```
+
+## Isotonic regression
+
+The isotonic regression package provides a pool-adjacent-violators operation and a calibrator conversion API.
+
+```java
+import hex.isotonic.PoolAdjacentViolatorsDriver;
+
+Frame calibratedFrame = PoolAdjacentViolatorsDriver.runPAV(inputFrame);
+```
+
+For a trained model:
+
+```java
+IsotonicCalibrator calibrator = isotonicModel.toIsotonicCalibrator();
+```
+
+## Mathematical and optimization utilities
+
+### ADMM helpers
+
+```java
+double value = ADMM.shrinkage(3.5, 1.0);
+
+double[] beta = { 1.0, -2.0, 0.5 };
+double[] gradient = new double[beta.length];
+
+ADMM.subgrad(0.1, beta, gradient);
+```
+
+### L-BFGS optimization
+
+`L_BFGS` supports fluent configuration:
+
+```java
+L_BFGS optimizer = new L_BFGS()
+    .setMaxIter(100)
+    .setGradEps(1e-6)
+    .setObjEps(1e-8)
+    .setHistorySz(10);
+
+double[] initialCoefficients = L_BFGS.startCoefs(20, 1234L);
+```
+
+Solve using a compatible `GradientSolver`:
+
+```java
+L_BFGS.Result result = optimizer.solve(gradientSolver, initialCoefficients);
+```
+
+### Linear algebra utilities
+
+```java
+double[][] identity = LinearAlgebraUtils.generateIdentityMat(3);
+
+double[][] product = LinearAlgebraUtils.matrixMultiply(
+    new double[][] { {1, 2}, {3, 4} },
+    new double[][] { {5, 6}, {7, 8} }
+);
+
+double[] solution = LinearAlgebraUtils.forwardSolve(
+    lowerTriangularMatrix,
+    rightHandSide
+);
+```
+
+`Gram` provides distributed-model-oriented Gram-matrix operations, including diagonal updates, Cholesky factorization, matrix multiplication, and row accumulation.
+
+## Frame splitting
+
+Use `ShuffleSplitFrame` to create randomized frame splits:
+
+```java
+Frame[] splits = ShuffleSplitFrame.shuffleSplitFrame(
+    sourceFrame,
+    destinationKeys,
+    new double[] { 0.8, 0.2 },
+    2024L
+);
+
+Frame train = splits[0];
+Frame validation = splits[1];
+```
+
+## Model conversion tool
+
+`MojoConvertTool` provides a command-line entry point for MOJO/POJO conversion workflows:
+
+```java
+MojoConvertTool.main(new String[] {
+    "--mojo", "model.zip",
+    "--pojo", "Model.java"
+});
+```
+
+It can also be invoked programmatically:
+
+```java
+MojoConvertTool.mainInternal(arguments);
+```
+
+## API integration classes
+
+The library includes handlers, schemas, and registration components for API-based algorithm access:
+
+- `RegisterAlgos` registers endpoints.
+- `TreeHandler` retrieves tree representations.
+- `MakeGLMModelHandler` creates and derives GLM models, one-hot encodes frames, and computes Gram matrices.
+- `Word2VecHandler` supports synonym lookup and transformations.
+- `Model*V3` schema classes bridge model implementations and API schemas.
+
+For example, `MakeGLMModelHandler` exposes one-hot encoding as a utility:
+
+```java
+Frame encoded = MakeGLMModelHandler.oneHot(
+    inputFrame,
+    interactions,
+    true,   // useAll
+    true,   // standardize
+    false,  // interactionsOnly
+    false   // skipMissing
+);
+```
+
+## Supporting utilities
+
+Additional reusable utilities include:
+
+- `DimensionReductionUtils` for explained-variance calculations and dimension-reduction scoring history.
+- `ClusteringUtils` for cluster-center tables.
+- `DistributionUtils` for translating between GLM families and distribution families.
+- `EffectiveParametersUtils` for initializing effective algorithm parameters.
+- `CheckpointUtils` for validating checkpoint models.
+- `TreeUtils` for validating monotonic and interaction constraints.
+- `CalibrationHelper` for building and applying calibration models.
+- `MojoUtils` for extracting compressed trees from shared-tree MOJO models.
+
+## Notes on model export
+
+Many model builders report MOJO support through `haveMojo()`. Models that expose a `getMojo()` method can provide a corresponding writer, for example:
+
+```java
+GbmMojoWriter writer = gbmModel.getMojo();
+```
+
+Availability varies by algorithm. Builders also expose `havePojo()` when POJO generation is supported.

@@ -1,0 +1,597 @@
+# MapStruct Processor
+
+`org.mapstruct:mapstruct-processor` is a Java annotation-processing library for generating mapping implementations.
+
+Its API surface indicates that it:
+
+- Provides the `org.mapstruct.ap.MappingProcessor` annotation processor.
+- Builds an internal model of mapper methods, bean properties, collections, maps, streams, enums, constructors, assignments, and type conversions.
+- Generates source through model objects and writer abstractions.
+- Supports built-in conversions for primitives, wrappers, numbers, strings, dates, Java time types, XML calendar types, and selected Joda types.
+- Offers Service Provider Interfaces (SPIs) for customizing accessor naming, builder detection, enum mapping behavior, enum-name transformations, mapping exclusions, and processor options.
+
+Most packages under `org.mapstruct.ap.internal` contain processor model and infrastructure types. The primary integration points for library users and extensions are `MappingProcessor` and the types in `org.mapstruct.ap.spi`.
+
+## Installation and annotation processing
+
+Use the processor as an annotation processor in your Java build. The processor entry point is:
+
+```java
+org.mapstruct.ap.MappingProcessor
+```
+
+For a direct `javac` invocation, place the processor artifact on the processor path:
+
+```bash
+javac \
+  -cp mapstruct.jar \
+  -processorpath mapstruct-processor.jar \
+  -processor org.mapstruct.ap.MappingProcessor \
+  -d build/classes \
+  src/main/java/com/example/MyMapper.java
+```
+
+`MappingProcessor` extends `javax.annotation.processing.AbstractProcessor` and exposes the normal annotation-processing lifecycle:
+
+```java
+public class MappingProcessor extends AbstractProcessor {
+    public synchronized void init(ProcessingEnvironment processingEnv);
+    public SourceVersion getSupportedSourceVersion();
+    public boolean process(
+        Set<? extends TypeElement> annotations,
+        RoundEnvironment roundEnvironment
+    );
+    public Set<String> getSupportedOptions();
+}
+```
+
+The processor also supports extension-provided compiler options through `AdditionalSupportedOptionsProvider`.
+
+---
+
+## Architecture overview
+
+### Processing pipeline
+
+The processor API includes a sequence of `ModelElementProcessor` implementations. Each one accepts a source model and produces a later-stage model:
+
+| Processor | Input | Output | Apparent responsibility |
+|---|---:|---:|---|
+| `MethodRetrievalProcessor` | `Void` | `List<SourceMethod>` | Reads mapper methods into source-model representations. |
+| `MapperCreationProcessor` | `List<SourceMethod>` | `Mapper` | Creates the generated mapper model. |
+| `AnnotationBasedComponentModelProcessor` | `Mapper` | `Mapper` | Applies annotation-based component-model adjustments. |
+| `MapperRenderingProcessor` | `Mapper` | `Mapper` | Renders the mapper model. |
+| `MapperServiceProcessor` | `Mapper` | `Void` | Produces service-related output. |
+
+Every pipeline component implements:
+
+```java
+public interface ModelElementProcessor<P, R> {
+    R process(ProcessorContext context, TypeElement mapperTypeElement, P sourceModel);
+    int getPriority();
+}
+```
+
+`ProcessorContext` implementations provide compiler services, type utilities, messaging, options, naming strategies, enum strategies, and version information. `DefaultModelElementProcessorContext` is the included implementation.
+
+### Generated-model types
+
+The model layer represents code that will be generated:
+
+- `GeneratedType` — a generated Java type with package, name, imports, fields, methods, constructor, annotations, and Javadoc.
+- `Mapper` — a generated mapper type, optionally with a `Decorator`.
+- `MappingMethod` — base representation of a generated mapping method.
+- `BeanMappingMethod` — mapping between regular object/bean types.
+- `IterableMappingMethod`, `MapMappingMethod`, and `StreamMappingMethod` — mappings for container-like values.
+- `ValueMappingMethod` — value-oriented mappings, including enum-related entries.
+- `PropertyMapping` — a single target-property mapping.
+- `SubclassMapping` — a source-subclass to target-subclass mapping.
+- `Assignment` — the right-hand-side assignment model used while generating code.
+- `TypeConversion` and `MethodReference` — assignment implementations for conversions and method invocations.
+
+Assignments may be wrapped to model common generated-code patterns:
+
+- `SetterWrapper`
+- `AdderWrapper`
+- `ArrayCopyWrapper`
+- `LocalVarWrapper`
+- `UpdateWrapper`
+- `ReturnWrapper`
+- Collection and map wrappers such as `GetterWrapperForCollectionsAndMaps`
+
+### Types, properties, and accessors
+
+The processor uses Java annotation-processing types through a model-friendly abstraction:
+
+- `TypeFactory` creates `Type` objects from classes, type mirrors, and type elements.
+- `Type` represents Java type characteristics, assignability, collections, maps, streams, arrays, records, enums, bounds, imports, constructors, and property accessors.
+- `Parameter` models method parameters and identifies source, target, context, target-type, and property-name parameters.
+- `ReadAccessor`, `Accessor`, and `PresenceCheckAccessor` represent readable properties, write accessors, and source-presence checks.
+- `AccessorNamingUtils` delegates getter/setter/adder/property interpretation to an `AccessorNamingStrategy`.
+
+### Conversion infrastructure
+
+The conversion package models built-in type conversion selection and code expressions.
+
+- `Conversions` locates a `ConversionProvider` for a source and target `Type`.
+- `ConversionProvider` creates assignments in both directions:
+  - `to(ConversionContext)`
+  - `from(ConversionContext)`
+- `DefaultConversionContext` provides target type, date format, number format, and a `TypeFactory`.
+- `SimpleConversion` is a base conversion implementation.
+- `ReverseConversion.inverse(...)` swaps the direction of an existing conversion provider.
+
+Specialized conversion classes include:
+
+- Primitive/wrapper/number conversions:
+  - `PrimitiveToPrimitiveConversion`
+  - `PrimitiveToWrapperConversion`
+  - `WrapperToWrapperConversion`
+  - `BigDecimalToPrimitiveConversion`
+  - `BigDecimalToWrapperConversion`
+  - `BigIntegerToPrimitiveConversion`
+  - `BigIntegerToWrapperConversion`
+- String conversions:
+  - `PrimitiveToStringConversion`
+  - `WrapperToStringConversion`
+  - `BigDecimalToStringConversion`
+  - `BigIntegerToStringConversion`
+  - `CharToStringConversion`
+  - `CharWrapperToStringConversion`
+  - `DateToStringConversion`
+  - `EnumStringConversion`
+- Supporting formatting helpers:
+  - `CreateDecimalFormat`
+  - `GetDateTimeFormatterField`
+  - `ConversionUtils`
+
+### Mapping resolution and method selection
+
+Mapping resolution determines which direct conversion, built-in method, forged method, mapper method, or multi-step mapping should be used:
+
+```java
+public interface MappingResolver {
+    Assignment getTargetAssignment(
+        Method mappingMethod,
+        ForgedMethodHistory description,
+        Type targetType,
+        FormattingParameters formattingParameters,
+        SelectionCriteria criteria,
+        SourceRHS sourceRHS,
+        AnnotationMirror positionHint,
+        Supplier<Assignment> forger
+    );
+}
+```
+
+`MappingResolverImpl` is the provided implementation.
+
+Method candidates are selected through `MethodSelectors` and individual `MethodSelector` implementations:
+
+- `TypeSelector`
+- `QualifierSelector`
+- `TargetTypeSelector`
+- `InheritanceSelector`
+- `CreateOrUpdateSelector`
+- `MostSpecificResultTypeSelector`
+- `FactoryParameterSelector`
+- `SourceRhsSelector`
+- `MethodFamilySelector`
+
+A `SelectionContext` supplies the source, target, mapping method, return type, selection criteria, and available parameter bindings. `SelectionCriteria` controls whether direct assignment, conversions, mapping methods, and two-step mappings are allowed.
+
+---
+
+## Supported extension points
+
+The SPI package is the main customization surface.
+
+| SPI | Purpose |
+|---|---|
+| `AccessorNamingStrategy` | Defines how methods are classified as getters, setters, adders, and presence checkers, and how property names are derived. |
+| `BuilderProvider` | Finds builder creation methods and build methods for a target type. |
+| `EnumMappingStrategy` | Resolves enum constants, null enum constants, and the unexpected-value exception type. |
+| `EnumTransformationStrategy` | Transforms enum constant names according to a named strategy. |
+| `MappingExclusionProvider` | Excludes selected types from mapping. |
+| `AstModifyingAnnotationProcessor` | Indicates whether a type is complete when other annotation processors modify the AST. |
+| `AdditionalSupportedOptionsProvider` | Adds processor options to the supported-option set. |
+| `MapStructProcessingEnvironment` | Provides compiler `Elements`, `Types`, and configured options to SPI implementations. |
+
+Included implementations include:
+
+- `DefaultAccessorNamingStrategy`
+- `ImmutablesAccessorNamingStrategy`
+- `DefaultBuilderProvider`
+- `NoOpBuilderProvider`
+- `DefaultEnumMappingStrategy`
+- `CaseEnumTransformationStrategy`
+- `PrefixEnumTransformationStrategy`
+- `SuffixEnumTransformationStrategy`
+- `StripPrefixEnumTransformationStrategy`
+- `StripSuffixEnumTransformationStrategy`
+
+---
+
+## Example: custom accessor naming strategy
+
+Implement `AccessorNamingStrategy` when a project uses nonstandard accessor method names.
+
+The following strategy recognizes `valueOfX()` as a getter, `withX(value)` as a setter, and delegates all other behavior to the default strategy:
+
+```java
+package com.example.processor;
+
+import javax.lang.model.element.ExecutableElement;
+
+import org.mapstruct.ap.spi.DefaultAccessorNamingStrategy;
+import org.mapstruct.ap.spi.MethodType;
+
+public final class WithPrefixAccessorNamingStrategy
+    extends DefaultAccessorNamingStrategy {
+
+    @Override
+    public MethodType getMethodType(ExecutableElement method) {
+        String name = method.getSimpleName().toString();
+
+        if (name.startsWith("valueOf") && name.length() > "valueOf".length()
+            && method.getParameters().isEmpty()) {
+            return MethodType.GETTER;
+        }
+
+        if (name.startsWith("with") && name.length() > "with".length()
+            && method.getParameters().size() == 1) {
+            return MethodType.SETTER;
+        }
+
+        return super.getMethodType(method);
+    }
+
+    @Override
+    public String getPropertyName(ExecutableElement method) {
+        String name = method.getSimpleName().toString();
+
+        if (name.startsWith("valueOf")) {
+            return decapitalize(name.substring("valueOf".length()));
+        }
+
+        if (name.startsWith("with")) {
+            return decapitalize(name.substring("with".length()));
+        }
+
+        return super.getPropertyName(method);
+    }
+
+    private String decapitalize(String value) {
+        if (value.isEmpty()) {
+            return value;
+        }
+        return Character.toLowerCase(value.charAt(0)) + value.substring(1);
+    }
+}
+```
+
+Register the implementation with Java’s service-provider mechanism:
+
+```text
+# META-INF/services/org.mapstruct.ap.spi.AccessorNamingStrategy
+com.example.processor.WithPrefixAccessorNamingStrategy
+```
+
+The SPI receives the processing environment through `init(...)` when initialization is needed:
+
+```java
+@Override
+public void init(org.mapstruct.ap.spi.MapStructProcessingEnvironment environment) {
+    // environment.getElementUtils()
+    // environment.getTypeUtils()
+    // environment.getOptions()
+}
+```
+
+---
+
+## Example: custom builder provider
+
+Implement `BuilderProvider` to describe project-specific builder conventions.
+
+```java
+package com.example.processor;
+
+import javax.lang.model.type.TypeMirror;
+
+import org.mapstruct.ap.spi.BuilderInfo;
+import org.mapstruct.ap.spi.BuilderProvider;
+import org.mapstruct.ap.spi.MapStructProcessingEnvironment;
+
+public final class ProjectBuilderProvider implements BuilderProvider {
+
+    @Override
+    public void init(MapStructProcessingEnvironment processingEnvironment) {
+        // Save compiler utilities if required:
+        // processingEnvironment.getElementUtils()
+        // processingEnvironment.getTypeUtils()
+    }
+
+    @Override
+    public BuilderInfo findBuilderInfo(TypeMirror type) {
+        // Inspect `type` and return a BuilderInfo when the project’s
+        // builder convention is recognized.
+        //
+        // Return null when no builder applies.
+        return null;
+    }
+}
+```
+
+Register it as:
+
+```text
+# META-INF/services/org.mapstruct.ap.spi.BuilderProvider
+com.example.processor.ProjectBuilderProvider
+```
+
+`BuilderInfo` exposes the builder creation method and its build methods:
+
+```java
+public class BuilderInfo {
+    public ExecutableElement getBuilderCreationMethod();
+    public Collection<ExecutableElement> getBuildMethods();
+}
+```
+
+If builders should be disabled entirely, use `NoOpBuilderProvider`, whose `findBuilderInfo(TypeMirror)` does not provide builder metadata.
+
+---
+
+## Example: custom enum transformation strategy
+
+An enum transformation strategy has a unique strategy name and transforms a source name using optional configuration.
+
+```java
+package com.example.processor;
+
+import org.mapstruct.ap.spi.EnumTransformationStrategy;
+
+public final class DotToUnderscoreTransformation
+    implements EnumTransformationStrategy {
+
+    @Override
+    public String getStrategyName() {
+        return "dotToUnderscore";
+    }
+
+    @Override
+    public String transform(String value, String configuration) {
+        if (value == null) {
+            return null;
+        }
+
+        return value.replace('.', '_');
+    }
+}
+```
+
+Register the strategy:
+
+```text
+# META-INF/services/org.mapstruct.ap.spi.EnumTransformationStrategy
+com.example.processor.DotToUnderscoreTransformation
+```
+
+The library includes several general-purpose transformations already:
+
+```java
+new org.mapstruct.ap.spi.CaseEnumTransformationStrategy();
+new org.mapstruct.ap.spi.PrefixEnumTransformationStrategy();
+new org.mapstruct.ap.spi.SuffixEnumTransformationStrategy();
+new org.mapstruct.ap.spi.StripPrefixEnumTransformationStrategy();
+new org.mapstruct.ap.spi.StripSuffixEnumTransformationStrategy();
+```
+
+---
+
+## Example: programmatic conversion lookup
+
+The conversion model can be used by processor integrations that already have a `TypeFactory` and source/target `Type` instances.
+
+```java
+import org.mapstruct.ap.internal.conversion.ConversionProvider;
+import org.mapstruct.ap.internal.conversion.Conversions;
+import org.mapstruct.ap.internal.model.common.Assignment;
+import org.mapstruct.ap.internal.model.common.DefaultConversionContext;
+import org.mapstruct.ap.internal.model.common.FormattingParameters;
+import org.mapstruct.ap.internal.model.common.Type;
+
+// `typeFactory`, `messager`, `sourceType`, and `targetType` are obtained
+// from an annotation-processing context.
+Conversions conversions = new Conversions(typeFactory);
+
+ConversionProvider conversion =
+    conversions.getConversion(sourceType, targetType);
+
+if (conversion != null) {
+    FormattingParameters formats =
+        new FormattingParameters(null, null, null, null, null);
+
+    DefaultConversionContext context =
+        new DefaultConversionContext(
+            typeFactory,
+            messager,
+            sourceType,
+            targetType,
+            formats
+        );
+
+    Assignment assignment = conversion.to(context);
+
+    // The assignment can contribute import types, thrown types,
+    // and source-level conversion structure.
+    java.util.Set<Type> imports = assignment.getImportTypes();
+    java.util.List<Type> thrownTypes = assignment.getThrownTypes();
+}
+```
+
+A conversion provider may request generated helper methods or fields:
+
+```java
+java.util.List<org.mapstruct.ap.internal.model.HelperMethod> helpers =
+    conversion.getRequiredHelperMethods(context);
+
+java.util.List<org.mapstruct.ap.internal.model.common.FieldReference> fields =
+    conversion.getRequiredHelperFields(context);
+```
+
+For the reverse direction:
+
+```java
+Assignment reverseAssignment = conversion.from(context);
+```
+
+Or create a reversed provider:
+
+```java
+import org.mapstruct.ap.internal.conversion.ReverseConversion;
+
+ConversionProvider reverse = ReverseConversion.inverse(conversion);
+```
+
+---
+
+## Processor options and diagnostics
+
+`Options` represents processor configuration used by the model:
+
+```java
+public class Options {
+    public Options(
+        boolean suppressGeneratorTimestamp,
+        boolean suppressGeneratorVersionComment,
+        ReportingPolicyGem unmappedTargetPolicy,
+        ReportingPolicyGem unmappedSourcePolicy,
+        String defaultComponentModel,
+        String defaultInjectionStrategy,
+        boolean alwaysGenerateSpi,
+        boolean disableBuilders,
+        boolean verbose,
+        NullValueMappingStrategyGem nullValueIterableMappingStrategy,
+        NullValueMappingStrategyGem nullValueMapMappingStrategy
+    );
+}
+```
+
+Reporting policies are represented by `ReportingPolicyGem`:
+
+```java
+ReportingPolicyGem.IGNORE
+ReportingPolicyGem.WARN
+ReportingPolicyGem.ERROR
+```
+
+Useful policy inspection methods include:
+
+```java
+policy.getDiagnosticKind();
+policy.requiresReport();
+policy.failsBuild();
+```
+
+Processor diagnostics are represented by `Message` and emitted through `FormattingMessager`:
+
+```java
+messager.printMessage(Message.BEANMAPPING_UNMAPPED_TARGETS_WARNING, "name");
+messager.note(1, Message.PROCESSING_NOTE, "Generated mapper model");
+```
+
+`FormattingMessager` also supports attaching diagnostics to compiler elements, annotations, and annotation values.
+
+---
+
+## Utility APIs
+
+The processor includes several reusable utility types:
+
+- `Strings`
+  - capitalization and decapitalization
+  - joining values
+  - safe variable names
+  - identifier sanitization
+  - similar-word lookup
+- `Collections`
+  - set creation
+  - first/last element helpers
+  - list joining
+  - first map entry/key/value helpers
+- `NativeTypes`
+  - primitive/wrapper lookup
+  - numeric type checks
+  - literal lookup
+  - narrowing-conversion detection
+- `Nouns`
+  - singularization
+- `Services`
+  - service loading
+- `IntrospectorUtils`
+  - JavaBeans-style decapitalization
+
+For example:
+
+```java
+import org.mapstruct.ap.internal.util.Strings;
+
+String property = Strings.decapitalize("DisplayName");
+// "displayName"
+
+String localName = Strings.getSafeVariableName(
+    "result",
+    java.util.List.of("result", "result1")
+);
+// Produces a non-conflicting variable name.
+```
+
+---
+
+## Key types at a glance
+
+```text
+MappingProcessor
+    |
+    +-- ModelElementProcessor pipeline
+    |     +-- MethodRetrievalProcessor
+    |     +-- MapperCreationProcessor
+    |     +-- AnnotationBasedComponentModelProcessor
+    |     +-- MapperRenderingProcessor
+    |     +-- MapperServiceProcessor
+    |
+    +-- Mapper / GeneratedType
+    |     +-- MappingMethod
+    |           +-- BeanMappingMethod
+    |           +-- IterableMappingMethod
+    |           +-- MapMappingMethod
+    |           +-- StreamMappingMethod
+    |           +-- ValueMappingMethod
+    |
+    +-- MappingResolver
+    |     +-- MappingResolverImpl
+    |     +-- Assignment
+    |           +-- TypeConversion
+    |           +-- MethodReference
+    |           +-- assignment wrappers
+    |
+    +-- TypeFactory
+    |     +-- Type
+    |     +-- Parameter
+    |     +-- property accessors
+    |
+    +-- SPI services
+          +-- AccessorNamingStrategy
+          +-- BuilderProvider
+          +-- EnumMappingStrategy
+          +-- EnumTransformationStrategy
+          +-- MappingExclusionProvider
+          +-- AstModifyingAnnotationProcessor
+          +-- AdditionalSupportedOptionsProvider
+```
+
+## License
+
+See the repository license for licensing terms.

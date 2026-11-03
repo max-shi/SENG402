@@ -1,0 +1,571 @@
+# camunda-dmn-model
+
+`org.camunda.bpm.model:camunda-dmn-model` is a Java object-model API for reading, inspecting, modifying, validating, and writing DMN models.
+
+A DMN document is represented as a `DmnModelInstance` containing a root `Definitions` element. The model exposes typed interfaces for DMN decision requirements graph (DRG) elements, decision-table expressions, requirements, imports, item definitions, annotations, extension elements, and related metadata.
+
+## Getting started
+
+```xml
+<dependency>
+  <groupId>org.camunda.bpm.model</groupId>
+  <artifactId>camunda-dmn-model</artifactId>
+  <version><!-- version --></version>
+</dependency>
+```
+
+## Core API
+
+### `Dmn`
+
+`Dmn` is the main entry point for model I/O and validation.
+
+| Method | Purpose |
+|---|---|
+| `readModelFromFile(File)` | Read a DMN model from a file. |
+| `readModelFromStream(InputStream)` | Read a DMN model from an input stream. |
+| `writeModelToFile(File, DmnModelInstance)` | Write a model to a file. |
+| `writeModelToStream(OutputStream, DmnModelInstance)` | Write a model to an output stream. |
+| `convertToString(DmnModelInstance)` | Serialize a model to a string. |
+| `validateModel(DmnModelInstance)` | Validate a model instance. |
+| `createEmptyModel()` | Create an empty DMN model instance. |
+
+A `DmnModelException` may be used to report model-related errors.
+
+### `DmnModelInstance`
+
+`DmnModelInstance` represents the complete DMN document.
+
+```java
+DmnModelInstance model = Dmn.readModelFromFile(new File("decision.dmn"));
+
+Definitions definitions = model.getDefinitions();
+model.setDefinitions(definitions);
+
+DmnModelInstance copy = model.clone();
+```
+
+The root `Definitions` element holds the document-level metadata and collections of top-level DMN elements.
+
+## Model structure
+
+The API models DMN as a hierarchy of typed elements.
+
+```text
+DmnModelInstance
+└── Definitions
+    ├── Import
+    ├── ItemDefinition
+    ├── DrgElement
+    │   ├── Decision
+    │   ├── InputData
+    │   ├── BusinessKnowledgeModel
+    │   └── KnowledgeSource
+    ├── Artifact
+    │   ├── Association
+    │   └── TextAnnotation
+    ├── ElementCollection
+    └── BusinessContextElement
+        ├── OrganizationUnit
+        └── PerformanceIndicator
+```
+
+Most named DMN elements inherit common properties through the following conceptual hierarchy:
+
+```text
+DmnModelElementInstance
+└── DmnElement
+    ├── NamedElement
+    │   ├── Definitions
+    │   ├── DrgElement
+    │   ├── ItemDefinition
+    │   ├── DecisionService
+    │   └── BusinessContextElement
+    └── Expression
+```
+
+### Common element metadata
+
+`DmnElement` provides metadata common to many model elements:
+
+```java
+String id = element.getId();
+element.setId("decision_approval");
+
+String label = element.getLabel();
+element.setLabel("Customer approval decision");
+
+Description description = element.getDescription();
+ExtensionElements extensions = element.getExtensionElements();
+```
+
+`NamedElement` adds a `name` property:
+
+```java
+namedElement.setName("Approval Decision");
+```
+
+`Expression` adds a type reference:
+
+```java
+expression.setTypeRef("string");
+```
+
+## Definitions and top-level elements
+
+`Definitions` is the root element of a model and exposes document metadata plus top-level collections.
+
+```java
+Definitions definitions = model.getDefinitions();
+
+String namespace = definitions.getNamespace();
+definitions.setNamespace("https://example.org/dmn");
+
+definitions.setExpressionLanguage("...");
+definitions.setTypeLanguage("...");
+definitions.setExporter("Example DMN Tool");
+definitions.setExporterVersion("1.0");
+
+Collection<DrgElement> drgElements = definitions.getDrgElements();
+Collection<ItemDefinition> itemDefinitions = definitions.getItemDefinitions();
+Collection<Import> imports = definitions.getImports();
+Collection<Artifact> artifacts = definitions.getArtifacts();
+```
+
+## Decisions and requirements
+
+### Decisions
+
+A `Decision` is a DRG element with an optional variable, expression, question, allowed answers, requirements, and Camunda-specific metadata.
+
+```java
+for (DrgElement drgElement : model.getDefinitions().getDrgElements()) {
+  if (drgElement instanceof Decision) {
+    Decision decision = (Decision) drgElement;
+
+    System.out.println(decision.getId());
+    System.out.println(decision.getName());
+
+    Variable variable = decision.getVariable();
+    Expression expression = decision.getExpression();
+
+    Integer ttl = decision.getCamundaHistoryTimeToLive();
+    String versionTag = decision.getVersionTag();
+  }
+}
+```
+
+A decision can refer to:
+
+- `InformationRequirement` objects for required decisions or input data
+- `KnowledgeRequirement` objects for required business knowledge models
+- `AuthorityRequirement` objects for required decisions, input data, or knowledge sources
+- `OrganizationUnit` objects representing decision makers and owners
+- `PerformanceIndicator` objects affected by the decision
+- Process and task references through `UsingProcessReference` and `UsingTaskReference`
+
+### Input data
+
+`InputData` represents a DRG input and can contain an `InformationItem`.
+
+```java
+InputData inputData = /* obtain from definitions.getDrgElements() */;
+InformationItem informationItem = inputData.getInformationItem();
+
+if (informationItem != null) {
+  System.out.println(informationItem.getName());
+  System.out.println(informationItem.getTypeRef());
+}
+```
+
+### Business knowledge models
+
+A `BusinessKnowledgeModel` can contain encapsulated logic, a variable, knowledge requirements, and authority requirements.
+
+```java
+BusinessKnowledgeModel knowledgeModel = /* obtain from definitions.getDrgElements() */;
+
+EncapsulatedLogic logic = knowledgeModel.getEncapsulatedLogic();
+Variable resultVariable = knowledgeModel.getVariable();
+
+for (KnowledgeRequirement requirement : knowledgeModel.getKnowledgeRequirement()) {
+  BusinessKnowledgeModel required = requirement.getRequiredKnowledge();
+}
+```
+
+## Expressions
+
+A `Decision` and several other elements can hold an `Expression`. Supported expression types include:
+
+| Expression type | Purpose |
+|---|---|
+| `DecisionTable` | A tabular decision expression with inputs, outputs, and rules. |
+| `LiteralExpression` | An expression with an expression language and `Text`. |
+| `Context` | A collection of named `ContextEntry` values. |
+| `FunctionDefinition` | Formal parameters plus a body expression. |
+| `Invocation` | An invoked expression with parameter bindings. |
+| `List` | A collection of nested expressions. |
+| `Relation` | Columns and rows. |
+
+### Literal expressions and unary tests
+
+`LiteralExpression` and `UnaryTests` can carry an expression language and a `Text` child element.
+
+```java
+LiteralExpression literalExpression = /* obtain from a decision or expression */;
+String expressionLanguage = literalExpression.getExpressionLanguage();
+Text text = literalExpression.getText();
+
+UnaryTests tests = /* for example, an input entry or allowed values */;
+Text testText = tests.getText();
+```
+
+### Contexts
+
+A `Context` contains `ContextEntry` objects. Each entry can associate a `Variable` with an `Expression`.
+
+```java
+Context context = /* obtain as an Expression */;
+
+for (ContextEntry entry : context.getContextEntries()) {
+  Variable variable = entry.getVariable();
+  Expression valueExpression = entry.getExpression();
+}
+```
+
+### Functions and invocations
+
+A `FunctionDefinition` has formal parameters and an expression body.
+
+```java
+FunctionDefinition function = /* obtain as an Expression */;
+
+for (FormalParameter parameter : function.getFormalParameters()) {
+  System.out.println(parameter.getName());
+  System.out.println(parameter.getTypeRef());
+}
+
+Expression body = function.getExpression();
+```
+
+An `Invocation` combines an expression with `Binding` objects:
+
+```java
+Invocation invocation = /* obtain as an Expression */;
+
+for (Binding binding : invocation.getBindings()) {
+  Parameter parameter = binding.getParameter();
+  Expression boundExpression = binding.getExpression();
+}
+```
+
+## Decision tables
+
+`DecisionTable` is an expression with inputs, outputs, and rules.
+
+```text
+DecisionTable
+├── Input
+│   ├── InputExpression
+│   └── InputValues
+├── Output
+│   ├── OutputValues
+│   └── DefaultOutputEntry
+└── Rule
+    ├── InputEntry
+    └── OutputEntry
+```
+
+### Decision-table configuration
+
+Decision tables expose hit policy, aggregation, preferred orientation, and output label settings.
+
+```java
+DecisionTable table = /* obtain from decision.getExpression() */;
+
+HitPolicy hitPolicy = table.getHitPolicy();
+BuiltinAggregator aggregation = table.getAggregation();
+DecisionTableOrientation orientation = table.getPreferredOrientation();
+
+table.setHitPolicy(HitPolicy.UNIQUE);
+table.setAggregation(BuiltinAggregator.SUM);
+table.setPreferredOrientation(DecisionTableOrientation.Rule_as_Row);
+table.setOutputLabel("decisionResult");
+```
+
+Available enum values include:
+
+- `HitPolicy`: `UNIQUE`, `FIRST`, `PRIORITY`, `ANY`, `COLLECT`, `RULE_ORDER`, `OUTPUT_ORDER`
+- `BuiltinAggregator`: `SUM`, `COUNT`, `MIN`, `MAX`
+- `DecisionTableOrientation`: `Rule_as_Row`, `Rule_as_Column`, `CrossTable`
+- `AssociationDirection`: `None`, `One`, `Both`
+
+### Inputs, outputs, and rules
+
+```java
+for (Input input : table.getInputs()) {
+  InputExpression expression = input.getInputExpression();
+  InputValues allowedValues = input.getInputValues();
+
+  String inputVariable = input.getCamundaInputVariable();
+}
+
+for (Output output : table.getOutputs()) {
+  String outputName = output.getName();
+  String outputType = output.getTypeRef();
+
+  OutputValues outputValues = output.getOutputValues();
+  DefaultOutputEntry defaultEntry = output.getDefaultOutputEntry();
+}
+
+for (Rule rule : table.getRules()) {
+  Collection<InputEntry> inputEntries = rule.getInputEntries();
+  Collection<OutputEntry> outputEntries = rule.getOutputEntries();
+}
+```
+
+## Item definitions and types
+
+`ItemDefinition` describes reusable type information. It can declare a type language, collection status, a `TypeRef`, allowed values, and nested item components.
+
+```java
+for (ItemDefinition itemDefinition : model.getDefinitions().getItemDefinitions()) {
+  System.out.println(itemDefinition.getName());
+  System.out.println(itemDefinition.getTypeLanguage());
+  System.out.println(itemDefinition.isCollection());
+
+  TypeRef typeRef = itemDefinition.getTypeRef();
+  AllowedValues allowedValues = itemDefinition.getAllowedValues();
+
+  for (ItemComponent component : itemDefinition.getItemComponents()) {
+    System.out.println(component.getName());
+  }
+}
+```
+
+`InformationItem`, `Variable`, `FormalParameter`, `Parameter`, and `Column` provide named values with a `typeRef`.
+
+## Imports and references
+
+### Imports
+
+`Import` holds namespace, location URI, and import type metadata.
+
+```java
+for (Import importedModel : model.getDefinitions().getImports()) {
+  System.out.println(importedModel.getNamespace());
+  System.out.println(importedModel.getLocationUri());
+  System.out.println(importedModel.getImportType());
+}
+```
+
+`ImportedValues` extends `Import` with an expression language and an `ImportedElement`.
+
+### Element references
+
+`DmnElementReference` exposes an `href` value. Specialized reference types include:
+
+- `RequiredDecisionReference`
+- `RequiredInputReference`
+- `RequiredKnowledgeReference`
+- `RequiredAuthorityReference`
+- `InputDecisionReference`
+- `InputDataReference`
+- `OutputDecisionReference`
+- `EncapsulatedDecisionReference`
+- `ItemDefinitionReference`
+- `OwnerReference`
+- `SourceRef`
+- `TargetRef`
+- `DecisionMakerReference`
+- `DecisionOwnerReference`
+- `DecisionMadeReference`
+- `DecisionOwnedReference`
+- `SupportedObjectiveReference`
+- `ImpactedPerformanceIndicatorReference`
+- `ImpactingDecisionReference`
+- `UsingProcessReference`
+- `UsingTaskReference`
+
+```java
+DmnElementReference reference = /* obtain a reference element */;
+String href = reference.getHref();
+reference.setHref("#decision_customerApproval");
+```
+
+## Artifacts and annotations
+
+`Artifact` is the base type for model artifacts. The API includes:
+
+- `Association`, connecting a source and target `DmnElement`
+- `TextAnnotation`, containing a text format and `Text`
+
+```java
+Association association = /* obtain from definitions.getArtifacts() */;
+
+association.setAssociationDirection(AssociationDirection.One);
+
+DmnElement source = association.getSource();
+DmnElement target = association.getTarget();
+```
+
+```java
+TextAnnotation annotation = /* obtain from definitions.getArtifacts() */;
+
+annotation.setTextFormat("text/plain");
+Text text = annotation.getText();
+```
+
+## Extension elements
+
+`ExtensionElements` lets a model hold arbitrary extension elements.
+
+```java
+DmnElement element = /* a decision, decision table, or other DMN element */;
+ExtensionElements extensions = element.getExtensionElements();
+
+if (extensions != null) {
+  Collection<ModelElementInstance> allExtensions = extensions.getElements();
+
+  Query<ModelElementInstance> query = extensions.getElementsQuery();
+  int extensionCount = query.count();
+}
+```
+
+Add an extension element by namespace and local name:
+
+```java
+ModelElementInstance extension =
+    extensions.addExtensionElement("https://example.org/dmn/extensions", "reviewMetadata");
+```
+
+Or add one by model element class:
+
+```java
+MyExtensionElement extension =
+    extensions.addExtensionElement(MyExtensionElement.class);
+```
+
+## Querying model elements
+
+The `Query<T>` API supports collecting, counting, filtering, and retrieving a single result.
+
+```java
+Query<ModelElementInstance> query = extensions.getElementsQuery();
+
+int count = query.count();
+
+java.util.List<ModelElementInstance> elements = query.list();
+
+Query<MyExtensionElement> typed =
+    query.filterByType(MyExtensionElement.class);
+
+MyExtensionElement element = typed.singleResult();
+```
+
+Filtering is also available through a `ModelElementType`:
+
+```java
+Query<ModelElementInstance> filtered = query.filterByType(elementType);
+```
+
+## Example: inspect and update a decision table
+
+This example reads a model, finds decision-table expressions, updates selected metadata, validates the result, and writes it back.
+
+```java
+import java.io.File;
+
+import org.camunda.bpm.model.dmn.Dmn;
+import org.camunda.bpm.model.dmn.DmnModelInstance;
+import org.camunda.bpm.model.dmn.HitPolicy;
+import org.camunda.bpm.model.dmn.instance.Decision;
+import org.camunda.bpm.model.dmn.instance.DecisionTable;
+import org.camunda.bpm.model.dmn.instance.DrgElement;
+import org.camunda.bpm.model.dmn.instance.Expression;
+
+public class UpdateDecisionTables {
+
+  public static void main(String[] args) {
+    File source = new File("input.dmn");
+    File target = new File("output.dmn");
+
+    DmnModelInstance model = Dmn.readModelFromFile(source);
+
+    for (DrgElement element : model.getDefinitions().getDrgElements()) {
+      if (!(element instanceof Decision)) {
+        continue;
+      }
+
+      Decision decision = (Decision) element;
+      Expression expression = decision.getExpression();
+
+      if (expression instanceof DecisionTable) {
+        DecisionTable table = (DecisionTable) expression;
+
+        table.setHitPolicy(HitPolicy.FIRST);
+        table.setOutputLabel(decision.getName());
+        decision.setVersionTag("reviewed");
+      }
+    }
+
+    Dmn.validateModel(model);
+    Dmn.writeModelToFile(target, model);
+  }
+}
+```
+
+## Example: work with streams and serialize a model
+
+```java
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+
+import org.camunda.bpm.model.dmn.Dmn;
+import org.camunda.bpm.model.dmn.DmnModelInstance;
+
+public class StreamRoundTrip {
+
+  public static void main(String[] args) {
+    byte[] xml = loadDmnXml();
+
+    DmnModelInstance model =
+        Dmn.readModelFromStream(new ByteArrayInputStream(xml));
+
+    Dmn.validateModel(model);
+
+    String serialized = Dmn.convertToString(model);
+    System.out.println(serialized);
+
+    ByteArrayOutputStream output = new ByteArrayOutputStream();
+    Dmn.writeModelToStream(output, model);
+
+    byte[] writtenXml = output.toByteArray();
+  }
+
+  private static byte[] loadDmnXml() {
+    return "...".getBytes(StandardCharsets.UTF_8);
+  }
+}
+```
+
+## Example: update decision metadata
+
+```java
+Decision decision = /* obtain from definitions.getDrgElements() */;
+
+decision.setLabel("Approval decision");
+decision.setCamundaHistoryTimeToLive(180);
+decision.setVersionTag("2025.1");
+
+Integer historyTimeToLive = decision.getCamundaHistoryTimeToLive();
+String historyTimeToLiveText = decision.getCamundaHistoryTimeToLiveString();
+String versionTag = decision.getVersionTag();
+```
+
+## Implementation classes
+
+The public API includes implementation classes under `org.camunda.bpm.model.dmn.impl`, including `DmnParser`, `DmnModelInstanceImpl`, `QueryImpl`, and typed `*Impl` element implementations.
+
+For application code, prefer the `Dmn` facade together with the interfaces in `org.camunda.bpm.model.dmn.instance`, such as `Decision`, `DecisionTable`, `Definitions`, and `Expression`.

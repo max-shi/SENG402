@@ -1,0 +1,220 @@
+# Apache HTTP Sink Extra
+
+`com.arpnetworking.metrics.extras:apache-http-sink-extra` provides an Apache HTTP-oriented implementation of the `Sink` interface for recording metrics `Event` instances.
+
+The library also exposes event-handler interfaces for observing sink activity, including completed delivery attempts and events that are dropped. An instrumented handler is available for reporting that activity through an optional `MetricsFactory`.
+
+## API overview
+
+### `ApacheHttpSink`
+
+```java
+public class ApacheHttpSink implements Sink {
+    public void record(Event event);
+}
+```
+
+`ApacheHttpSink` is a `Sink` implementation. Submit an `Event` to the sink with `record`:
+
+```java
+sink.record(event);
+```
+
+This is the primary integration point for applications that already produce `Event` objects and need a `Sink`.
+
+---
+
+### `ApacheHttpSinkEventHandler`
+
+```java
+public interface ApacheHttpSinkEventHandler {
+    void attemptComplete(
+            long records,
+            long bytes,
+            boolean success,
+            long elapasedTime,
+            TimeUnit elapsedTimeUnit);
+
+    void droppedEvent(Event event);
+}
+```
+
+`ApacheHttpSinkEventHandler` receives notifications about sink activity:
+
+- `attemptComplete` is called when an attempt completes.
+  - `records` is the number of records associated with the attempt.
+  - `bytes` is the number of bytes associated with the attempt.
+  - `success` indicates whether the attempt succeeded.
+  - `elapasedTime` and `elapsedTimeUnit` describe the attempt duration.
+- `droppedEvent` is called when an event is dropped.
+
+Applications can implement this interface to add logging, alerting, counters, or other operational visibility.
+
+Example handler:
+
+```java
+import com.arpnetworking.metrics.Event;
+import com.arpnetworking.metrics.impl.ApacheHttpSinkEventHandler;
+
+import java.util.concurrent.TimeUnit;
+
+public final class LoggingHttpSinkEventHandler implements ApacheHttpSinkEventHandler {
+    @Override
+    public void attemptComplete(
+            final long records,
+            final long bytes,
+            final boolean success,
+            final long elapasedTime,
+            final TimeUnit elapsedTimeUnit) {
+
+        System.out.printf(
+                "HTTP sink attempt complete: records=%d bytes=%d success=%s duration=%d %s%n",
+                records,
+                bytes,
+                success,
+                elapasedTime,
+                elapsedTimeUnit);
+    }
+
+    @Override
+    public void droppedEvent(final Event event) {
+        System.err.println("HTTP sink dropped an event: " + event);
+    }
+}
+```
+
+---
+
+### `InstrumentedApacheHttpSinkEventHandler`
+
+```java
+public class InstrumentedApacheHttpSinkEventHandler
+        implements ApacheHttpSinkEventHandler {
+
+    public InstrumentedApacheHttpSinkEventHandler(
+            Supplier<Optional<MetricsFactory>> metricsFactorySupplier);
+
+    public void attemptComplete(
+            long records,
+            long bytes,
+            boolean success,
+            long elapasedTime,
+            TimeUnit elapsedTimeUnit);
+
+    public void droppedEvent(Event event);
+}
+```
+
+`InstrumentedApacheHttpSinkEventHandler` is an `ApacheHttpSinkEventHandler` implementation that accepts a `Supplier<Optional<MetricsFactory>>`. This allows instrumentation to obtain a metrics factory when one is available, while also supporting cases where metrics instrumentation is unavailable or disabled.
+
+Create an instance by supplying a function that returns the current optional `MetricsFactory`:
+
+```java
+import com.arpnetworking.metrics.MetricsFactory;
+import com.arpnetworking.metrics.impl.InstrumentedApacheHttpSinkEventHandler;
+
+import java.util.Optional;
+import java.util.function.Supplier;
+
+public final class SinkInstrumentation {
+    public InstrumentedApacheHttpSinkEventHandler createHandler(
+            final MetricsFactory metricsFactory) {
+
+        final Supplier<Optional<MetricsFactory>> metricsFactorySupplier =
+                () -> Optional.of(metricsFactory);
+
+        return new InstrumentedApacheHttpSinkEventHandler(metricsFactorySupplier);
+    }
+}
+```
+
+If a metrics factory is not currently available, the supplier can return an empty optional:
+
+```java
+final InstrumentedApacheHttpSinkEventHandler handler =
+        new InstrumentedApacheHttpSinkEventHandler(Optional::<MetricsFactory>empty);
+```
+
+## Usage examples
+
+### Record an event through a sink
+
+Code that receives both an `ApacheHttpSink` and an `Event` can record the event directly:
+
+```java
+import com.arpnetworking.metrics.Event;
+import com.arpnetworking.metrics.impl.ApacheHttpSink;
+
+public final class EventPublisher {
+    private final ApacheHttpSink sink;
+
+    public EventPublisher(final ApacheHttpSink sink) {
+        this.sink = sink;
+    }
+
+    public void publish(final Event event) {
+        sink.record(event);
+    }
+}
+```
+
+Because `ApacheHttpSink` implements `Sink`, it can also be used anywhere a `Sink` is expected:
+
+```java
+import com.arpnetworking.metrics.Event;
+import com.arpnetworking.metrics.Sink;
+
+public final class EventRecorder {
+    private final Sink sink;
+
+    public EventRecorder(final Sink sink) {
+        this.sink = sink;
+    }
+
+    public void record(final Event event) {
+        sink.record(event);
+    }
+}
+```
+
+### Manually forward lifecycle information to a handler
+
+When implementing a component that tracks HTTP sink activity, invoke the handler methods with attempt and event information:
+
+```java
+import com.arpnetworking.metrics.Event;
+import com.arpnetworking.metrics.impl.ApacheHttpSinkEventHandler;
+
+import java.util.concurrent.TimeUnit;
+
+public final class AttemptReporter {
+    private final ApacheHttpSinkEventHandler eventHandler;
+
+    public AttemptReporter(final ApacheHttpSinkEventHandler eventHandler) {
+        this.eventHandler = eventHandler;
+    }
+
+    public void reportSuccessfulAttempt(
+            final long records,
+            final long bytes,
+            final long durationMillis) {
+
+        eventHandler.attemptComplete(
+                records,
+                bytes,
+                true,
+                durationMillis,
+                TimeUnit.MILLISECONDS);
+    }
+
+    public void reportDroppedEvent(final Event event) {
+        eventHandler.droppedEvent(event);
+    }
+}
+```
+
+## Relationship between the types
+
+- Use **`ApacheHttpSink`** as the `Sink` implementation that accepts events through `record`.
+- Use **`ApacheHttpSinkEventHandler`** to observe completed attempts and dropped events.
+- Use **`InstrumentedApacheHttpSinkEventHandler`** when event-handler activity should be connected to an optional `MetricsFactory`.

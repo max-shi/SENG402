@@ -1,0 +1,757 @@
+# moat-kv
+
+`moat-kv` is an asynchronous Python library for working with a replicated, hierarchical key/value store.
+
+Its API combines:
+
+- A client/server protocol for reading, writing, deleting, enumerating, and watching values.
+- Tree-oriented object models for representing parts of the store as Python objects.
+- Authentication, ACL, type, codec, and conversion support.
+- Replication and node-state management.
+- Runner and actor utilities for event-driven workloads.
+- Optional integrations for inventory data, calendars, GPIO, KNX, WAGO, OWFS, Akumuli, MQTT, and related services.
+- Command-oriented entry points for administration and inspection.
+
+The library is designed for async applications and exposes most I/O operations as coroutines or streamed requests.
+
+## Installation
+
+Install `moat-kv` using your normal Python package-management workflow.
+
+```bash
+pip install moat-kv
+```
+
+## Core concepts
+
+### Hierarchical paths
+
+Values are addressed by paths. Client methods accept a `path` argument for operations such as `get`, `set`, `delete`, `list`, and `watch`.
+
+A path is commonly represented as a sequence of path components:
+
+```python
+path = ("services", "example", "enabled")
+```
+
+The store can be treated as a hierarchy rather than a flat map: a value may have descendants, and APIs such as `list`, `get_tree`, and `delete_tree` operate on subtrees.
+
+### Async client
+
+`Client` is the primary protocol-facing API. Create one with `open_client`:
+
+```python
+from moat.kv.client import open_client
+
+client = await open_client(...)
+```
+
+The connection configuration is supplied as keyword arguments. The exact settings depend on the configured transport and authentication method.
+
+Most request-producing methods on `Client` return a `StreamedRequest`. A request can be awaited for a result with `await request.get()`, can receive stream events with `await request.recv()`, and can be cancelled or closed.
+
+### Object trees
+
+`ClientEntry`, `AttrClientEntry`, `MirrorRoot`, and `ClientRoot` provide higher-level object-oriented access to data stored in the tree.
+
+- `ClientEntry` represents an entry in a client-side tree.
+- `AttrClientEntry` is intended for entries whose value is represented by attributes.
+- `MirrorRoot` manages a mirrored client tree and lifecycle methods such as `run_starting`, `run`, `cancel`, and `wait_loaded`.
+- `ClientRoot` is the common root class for domain-specific client models.
+
+Several integrations build on these types, including inventory, calendar, GPIO, KNX, WAGO, OWFS, Akumuli, configuration, code, error tracking, and runners.
+
+### Server-side tree and replication
+
+The server-side model is centered on `Entry`, `Node`, `NodeEvent`, `UpdateEvent`, and `Server`.
+
+- `Entry` represents a node in the server-side hierarchy and supports traversal, serialization, updates, and deletion state.
+- `Node` and `NodeSet` track distributed node state and deletion/supersession information.
+- `NodeEvent` and `UpdateEvent` represent replicated node and value changes.
+- `Server` coordinates persistence, synchronization, node recovery, monitoring, and serving clients.
+- `ServerClient` processes protocol commands received by a connected client.
+
+## Quick start
+
+The following example writes, reads, lists, and deletes data through a client.
+
+```python
+import anyio
+
+from moat.kv.client import open_client
+
+
+async def main():
+    client = await open_client(
+        # Supply transport/authentication settings here.
+    )
+
+    path = ("demo", "counter")
+
+    # Set a value. Client operations return streamed requests.
+    request = client.set(path, 1)
+    set_result = await request.get()
+
+    # Read the value back.
+    request = client.get(path)
+    value = await request.get()
+
+    print("set result:", set_result)
+    print("current value:", value)
+
+    # Enumerate children below a path.
+    children = await client.list(("demo",), with_data=True)
+    print("children:", children)
+
+    # Remove the value.
+    request = client.delete(path)
+    delete_result = await request.get()
+    print("delete result:", delete_result)
+
+
+anyio.run(main)
+```
+
+The concrete result values are determined by the server protocol and request type. Treat returned data as protocol results rather than assuming a particular Python shape.
+
+## Watching changes
+
+Use `Client.watch` to subscribe to updates below a path. A watch returns a streamed request; receive messages until the request is cancelled or closed.
+
+```python
+import anyio
+
+from moat.kv.client import open_client
+
+
+async def monitor_settings():
+    client = await open_client(
+        # Connection configuration
+    )
+
+    watch = client.watch(("settings",), long_path=True)
+
+    try:
+        while True:
+            event = await watch.recv()
+            print("change:", event)
+    finally:
+        await watch.aclose()
+
+
+anyio.run(monitor_settings)
+```
+
+Useful `StreamedRequest` methods include:
+
+| Method | Purpose |
+|---|---|
+| `await request.get()` | Wait for a request result. |
+| `await request.recv()` | Receive the next streamed message. |
+| `await request.send(**msg)` | Send a request message. |
+| `await request.cancel()` | Cancel the request. |
+| `await request.wait_started()` | Wait until the request has started. |
+| `await request.aclose()` | Close the request. |
+
+## Client API overview
+
+### Values and trees
+
+`Client` provides these primary data operations:
+
+```python
+client.get(path, *, nchain=0)
+client.set(path, value=NotGiven, *, chain=NotGiven, prev=NotGiven,
+           nchain=0, idem=None)
+client.delete(path, *, chain=NotGiven, prev=NotGiven,
+              nchain=0, recursive=False)
+await client.list(path, *, with_data=False, empty=None, **kw)
+await client.get_tree(path, *, long_path=True, **kw)
+client.delete_tree(path, *, nchain=0)
+client.watch(path, *, long_path=True, **kw)
+```
+
+Important options include:
+
+- `prev`: supply an expected previous value for conditional updates or deletion.
+- `chain` and `nchain`: control chain-related request behavior.
+- `recursive`: delete descendants together with the selected entry.
+- `with_data`: include data when listing entries.
+- `long_path`: request full paths in tree or watch output.
+
+Example: conditionally replace a value.
+
+```python
+request = client.set(
+    ("settings", "mode"),
+    "automatic",
+    prev="manual",
+)
+result = await request.get()
+```
+
+Example: retrieve an entire subtree.
+
+```python
+tree = await client.get_tree(
+    ("inventory",),
+    long_path=True,
+)
+```
+
+### Store and protocol state
+
+The client also exposes helpers for store state and protocol facilities:
+
+```python
+tock = await client.get_tock()
+client.stop(seq)
+secret = await client.dh_secret(length=1024)
+```
+
+`get_tock` retrieves the current store tick or synchronization state. `dh_secret` provides a Diffie–Hellman-related secret operation through the connected server.
+
+### Messaging
+
+The client can send and monitor topic-based messages:
+
+```python
+client.msg_send(topic, data=None, raw=None)
+client.msg_monitor(topic, raw=False)
+```
+
+For example:
+
+```python
+request = client.msg_send(
+    ("example", "events"),
+    data={"kind": "refresh"},
+)
+result = await request.get()
+```
+
+A message monitor can be consumed similarly to a watch stream:
+
+```python
+messages = client.msg_monitor(("example", "events"))
+
+try:
+    while True:
+        message = await messages.recv()
+        print(message)
+finally:
+    await messages.aclose()
+```
+
+### Mirroring a subtree
+
+`Client.mirror` creates a mirrored object-tree view:
+
+```python
+client.mirror(path, *, root_type=None, **kw)
+```
+
+The result is expected to be a `MirrorRoot`-style object. Mirror roots support lifecycle and synchronization methods including:
+
+```python
+await root.run_starting()
+await root.wait_loaded()
+await root.wait_chain(chain)
+await root.cancel()
+```
+
+Domain-specific roots such as `InventoryRoot`, `CalRoot`, `GPIOroot`, `KNXroot`, `WAGOroot`, `OWFSroot`, and `AkumuliRoot` build on this pattern.
+
+## Object model API
+
+### Generic entries
+
+`ClientEntry` offers tree navigation and updates:
+
+```python
+entry = root.follow(("child", "grandchild"))
+entry = root.get("child")
+entry = root.by_name("named-entry")
+
+await entry.update(value)
+await entry.delete(recursive=True)
+await entry.set_value(value)
+```
+
+Useful inspection methods include:
+
+```python
+entry.value_or(default)
+entry.val("attribute")
+entry.val_d(default, "attribute")
+entry.find_cfg("setting", default=...)
+entry.parent()
+entry.root()
+entry.subpath()
+entry.all_children()
+```
+
+`AttrClientEntry` adds attribute-oriented value operations:
+
+```python
+value = entry.get_value()
+await entry.set_value(value)
+await entry.save()
+```
+
+### Configuration and code
+
+The library includes roots for configuration and stored code.
+
+- `ConfigRoot` and `ConfigEntry` provide a configuration tree.
+- `ModuleRoot` and `ModuleEntry` manage named modules.
+- `CodeRoot` and `CodeEntry` manage stored code entries.
+
+Examples of the available high-level operations:
+
+```python
+await module_root.add(("package", "module"), code="...")
+await module_root.remove(("package", "module"))
+
+await code_root.add(
+    ("jobs", "cleanup"),
+    code="...",
+    is_async=True,
+    variables=("client",),
+)
+await code_root.remove(("jobs", "cleanup"))
+```
+
+`EmptyCode` indicates that a code entry has no usable code content.
+
+## Authentication and authorization
+
+Authentication support is exposed through loader helpers and client/server authentication base classes.
+
+```python
+from moat.kv.auth import gen_auth, load, loader
+
+auth_spec = gen_auth("...")
+auth_type = load("...", make=False, server=False)
+```
+
+The public authentication hierarchy includes:
+
+- `BaseClientAuth` and `BaseClientAuthMaker`
+- `BaseServerAuth` and `BaseServerAuthMaker`
+- `RootServerUser`
+- Password-based client and server user implementations
+- Root-based client and server user implementations
+
+Client authentication objects provide:
+
+```python
+identity = auth.ident()
+await auth.auth(client, chroot=())
+data = auth.auth_data()
+```
+
+Server authentication objects include read/write authorization hooks:
+
+```python
+await auth.check_read(*path, client=server_client)
+await auth.check_write(*path, client=server_client)
+```
+
+Relevant exceptions include:
+
+- `ClientAuthError`
+- `ClientAuthRequiredError`
+- `ClientAuthMethodError`
+- `NoAuthError`
+- `NoAuthModuleError`
+- `AuthFailedError`
+- `ACLError`
+
+## Types, codecs, conversions, and ACLs
+
+The server-side metadata system includes support for validation, codecs, conversions, and access control.
+
+### Types
+
+`TypeEntry` and `TypeRoot` validate values:
+
+```python
+type_entry.check_value(value, entry=None)
+await type_entry.set(value)
+```
+
+### Codecs
+
+`CodecEntry` encodes and decodes values:
+
+```python
+encoded = codec.enc_value(value, entry=None)
+decoded = codec.dec_value(encoded, entry=None)
+await codec.set(value)
+```
+
+### Conversions
+
+`ConvEntry`, `ConvName`, `ConvRoot`, and `ConvNull` provide conversion layers. `ConvNull` exposes pass-through conversion methods:
+
+```python
+encoded = ConvNull.enc_value(value)
+decoded = ConvNull.dec_value(value)
+```
+
+### ACLs
+
+ACL support is represented by `AclEntry`, `AclName`, `AclRoot`, and finder/stepper classes:
+
+```python
+finder = ACLFinder()
+finder = finder.step("subtree")
+allowed = finder.allows("read")
+```
+
+`NullACL` provides a permissive or neutral ACL stepper implementation.
+
+## Server API
+
+The `Server` class coordinates the replicated store and its lifecycle.
+
+Key server methods include:
+
+```python
+await server.load(path="state.dat")
+await server.save(path="state.dat", full=True)
+
+await server.serve(
+    log_path=None,
+    log_inc=False,
+    force=False,
+)
+
+ready = await server.is_ready()
+serving = await server.is_serving()
+```
+
+Server state can be queried with:
+
+```python
+state = await server.get_state(
+    nodes=True,
+    known=True,
+    deleted=True,
+    missing=True,
+    present=True,
+)
+```
+
+The server can also manage synchronization and recovery:
+
+```python
+await server.fetch_data(nodes, authoritative=False)
+await server.resync_deleted(nodelist)
+await server.recover_split(prio, replace, local_history, sources)
+await server.drop_node(name)
+```
+
+`ServerClient` handles request commands from connected clients, including value access, enumeration, watching, internal state operations, logging, persistence, authentication, and topic messages.
+
+## Backends
+
+`Backend` is an abstract async messaging/backend interface:
+
+```python
+class Backend:
+    async def connect(self, *a, **k): ...
+    async def aclose(self): ...
+    async def spawn(self, p, *a, **kw): ...
+    async def monitor(self, *topic): ...
+    async def send(self, *topic, payload): ...
+```
+
+Backends are selected with:
+
+```python
+from moat.kv.backend import get_backend
+
+BackendClass = get_backend("...")
+```
+
+An MQTT backend is available through `MqttBackend` and `connect`:
+
+```python
+from moat.kv.backend.mqtt import connect
+
+backend = await connect(...)
+```
+
+MQTT-capable backends support topic monitoring and message sending:
+
+```python
+stream = await backend.monitor("example", "topic")
+await backend.send("example", "topic", payload={"hello": "world"})
+```
+
+## Domain integrations
+
+`moat-kv` includes object models and task helpers for several external or operational domains.
+
+### Inventory
+
+The inventory model includes:
+
+- Networks: `Network`, `NetRoot`, `NetRootB`
+- VLANs: `Vlan`, `VlanRoot`
+- Hosts and ports: `Host`, `HostPort`, `HostRoot`
+- Cables and wires: `Cable`, `CableRoot`, `CableRootB`, `Wire`, `WireRoot`
+- Root: `InventoryRoot`
+
+Typical operations include allocating networks, managing hosts, adding ports, and linking endpoints:
+
+```python
+network = net_root.allocate("192.0.2.0/24")
+address = network.alloc()
+
+host = host_root.by_domain("example-host", create=True)
+port = host.add_port("eth0")
+
+await port.link(other_port, force=False)
+await port.unlink()
+```
+
+### Calendar
+
+Calendar support is provided by `CalRoot`, `CalBase`, `CalEntry`, and `CalAlarm`.
+
+`find_next_alarm` finds the next alarm in a calendar:
+
+```python
+from moat.kv.cal.util import find_next_alarm
+
+alarm, when = await find_next_alarm(calendar, future=10)
+```
+
+`next_start` calculates the next start time for an alarm-like value.
+
+### GPIO
+
+GPIO support includes `GPIOroot`, `GPIOhost`, `GPIOchip`, and `GPIOline`.
+
+A GPIO line can be configured and used as an output:
+
+```python
+await line.setup()
+
+async with line.with_output(event, source, processor):
+    ...
+```
+
+The exact configuration is represented by the corresponding object tree.
+
+### KNX
+
+KNX support includes:
+
+- `KNXroot`
+- `KNXbus`
+- `KNXserver`
+- `KNXg1` and `KNXg2`
+- `KNXnode`
+
+A task helper is available:
+
+```python
+from moat.kv.knx.task import task
+
+await task(client, cfg, server, initial=False)
+```
+
+The module also includes simulated devices and a `Tester` helper for test environments.
+
+### WAGO
+
+WAGO support includes `WAGOroot`, `WAGOserver`, input/output cards, and input/output nodes.
+
+```python
+from moat.kv.wago.task import task
+
+await task(client, cfg, server)
+```
+
+### OWFS
+
+OWFS support provides roots, families, device nodes, attributes, and server entries:
+
+- `OWFSroot`
+- `OWFSfamily`
+- `OWFSnode`
+- `OWFSattr`
+- `ServerRoot` and `ServerEntry`
+
+Device and attribute synchronization are exposed through methods such as:
+
+```python
+await node.sync(force=False)
+await attr.sync(force=True)
+```
+
+### Akumuli
+
+Akumuli support includes `AkumuliRoot`, `AkumuliServer`, and `AkumuliNode`.
+
+An Akumuli task can be started with:
+
+```python
+from moat.kv.akumuli.task import task
+
+await task(client, cfg, server, paths=())
+```
+
+### Runner and actors
+
+The runner API supports event-driven work attached to tree entries.
+
+Important types include:
+
+- `RunnerEntry`
+- `StateEntry`
+- `StateRoot`
+- `AnyRunnerRoot`
+- `SingleRunnerRoot`
+- `AllRunnerRoot`
+- `CallAdmin`
+- `RunnerMsg`, `ChangeMsg`, `MQTTmsg`, `ReadyMsg`, and `TimerMsg`
+
+`CallAdmin` offers convenience methods to build runner behavior:
+
+```python
+await admin.watch(("settings", "active"))
+await admin.monitor(("events",))
+await admin.timer(5.0)
+
+await admin.set(("status", "running"), True)
+await admin.send(("events",), value={"kind": "started"})
+```
+
+It can also spawn work and report errors:
+
+```python
+await admin.spawn(worker, argument)
+await admin.error(path=("jobs", "example"), message="job failed")
+```
+
+Actor-related state classes include `ActorState`, `BrokenState`, `DetachedState`, `PartialState`, and `CompleteState`.
+
+## Data helpers
+
+The `moat.kv.data` module provides helpers for extracting and updating tree data:
+
+```python
+from moat.kv.data import add_dates, data_get, node_attr, res_get, res_update
+
+result = await data_get(
+    client,
+    ("some", "subtree"),
+    recursive=True,
+    as_dict="_",
+)
+
+add_dates(result)
+```
+
+Other useful helpers:
+
+```python
+value = res_get(result, ("some", "attribute"))
+res_update(result, ("some", "attribute"), value="new value")
+
+attribute = await node_attr(client, ("some", "node"))
+```
+
+## Error tracking
+
+The error model contains `ErrorRoot`, `ErrorEntry`, `ErrorSubEntry`, and `ErrorStep`.
+
+Use `ErrorRoot` to record working state, exceptions, comments, and resolved errors:
+
+```python
+await errors.record_working(
+    "worker",
+    ("jobs", "cleanup"),
+    comment="cleanup started",
+)
+
+await errors.record_error(
+    "worker",
+    ("jobs", "cleanup"),
+    exc=exception,
+    severity=1,
+    message="cleanup failed",
+)
+```
+
+Error entries can be resolved, moved, commented on, or deleted:
+
+```python
+await error_entry.resolve()
+await error_entry.add_comment(node, "Investigating", data={})
+await error_entry.delete()
+```
+
+## Exceptions
+
+The library defines exceptions for client, server, connection, authentication, and chain-related failures.
+
+Common exceptions include:
+
+```python
+from moat.kv.client import ManyData, NoData
+from moat.kv.exceptions import (
+    ACLError,
+    ClientAuthError,
+    ClientCancelledError,
+    ClientChainError,
+    ClientConnectionError,
+    ServerClosedError,
+    ServerConnectionError,
+)
+```
+
+`NoData` and `ManyData` are useful when an operation expected exactly one result but received none or more than one.
+
+## Command interfaces
+
+The package exposes async command handlers for administration and data management, including functionality related to:
+
+- ACLs
+- Authentication
+- Code
+- Codecs
+- Data
+- Dumps and persistence
+- Errors
+- Internal server state
+- Jobs
+- Logging
+- Server operation
+- Types
+- Akumuli
+- Calendar data
+- GPIO
+- Home automation conversion
+- Inventory
+- KNX
+- OWFS
+- WAGO
+
+These command functions are intended to support command-line-oriented workflows while reusing the same client, model, and server APIs described above.
+
+## Development notes
+
+When integrating `moat-kv` into an application:
+
+1. Run client operations inside an async runtime such as AnyIO.
+2. Treat `Client` operations as request-producing operations and await the appropriate `StreamedRequest` method.
+3. Close long-running request streams with `aclose()` when they are no longer needed.
+4. Use `watch` or `msg_monitor` for continuously changing data instead of polling.
+5. Prefer `ClientRoot`/`MirrorRoot`-based models for structured application domains.
+6. Handle authentication, ACL, connection, and cancellation exceptions explicitly in production services.

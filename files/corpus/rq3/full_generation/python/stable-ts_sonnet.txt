@@ -1,0 +1,178 @@
+# stable-ts
+
+**stable-ts** is a Python library that adds accurate, stable word- and segment-level timestamps to speech-to-text transcription, built around OpenAI's Whisper model (and compatible with `faster-whisper`, Hugging Face's `transformers` Whisper pipeline, and MLX Whisper). It wraps transcription with post-processing steps that suppress silence-induced timestamp jitter, align text to audio, refine existing timestamps, and export results to common subtitle/caption formats (SRT, VTT, ASS, TSV, JSON).
+
+## What it does
+
+At a high level, stable-ts provides:
+
+- **Timestamped transcription** for several Whisper backends (original `openai-whisper`, `faster-whisper`, HF `transformers`, and MLX), producing a rich `WhisperResult` object rather than a plain dict.
+- **Forced alignment** of existing text (or tokens) to audio, so you can generate timestamps for a transcript you already have.
+- **Timestamp refinement**, iteratively adjusting word/segment boundaries against the audio to improve precision.
+- **Silence suppression / VAD integration**, using Silero VAD, energy-based non-speech detection, or denoising models (Demucs, DeepFilterNet, noisereduce) to avoid placing timestamps in silent or noisy regions.
+- **Result manipulation**: splitting, merging, regrouping, locking, searching, and editing segments/words after transcription.
+- **Export utilities** to SRT, VTT, ASS (including karaoke-style highlighting), TSV, plain text, and JSON.
+- **Utility tooling**: audio loading/preprocessing, quantization for CPU inference, and a comparison video generator for subtitles.
+
+## Core Concepts
+
+### `WhisperResult`
+The central data structure returned by all transcription/alignment functions. It wraps a hierarchy of `Segment` objects, each containing a list of `WordTiming` objects. `WhisperResult` provides a large API for:
+
+- **Regrouping/splitting/merging** segments (`split_by_gap`, `merge_by_gap`, `split_by_punctuation`, `merge_by_punctuation`, `split_by_length`, `split_by_duration`, `merge_all_segments`, `regroup`).
+- **Cleanup and correction** (`remove_word`, `remove_segment`, `remove_repetition`, `remove_words_by_str`, `remove_no_word_segments`, `fill_in_gaps`, `adjust_gaps`, `adjust_by_silence`, `adjust_by_result`).
+- **Locking** segments/words in place so later operations don't move them (`lock`, `lock_left`, `lock_right`).
+- **Searching** text with `find`, which returns a `WhisperResultMatches` object.
+- **Serialization** (`to_dict`, `segments_to_dicts`) and history tracking (`regroup_history`, `set_current_as_orig`, `reset`).
+
+`Segment` and `WordTiming` are the building blocks, each supporting timestamp rounding, offsetting, rescaling, clamping, and silence suppression at their respective levels.
+
+### Transcription entry points
+
+Depending on which backend you're using:
+
+| Backend | Loader | Transcribe function |
+|---|---|---|
+| Original `openai-whisper` | `load_model` | `transcribe_stable` (full-featured) / `transcribe_minimal` (lightweight) |
+| `faster-whisper` | `load_faster_whisper` | `WhisperModel.transcribe` (patched via `faster_transcribe`) |
+| Hugging Face `transformers` | `load_hf_whisper` | `WhisperHF.transcribe` |
+| MLX Whisper | `load_mlx_whisper` | `WhisperMLX.transcribe` |
+
+All of these ultimately produce a `WhisperResult`, and share a common set of options for silence suppression, denoising, VAD, and word-timestamp behavior. Internally, most backends route through `transcribe_any`, which handles audio loading, denoising, VAD, and result post-processing generically.
+
+### Alignment and refinement
+
+- `align(model, audio, text, language=...)` — force-aligns given text (or a previous `WhisperResult`) to audio, producing a fresh `WhisperResult` with timestamps.
+- `align_words(model, audio, result, ...)` — re-aligns only the word timestamps of an existing result.
+- `refine(model, audio, result, ...)` — iteratively refines the timestamps of an existing `WhisperResult` against the audio for better precision.
+- `locate(model, audio, text, language, ...)` — finds where in the audio a snippet of text occurs, returning matching segments.
+
+These are also exposed as methods on `Aligner` and `Refiner` classes (`stable_whisper.non_whisper.alignment` / `refinement`) for backends that don't use the original Whisper model directly (e.g. faster-whisper, HF, MLX all delegate to these internally).
+
+### Audio handling
+
+- `AudioLoader` — a streaming-capable audio loader/preprocessor supporting chunked reads, denoising, VAD-aware section skipping, and resampling.
+- `prep_audio`, `load_audio`, `load_source`, `resample`, `standardize_audio` — lower-level audio loading/conversion utilities.
+- `demucs_audio`, `dfnet_audio`, `noisereduce_audio` — apply optional denoising models to clean audio before transcription/alignment.
+- `NonSpeechPredictor`, `get_vad_silence_func`, silence/VAD helpers — detect non-speech regions used to suppress spurious timestamps.
+- `visualize_suppression`, `visualize_mask` — visualize the computed silence/voice-activity mask against the audio.
+
+### Output
+
+`result_to_srt_vtt`, `result_to_ass`, `result_to_tsv`, `result_to_txt`, `save_as_json`, `load_result` convert a `WhisperResult` (or plain dict/list) into subtitle files or reload it from JSON. `encode_video_comparison` renders a side-by-side video comparing multiple subtitle files against the same audio — handy for visually comparing different transcription/alignment settings.
+
+### CLI
+
+`cli()` in `stable_whisper.whisper_word_level.cli` implements the command-line interface, letting you run transcription/alignment/export from the shell (installed as the `stable-ts` command).
+
+## Installation
+
+```bash
+pip install stable-ts
+```
+
+Optional extras (denoising/VAD/backends) are installed separately depending on which features you use, e.g. `faster-whisper`, `transformers`, `mlx-whisper`, `demucs`, `deepfilternet`, `noisereduce`, `silero-vad` dependencies.
+
+## Usage Examples
+
+### Basic transcription with word timestamps
+
+```python
+import stable_whisper
+
+model = stable_whisper.load_model('base')
+result = model.transcribe('audio.mp3', vad=True, regroup=True)
+
+result.to_srt_vtt('audio.srt')  # or:
+stable_whisper.result_to_srt_vtt(result.to_dict(), 'audio.srt')
+
+print(result.text())
+```
+
+### Transcription with silence suppression and denoising
+
+```python
+result = model.transcribe(
+    'noisy_audio.wav',
+    denoiser='demucs',
+    vad=True,
+    vad_threshold=0.4,
+    suppress_silence=True,
+    min_word_dur=0.1,
+)
+```
+
+### Aligning a known transcript to audio
+
+```python
+from stable_whisper import alignment
+
+text = "Hello there, welcome to this video about stable-ts."
+result = alignment.align(model, 'audio.mp3', text, language='en')
+
+result.split_by_punctuation([('.', ''), ('?', ''), ('!', '')])
+result_to_srt_vtt(result.to_dict(), 'aligned.srt')
+```
+
+### Refining existing timestamps
+
+```python
+from stable_whisper.alignment import refine
+
+refined_result = refine(model, 'audio.mp3', result, word_level=True)
+```
+
+### Using faster-whisper as the backend
+
+```python
+from stable_whisper.whisper_word_level.faster_whisper import load_faster_whisper
+
+model = load_faster_whisper('large-v2')
+result = model.transcribe('audio.mp3', vad=True, word_timestamps=True)
+result.to_dict()
+```
+
+### Editing and regrouping a result
+
+```python
+result = model.transcribe('audio.mp3')
+
+# Merge short segments, split on gaps, remove filler words
+result.merge_by_gap(min_gap=0.15)
+result.split_by_gap(max_gap=0.5)
+result.remove_words_by_str(['um', 'uh'])
+
+# Lock segments ending in punctuation so later edits don't move them
+result.lock(endswith=['.', '?', '!'])
+
+result.save_as_json('final_result.json')
+```
+
+### Locating a phrase in long-form audio
+
+```python
+from stable_whisper.alignment import locate
+
+matches = locate(model, 'lecture.mp3', "the fundamental theorem", language='en', count=1)
+for seg in matches:
+    print(seg.start, seg.end, seg.text if hasattr(seg, 'text') else seg)
+```
+
+### Generating a comparison video of two subtitle outputs
+
+```python
+from stable_whisper.video_output import encode_video_comparison
+
+encode_video_comparison(
+    'audio.mp3',
+    ['baseline.srt', 'refined.srt'],
+    output_videopath='comparison.mp4',
+    labels=['baseline', 'refined'],
+)
+```
+
+## Notes
+
+- All transcription/alignment functions ultimately return or operate on `WhisperResult`, which is the single interchange format across every backend — enabling you to mix and match align/refine/export/regroup operations regardless of which underlying model produced the transcript.
+- Options for silence suppression, VAD, and denoising (`vad`, `vad_threshold`, `denoiser`, `demucs`, `q_levels`, `k_size`, `min_word_dur`, `nonspeech_error`, etc.) are shared across most transcribe/align/refine functions, so behavior can be tuned consistently regardless of backend.
+- Quantization helpers (`ptdq_linear`, `replace_modules`) allow reducing CPU inference cost for the original Whisper model.

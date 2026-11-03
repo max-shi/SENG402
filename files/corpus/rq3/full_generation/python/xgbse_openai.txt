@@ -1,0 +1,450 @@
+# xgbse
+
+`xgbse` is a Python library for survival-analysis workflows built around gradient-boosted feature extraction and survival estimators. Its API includes estimators that fit on feature data and survival targets, produce survival predictions, optionally return interval probabilities or confidence intervals, and provide evaluation and conversion utilities.
+
+The library also includes non-parametric Kaplan-style helpers, nearest-neighbor retrieval for fitted estimators, survival extrapolation, and common survival metrics.
+
+## Main components
+
+### Survival estimators
+
+All primary estimators follow a scikit-learn-style `fit(...)` / `predict(...)` interface.
+
+| Estimator | Description |
+| --- | --- |
+| `XGBSEDebiasedBCE` | A survival estimator with optional interval-probability predictions. |
+| `XGBSEKaplanNeighbors` | A Kaplan-style estimator that can produce confidence intervals and uses neighbor-based predictions. |
+| `XGBSEKaplanTree` | A tree-based Kaplan-style estimator with optional confidence intervals. |
+| `XGBSEStackedWeibull` | A survival estimator with optional interval-probability predictions. |
+| `XGBSEBootstrapEstimator` | A bootstrap wrapper exposing `fit(...)` and `predict(...)` with optional confidence intervals. |
+
+The estimator base class, `XGBSEBaseEstimator`, provides shared functionality:
+
+- `fit_feature_extractor(...)` to fit the underlying feature-extraction stage.
+- `get_neighbors(...)` to retrieve neighbors for query observations.
+
+### Feature extraction
+
+`FeatureExtractor` can be used directly when you need boosted-model-derived features:
+
+- `fit(...)`
+- `predict_leaves(...)`
+- `predict_hazard(...)`
+
+The helper `check_xgboost_parameters(...)` validates or normalizes XGBoost-related parameter dictionaries.
+
+### Data conversion utilities
+
+The `converters` API contains functions for preparing target data and XGBoost-compatible datasets:
+
+- `convert_to_structured(T, E)`
+- `convert_y(y)`
+- `convert_data_to_xgb_format(X, y, objective, enable_categorical=False)`
+- `build_xgb_aft_dmatrix(X, T, E, enable_categorical)`
+- `build_xgb_cox_dmatrix(X, T, E, enable_categorical)`
+- `hazard_to_survival(interval)`
+
+Here, `T` conventionally represents observed times and `E` represents event indicators.
+
+### Metrics
+
+Use the metric functions to evaluate predicted survival outputs:
+
+- `concordance_index(...)`
+- `approx_brier_score(...)`
+- `dist_calibration_score(...)`
+
+### Non-parametric helpers
+
+The `non_parametric` API provides time-bin construction, Kaplan-style survival calculations, confidence intervals, and interval-failure calculations:
+
+- `get_time_bins(...)`
+- `calculate_kaplan_vectorized(...)`
+- `calculate_confidence_intervals(...)`
+- `calculate_interval_failures(...)`
+- and supporting sorting/sampling helpers.
+
+### Extrapolation
+
+`extrapolate_constant_risk(...)` extends survival predictions beyond an observed prediction horizon using a constant-risk extrapolation strategy.
+
+---
+
+## Installation
+
+Install `xgbse` using your preferred Python package-management workflow.
+
+```bash
+pip install xgbse
+```
+
+---
+
+## Quick start
+
+The following example prepares a structured survival target from times and event indicators, fits an estimator, and generates predictions.
+
+```python
+import numpy as np
+import pandas as pd
+
+from xgbse._debiased_bce import XGBSEDebiasedBCE
+from xgbse.converters import convert_to_structured
+
+# Feature matrix: one row per observation.
+X_train = pd.DataFrame(
+    {
+        "age": [48, 61, 55, 72, 43],
+        "biomarker": [0.2, 1.1, 0.7, 1.8, 0.3],
+        "treatment": [0, 1, 1, 0, 1],
+    }
+)
+
+# Observed times and event indicators.
+T_train = np.array([12, 7, 18, 4, 20])
+E_train = np.array([True, True, False, True, False])
+
+# Create the survival target accepted by estimator fit methods.
+y_train = convert_to_structured(T_train, E_train)
+
+model = XGBSEDebiasedBCE()
+
+model.fit(
+    X_train,
+    y_train,
+    num_boost_round=100,
+    early_stopping_rounds=10,
+    verbose_eval=0,
+)
+
+X_test = pd.DataFrame(
+    {
+        "age": [50, 68],
+        "biomarker": [0.5, 1.4],
+        "treatment": [1, 0],
+    }
+)
+
+survival_predictions = model.predict(X_test)
+
+print(survival_predictions)
+```
+
+To request interval probabilities from the same estimator:
+
+```python
+interval_probabilities = model.predict(
+    X_test,
+    return_interval_probs=True,
+)
+```
+
+---
+
+## Choosing time bins
+
+Several estimators accept an optional `time_bins` argument. You can generate bins from observed times and events with `get_time_bins(...)`.
+
+```python
+from xgbse.non_parametric import get_time_bins
+
+time_bins = get_time_bins(T_train, E_train, size=12)
+
+model.fit(
+    X_train,
+    y_train,
+    time_bins=time_bins,
+    num_boost_round=100,
+)
+```
+
+Providing explicit time bins can be useful when you need consistent prediction intervals across training, validation, and evaluation datasets.
+
+---
+
+## Kaplan-neighbor predictions
+
+`XGBSEKaplanNeighbors` supports neighbor-based survival prediction and optional confidence intervals.
+
+```python
+from xgbse._kaplan_neighbors import XGBSEKaplanNeighbors
+
+neighbors_model = XGBSEKaplanNeighbors()
+
+neighbors_model.fit(
+    X_train,
+    y_train,
+    time_bins=time_bins,
+    num_boost_round=100,
+    persist_train=True,
+)
+
+predictions = neighbors_model.predict(
+    X_test,
+    time_bins=time_bins,
+)
+
+# Request confidence-interval output.
+prediction_with_ci = neighbors_model.predict(
+    X_test,
+    time_bins=time_bins,
+    return_ci=True,
+    ci_width=0.683,
+)
+
+# Request interval failure/probability output.
+interval_probabilities = neighbors_model.predict(
+    X_test,
+    time_bins=time_bins,
+    return_interval_probs=True,
+)
+```
+
+After fitting, retrieve neighbors for one or more query observations:
+
+```python
+neighbor_ids = neighbors_model.get_neighbors(
+    query_data=X_test,
+    index_data=X_train,
+    n_neighbors=5,
+)
+
+print(neighbor_ids)
+```
+
+If identifiers are available for the query and index data, provide them with `query_id` and `index_id`.
+
+```python
+neighbor_ids = neighbors_model.get_neighbors(
+    query_data=X_test,
+    index_data=X_train,
+    query_id=["test_0", "test_1"],
+    index_id=["train_0", "train_1", "train_2", "train_3", "train_4"],
+    n_neighbors=3,
+)
+```
+
+---
+
+## Kaplan-tree predictions
+
+`XGBSEKaplanTree` provides a Kaplan-style tree estimator.
+
+```python
+from xgbse._kaplan_neighbors import XGBSEKaplanTree
+
+tree_model = XGBSEKaplanTree()
+
+tree_model.fit(
+    X_train,
+    y_train,
+    time_bins=time_bins,
+    persist_train=True,
+    ci_width=0.683,
+)
+
+survival_predictions = tree_model.predict(X_test)
+
+prediction_with_ci = tree_model.predict(
+    X_test,
+    return_ci=True,
+)
+
+interval_probabilities = tree_model.predict(
+    X_test,
+    return_interval_probs=True,
+)
+```
+
+---
+
+## Stacked Weibull estimator
+
+`XGBSEStackedWeibull` uses the same general fit/predict pattern.
+
+```python
+from xgbse._stacked_weibull import XGBSEStackedWeibull
+
+weibull_model = XGBSEStackedWeibull()
+
+weibull_model.fit(
+    X_train,
+    y_train,
+    time_bins=time_bins,
+    num_boost_round=100,
+    persist_train=True,
+)
+
+survival_predictions = weibull_model.predict(X_test)
+
+interval_probabilities = weibull_model.predict(
+    X_test,
+    return_interval_probs=True,
+)
+```
+
+---
+
+## Validation data and training controls
+
+The boosted estimators accept common training controls:
+
+- `time_bins`
+- `validation_data`
+- `num_boost_round`
+- `early_stopping_rounds`
+- `verbose_eval`
+
+A validation dataset is passed as a list of `(X, y)` tuples.
+
+```python
+X_valid = X_train.iloc[:2].copy()
+y_valid = convert_to_structured(T_train[:2], E_train[:2])
+
+model.fit(
+    X_train,
+    y_train,
+    time_bins=time_bins,
+    validation_data=[(X_valid, y_valid)],
+    num_boost_round=200,
+    early_stopping_rounds=20,
+    verbose_eval=10,
+)
+```
+
+---
+
+## Evaluating predictions
+
+Use the metrics module to compare survival predictions with observed survival targets.
+
+```python
+from xgbse.metrics import (
+    approx_brier_score,
+    concordance_index,
+    dist_calibration_score,
+)
+
+survival_predictions = model.predict(X_test)
+
+# y_test should be a survival target compatible with the metric functions.
+T_test = np.array([10, 16])
+E_test = np.array([True, False])
+y_test = convert_to_structured(T_test, E_test)
+
+c_index = concordance_index(
+    y_true=y_test,
+    survival=survival_predictions,
+)
+
+brier = approx_brier_score(
+    y_true=y_test,
+    survival=survival_predictions,
+    aggregate="mean",
+)
+
+calibration = dist_calibration_score(
+    y_true=y_test,
+    survival=survival_predictions,
+    n_bins=10,
+    returns="pval",
+)
+
+print("Concordance index:", c_index)
+print("Approximate Brier score:", brier)
+print("Calibration result:", calibration)
+```
+
+`concordance_index(...)` additionally supports:
+
+- `risk_strategy`, defaulting to `"mean"`
+- `which_window`, for selecting a prediction window
+
+`approx_brier_score(...)` supports the `aggregate` argument, and `dist_calibration_score(...)` supports configurable bin counts and return formats.
+
+---
+
+## Feature extraction
+
+Use `FeatureExtractor` when leaf assignments or hazard-oriented outputs are needed independently of a high-level estimator.
+
+```python
+from xgbse._feature_extractors import FeatureExtractor
+
+extractor = FeatureExtractor()
+
+extractor.fit(
+    X_train,
+    y_train,
+    time_bins=time_bins,
+    num_boost_round=100,
+)
+
+leaf_features = extractor.predict_leaves(X_test)
+hazard_predictions = extractor.predict_hazard(X_test)
+```
+
+---
+
+## Survival and hazard utilities
+
+Convert interval-level hazard-like values to survival values:
+
+```python
+from xgbse.converters import hazard_to_survival
+
+survival = hazard_to_survival(interval_probabilities)
+```
+
+Extend a survival prediction to a later time horizon:
+
+```python
+from xgbse.extrapolation import extrapolate_constant_risk
+
+extended_survival = extrapolate_constant_risk(
+    survival=survival_predictions,
+    final_time=36,
+    intervals=time_bins,
+    lags=-1,
+)
+```
+
+---
+
+## Non-parametric Kaplan calculations
+
+The non-parametric helpers can be used for direct calculations on times, events, and time bins.
+
+```python
+from xgbse.non_parametric import (
+    calculate_interval_failures,
+    calculate_kaplan_vectorized,
+    get_time_bins,
+)
+
+time_bins = get_time_bins(T_train, E_train, size=12)
+
+kaplan_result = calculate_kaplan_vectorized(
+    T=T_train,
+    E=E_train,
+    time_bins=time_bins,
+    z=1.0,
+)
+
+# When survival values are available, derive interval failures.
+interval_failures = calculate_interval_failures(survival_predictions)
+```
+
+For lower-level workflows, the module also includes:
+
+```python
+from xgbse.non_parametric import (
+    calculate_confidence_intervals,
+    calculate_survival_func,
+    sample_time_bins,
+    sort_and_add_zeros,
+    sort_times_and_events,
+)
+```
+
+These functions support sorting event data, computing survival functions, constructing confidence intervals, and sampling survival values at requested time bins.

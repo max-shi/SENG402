@@ -1,0 +1,7 @@
+ecosystem,source,n,median,mean,sd
+java,human,39,0.987,0.9868,0.0038
+java,sonnet,50,0.9847,0.9839,0.0043
+java,openai,50,0.9776,0.9771,0.0045
+python,human,37,0.9896,0.9899,0.0027
+python,sonnet,50,0.9752,0.9749,0.0072
+python,openai,50,0.9716,0.973,0.0083

@@ -1,0 +1,593 @@
+# neurdflib
+
+`neurdflib` is a Python library for working with RDF data and RDF-related standards. Its API centers on RDF terms, graphs of RDF triples, named-graph datasets, parsing and serializing common RDF syntaxes, namespace management, graph comparison, SPARQL querying and updates, and extensible stores and plugins.
+
+The primary data model is:
+
+- **Terms**: URI references, blank nodes, literals, and variables.
+- **Graphs**: collections of RDF triples `(subject, predicate, object)`.
+- **Datasets / conjunctive graphs**: collections of graph contexts and quads.
+- **Stores**: pluggable persistence and query backends.
+- **Parsers and serializers**: conversion between graphs and RDF document formats.
+- **SPARQL support**: query preparation, execution, updates, result parsing, and custom functions.
+
+## Installation
+
+Install the package with your preferred Python package manager:
+
+```bash
+pip install neurdflib
+```
+
+## Quick start
+
+Create a graph, add triples, bind a namespace prefix, and serialize the result:
+
+```python
+from rdflib.graph import Graph
+from rdflib.namespace import Namespace
+from rdflib.term import Literal
+
+EX = Namespace("https://example.org/")
+
+graph = Graph()
+graph.bind("ex", EX)
+
+graph.add((EX.alice, EX.knows, EX.bob))
+graph.add((EX.alice, EX.name, Literal("Alice")))
+
+print(graph.serialize(format="turtle"))
+```
+
+Graphs use RDF terms for all triple positions. `Namespace.term()` produces a `URIRef`, so namespace terms can be used directly in triples.
+
+## Core concepts
+
+### RDF terms
+
+Term types are defined in `rdflib.term`:
+
+- `Node` — base RDF node type.
+- `Identifier` — string-like identifier base class.
+- `URIRef` — an RDF URI/IRI reference.
+- `BNode` — a blank node.
+- `Literal` — a literal value, optionally with language or datatype information.
+- `Variable` — a SPARQL variable.
+- `IdentifiedNode` — base type for identified RDF nodes.
+- `Genid` and `RDFLibGenid` — generated URI reference types.
+
+Useful term operations include:
+
+```python
+from rdflib.term import URIRef, Literal
+
+resource = URIRef("https://example.org/things/42")
+label = Literal("Example")
+
+print(resource.n3())
+print(label.n3())
+print(label.toPython())
+```
+
+`URIRef`, `BNode`, `Literal`, and `Variable` provide `n3()` methods for RDF-compatible string representations.
+
+### Graphs
+
+`Graph` is the primary interface for an RDF triple store. It supports adding, removing, searching, parsing, serializing, querying, namespace management, and graph traversal.
+
+Key methods include:
+
+| Method | Purpose |
+|---|---|
+| `add(triple)` | Add one RDF triple. |
+| `addN(quads)` | Add multiple quads. |
+| `remove(pattern)` | Remove triples matching a pattern. |
+| `triples(pattern)` | Iterate over matching triples. |
+| `subjects()`, `predicates()`, `objects()` | Iterate over selected triple components. |
+| `value()` | Return a matching term value. |
+| `set(triple)` | Set a single value for a subject/predicate pair. |
+| `parse()` | Load RDF data into the graph. |
+| `serialize()` | Write graph contents in an RDF syntax. |
+| `query()` | Execute a query. |
+| `update()` | Execute an update operation. |
+| `bind()` | Bind a namespace prefix. |
+| `qname()` | Produce a qualified name for a URI. |
+| `isomorphic()` | Test RDF graph isomorphism. |
+| `connected()` | Check whether the graph is connected. |
+| `cbd()` | Create a concise bounded description for a resource. |
+
+A triple pattern may use `None` as a wildcard:
+
+```python
+from rdflib.graph import Graph
+from rdflib.namespace import Namespace
+from rdflib.term import Literal
+
+EX = Namespace("https://example.org/")
+graph = Graph()
+
+graph.add((EX.alice, EX.name, Literal("Alice")))
+graph.add((EX.alice, EX.knows, EX.bob))
+graph.add((EX.bob, EX.name, Literal("Bob")))
+
+for subject, predicate, obj in graph.triples((EX.alice, None, None)):
+    print(subject, predicate, obj)
+
+name = graph.value(EX.alice, EX.name)
+print(name)
+```
+
+### Resources
+
+`Resource` provides a resource-oriented wrapper around a graph node. Obtain one from `Graph.resource()`:
+
+```python
+from rdflib.graph import Graph
+from rdflib.namespace import Namespace
+from rdflib.term import Literal
+
+EX = Namespace("https://example.org/")
+graph = Graph()
+
+alice = graph.resource(EX.alice)
+alice.add(EX.name, Literal("Alice"))
+alice.add(EX.knows, EX.bob)
+
+print(alice.value(EX.name))
+
+for friend in alice.objects(EX.knows):
+    print(friend)
+```
+
+`Resource` exposes graph operations relative to its identifier, including `add`, `remove`, `set`, `value`, `items`, `subjects`, `objects`, and transitive traversal helpers.
+
+## Reading and writing RDF
+
+### Parse RDF data
+
+`Graph.parse()` accepts a source, location, file, data string, bytes, or input source. A format can be supplied explicitly.
+
+```python
+from rdflib.graph import Graph
+
+data = """
+@prefix ex: <https://example.org/> .
+
+ex:alice ex:name "Alice" .
+ex:alice ex:knows ex:bob .
+"""
+
+graph = Graph()
+graph.parse(data=data, format="turtle")
+
+print(graph.serialize(format="turtle"))
+```
+
+The library exposes parser classes for several RDF-related formats, including:
+
+- Turtle and N3: `TurtleParser`, `N3Parser`
+- N-Triples: `NTParser`, `W3CNTriplesParser`
+- N-Quads: `NQuadsParser`
+- TriG: `TrigParser`
+- RDF/XML: `RDFXMLParser`
+- TriX: `TriXParser`
+- JSON-LD: `JsonLDParser`
+- Hextuples: `HextuplesParser`
+
+For source handling, use `create_input_source()` from `rdflib.parser` when a reusable `InputSource` is needed.
+
+```python
+from rdflib.parser import create_input_source
+from rdflib.graph import Graph
+
+source = create_input_source(
+    data='<https://example.org/a> <https://example.org/p> "value" .',
+    format="nt",
+)
+
+graph = Graph()
+graph.parse(source=source, format="nt")
+```
+
+### Serialize RDF data
+
+`Graph.serialize()` returns a string or bytes when no destination is provided. When given a path or output stream, it writes output and returns the graph.
+
+```python
+from rdflib.graph import Graph
+
+graph = Graph()
+graph.parse(
+    data='@prefix ex: <https://example.org/> . ex:s ex:p "value" .',
+    format="turtle",
+)
+
+turtle = graph.serialize(format="turtle")
+rdfxml = graph.serialize(format="xml")
+ntriples = graph.serialize(format="nt")
+
+print(turtle)
+```
+
+Serializer classes are also available for RDF formats such as Turtle, long Turtle, N3, N-Triples, N-Quads, TriG, TriX, RDF/XML, JSON-LD, and Hextuples.
+
+For large graphs, `serialize_in_chunks()` from `rdflib.tools.chunk_serializer` can split serialized output into multiple files:
+
+```python
+from pathlib import Path
+
+from rdflib.graph import Graph
+from rdflib.tools.chunk_serializer import serialize_in_chunks
+
+graph = Graph()
+graph.parse(data='@prefix ex: <https://example.org/> . ex:s ex:p "value" .', format="turtle")
+
+serialize_in_chunks(
+    graph,
+    max_triples=10_000,
+    output_dir=Path("rdf-output"),
+    file_name_stem="dataset",
+    write_prefixes=True,
+)
+```
+
+## Namespaces and qualified names
+
+Namespaces are represented by `Namespace`, while `NamespaceManager` manages prefix bindings for a graph or store.
+
+```python
+from rdflib.graph import Graph
+from rdflib.namespace import Namespace
+
+EX = Namespace("https://example.org/vocab/")
+
+graph = Graph()
+graph.bind("ex", EX)
+
+person = EX.term("Person")
+
+print(person)
+print(graph.qname(str(person)))
+
+for prefix, namespace in graph.namespaces():
+    print(prefix, namespace)
+```
+
+The package also exposes many predefined vocabulary namespaces as `DefinedNamespace` classes, including:
+
+- `RDF`, `RDFS`, `OWL`, and `XSD`
+- `DC`, `DCAT`, `DCTERMS`, and `DCMITYPE`
+- `FOAF`, `SKOS`, `PROV`, `SOSA`, and `SSN`
+- `SH`, `QB`, `VOID`, `VANN`, and others
+
+Namespace helpers include:
+
+- `split_uri(uri)`
+- `is_ncname(name)`
+- `insert_trie(trie, value)`
+- `get_longest_namespace(trie, value)`
+
+## Named graphs and datasets
+
+Use `ConjunctiveGraph` to work across multiple contexts, or `Dataset` to manage named graphs explicitly.
+
+```python
+from rdflib.graph import Dataset
+from rdflib.namespace import Namespace
+from rdflib.term import Literal
+
+EX = Namespace("https://example.org/")
+
+dataset = Dataset()
+
+people = dataset.graph(EX.people)
+people.add((EX.alice, EX.name, Literal("Alice")))
+
+projects = dataset.graph(EX.projects)
+projects.add((EX.project1, EX.owner, EX.alice))
+
+for subject, predicate, obj, context in dataset.quads():
+    print(context.identifier, subject, predicate, obj)
+```
+
+Relevant APIs:
+
+- `ConjunctiveGraph.get_context(identifier)`
+- `ConjunctiveGraph.contexts()`
+- `ConjunctiveGraph.quads()`
+- `ConjunctiveGraph.remove_context(context)`
+- `Dataset.graph(identifier)`
+- `Dataset.add_graph(graph)`
+- `Dataset.remove_graph(graph)`
+
+`QuotedGraph` represents a quoted graph context. `ReadOnlyGraphAggregate` provides a read-only aggregate view over graphs.
+
+## RDF collections and containers
+
+RDF list support is provided by `Collection`:
+
+```python
+from rdflib.collection import Collection
+from rdflib.graph import Graph
+from rdflib.term import BNode, Literal
+
+graph = Graph()
+head = BNode()
+
+values = Collection(graph, head)
+values.append(Literal("first"))
+values.append(Literal("second"))
+
+print(values.n3())
+print(values.index(Literal("second")))
+```
+
+Container classes in `rdflib.container` model RDF container variants:
+
+- `Bag`
+- `Seq`
+- `Alt`
+
+They inherit common operations from `Container`, including `append`, `append_multiple`, `items`, `index`, and `clear`.
+
+## SPARQL queries and updates
+
+Graphs provide high-level `query()` and `update()` methods.
+
+```python
+from rdflib.graph import Graph
+
+graph = Graph()
+graph.parse(
+    data="""
+        @prefix ex: <https://example.org/> .
+
+        ex:alice ex:name "Alice" .
+        ex:bob ex:name "Bob" .
+    """,
+    format="turtle",
+)
+
+result = graph.query("""
+    PREFIX ex: <https://example.org/>
+
+    SELECT ?person ?name
+    WHERE {
+        ?person ex:name ?name .
+    }
+""")
+
+result.serialize(destination="people.srx", format="xml")
+```
+
+Prepare queries and updates in advance with:
+
+```python
+from rdflib.plugins.sparql.processor import prepareQuery, prepareUpdate
+
+query = prepareQuery("""
+    PREFIX ex: <https://example.org/>
+    SELECT ?name WHERE { ex:alice ex:name ?name . }
+""")
+
+update = prepareUpdate("""
+    PREFIX ex: <https://example.org/>
+    INSERT DATA { ex:alice ex:status "active" . }
+""")
+```
+
+SPARQL support includes:
+
+- Query and update parsing: `parseQuery()`, `parseUpdate()`
+- Query preparation: `prepareQuery()`
+- Update preparation: `prepareUpdate()`
+- Update execution: `processUpdate()`
+- Query result types: `Result`, `ResultRow`, `SPARQLResult`
+- Result parsers and serializers for CSV, TSV, JSON, XML, RDF, text, and graph results
+- Custom SPARQL functions via `register_custom_function()` and `custom_function()`
+
+For example, register a custom function by URI:
+
+```python
+from rdflib.plugins.sparql.operators import register_custom_function
+from rdflib.term import Literal, URIRef
+
+EX_UPPER = URIRef("https://example.org/functions/upper")
+
+def upper(value):
+    return Literal(str(value).upper())
+
+register_custom_function(EX_UPPER, upper)
+```
+
+## RDF paths
+
+`rdflib.paths` provides path objects and evaluation helpers for traversing graph relationships:
+
+- `Path`
+- `InvPath`
+- `SequencePath`
+- `AlternativePath`
+- `MulPath`
+- `NegatedPath`
+
+Use `eval_path()` or `evalPath()` to evaluate a path against a graph:
+
+```python
+from rdflib.paths import eval_path
+from rdflib.graph import Graph
+from rdflib.namespace import Namespace
+
+EX = Namespace("https://example.org/")
+graph = Graph()
+
+for subject, obj in eval_path(graph, (EX.alice, EX.knows, None)):
+    print(subject, obj)
+```
+
+Path construction helpers include:
+
+- `path_sequence()`
+- `path_alternative()`
+- `inv_path()`
+- `mul_path()`
+- `neg_path()`
+
+## Graph comparison and canonicalization
+
+`rdflib.compare` provides operations for comparing RDF graphs independently of blank-node identifiers.
+
+```python
+from rdflib.compare import graph_diff, isomorphic, to_canonical_graph
+from rdflib.graph import Graph
+
+left = Graph()
+right = Graph()
+
+left.parse(data='@prefix ex: <https://example.org/> . ex:s ex:p "value" .', format="turtle")
+right.parse(data='@prefix ex: <https://example.org/> . ex:s ex:p "value" .', format="turtle")
+
+print(isomorphic(left, right))
+
+canonical = to_canonical_graph(left)
+in_both, only_left, only_right = graph_diff(left, right)
+```
+
+Available comparison types and functions include:
+
+- `IsomorphicGraph`
+- `Color`
+- `to_isomorphic(graph)`
+- `isomorphic(graph1, graph2)`
+- `to_canonical_graph(graph)`
+- `graph_diff(g1, g2)`
+- `similar(g1, g2)`
+
+## Stores and persistence
+
+`Store` defines the backend interface used by graphs. A store is responsible for triple persistence, context management, namespace bindings, transactions, and optionally query/update delegation.
+
+Key store operations include:
+
+- `open()`, `close()`, `create()`, `destroy()`
+- `add()`, `addN()`, `remove()`, `triples()`
+- `contexts()`, `add_graph()`, `remove_graph()`
+- `bind()`, `prefix()`, `namespace()`, `namespaces()`
+- `commit()`, `rollback()`
+
+Included store-related implementations and wrappers include:
+
+- `Memory`
+- `SimpleMemory`
+- `AuditableStore`
+- `BerkeleyDB`
+- `ConcurrentStore`
+- `REGEXMatching`
+- `SPARQLStore`
+- `SPARQLUpdateStore`
+
+Remote SPARQL connectivity is exposed through `SPARQLConnector`, with `query()` and `update()` methods and a configurable HTTP method property.
+
+## Plugins
+
+The plugin API supports registering and resolving extensible components:
+
+```python
+from rdflib.plugin import get, plugins, register
+
+# Register a plugin class by module path and class name.
+register(
+    name="example",
+    kind=object,
+    module_path="my_package.plugin",
+    class_name="ExamplePlugin",
+)
+
+plugin_class = get("example", object)
+
+for plugin in plugins(kind=object):
+    print(plugin)
+```
+
+Use `Plugin`, `PKGPlugin`, `register()`, `get()`, and `plugins()` to integrate custom parser, serializer, store, query, or result components.
+
+## JSON-LD utilities
+
+JSON-LD support includes parsing, serialization, context processing, and conversion helpers.
+
+Useful entry points include:
+
+- `to_rdf(data, dataset, ...)`
+- `from_rdf(graph, ...)`
+- `Context`
+- `source_to_json(source)`
+- `split_iri(iri)`
+- `norm_url(base, url)`
+
+```python
+from rdflib.graph import Graph
+from rdflib.plugins.parsers.jsonld import to_rdf
+from rdflib.plugins.serializers.jsonld import from_rdf
+
+document = {
+    "@context": {"name": "https://schema.example/name"},
+    "@id": "https://example.org/alice",
+    "name": "Alice",
+}
+
+graph = Graph()
+to_rdf(document, graph)
+
+jsonld = from_rdf(graph)
+print(jsonld)
+```
+
+## Utilities
+
+`rdflib.util` provides common RDF-oriented helpers:
+
+- `first(seq)` — return the first item or `None`.
+- `list2set(seq)` — preserve-order unique values.
+- `uniq(sequence)` — unique strings.
+- `to_term(value)` — convert text to an RDF term.
+- `from_n3(value)` — parse an N3 representation.
+- `guess_format(path)` — infer an RDF format from a path.
+- `find_roots(graph, prop)` — locate roots in a property hierarchy.
+- `get_tree(graph, root, prop)` — construct a tree from graph relationships.
+
+```python
+from rdflib.util import from_n3, guess_format, to_term
+
+print(from_n3('"hello"'))
+print(to_term("<https://example.org/resource>"))
+print(guess_format("data.ttl"))
+```
+
+## Additional tools
+
+The library includes utility modules for common RDF workflows:
+
+- `rdf2dot()` and `rdfs2dot()` for graph visualization output.
+- `generateVoID()` for generating VoID-style dataset descriptions.
+- `csv2rdf` helpers and `CSV2RDF` for CSV-to-RDF conversion.
+- `defined_namespace_creator` helpers for generating defined namespace declarations.
+- `graphisomorphism` utilities for graph hashing and comparison.
+- `rdfpipe` parsing and serialization helpers.
+
+## Error types
+
+Core error classes include:
+
+- `Error`
+- `ParserError`
+- `UniquenessError`
+- `PluginException`
+- `ResultException`
+- `SPARQLError`
+- `NotBoundError`
+- `AlreadyBound`
+- `SPARQLTypeError`
+- `JSONLDException`
+- `BadSyntax`
+
+Catch the most specific exception appropriate to the operation being performed, especially when parsing RDF documents or executing SPARQL expressions.

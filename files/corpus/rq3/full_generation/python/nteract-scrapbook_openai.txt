@@ -1,0 +1,376 @@
+# nteract-scrapbook
+
+`nteract-scrapbook` provides tools for attaching named pieces of data (“scraps”) to notebook execution, then reading, organizing, reporting on, and reusing those scraps later.
+
+The library centers on two workflows:
+
+1. **Record values from a notebook** with `glue()`.
+2. **Read one or more notebooks** with `read_notebook()` or `read_notebooks()` and inspect their recorded scraps, parameters, execution information, and metrics.
+
+It also includes a pluggable encoding system for serializing different kinds of scrap data, including JSON-compatible values, text, display-oriented data, and pandas/Arrow dataframe data.
+
+## Installation
+
+Install the package with your preferred Python package manager:
+
+```bash
+pip install nteract-scrapbook
+```
+
+## Quick start
+
+In a notebook, attach a value to a name:
+
+```python
+from scrapbook.api import glue
+
+accuracy = 0.947
+glue("model_accuracy", accuracy)
+```
+
+Later, read the notebook and retrieve its scraps:
+
+```python
+from scrapbook.api import read_notebook
+
+notebook = read_notebook("training.ipynb")
+
+scraps = notebook.scraps()
+accuracy_scrap = scraps["model_accuracy"]
+```
+
+For working with several notebooks at once:
+
+```python
+from scrapbook.api import read_notebooks
+
+scrapbook = read_notebooks("notebooks/")
+report = scrapbook.scraps_report()
+
+print(report)
+```
+
+## Core concepts
+
+### Scraps
+
+A **scrap** is a named value recorded during notebook execution. Scraps are collected in a `Scraps` object, which behaves like an ordered dictionary.
+
+Useful `Scraps` methods include:
+
+- `data_scraps()` — return scraps containing data.
+- `data_dict()` — return data scraps as a dictionary.
+- `display_scraps()` — return display-oriented scraps.
+- `display_dict()` — return display scraps as a dictionary.
+- `dataframe()` — produce a dataframe representation of scraps.
+
+Scraps can also be converted to and from payload representations:
+
+```python
+from scrapbook.scraps import payload_to_scrap, scrap_to_payload
+
+payload = scrap_to_payload(scrap)
+restored_scrap = payload_to_scrap(payload)
+```
+
+### Notebooks
+
+A `Notebook` represents a read notebook and exposes notebook-level information, including its cells, metadata, parameters, scraps, and execution details.
+
+```python
+from scrapbook.api import read_notebook
+
+notebook = read_notebook("analysis.ipynb")
+
+print(notebook.filename())
+print(notebook.directory())
+
+parameters = notebook.parameters()
+scraps = notebook.scraps()
+metrics = notebook.metrics()
+```
+
+A `Notebook` can provide dataframe views of common notebook information:
+
+```python
+parameter_frame = notebook.parameter_dataframe()
+scrap_frame = notebook.scrap_dataframe()
+
+timing = notebook.cell_timing()
+execution_counts = notebook.execution_counts()
+```
+
+The API also exposes papermill-related records and metrics:
+
+```python
+papermill_metrics = notebook.papermill_metrics()
+papermill_records = notebook.papermill_record_dataframe()
+papermill_frame = notebook.papermill_dataframe()
+```
+
+### Scrapbooks
+
+A `Scrapbook` is a collection-oriented object for working across notebooks. It implements the mutable mapping interface and can aggregate scraps, notebook data, and reports.
+
+```python
+from scrapbook.api import read_notebooks
+
+scrapbook = read_notebooks("experiment-notebooks/")
+
+all_scraps = scrapbook.scraps()
+notebooks = scrapbook.notebooks()
+metrics = scrapbook.metrics()
+```
+
+Generate a report across notebooks:
+
+```python
+report = scrapbook.scraps_report(
+    scrap_names=["model_accuracy", "training_loss"],
+    include_data=True,
+    headers=True,
+)
+```
+
+Reports can also be restricted to selected notebook names:
+
+```python
+report = scrapbook.scraps_report(
+    notebook_names=["baseline.ipynb", "candidate.ipynb"],
+    include_data=False,
+)
+```
+
+## Recording notebook values
+
+Use `glue()` to associate data with a name.
+
+```python
+from scrapbook.api import glue
+
+glue("run_id", "experiment-2024-01")
+glue("sample_count", 5000)
+glue("metrics", {"precision": 0.91, "recall": 0.88})
+```
+
+`glue()` accepts optional `encoder` and `display` arguments:
+
+```python
+glue(
+    "evaluation_summary",
+    {"accuracy": 0.947, "f1": 0.932},
+    encoder="json",
+    display=False,
+)
+```
+
+The chosen encoder determines how the data is stored and later restored.
+
+## Reading notebooks
+
+### Read one notebook
+
+```python
+from scrapbook.api import read_notebook
+
+notebook = read_notebook("results.ipynb")
+
+for name, scrap in notebook.scraps().items():
+    print(name, scrap)
+```
+
+Create a copy before making changes:
+
+```python
+working_copy = notebook.copy()
+```
+
+### Read multiple notebooks
+
+```python
+from scrapbook.api import read_notebooks
+
+scrapbook = read_notebooks("runs/")
+
+for notebook_name, scraps in scrapbook.notebook_scraps().items():
+    print(notebook_name)
+    print(scraps)
+```
+
+Use dataframe-oriented views for analysis:
+
+```python
+scrap_frame = scrapbook.scraps()
+metrics_frame = scrapbook.metrics()
+papermill_frame = scrapbook.papermill_dataframe()
+```
+
+## Re-gluing scraps
+
+`Notebook.reglue()` supports adding a previously recorded scrap back under the same or a new name.
+
+```python
+from scrapbook.api import read_notebook
+
+notebook = read_notebook("source.ipynb")
+
+notebook.reglue("model_accuracy")
+notebook.reglue("model_accuracy", new_name="baseline_accuracy")
+```
+
+By default, a missing scrap raises an error. To allow a missing name:
+
+```python
+notebook.reglue("optional_value", raise_on_missing=False)
+```
+
+The `unattached` option is also available when re-gluing:
+
+```python
+notebook.reglue(
+    "model_accuracy",
+    new_name="reused_accuracy",
+    unattached=True,
+)
+```
+
+## Encoders
+
+The library uses encoders to determine how scrap data should be represented and restored.
+
+Built-in encoder classes include:
+
+- `JsonEncoder`
+- `TextEncoder`
+- `DisplayEncoder`
+- `PandasArrowDataframeEncoder`
+
+Each encoder provides:
+
+- `name()` — its encoder name.
+- `encodable(data)` — whether it can encode a value.
+- `encode(scrap, **kwargs)` — encode a scrap.
+- `decode(scrap, **kwargs)` — decode a scrap.
+
+### Encoder registry
+
+`DataEncoderRegistry` is a mutable mapping that manages available encoders.
+
+```python
+from scrapbook.encoders import DataEncoderRegistry, JsonEncoder, TextEncoder
+
+registry = DataEncoderRegistry()
+
+registry.register(JsonEncoder())
+registry.register(TextEncoder())
+```
+
+Determine which encoder is appropriate for a value:
+
+```python
+encoder_name = registry.determine_encoder_name({"status": "complete"})
+```
+
+Encode and decode scraps through the registry:
+
+```python
+encoded = registry.encode(scrap)
+decoded = registry.decode(encoded)
+```
+
+Remove an encoder or reset the registry:
+
+```python
+registry.deregister(TextEncoder())
+registry.reset()
+```
+
+## Schemas and payloads
+
+Use `scrap_schema()` to obtain a scrap schema for a selected version:
+
+```python
+from scrapbook.schemas import scrap_schema
+
+schema = scrap_schema()
+```
+
+A version may be supplied explicitly:
+
+```python
+schema = scrap_schema(version=1)
+```
+
+For serialization-oriented workflows, use the payload conversion helpers:
+
+```python
+from scrapbook.scraps import scrap_to_payload, payload_to_scrap
+
+payload = scrap_to_payload(scrap)
+scrap = payload_to_scrap(payload)
+```
+
+## Exceptions
+
+All library-specific exceptions derive from `ScrapbookException`, which is a `ValueError` subclass.
+
+- `ScrapbookException` — base scrapbook exception.
+- `ScrapbookMissingEncoder` — an encoder could not be found.
+- `ScrapbookInvalidEncoder` — an encoder is invalid.
+- `ScrapbookDataException` — scrap data could not be handled.
+
+```python
+from scrapbook.exceptions import (
+    ScrapbookDataException,
+    ScrapbookMissingEncoder,
+)
+
+try:
+    notebook = read_notebook("results.ipynb")
+    value = notebook.scraps()["evaluation"]
+except ScrapbookMissingEncoder as exc:
+    print(f"An encoder is unavailable: {exc}")
+except ScrapbookDataException as exc:
+    print(f"Unable to read scrap data: {exc}")
+```
+
+## Utility functions
+
+The utility API includes helpers for notebook/kernel-aware integrations:
+
+- `is_kernel()` — determine whether code is running in a kernel environment.
+- `kernel_required(f)` — decorate a callable that requires a kernel.
+- `deprecated(version, replacement=None)` — mark an API as deprecated.
+
+```python
+from scrapbook.utils import is_kernel
+
+if is_kernel():
+    print("Notebook kernel detected")
+```
+
+## Typical workflow
+
+```python
+# In a notebook:
+from scrapbook.api import glue
+
+glue("experiment_name", "candidate-model")
+glue("accuracy", 0.947)
+glue("metrics", {"precision": 0.91, "recall": 0.88})
+```
+
+```python
+# In a separate Python process:
+from scrapbook.api import read_notebook
+
+notebook = read_notebook("candidate-model.ipynb")
+
+print(notebook.parameters())
+
+for name, scrap in notebook.scraps().items():
+    print(f"{name}: {scrap}")
+
+print(notebook.scrap_dataframe())
+print(notebook.metrics())
+```

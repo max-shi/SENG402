@@ -1,0 +1,436 @@
+# Spring Social LinkedIn
+
+`org.springframework.social:spring-social-linkedin` is a Java client library for working with LinkedIn through the Spring Social API model. It provides an authenticated `LinkedIn` API binding and domain objects for profiles, connections, network updates, companies, jobs, groups, messages, and shares.
+
+The library is organized around focused operation interfaces. Obtain a `LinkedIn` instance, then select the operation group for the resource you need.
+
+## Core API
+
+The central interface is `LinkedIn`:
+
+```java
+public interface LinkedIn extends ApiBinding {
+    ConnectionOperations connectionOperations();
+    NetworkUpdateOperations networkUpdateOperations();
+    ProfileOperations profileOperations();
+    CompanyOperations companyOperations();
+    CommunicationOperations communicationOperations();
+    JobOperations jobOperations();
+    GroupOperations groupOperations();
+    RestOperations restOperations();
+}
+```
+
+`LinkedInTemplate` is a concrete implementation that can be created with an access token:
+
+```java
+LinkedIn linkedin = new LinkedInTemplate(accessToken);
+```
+
+Alternatively, the library exposes Spring Social connection and authentication integration types:
+
+- `LinkedInConnectionFactory` — an `OAuth2ConnectionFactory<LinkedIn>`.
+- `LinkedInServiceProvider` — creates a `LinkedIn` API binding from an access token.
+- `LinkedInAuthenticationService` — an `OAuth2AuthenticationService<LinkedIn>`.
+- `LinkedInAdapter` — adapts LinkedIn data into Spring Social `ConnectionValues` and `UserProfile`.
+- `LinkedInApiHelper` — obtains the current `LinkedIn` API binding.
+
+## Operation Groups
+
+| API | Purpose |
+| --- | --- |
+| `ProfileOperations` | Read the authenticated user profile, retrieve profiles by ID or public URL, and search for people. |
+| `ConnectionOperations` | Read first-degree connections and network statistics. |
+| `NetworkUpdateOperations` | Read, publish, like, comment on, and share network updates. |
+| `CompanyOperations` | Look up companies, search companies, manage followed companies, and retrieve company products. |
+| `JobOperations` | Search jobs, retrieve jobs, bookmark jobs, and retrieve suggestions or bookmarks. |
+| `GroupOperations` | Work with group memberships, suggestions, posts, comments, and post actions. |
+| `CommunicationOperations` | Send messages and initiate connection requests. |
+| `RestOperations` | Access the underlying Spring `RestOperations` instance. |
+
+## Profiles and Connections
+
+`ProfileOperations` returns either a basic `LinkedInProfile` or a richer `LinkedInProfileFull`.
+
+- `LinkedInProfile` contains core identity and profile information such as ID, name, headline, industry, email address, summary, profile URLs, and a connection authorization value.
+- `LinkedInProfileFull` extends `LinkedInProfile` with positions, education, skills, recommendations, contact accounts, phone numbers, location, current share, and viewer relationship data.
+- `LinkedInProfiles` represents a paged people-search response.
+
+`ConnectionOperations` returns `LinkedInProfile` objects for the authenticated user's connections and exposes `NetworkStatistics` for first- and second-degree counts.
+
+## Search and Pagination
+
+Several API calls return a `SearchResult` subtype:
+
+- `LinkedInProfiles`
+- `Companies`
+- `Jobs`
+- `JobBookmarks`
+- `Products`
+- `GroupMemberships`
+- `GroupSuggestions`
+- `GroupPosts`
+- `PostComments`
+
+Each `SearchResult` provides:
+
+```java
+int getCount();
+int getStart();
+int getTotal();
+```
+
+Use `start` and `count` parameters to page through results where supported.
+
+`SearchParameters` is a mutable builder-style parameter object for people search. It supports text, name, company, title, school, location, distance, current-position flags, sort order, and facets.
+
+`JobSearchParameters` provides equivalent search controls for jobs.
+
+## Example: Read the Authenticated User and Connections
+
+```java
+import java.util.List;
+
+import org.springframework.social.linkedin.api.ConnectionOperations;
+import org.springframework.social.linkedin.api.LinkedIn;
+import org.springframework.social.linkedin.api.LinkedInProfile;
+import org.springframework.social.linkedin.api.LinkedInProfileFull;
+import org.springframework.social.linkedin.api.NetworkStatistics;
+import org.springframework.social.linkedin.api.impl.LinkedInTemplate;
+
+String accessToken = "...";
+
+LinkedIn linkedin = new LinkedInTemplate(accessToken);
+
+// Basic profile
+LinkedInProfile profile = linkedin.profileOperations().getUserProfile();
+
+System.out.println(profile.getFirstName() + " " + profile.getLastName());
+System.out.println(profile.getHeadline());
+System.out.println(profile.getPublicProfileUrl());
+
+// Full profile
+LinkedInProfileFull fullProfile =
+        linkedin.profileOperations().getUserProfileFull();
+
+System.out.println("Connections: " + fullProfile.getNumConnections());
+
+fullProfile.getPositions().forEach(position -> {
+    System.out.println(position.getTitle());
+
+    if (position.getCompany() != null) {
+        System.out.println("  " + position.getCompany().getName());
+    }
+});
+
+// Connections and network counts
+ConnectionOperations connections = linkedin.connectionOperations();
+
+List<LinkedInProfile> people = connections.getConnections(0, 20);
+NetworkStatistics statistics = connections.getNetworkStatistics();
+
+System.out.println("First-degree: " + statistics.getFirstDegreeCount());
+System.out.println("Second-degree: " + statistics.getSecondDegreeCount());
+
+for (LinkedInProfile person : people) {
+    System.out.println(person.getFirstName() + " " + person.getLastName());
+}
+```
+
+## Example: Search for People
+
+```java
+import org.springframework.social.linkedin.api.LinkedInProfiles;
+import org.springframework.social.linkedin.api.SearchParameters;
+
+SearchParameters parameters = new SearchParameters();
+parameters.setKeywords("java");
+parameters.setCompanyName("Example Company");
+parameters.setCurrentCompany(true);
+parameters.setCountryCode("us");
+parameters.setStart(0);
+parameters.setCount(25);
+
+LinkedInProfiles results = linkedin.profileOperations().search(parameters);
+
+System.out.println(
+        "Showing " + results.getCount()
+        + " results starting at " + results.getStart()
+        + " of " + results.getTotal()
+);
+
+results.getPeople().forEach(person -> {
+    System.out.println(
+            person.getFirstName() + " " + person.getLastName()
+            + " — " + person.getHeadline()
+    );
+});
+```
+
+To apply search facets, add one or more values using `SearchParameters.addFacet(...)`:
+
+```java
+parameters.addFacet(facetType, facetValue);
+```
+
+The configured facet values are available through `getFacets()`.
+
+## Example: Publish and Interact with Network Updates
+
+`NetworkUpdateOperations` handles updates in the authenticated user's network.
+
+```java
+import java.util.List;
+
+import org.springframework.social.linkedin.api.LinkedInNetworkUpdate;
+import org.springframework.social.linkedin.api.NetworkUpdateOperations;
+
+NetworkUpdateOperations updates = linkedin.networkUpdateOperations();
+
+// Publish a text update
+updates.createNetworkUpdate("Shipping a new Java integration today.");
+
+// Retrieve a page of updates
+List<LinkedInNetworkUpdate> recent = updates.getNetworkUpdates(0, 10);
+
+for (LinkedInNetworkUpdate update : recent) {
+    System.out.println(update.getUpdateKey());
+    System.out.println(update.getTimestamp());
+    System.out.println(update.getUpdateType());
+
+    if (update.isLikable()) {
+        updates.likeNetworkUpdate(update.getUpdateKey());
+    }
+}
+
+// Add a comment to a known update
+String updateKey = recent.get(0).getUpdateKey();
+updates.commentOnNetworkUpdate(updateKey, "Congratulations!");
+```
+
+For more controlled retrieval, use `NetworkUpdateParameters`:
+
+```java
+import java.util.Arrays;
+import java.util.Date;
+
+import org.springframework.social.linkedin.api.NetworkUpdateParameters;
+import org.springframework.social.linkedin.api.UpdateTypeInput;
+
+NetworkUpdateParameters parameters = new NetworkUpdateParameters(
+        null,                       // user
+        true,                       // self
+        0,                          // recordStart
+        20,                         // recordCount
+        new Date(),                 // recordsBefore
+        null,                       // recordsAfter
+        false,                      // updateAll
+        false,                      // showHidden
+        Arrays.asList(UpdateTypeInput.SHAR, UpdateTypeInput.CONN)
+);
+
+List<LinkedInNetworkUpdate> updates =
+        linkedin.networkUpdateOperations().getNetworkUpdates(parameters);
+```
+
+The API also supports sharing a `NewShare`:
+
+```java
+import java.net.URI;
+
+import org.springframework.social.linkedin.api.NewShare;
+
+NewShare share = new NewShare();
+share.setComment("A useful resource for Java developers.");
+
+URI createdShare = linkedin.networkUpdateOperations().share(share);
+```
+
+## Example: Work with Companies and Jobs
+
+```java
+import org.springframework.social.linkedin.api.Company;
+import org.springframework.social.linkedin.api.Companies;
+import org.springframework.social.linkedin.api.Job;
+import org.springframework.social.linkedin.api.JobSearchParameters;
+import org.springframework.social.linkedin.api.Jobs;
+
+// Retrieve a company
+Company company = linkedin.companyOperations().getCompany(12345);
+
+System.out.println(company.getName());
+System.out.println(company.getIndustry());
+System.out.println(company.getWebsiteUrl());
+
+// Search companies
+Companies companies = linkedin.companyOperations().search("software");
+
+companies.getCompanies().forEach(match -> {
+    System.out.println(match.getId() + ": " + match.getName());
+});
+
+// Follow a company
+linkedin.companyOperations().startFollowingCompany(company.getId());
+
+// Search jobs
+JobSearchParameters jobParameters = new JobSearchParameters();
+jobParameters.setKeywords("Java");
+jobParameters.setCountryCode("us");
+jobParameters.setStart(0);
+jobParameters.setCount(10);
+
+Jobs jobs = linkedin.jobOperations().searchJobs(jobParameters);
+
+for (Job job : jobs.getJobs()) {
+    System.out.println(job.getId() + ": " + job.getDescriptionSnippet());
+
+    if (job.getCompany() != null) {
+        System.out.println("  Company: " + job.getCompany().getName());
+    }
+
+    if (job.getPosition() != null) {
+        System.out.println("  Position: " + job.getPosition().getTitle());
+    }
+}
+
+// Bookmark a job
+Job firstJob = jobs.getJobs().get(0);
+linkedin.jobOperations().bookmarkJob(firstJob.getId());
+```
+
+## Example: Groups, Posts, and Comments
+
+`GroupOperations` exposes membership management and post interactions.
+
+```java
+import java.net.URI;
+
+import org.springframework.social.linkedin.api.GroupMemberships;
+import org.springframework.social.linkedin.api.GroupPosts;
+
+// View memberships
+GroupMemberships memberships =
+        linkedin.groupOperations().getGroupMemberships(0, 20);
+
+memberships.getMemberships().forEach(membership -> {
+    System.out.println(membership.getGroup().getName());
+    System.out.println(membership.getMembershipState());
+});
+
+// Join a group
+Integer groupId = 123456;
+linkedin.groupOperations().joinGroup(groupId);
+
+// Create a post
+URI postLocation = linkedin.groupOperations().createPost(
+        groupId,
+        "Spring integration question",
+        "Has anyone used the LinkedIn API binding for profile search?"
+);
+
+// Read and interact with group posts
+GroupPosts posts = linkedin.groupOperations().getPosts(groupId, 0, 10);
+
+posts.getPosts().forEach(post -> {
+    System.out.println(post.getTitle());
+    System.out.println(post.getSummary());
+});
+
+// Interact with a specific post
+String postId = "...";
+linkedin.groupOperations().likePost(postId);
+linkedin.groupOperations().addCommentToPost(postId, "Thanks for sharing.");
+linkedin.groupOperations().followPost(postId);
+```
+
+## Example: Send Messages and Connection Requests
+
+```java
+import java.util.Arrays;
+
+import org.springframework.social.linkedin.api.ConnectionAuthorization;
+
+// Send a message to multiple recipients
+linkedin.communicationOperations().sendMessage(
+        "Project update",
+        "The latest project update is now available.",
+        Arrays.asList("recipient-id-1", "recipient-id-2")
+);
+
+// Send a message using varargs
+linkedin.communicationOperations().sendMessage(
+        "Hello",
+        "Checking in.",
+        "recipient-id-1",
+        "recipient-id-2"
+);
+
+// Send a connection request using an authorization value
+ConnectionAuthorization authorization =
+        new ConnectionAuthorization("authorization-name", "authorization-value");
+
+linkedin.communicationOperations().connectTo(
+        "Let's connect",
+        "I'd like to add you to my professional network.",
+        "recipient-id",
+        authorization
+);
+
+// Send a connection request by email and name
+linkedin.communicationOperations().connectTo(
+        "Let's connect",
+        "I'd like to add you to my professional network.",
+        "person@example.com",
+        "Jane",
+        "Doe"
+);
+```
+
+## Domain Model
+
+Most returned values extend `LinkedInObject`, which provides:
+
+```java
+Map<String, Object> getExtraData();
+```
+
+This allows access to additional data associated with a returned object.
+
+Important model types include:
+
+- **Profiles:** `LinkedInProfile`, `LinkedInProfileFull`, `Position`, `Education`, `Location`, `Recommendation`, `PhoneNumber`, `ImAccount`, `TwitterAccount`.
+- **Network updates:** `LinkedInNetworkUpdate`, `UpdateAction`, `UpdateContent` and its specialized subclasses, `Comment`, `Likes`, `Share`, `CurrentShare`.
+- **Companies:** `Company`, `Product`, `ProductRecommendation`, `CompanyJobUpdate`.
+- **Jobs:** `Job`, `JobPosition`, `JobBookmark`.
+- **Groups:** `Group`, `GroupSettings`, `Post`, `PostComment`, `Attachment`.
+- **Common values:** `CodeAndName`, `LinkedInDate`, `UrlResource`, `ConnectionAuthorization`.
+
+Several types model date information differently:
+
+- `java.util.Date` is used for timestamps.
+- `LinkedInDate` exposes separate `year`, `month`, and `day` values.
+
+## Enums
+
+The API includes enums for selecting profile fields and network-update types:
+
+- `ProfileField`
+- `UpdateType`
+- `UpdateTypeInput`
+
+Search parameter objects also accept `Sort` and `JobSearchSort` values, while group, post, recommendation, and sharing models expose related enum values through their getters.
+
+## JSON and HTTP Integration
+
+The library exposes two infrastructure types that can be used when integrating with Spring HTTP and JSON configuration:
+
+- `LinkedInModule` extends Jackson `SimpleModule`.
+- `LinkedInErrorHandler` extends Spring's `DefaultResponseErrorHandler`.
+
+For lower-level HTTP access through the configured binding, use:
+
+```java
+RestOperations rest = linkedin.restOperations();
+```
+
+Use the higher-level operation interfaces where possible; they provide the typed profile, company, job, group, and update models described above.

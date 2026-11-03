@@ -1,0 +1,176 @@
+# alpinebits-xml-impl
+
+`alpinebits-xml-impl` provides a JAXB-based implementation for converting Java objects to and from AlpineBits XML messages, together with middleware components for integrating this XML (de)serialization into an AlpineBits request-processing pipeline. It also provides utilities for building and caching XML validation schemas (RELAX NG and XSD) that can be used to validate AlpineBits documents.
+
+This library is intended to be used together with the AlpineBits core abstractions (`ObjectToXmlConverter`, `XmlToObjectConverter`, `Middleware`, `MiddlewareChain`, `Context`, `Key`) that define the contracts implemented here.
+
+## Features
+
+- Convert Java objects annotated with JAXB annotations to XML (`JAXBObjectToXmlConverter`)
+- Convert XML input streams back into Java objects (`JAXBXmlToObjectConverter`)
+- Shared, thread-safe access to a pre-configured `JAXBContext` (`JAXBContextSingleton`)
+- Shared, thread-safe access to a pre-configured OTA validation `Schema` (`OtaSchemaSingleton`)
+- Middleware classes to plug XML request/response mapping into a processing chain
+- Utilities to build RELAX NG and XSD `Schema` instances for specific AlpineBits versions or arbitrary schema files
+- A small helper to read an `InputStream` fully into a `String`
+
+## Main Components
+
+### JAXB Conversion
+
+- **`JAXBContextSingleton`**
+  Provides a single, shared `JAXBContext` instance via `getInstance()`. Since building a `JAXBContext` is expensive, this class ensures it is created only once and reused across the application.
+
+- **`JAXBObjectToXmlConverter`**
+  Implements `ObjectToXmlConverter`. Its `toXml(Object objectToConvert, OutputStream os)` method marshals a JAXB-annotated Java object into XML and writes it to the given output stream.
+
+- **`JAXBXmlToObjectConverter<T>`**
+  Implements `XmlToObjectConverter<T>`. Its `toObject(InputStream is)` method unmarshals XML content read from the given input stream into an object of type `T`.
+
+### Middleware
+
+These classes are designed to be used inside a `MiddlewareChain`, typically as part of an HTTP request-handling pipeline for AlpineBits actions.
+
+- **`XmlRequestMappingMiddleware<T>`**
+  Takes an `XmlToObjectConverter<T>` and a `Key<T>` identifying where the resulting object should be stored in the request `Context`. When invoked via `handleContext(Context ctx, MiddlewareChain chain)`, it reads the incoming XML request body, converts it into an object of type `T`, stores it in the context under the given key, and then continues the chain.
+
+- **`XmlResponseMappingMiddleware<T>`**
+  Takes an `ObjectToXmlConverter` and a `Key<T>` identifying where the response object is stored in the `Context`. When invoked via `handleContext(Context ctx, MiddlewareChain chain)`, it retrieves the response object from the context, converts it to XML, and writes it to the outgoing response.
+
+### Schema Handling
+
+- **`OtaSchemaSingleton`**
+  Provides a single, shared OTA `Schema` instance via `getInstance()`, avoiding repeated, costly schema compilation.
+
+- **`XmlValidationSchemaProvider`**
+  Utility class for building validation schemas:
+  - `buildRngSchemaForAlpineBitsVersion(String version)` — builds a RELAX NG `Schema` for a specific AlpineBits version.
+  - `buildRngSchema(String filename)` — builds a RELAX NG `Schema` from an arbitrary schema file.
+  - `buildXsdSchemaForAlpineBitsVersion(String version)` — builds an XSD `Schema` for a specific AlpineBits version.
+  - `buildXsdSchema(String filename)` — builds an XSD `Schema` from an arbitrary schema file.
+
+### Utilities
+
+- **`StreamConverter`**
+  Provides `readToString(InputStream is)`, a helper method to read the full contents of an `InputStream` into a `String`. Useful for logging, debugging, or pre-processing XML payloads before conversion.
+
+## Installation
+
+Add the dependency to your Maven project:
+
+```xml
+<dependency>
+    <groupId>it.bz.opendatahub.alpinebits</groupId>
+    <artifactId>alpinebits-xml-impl</artifactId>
+    <version>${alpinebits-xml-impl.version}</version>
+</dependency>
+```
+
+## Usage
+
+### Converting an object to XML
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBObjectToXmlConverter;
+
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
+
+MyAlpineBitsResponse response = buildResponse();
+
+JAXBObjectToXmlConverter converter = new JAXBObjectToXmlConverter();
+OutputStream os = new ByteArrayOutputStream();
+
+converter.toXml(response, os);
+
+String xml = os.toString();
+```
+
+### Converting XML to an object
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBXmlToObjectConverter;
+
+import java.io.InputStream;
+
+InputStream xmlInputStream = getRequestBodyStream();
+
+JAXBXmlToObjectConverter<MyAlpineBitsRequest> converter = new JAXBXmlToObjectConverter<>();
+MyAlpineBitsRequest request = converter.toObject(xmlInputStream);
+```
+
+### Reading raw XML content as a string
+
+```java
+import it.bz.opendatahub.alpinebits.xml.StreamConverter;
+
+import java.io.InputStream;
+
+InputStream is = getRequestBodyStream();
+String xmlAsString = StreamConverter.readToString(is);
+```
+
+### Building schemas for validation
+
+```java
+import it.bz.opendatahub.alpinebits.xml.XmlValidationSchemaProvider;
+
+import javax.xml.validation.Schema;
+
+// RELAX NG schema for a specific AlpineBits version
+Schema rngSchema = XmlValidationSchemaProvider.buildRngSchemaForAlpineBitsVersion("2018-10");
+
+// XSD schema loaded from an arbitrary file
+Schema xsdSchema = XmlValidationSchemaProvider.buildXsdSchema("MyCustomSchema.xsd");
+```
+
+### Using the shared OTA schema and JAXB context
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBContextSingleton;
+import it.bz.opendatahub.alpinebits.xml.OtaSchemaSingleton;
+
+import javax.xml.bind.JAXBContext;
+import javax.xml.validation.Schema;
+
+JAXBContext jaxbContext = JAXBContextSingleton.getInstance();
+Schema otaSchema = OtaSchemaSingleton.getInstance();
+```
+
+### Wiring XML mapping middlewares into a request-handling chain
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBObjectToXmlConverter;
+import it.bz.opendatahub.alpinebits.xml.JAXBXmlToObjectConverter;
+import it.bz.opendatahub.alpinebits.xml.middleware.XmlRequestMappingMiddleware;
+import it.bz.opendatahub.alpinebits.xml.middleware.XmlResponseMappingMiddleware;
+
+// Keys used to store the request/response objects in the processing Context
+Key<MyAlpineBitsRequest> REQUEST_KEY = Key.of("request", MyAlpineBitsRequest.class);
+Key<MyAlpineBitsResponse> RESPONSE_KEY = Key.of("response", MyAlpineBitsResponse.class);
+
+Middleware requestMapping = new XmlRequestMappingMiddleware<>(
+        new JAXBXmlToObjectConverter<>(),
+        REQUEST_KEY
+);
+
+Middleware responseMapping = new XmlResponseMappingMiddleware<>(
+        new JAXBObjectToXmlConverter(),
+        RESPONSE_KEY
+);
+
+// These middlewares can now be added to a MiddlewareChain together with
+// business-logic middlewares that read from REQUEST_KEY and write to RESPONSE_KEY.
+```
+
+## How the Pieces Fit Together
+
+A typical AlpineBits request-processing flow using this library looks like this:
+
+1. An incoming HTTP request contains an XML payload.
+2. `XmlRequestMappingMiddleware` reads the XML body, converts it into a Java object using a `JAXBXmlToObjectConverter`, and stores it in the shared `Context` under a defined `Key`.
+3. Business-logic middlewares further down the chain read the request object from the `Context`, process it, and store a response object under another `Key`.
+4. `XmlResponseMappingMiddleware` reads the response object from the `Context`, converts it to XML using a `JAXBObjectToXmlConverter`, and writes it to the outgoing response.
+5. Optionally, `XmlValidationSchemaProvider` and `OtaSchemaSingleton` can be used elsewhere in the pipeline to validate incoming or outgoing XML against RELAX NG or XSD schemas before or after conversion.
+
+This separation of concerns allows XML marshalling/unmarshalling and schema validation to be handled independently from the core business logic of processing AlpineBits messages.

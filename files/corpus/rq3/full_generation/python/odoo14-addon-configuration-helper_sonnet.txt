@@ -1,0 +1,158 @@
+# odoo14-addon-configuration-helper
+
+A curated collection of independent Odoo addons ("OCA-style" building blocks) that solve common infrastructure, data-management, and developer-productivity problems that recur across Odoo projects. Each addon in this package is self-contained and can be installed individually; together they provide a toolbox for database hygiene, attachment handling, auditing, import/export, mail processing, upgrade analysis, and general model utilities.
+
+This document gives an overview of the modules exposed by the package, grouped by theme, along with usage examples showing how the underlying models and helpers are typically invoked from Odoo code (models, controllers, cron jobs, wizards).
+
+## Introduction
+
+Odoo projects tend to accumulate the same set of "helper" needs: safely deleting attachments, tracking changes for audit purposes, exporting/importing Excel data, cleaning up orphaned database objects, restricting configuration changes, and easing module upgrades. This library packages many small, focused Odoo addons that address these needs. Each addon extends specific Odoo models (`ir.attachment`, `ir.cron`, `ir.model`, `res.users`, etc.) or introduces new transient wizards, following the standard Odoo ORM extension patterns (`models.Model`, `models.TransientModel`, `models.AbstractModel`).
+
+## Module Overview
+
+### Attachments & Storage
+
+- **attachment_delete_restrict**: Overrides `IrAttachment.unlink()` to add safeguards before allowing attachment deletion, together with supporting configuration on `ResGroups`, `ResUsers`, and `ResConfigSettings`.
+- **attachment_queue**: Provides `AttachmentQueue`, a model that queues attachment-processing jobs. Use `run()`, `run_as_job()`, `button_manual_run()`, and `set_done()` to process queued items, and `AttachmentQueueReschedule` (a wizard) to reschedule failed jobs via `reschedule()`.
+- **attachment_synchronize**: Builds on `attachment_queue` with `AttachmentSynchronizeTask`, offering `run()`, `run_import()`, `run_export()`, and `run_task_import_scheduler(domain=None)` to synchronize attachments with external storage backends (`FsStorage`), including duplicate-task support via `button_duplicate_record()` / `copy()`.
+- **attachment_unindex_content**: Prevents full-text indexing of attachment content by extending `IrAttachment`; installed via `post_init_hook`.
+- **base_multi_image**: Adds an `Image` model and an `Owner` mixin for attaching multiple images to any record, with helper functions (`save_directly_to_table`, `table_has_column`) used during install/uninstall hooks.
+- **autovacuum_message_attachment**: `AutovacuumMixin` provides `batch_unlink()` and `autovacuum(ttype='message')` to periodically purge old message attachments according to `VacuumRule` retention settings.
+
+### Auditing & Tracking
+
+- **auditlog**: A full audit-log framework. `AuditlogRule.create_logs(uid, res_model, res_ids, method, old_values=None, new_values=None, additional_log_values=None)` records changes as `AuditlogLog` / `AuditlogLogLine` entries. Rules can be toggled with `subscribe()` / `unsubscribe()`. `AuditlogAutovacuum.autovacuum(days, chunk_size=None)` prunes old logs.
+- **tracking_manager** / **tracking_manager_domain**: Extend `mail.thread`-based tracking to cover more field types (including one2many via `is_tracked_by_o2m()`), formatting many2many values with `format_m2m(records)`.
+
+### Database Maintenance
+
+- **database_cleanup**: A set of wizards (`CleanupPurgeWizardColumn`, `CleanupPurgeWizardTable`, `CleanupPurgeWizardModel`, `CleanupPurgeWizardModule`, `CleanupPurgeWizardField`, `CleanupPurgeWizardMenu`, `CleanupPurgeWizardData`, `CreateIndexesWizard`) that `find()` orphaned/unused database objects and let you `purge()` them.
+- **database_size**: Exposes `IrModelSize`, `IrModelIndexSize`, `IrModelRelationSize`, and a reporting model `IrModelSizeReport` with `action_open_model_sizes()` to inspect table/index sizes from the UI.
+- **database_autovacuum_tuning**: Lets administrators tune autovacuum behavior per table through `DatabaseAutovacuumTuning` and related settings.
+- **base_cron_exclusion**: Extends `IrCron` to prevent overlapping execution of scheduled actions.
+- **base_search_fuzzy**: `TrgmIndex` manages PostgreSQL trigram indexes (`create_index()`, `index_exists()`) to enable fuzzy search.
+
+### Import / Export
+
+- **excel_import_export**: The most extensive toolkit here. Key pieces:
+  - `XLSXTemplate` defines reusable Excel templates, with actions like `add_export_action()`, `add_import_action()`, `add_report_menu()`.
+  - `XLSXExport.export_xlsx(template, res_model, res_ids)` and `XLSXImport.import_xlsx(import_file, template, res_model=False, res_id=False)` perform the actual data conversion.
+  - `ExportXLSXWizard.action_export()` and `ImportXLSXWizard.action_import()` are user-facing wizards.
+  - `ReportExcelController` exposes HTTP routes (`report_routes`, `report_download`) for downloading generated spreadsheets.
+- **jsonifier**: Mirrors the Excel toolkit for JSON. `Base.jsonify(parser, one=False, with_fieldname=False)` converts records using a parser built from `IrExports.get_json_parser()`, with field resolution handled by `FieldResolver.resolve(param, records)`.
+
+### Mail & Fetchmail
+
+- **fetchmail_attach_from_folder**: Extends `FetchmailServer` and introduces `FetchmailServerFolder` to fetch emails from IMAP folders and attach matching messages to records, using pluggable matching strategies (`EmailExact`, `EmailDomain`).
+- **fetchmail_notify_error_to_sender**: Notifies senders when `MailThread.message_route()` fails to route an incoming message.
+- **mail_cleanup**: Overrides `FetchmailServer.fetch_mail(raise_exception=True)` to clean up mail processing errors.
+- **mail_template_attachment_per_lang**: Lets `MailTemplate` attachments vary per language via `IrAttachmentLanguage`.
+
+### Access, Configuration & Restriction
+
+- **base_exception**: `BaseExceptionModel` / `BaseExceptionMethod` implement a generic "exception rule" pattern: `detect_exceptions()` finds records violating an `ExceptionRule`, and `action_ignore_exceptions()` (plus the `ExceptionRuleConfirm` wizard's `action_confirm()`) lets users override them.
+- **base_force_record_noupdate**: Adds `toggle_force_noupdate()` on `IrModel` to protect specific records from being overwritten during module updates.
+- **base_model_restrict_update**: Restricts write/unlink access on selected models via `IrModelAccess.check(model, mode='read', raise_exception=True)`.
+- **base_temporary_action**: Extends `IrActionsActions` to support actions with limited lifetimes.
+- **rpc_helper**: `disable_rpc(*config)` is a decorator to block RPC access to specific methods; `patch__model_execute_cr()` wires this in at the ORM level.
+- **base_time_window** / **test_base_time_window**: `TimeWindowMixin` lets any model define recurring time windows (`get_time_window_start_time()`, `get_time_window_end_time()`), validated by `check_window_no_overlaps()`.
+
+### Fields & ORM Helpers
+
+- **base_m2m_custom_field**: `Many2manyCustom` is a `fields.Many2many` subclass supporting custom join-table columns via `update_db(model, columns)`.
+- **field_vector**: `Vector` is a custom field type storing embedding-style vectors (`VectorValue`), with PostgreSQL adapter registration via `register_vector(cr)`.
+- **base_sparse_field_list_support**: Patches `convert_to_cache` to support list values in sparse fields.
+- **base_partition**: `Base.partition(accessor)`, `batch(batch_size=None)`, and `read_per_record(fields=None, load='_classic_read')` provide convenient record-set chunking utilities.
+- **onchange_helper**: `Base.play_onchanges(values, onchange_fields)` simulates onchange logic programmatically, useful for scripted record creation.
+- **html_text**: `IrFieldsConverter.text_from_html(html_content, max_words=None, max_chars=None, ellipsis='…', fail=False)` extracts plain text summaries from HTML fields.
+- **base_name_search_improved**: Overrides `Base.name_search()` to use configurable per-model search domains defined on `IrModel`.
+- **base_conditional_image**: `ConditionalImageConsumerMixin` lets records display different images depending on configured `ConditionalImage` conditions.
+- **base_view_inheritance_extension**: `IrUiView.apply_inheritance_specs()` extends view-inheritance directives with additional spec handling (`ast_dict_update`).
+- **base_sequence_option** / **sequence_python**: Extend `ir.sequence` with per-model sequence options (`IrSequenceOptionLine.get_sequence(record, options=False)`) and Python-style incrementing characters (`get_next_char(number_next)`).
+- **base_technical_user**: `Base.sudo_tech(raise_if_missing=False)` runs code as a configured technical user rather than full superuser.
+- **base_remote**: `Base.remote()` and `ResUsers.authenticate(cls, db, credential, user_agent_env)` support authenticating against remote instances via `ResRemote` configuration.
+
+### Sessions, Backups & Infra
+
+- **session_db**: `PGSessionStore` implements a PostgreSQL-backed session store (`save`, `get`, `delete`, `vacuum`, `get_missing_session_identifiers`, `delete_from_identifiers`), replacing filesystem sessions; `session_store(self)` wires it into the HTTP layer.
+- **auto_backup**: `DbBackup.action_backup()` / `action_backup_all()` perform scheduled database backups, optionally over SFTP (`action_sftp_test_connection()`, `sftp_connection()`), with `cleanup()` / `cleanup_log()` to prune old backups.
+- **bus_alt_connection**: Overrides `ImDispatch.loop()` to change how the longpolling bus dispatch loop connects to the database.
+- **dbfilter_from_header**: `db_filter(dbs, host=None)` overrides Odoo's database filtering to select a database based on an HTTP header.
+- **scheduler_error_mailer**: Extends `IrCron` to email administrators when a scheduled action fails.
+- **sentry**: Integrates Sentry error tracking via `initialize_sentry(config)`, `before_send(event, hint)`, and processors (`SanitizeKeysProcessor`, `SanitizePasswordsProcessor`) that scrub sensitive data before events are sent.
+
+### Module Management & Upgrades
+
+- **module_analysis**: `IrModuleModule.button_analyse_code()` / `cron_analyse_code(domain=None)` statically analyze installed modules and store results against `IrModuleType` / `IrModuleAuthor`.
+- **module_auto_update**: `addon_hash(top, exclude_patterns, keep_langs)` computes checksums to detect changed modules; `Module.upgrade_changed_checksum(overwrite_existing_translations=False)` and the `ModuleAutoUpdate` wizard (`action_get_modules_to_update()`, `action_upgrade_module()`) automate upgrading only modules that changed.
+- **module_change_auto_install**: `post_load()` patches auto-install resolution logic.
+- **upgrade_analysis**: A comprehensive toolkit for comparing two database states across Odoo versions. `UpgradeAnalysis.analyze()` produces a diff report; `UpgradeComparisonConfig.new_analysis()` sets up comparisons against a remote database (`get_connection()`, `test_connection()`); `UpgradeRecord` stores individual record diffs; wizards `GenerateWizard.generate()` and `UpgradeInstallWizard.install_modules()` drive the review and module-installation workflow.
+
+## Usage Examples
+
+### Queueing and processing attachments
+
+```python
+# Enqueue an attachment for asynchronous processing
+attachment_queue = env["attachment.queue"].create([{
+    "name": "invoice.pdf",
+    "datas": base64_content,
+    "res_model": "account.move",
+    "res_id": invoice.id,
+}])
+
+# Process it immediately (e.g. from a button or test)
+attachment_queue.run()
+
+# Or reschedule failed items using the wizard
+wizard = env["attachment.queue.reschedule"].create({})
+wizard.reschedule()
+```
+
+### Exporting records to Excel
+
+```python
+template = env["xlsx.template"].search([("name", "=", "Partner Export")], limit=1)
+xlsx_data = env["xlsx.export"].export_xlsx(
+    template=template,
+    res_model="res.partner",
+    res_ids=env["res.partner"].search([]).ids,
+)
+```
+
+### Creating an audit rule and logging changes
+
+```python
+rule = env["auditlog.rule"].create({
+    "name": "Track partner changes",
+    "model_id": env.ref("base.model_res_partner").id,
+    "log_create": True,
+    "log_write": True,
+})
+rule.subscribe()
+
+# Later, changes made to res.partner records covered by this rule
+# are automatically recorded as auditlog.log / auditlog.log.line entries.
+```
+
+### Simulating onchanges programmatically
+
+```python
+values = {"partner_id": partner.id, "product_id": product.id}
+result = env["sale.order.line"].play_onchanges(
+    values, onchange_fields=["partner_id", "product_id"]
+)
+```
+
+### Cleaning up the database
+
+```python
+wizard = env["cleanup.purge.wizard.column"].create({})
+wizard.find()
+for line in wizard.purge_line_ids:
+    line.purge()
+```
+
+## Installation
+
+Each addon is distributed as a standard Odoo module. Install only the modules relevant to your project through the Apps menu, or list them in your project's `requirements`/manifest dependencies as needed. Modules are largely independent, though a few build on shared functionality (e.g. `attachment_synchronize` depends on `attachment_queue`).

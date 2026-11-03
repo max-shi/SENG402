@@ -1,0 +1,206 @@
+# jproperties
+
+`jproperties` provides a Python mapping-like interface for working with property data, including parsing, storing, metadata, and formatted listing output.
+
+The central `Properties` class implements `MutableMapping`, so it can be used as a dictionary-like collection of property values while also providing methods for loading and storing property documents.
+
+## Features
+
+- Dictionary-style access through `Properties`
+- Load property data from a source
+- Store properties to an output stream
+- Optional character encoding selection
+- Per-property metadata support
+- Reset and clear property collections
+- Human-readable property listing
+- Library-specific parsing and property exceptions
+
+## API overview
+
+### `Properties`
+
+`Properties` is the main container type.
+
+Because it implements `MutableMapping`, it is intended to support normal mapping operations such as assigning, retrieving, iterating over, and removing property values.
+
+```python
+from jproperties import Properties
+
+properties = Properties()
+
+properties["application.name"] = "Example Service"
+properties["application.port"] = "8080"
+
+print(properties["application.name"])
+```
+
+In addition to mapping behavior, `Properties` provides the following operations:
+
+| Method | Description |
+| --- | --- |
+| `load(source_data, encoding='iso-8859-1', metadoc=False)` | Load properties from source data. |
+| `store(out_stream, initial_comments=None, encoding='iso-8859-1', strict=True, strip_meta=True, timestamp=True)` | Write properties to an output stream. |
+| `getmeta(key)` | Retrieve metadata associated with a property key. |
+| `setmeta(key, metadata)` | Set metadata for a property key. |
+| `reset(metadoc=False)` | Reset the collection, with optional metadata-document behavior. |
+| `clear()` | Remove the current properties. |
+| `list(out_stream=sys.stderr)` | Write a listing of the properties to an output stream. |
+| `properties` | An attribute exposed by the class for accessing or setting its property collection. |
+
+### Exceptions
+
+#### `PropertyError`
+
+Base exception for property-related failures.
+
+#### `ParseError`
+
+A `PropertyError` raised when property data cannot be parsed.
+
+```python
+from jproperties import ParseError, Properties
+
+properties = Properties()
+
+try:
+    properties.load(b"some property data")
+except ParseError as error:
+    print(f"Could not parse properties: {error}")
+```
+
+### `main()`
+
+The library also exposes a `main()` function, which may be used as an application entry point.
+
+```python
+from jproperties import main
+
+main()
+```
+
+## Usage examples
+
+### Create and store properties
+
+Use `Properties` as a mapping, then write the result to a binary output stream.
+
+```python
+from io import BytesIO
+from jproperties import Properties
+
+properties = Properties()
+
+properties["service.name"] = "catalog"
+properties["service.host"] = "localhost"
+properties["service.port"] = "8000"
+
+output = BytesIO()
+
+properties.store(
+    output,
+    initial_comments=["Generated configuration"],
+    encoding="iso-8859-1",
+)
+
+serialized_data = output.getvalue()
+print(serialized_data)
+```
+
+### Load properties and read values
+
+Load source data into a `Properties` instance, then access values using mapping syntax.
+
+```python
+from jproperties import Properties
+
+source_data = b"""
+service.name=catalog
+service.host=localhost
+service.port=8000
+"""
+
+properties = Properties()
+properties.load(source_data)
+
+print(properties["service.name"])
+print(properties["service.port"])
+```
+
+### Attach metadata to a property
+
+Metadata can be associated with an individual key using `setmeta()` and retrieved with `getmeta()`.
+
+```python
+from jproperties import Properties
+
+properties = Properties()
+properties["database.host"] = "db.internal"
+
+properties.setmeta(
+    "database.host",
+    {
+        "description": "Hostname for the primary database",
+        "environment": "production",
+    },
+)
+
+metadata = properties.getmeta("database.host")
+print(metadata)
+```
+
+### Write a listing to standard output
+
+The `list()` method writes a representation of the current properties to an output stream.
+
+```python
+import sys
+from jproperties import Properties
+
+properties = Properties()
+properties["feature.enabled"] = "true"
+properties["feature.timeout"] = "30"
+
+properties.list(sys.stdout)
+```
+
+### Reset a properties collection
+
+Use `clear()` when only the current values need to be removed, or `reset()` when resetting the collection with its metadata-document option.
+
+```python
+from jproperties import Properties
+
+properties = Properties()
+properties["temporary.value"] = "example"
+
+properties.clear()
+
+properties["another.value"] = "value"
+properties.reset(metadoc=False)
+```
+
+## Encoding
+
+Both `load()` and `store()` accept an `encoding` argument. The default is `iso-8859-1`.
+
+```python
+properties.load(source_data, encoding="utf-8")
+properties.store(output_stream, encoding="utf-8")
+```
+
+## Error handling
+
+Catch `PropertyError` when callers need to handle errors from property operations generally, or catch `ParseError` specifically for parsing failures.
+
+```python
+from jproperties import ParseError, Properties, PropertyError
+
+properties = Properties()
+
+try:
+    properties.load(b"property data")
+except ParseError:
+    print("The input could not be parsed.")
+except PropertyError:
+    print("A property-related error occurred.")
+```

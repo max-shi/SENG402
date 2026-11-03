@@ -1,5 +1,5 @@
 """
-finalize_confirmatory_sample — Snapshot the confirmatory sample.
+finalize_confirmatory_sample: Snapshot the confirmatory sample.
 
 Reads the working sample_manifest.csv and writes a frozen snapshot of
 just the primary_ready rows (plus F7-review columns) as
@@ -10,7 +10,7 @@ The final CSV is the authoritative record of the confirmatory sample:
 each row corresponds to exactly one .txt file under text/<eco>/.
 
 Usage:
-    venv/bin/python3 src/corpus/finalize_confirmatory_sample.py [--freeze-date YYYYMMDD]
+    venv/bin/python3 src/corpus/finalize_confirmatory_sample.py [--freeze-date <name>]
 """
 
 from __future__ import annotations
@@ -108,7 +108,8 @@ def main() -> None:
 
     # Summary stats per ecosystem.
     summary_rows: list[dict] = []
-    for eco in ("java", "python"):
+    ecosystems = sorted({r["ecosystem"] for r in ready_with_files})
+    for eco in ecosystems:
         eco_rows = [r for r in ready_with_files if r["ecosystem"] == eco]
         wcs = sorted(int(r["word_count_post_clean"]) for r in eco_rows)
         capped = sum(1 for r in eco_rows if r.get("word_capped") == "true")

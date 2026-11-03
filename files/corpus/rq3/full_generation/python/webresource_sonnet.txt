@@ -1,0 +1,184 @@
+# webresource
+
+`webresource` is a small Python library for declaring, organizing, and rendering web resources — JavaScript, CSS, and other linked assets — for use in web applications and templates. It provides a set of composable classes for defining individual resources and grouping them, a resolver that orders resources according to their relationships and dependencies, and renderers that turn resolved resources into HTML markup.
+
+The library is designed to sit between your application's asset pipeline and your HTML templates: you declare resources once (with metadata such as file paths, integrity hashes, and inclusion rules), the resolver figures out a correct and non-conflicting ordering, and a renderer emits the `<script>`, `<link>`, and `<style>` tags your page needs.
+
+## Installation
+
+```bash
+pip install webresource
+```
+
+## Core Concepts
+
+### `ResourceMixin`
+
+`ResourceMixin` is the shared base behavior for anything that can be included on a page — both individual resources (`Resource`) and collections of resources (`ResourceGroup`). It provides:
+
+- `path` — the resource's path (getter/setter).
+- `directory` — the directory the resource lives in (getter/setter).
+- `include` — whether the resource should be included in rendering; can be a static boolean or a callable evaluated at resolve/render time, useful for conditionally including resources (e.g. based on environment or feature flags).
+- `remove()` — removes the resource (or group) from wherever it's registered.
+- `copy()` — returns a copy of the resource or group, useful for reusing a base definition with slight variations.
+
+### `Resource` and its subclasses
+
+`Resource` (in `webresource/resources.py`) represents a single web asset. It builds on `ResourceMixin` and adds:
+
+- `file_name()` — the resource's file name.
+- `file_path()` — the full path to the underlying file.
+- `file_data()` — the raw contents of the file.
+- `file_hash()` — a content hash of the file (getter/setter, e.g. for cache-busting).
+- `unique_key()` — an identifier used to deduplicate and compare resources.
+- `resource_url(base_url)` — computes the public URL for the resource given a base URL.
+- `render(base_url)` — renders the HTML tag for this resource.
+
+Specialized subclasses render appropriate markup:
+
+- **`ScriptResource`** — represents a JavaScript resource; rendered as a `<script>` tag. Adds an `integrity` property (getter/setter) for Subresource Integrity (SRI) hashes — pass `True` to compute it automatically, a string to set it explicitly, or `None` to disable it.
+- **`LinkMixin`** — a `Resource` subclass for resources rendered as `<link>`-style tags.
+- **`LinkResource`** — a generic linked resource (e.g. icons, preloads), rendered as a `<link>` tag.
+- **`StyleResource`** — a CSS resource, rendered as a `<link rel="stylesheet">` tag.
+
+### `ResourceGroup`
+
+`ResourceGroup` also extends `ResourceMixin`, allowing groups to be nested, included/excluded, and copied just like individual resources. A group holds a collection of members (which may themselves be `Resource` or `ResourceGroup` instances):
+
+- `add(member)` — adds a `Resource` or nested `ResourceGroup` to the group.
+- `members()` — returns the direct members of the group.
+- `scripts()` — returns all `ScriptResource` members (recursively, across nested groups).
+- `styles()` — returns all `StyleResource` members.
+- `links()` — returns all `LinkResource` members.
+
+Groups let you organize resources logically (e.g. "vendor", "app", "admin") and include/exclude entire groups at once.
+
+### `ResourceConfig`
+
+`ResourceConfig` holds configuration used to control how resources are resolved and rendered (for example, base paths or resolution behavior). It is passed to a `ResourceResolver` to influence how resources are processed.
+
+### `ResourceResolver`
+
+`ResourceResolver` takes your declared resources/groups and produces a final, ordered, de-duplicated list of `Resource` objects ready for rendering:
+
+- `resolve()` — returns a `list[Resource]` in the correct order, respecting dependencies between resources, filtering out resources whose `include` evaluates to `False`, and detecting problems such as circular dependencies, missing dependencies, or conflicting resources.
+
+### Exceptions
+
+All resolution-time errors derive from `ResourceError` (itself a `ValueError`):
+
+- `ResourceConflictError` — raised when two resources conflict (e.g. duplicate identifiers with incompatible definitions).
+- `ResourceCircularDependencyError` — raised when resources depend on each other in a cycle.
+- `ResourceMissingDependencyError` — raised when a resource depends on another resource that cannot be found.
+
+### Rendering
+
+Once resources are resolved, a renderer turns them into HTML:
+
+- `ResourceRenderer.render()` — renders the resolved resources into a single HTML string (e.g. concatenated `<script>`/`<link>`/`<style>` tags).
+- `GracefulResourceRenderer.render()` — same as `ResourceRenderer`, but tolerates problems (such as missing files or resolution issues) and renders whatever it safely can, rather than raising.
+
+## Usage Example
+
+```python
+from webresource import (
+    ResourceConfig,
+    ResourceGroup,
+    ResourceResolver,
+    ResourceRenderer,
+    GracefulResourceRenderer,
+    ScriptResource,
+    StyleResource,
+    LinkResource,
+)
+
+# Define individual resources.
+jquery = ScriptResource(path="jquery.js", directory="/static/vendor")
+jquery.integrity = True  # compute an SRI hash automatically
+
+app_js = ScriptResource(path="app.js", directory="/static/js")
+app_css = StyleResource(path="app.css", directory="/static/css")
+favicon = LinkResource(path="favicon.ico", directory="/static/img")
+
+# Organize resources into groups.
+vendor = ResourceGroup()
+vendor.add(jquery)
+
+app = ResourceGroup()
+app.add(app_js)
+app.add(app_css)
+app.add(favicon)
+
+# Conditionally include a resource, e.g. only in debug mode.
+app_js.include = lambda: True
+
+# Combine everything into a top-level group.
+page = ResourceGroup()
+page.add(vendor)
+page.add(app)
+
+# Resolve resources into a final, ordered, de-duplicated list.
+config = ResourceConfig()
+resolver = ResourceResolver(page, config=config)
+resolved = resolver.resolve()
+
+# Render the resources as HTML.
+renderer = ResourceRenderer(resolved, base_url="https://cdn.example.com/")
+html = renderer.render()
+print(html)
+```
+
+### Handling resolution errors gracefully
+
+```python
+from webresource import GracefulResourceRenderer, ResourceResolver
+from webresource.exceptions import (
+    ResourceCircularDependencyError,
+    ResourceMissingDependencyError,
+    ResourceConflictError,
+)
+
+resolver = ResourceResolver(page)
+
+try:
+    resolved = resolver.resolve()
+    html = ResourceRenderer(resolved, base_url="/static/").render()
+except (
+    ResourceCircularDependencyError,
+    ResourceMissingDependencyError,
+    ResourceConflictError,
+) as exc:
+    # Fall back to a renderer that tolerates unresolved issues.
+    html = GracefulResourceRenderer(resolved if 'resolved' in locals() else [], base_url="/static/").render()
+```
+
+### Working with groups directly
+
+```python
+# Inspect the different kinds of resources in a group.
+for script in app.scripts():
+    print(script.file_name(), script.unique_key())
+
+for style in app.styles():
+    print(style.render(base_url="/static/"))
+
+for link in app.links():
+    print(link.resource_url(base_url="/static/"))
+```
+
+## Copying and Removing Resources
+
+Both `Resource` and `ResourceGroup` support `copy()` and `remove()`:
+
+```python
+# Create a variant of an existing resource without mutating the original.
+app_js_debug = app_js.copy()
+app_js_debug.path = "app.debug.js"
+
+# Remove a resource from its group.
+favicon.remove()
+```
+
+## License
+
+This project is distributed as open-source software. See the `LICENSE` file for details.

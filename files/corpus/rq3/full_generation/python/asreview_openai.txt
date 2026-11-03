@@ -1,0 +1,461 @@
+# asreview
+
+`asreview` is a Python library for managing datasets and review projects with active-learning workflows. Its API supports:
+
+- Reading, cleaning, standardizing, and exporting bibliographic or tabular data.
+- Storing records and review decisions in a database.
+- Creating portable review projects and importing/exporting project data.
+- Ranking and selecting records with configurable machine-learning components.
+- Running simulations and calculating review-oriented metrics.
+- Hosting a web application with authentication, project collaboration, background tasks, and administrative APIs.
+
+The library is organized around a typical workflow:
+
+1. Load source data into normalized records.
+2. Store records in a database or project.
+3. Label records during a review.
+4. Train or configure an active-learning cycle.
+5. Rank and query the next records to review.
+6. Export data, results, or an entire project.
+
+## Core concepts
+
+### Data and records
+
+The `asreview.data` APIs provide readers, writers, conversion utilities, and record models.
+
+| API | Purpose |
+| --- | --- |
+| `BaseReader` | Base interface for data readers. Provides record conversion, cleaning, and column standardization helpers. |
+| `CSVReader`, `ExcelReader`, `RISReader` | Read tabular, spreadsheet, and RIS-style data. |
+| `CSVWriter`, `TSVWriter`, `ExcelWriter`, `RISWriter` | Export data frames to supported formats. |
+| `Record` | Database-compatible record model with validation for common fields. |
+| `load_records()` | Load records from a named dataset. |
+| `load_dataset()` | Load a dataset, optionally into a database. |
+| `fuzzy_find()` | Search data using keyword matching. |
+| `duplicated()` | Identify duplicate records using a persistent identifier column such as `doi`. |
+| `identify_record_groups()` | Identify groups of related records using configured feature extractors. |
+
+Readers inherit from `BaseReader`, which exposes a shared flow:
+
+```python
+data = Reader.read_data(fp)
+cleaned = Reader.clean_data(data)
+records = Reader.to_records(cleaned, dataset_id="example")
+```
+
+For convenience, readers also provide `read_records()`.
+
+### Database storage
+
+`Database` and `DataStore` manage persisted records, labels, rankings, notes, groups, and review results.
+
+| API | Purpose |
+| --- | --- |
+| `open_db(fp, read_only=False)` | Open a database at a file location. |
+| `Database` | High-level review database operations, including labeling, ranking, and result queries. |
+| `DataStore` | Record-oriented database storage operations. |
+| `Database.label_record()` | Label a record and optionally attach tags or a user identifier. |
+| `Database.query_top_ranked()` | Retrieve the highest-ranked record for review. |
+| `Database.get_results_table()` | Retrieve review results as a table. |
+| `Database.get_unlabeled()` | Retrieve records that have not yet been labeled. |
+| `Database.get_pending()` | Retrieve pending records, optionally scoped to a user. |
+| `Database.get_priors()` | Retrieve prior labeled records. |
+| `Database.update_note()` | Add or update a note for a record. |
+| `Database.add_last_ranking()` | Save ranking output and the model components used to create it. |
+
+### Projects
+
+`Project` provides the main high-level API for a review workspace. A project combines input data, persistent review state, feature matrices, model configuration, review metadata, and export/import operations.
+
+| API | Purpose |
+| --- | --- |
+| `Project.create()` | Create a new project. |
+| `Project.load()` | Load an existing project archive or project source. |
+| `Project.add_dataset()` | Add an input dataset to a project. |
+| `Project.read_input_data()` | Read the project input data. |
+| `Project.db()` | Access the project's database interface. |
+| `Project.label_priors()` | Label prior records associated with the project. |
+| `Project.review()` | Retrieve review information. |
+| `Project.add_review()` | Create review metadata. |
+| `Project.update_review()` | Update review status or model metadata. |
+| `Project.feature_matrices()` | List available feature matrices. |
+| `Project.add_feature_matrix()` | Store a feature matrix under a name. |
+| `Project.get_feature_matrix()` | Retrieve a stored feature matrix. |
+| `Project.export()` | Export the project. |
+| `Project.close()` | Close project resources. |
+
+Use `is_project(project_dir)` to test whether a directory represents a project.
+
+### Active learning and machine learning
+
+The learning APIs combine feature extraction, balancing, classification, querying, and stopping criteria.
+
+#### Active-learning cycle
+
+`ActiveLearningCycle` represents a review cycle and exposes operations commonly used by model pipelines:
+
+- `transform(X)` — transform input data into model features.
+- `fit(X, y)` — fit the learning components.
+- `rank(X)` — rank records.
+- `get_n_query(results, labels)` — determine how many records to query.
+- `stop(results, data)` — determine whether a review should stop.
+- `to_meta()` / `from_meta()` — serialize or reconstruct cycle metadata.
+- `to_file()` / `from_file()` — persist or load a cycle.
+
+`ActiveLearningCycleData` is available as a related data container.
+
+#### Feature extraction
+
+| API | Purpose |
+| --- | --- |
+| `TextMerger` | Transformer for combining text-oriented inputs. |
+| `Tfidf` | Pipeline-based TF-IDF feature extraction. |
+| `OneHot` | Pipeline-based one-hot feature extraction. |
+
+#### Classifiers
+
+The following classifier classes are available:
+
+- `SVM`
+- `RandomForest`
+- `NaiveBayes`
+- `Logistic`
+
+`get_ai_config(name=None)` retrieves model or algorithm configuration.
+
+#### Query strategies
+
+Query strategies choose records from model output probabilities or scores:
+
+- `Random`
+- `TopDown`
+- `Uncertainty`
+- `Max`
+- `HybridMaxUncertainty`
+- `HybridMaxRandom`
+
+All query strategy classes implement `query(p)` through `QueryMixin`.
+
+#### Balancing and stopping
+
+| API | Purpose |
+| --- | --- |
+| `Balanced` | Computes sample weights for class balancing. |
+| `LastRelevant` | Stop based on the last relevant result. |
+| `NLabeled` | Stop based on a number of labeled records. |
+| `QuantileLabeled` | Stop based on a labeled-data quantile. |
+| `IsFittable` | Stopping component related to whether a model can be fitted. |
+| `NConsecutiveIrrelevant` | Stop after consecutive irrelevant decisions. |
+| `safe_stop()` | Wrap or adapt a stopping method for safe execution. |
+| `raise_if_not_simulate()` | Guard a stopping method so it is only used in simulations. |
+
+### Simulation and metrics
+
+`Simulate` exposes methods for programmatic review simulation:
+
+- `review()`
+- `label(record_ids, cycle=None)`
+- `to_sql(fp)`
+
+Review performance helpers include:
+
+- `loss(labels)`
+- `ndcg(labels)`
+
+### Extensions and datasets
+
+The package includes extension discovery APIs:
+
+```python
+from asreview.extensions import extensions, get_extension, load_extension
+
+available = extensions("some-extension-group")
+extension = get_extension("some-extension-group", "extension-name")
+loaded = load_extension("some-extension-group", "extension-name")
+```
+
+Dataset management is available through:
+
+- `BaseDataSet`
+- `BaseDataGroup`
+- `DatasetManager`
+- `SynergyDataSet`
+- `SynergyDataGroup`
+
+A `DatasetManager` can list available datasets and find one by identifier.
+
+## Usage examples
+
+### Read CSV data and convert it to records
+
+```python
+from pathlib import Path
+
+from asreview.data.tabular import CSVReader
+
+input_file = Path("references.csv")
+
+# Read the source table.
+df = CSVReader.read_data(input_file)
+
+# Apply reader-specific cleanup and column normalization.
+df = CSVReader.clean_data(df)
+df = CSVReader.standardize_column_names(df)
+
+# Convert rows to Record objects.
+records = CSVReader.to_records(df, dataset_id="literature-search")
+```
+
+For the common case, use `read_records()` directly:
+
+```python
+from asreview.data.tabular import CSVReader
+
+records = CSVReader.read_records(
+    "references.csv",
+    dataset_id="literature-search",
+)
+```
+
+### Find likely duplicates and group related records
+
+```python
+from asreview.data.utils import duplicated, identify_groups
+
+# `duplicated` uses a persistent-identifier column by default.
+duplicate_rows = duplicated(df, pid="doi")
+
+# Create group identifiers from a pandas Series.
+group_ids = identify_groups(df["doi"])
+```
+
+To derive record groups from record objects:
+
+```python
+from asreview.data.utils import identify_record_groups
+
+groups = identify_record_groups(records)
+```
+
+### Create a project and add a dataset
+
+```python
+from asreview.project.api import Project
+
+project = Project.create(
+    project_path="my-review-project",
+    project_name="Literature review",
+    project_mode="oracle",
+)
+
+try:
+    project.add_dataset(
+        fp="references.csv",
+        dataset_id="initial-search",
+    )
+
+    input_data = project.read_input_data()
+    review_info = project.review()
+
+finally:
+    project.close()
+```
+
+### Work with project review data
+
+```python
+from asreview.project.api import Project
+
+project = Project.create(
+    project_path="review-project",
+    project_name="Screening workflow",
+)
+
+try:
+    project.add_dataset("references.csv", dataset_id="references")
+
+    # Create review metadata for a reviewer.
+    project.add_review(reviewer="reviewer-1", status="setup")
+
+    # Access the project database.
+    db = project.db()
+
+    # Retrieve candidate records and select the current top-ranked record.
+    unlabeled = db.get_unlabeled()
+    next_record = db.query_top_ranked(user_id="reviewer-1")
+
+    # Record a decision and optional tags.
+    db.label_record(
+        record_id=next_record.id,
+        label=1,
+        tags=["priority"],
+        user_id="reviewer-1",
+    )
+
+    # Add reviewer notes when needed.
+    db.update_note(
+        record_id=next_record.id,
+        note="Needs full-text assessment.",
+    )
+
+    results = db.get_results_table()
+finally:
+    project.close()
+```
+
+The exact record identifier attribute depends on the record representation returned by the database. When working with a known identifier, pass it directly:
+
+```python
+db.label_record(record_id=42, label=1, tags=["include"])
+```
+
+### Train, rank, and query with an active-learning cycle
+
+```python
+from asreview.learner import ActiveLearningCycle
+
+cycle = ActiveLearningCycle()
+
+# X contains model input data; y contains known labels.
+cycle.fit(X_train, y_train)
+
+# Rank candidate records.
+ranking = cycle.rank(X_candidates)
+
+# Apply the configured query strategy through the cycle.
+n_query = cycle.get_n_query(results=ranking, labels=y_train)
+
+# Check whether the configured stopper indicates completion.
+should_stop = cycle.stop(results=ranking, data=X_candidates)
+```
+
+An active-learning cycle can be serialized as metadata or written to a file:
+
+```python
+cycle.to_file("cycle.json")
+
+loaded_cycle = ActiveLearningCycle.from_file("cycle.json")
+```
+
+### Use a query strategy directly
+
+```python
+from asreview.models.queriers import Uncertainty
+
+querier = Uncertainty()
+
+# `p` is a collection of model probabilities or scores.
+selected_index = querier.query(p)
+```
+
+Other query strategies can be substituted without changing the `query(p)` calling pattern:
+
+```python
+from asreview.models.queriers import (
+    Random,
+    TopDown,
+    Max,
+    HybridMaxUncertainty,
+    HybridMaxRandom,
+)
+
+strategy = HybridMaxUncertainty()
+selected_index = strategy.query(p)
+```
+
+### Inspect results and calculate metrics
+
+```python
+from asreview.metrics import loss, ndcg
+
+labels = [1, 0, 1, 0, 0]
+
+review_loss = loss(labels)
+ranking_quality = ndcg(labels)
+```
+
+### Export review data
+
+```python
+from asreview.data.tabular import CSVWriter, TSVWriter, ExcelWriter
+from asreview.data.ris import RISWriter
+
+CSVWriter.write_data(results_df, "results.csv")
+TSVWriter.write_data(results_df, "results.tsv")
+ExcelWriter.write_data(results_df, "results.xlsx")
+RISWriter.write_data(results_df, "results.ris")
+```
+
+### Export a complete project
+
+```python
+from asreview.project.api import Project
+
+project = Project.create(
+    project_path="exportable-project",
+    project_name="Export example",
+)
+
+try:
+    project.add_dataset("references.csv", dataset_id="references")
+    project.export("exported-project.asreview")
+finally:
+    project.close()
+```
+
+## Web application
+
+The package includes a web application factory:
+
+```python
+from asreview.webapp.app import create_app
+
+app = create_app()
+```
+
+The web application API includes functionality for:
+
+- User signup, sign-in, account confirmation, password reset, and profiles.
+- Project creation, import, export, listing, and deletion.
+- Dataset search and export.
+- Model configuration, training, ranking, and review status.
+- Record labeling and note updates.
+- Project invitations and collaboration.
+- Administrative user, project, and task-queue management.
+- Background task execution through `TaskManager` and `run_task_manager()`.
+
+## Project migration
+
+Project migration helpers are available for detecting and converting project versions:
+
+```python
+from asreview.project.migration.migrate import detect_version, migrate_project
+
+version = detect_version(project_config)
+
+migrate_project(
+    folder="old-project",
+    src_version=version,
+    dst_version="target-version",
+)
+```
+
+## Error handling
+
+Project-specific exceptions include:
+
+- `ProjectError`
+- `ProjectNotFoundError`
+
+When opening databases, loading projects, or operating on review data, ensure resources are closed after use:
+
+```python
+project = Project.create("my-project")
+
+try:
+    # Work with the project.
+    ...
+finally:
+    project.close()
+```

@@ -1,0 +1,239 @@
+# simplemagic
+
+**simplemagic** is a pure Java library for identifying the type of a file or a
+stream of bytes by inspecting its content — much like the classic Unix `file`
+command and its underlying "magic" database. Rather than relying on file
+extensions, simplemagic reads the actual bytes of a file (or a prefix of it)
+and matches them against a set of magic pattern rules to determine the
+MIME type, a human-readable content description, and (where known) common
+file extensions associated with that content type.
+
+It ships with a large built-in table of known content types (`ContentType`)
+covering everything from common image, audio, video, and document formats
+to archive formats, source code, and many IANA-registered MIME types, so
+that most content can be recognized without any extra configuration.
+
+## Key features
+
+- Detect file/content type from a `File`, a file path, an `InputStream`, or a
+  raw `byte[]`.
+- Look up known content types by file extension or MIME type without doing
+  any I/O.
+- Load your own custom magic pattern files (in the traditional magic-file
+  format) in addition to, or instead of, the bundled defaults.
+- A pluggable, dependency-light internal logging facade with backends for
+  SLF4J, Log4j, Log4j2, Logback, Commons Logging, java.util.logging,
+  console, or a no-op/null backend — used internally, but also usable
+  standalone in your own code.
+
+## Main classes
+
+### `ContentInfoUtil`
+
+The primary entry point for content detection. It loads a set of magic
+entries (either the library defaults, or ones you supply) and then matches
+byte content against those entries.
+
+- `ContentInfoUtil()` — uses the library's bundled default magic entries.
+- `ContentInfoUtil(String fileOrDirectoryOrResourcePath)` /
+  `ContentInfoUtil(File fileOrDirectory)` /
+  `ContentInfoUtil(Reader reader)` — load custom magic entries from a file,
+  a directory of magic files, a classpath resource, or an already-open
+  `Reader`.
+- Each constructor has a variant accepting an `ErrorCallBack` so that
+  problems parsing magic entries can be reported without aborting the whole
+  load.
+- `findMatch(String filePath)`, `findMatch(File file)`,
+  `findMatch(InputStream inputStream)`, `findMatch(byte[] bytes)` — perform
+  the actual detection, returning a `ContentInfo` describing the best match
+  (or `null` if nothing matched).
+- `setFileReadSize(int fileReadSize)` — controls how many bytes are read
+  from a file/stream before attempting to match (magic patterns typically
+  only need to inspect the start of a file).
+- `setErrorCallBack(ErrorCallBack errorCallBack)` — set/replace the callback
+  used to report parse errors from magic entries.
+- Static helpers `findExtensionMatch(String name)` and
+  `findMimeTypeMatch(String mimeType)` look up a `ContentInfo` from the
+  bundled `ContentType` table by extension or MIME type, without reading any
+  file content.
+
+### `ContentInfo`
+
+The result of a successful (or partial) match. Provides:
+
+- `getContentType()` — the matched `ContentType` enum value, if the match
+  corresponds to one of the library's known types.
+- `getName()`, `getMimeType()`, `getMessage()` — human-readable details
+  about the match.
+- `getFileExtensions()` — file extensions commonly associated with this
+  content.
+- `isPartial()` — whether the match was only partial (e.g., derived from a
+  generic magic rule rather than an exact, well-known type).
+
+### `ContentType`
+
+A large enum of well-known content types (images, audio, video, documents,
+archives, source code, XML-based formats, and many IANA MIME types), each
+exposing:
+
+- `getSimpleName()`, `getMimeType()`, `getFileExtensions()`
+- `getReferences()` / `getReferenceUrls()` — links to specs or
+  documentation for the format, where available.
+- Static lookups `fromMimeType(String mimeType)` and
+  `fromFileExtension(String fileExtension)`.
+
+### `ContentInfoInputStreamWrapper`
+
+An `InputStream` wrapper that buffers enough leading bytes to let you call
+`findMatch()` to detect the content type of the stream *before* or *while*
+you consume it normally as an `InputStream`, without having to read the
+underlying stream twice.
+
+### Magic entry internals (`entries` package)
+
+These classes implement the magic-file parsing and matching engine that
+powers `ContentInfoUtil`:
+
+- `MagicEntries` — a collection of parsed magic rules; `readEntries(...)`
+  parses a magic file via a `BufferedReader`, `optimizeFirstBytes()` builds
+  an index for fast rejection of non-matching byte sequences, and
+  `findMatch(byte[] bytes)` runs the actual matching logic.
+- `MagicEntry` / `MagicEntryParser` — represent and parse individual lines
+  of a magic file into rule objects.
+- `MagicType` — enumerates the supported field types in a magic rule (byte,
+  short, integer, quad, float, double, string, date variants, regex,
+  search, endian-specific variants, etc.) and can produce the appropriate
+  `MagicMatcher` implementation via `matcherfromString(String)`.
+- `MagicMatcher` — the interface implemented by all field-type matchers
+  (see the `types` package) that knows how to parse a test value, extract a
+  value from a byte buffer, compare it, and render it for the message
+  string.
+- `MagicFormatter` — formats a matched value into the final descriptive
+  message using printf-like format strings from the magic rule.
+- `PercentExpression` — supports the `%`-style value substitution used in
+  formatted messages.
+
+### Value types (`types` package)
+
+Concrete `MagicMatcher` implementations for the different field types found
+in magic files: numeric types (`ByteType`, `ShortType`, `IntegerType`,
+`LongType`, `FloatType`, `DoubleType`, and their endian-aware variants
+through `NumberType`/`BaseLongType`), string types (`StringType`,
+`PStringType`, `BigEndianString16Type`, `SearchType`), date/time types
+(`LocalDateType`, `LocalLongDateType`, `UtcDateType`, `UtcLongDateType`),
+`RegexType`, `Id3LengthType`, and `DefaultType`. These are used internally
+by the magic entry parser and generally do not need to be invoked directly
+by application code.
+
+### Endian conversion (`endian` package)
+
+`EndianType` (BIG, LITTLE, MIDDLE, NATIVE) and its associated
+`EndianConverter` implementations (`BigEndianConverter`,
+`LittleEndianConverter`, `MiddleEndianConverter`) handle byte-order-aware
+extraction of numeric values from raw bytes — used by the numeric magic
+types above.
+
+### IANA metadata (`entries` package)
+
+`IanaEntries` and `IanaEntry` provide lookup of IANA-registered MIME type
+metadata (name, MIME type, and reference links) by MIME type string,
+supplementing the built-in `ContentType` data.
+
+### Logging (`logger` package)
+
+An internal, backend-agnostic logging API (`Logger`, `FluentLogger`,
+`LogBackend`, `LogBackendType`, `LoggerFactory`, `Level`, etc.) used
+throughout the library. It auto-detects available logging frameworks
+(SLF4J, Log4j, Log4j2, Logback, Commons Logging, java.util.logging) at
+runtime and falls back to a console or null backend if none are found. This
+is exposed publicly and may be reused in your own application if desired.
+
+## Usage examples
+
+### Detecting the type of a file
+
+```java
+import com.j256.simplemagic.ContentInfo;
+import com.j256.simplemagic.ContentInfoUtil;
+
+ContentInfoUtil util = new ContentInfoUtil();
+
+ContentInfo info = util.findMatch("/path/to/some/file.pdf");
+if (info != null) {
+    System.out.println("Name: " + info.getName());
+    System.out.println("MIME type: " + info.getMimeType());
+    System.out.println("Message: " + info.getMessage());
+}
+```
+
+### Detecting type from raw bytes
+
+```java
+byte[] header = readFirstBytesOfFile(); // however you obtain them
+ContentInfo info = util.findMatch(header);
+if (info != null && info.getContentType() == com.j256.simplemagic.ContentType.PDF) {
+    System.out.println("Looks like a PDF file");
+}
+```
+
+### Detecting type of an InputStream while still reading it
+
+```java
+import com.j256.simplemagic.ContentInfoInputStreamWrapper;
+
+try (ContentInfoInputStreamWrapper wrapper =
+         new ContentInfoInputStreamWrapper(rawInputStream)) {
+
+    ContentInfo info = wrapper.findMatch();
+    System.out.println("Detected: " + (info == null ? "unknown" : info.getMimeType()));
+
+    // continue reading normally -- the previously-buffered bytes are replayed
+    byte[] buffer = new byte[4096];
+    int read;
+    while ((read = wrapper.read(buffer)) != -1) {
+        // process data
+    }
+}
+```
+
+### Looking up known types without reading any file
+
+```java
+import com.j256.simplemagic.ContentInfoUtil;
+import com.j256.simplemagic.ContentType;
+
+ContentInfo byExtension = ContentInfoUtil.findExtensionMatch("report.docx");
+ContentInfo byMime = ContentInfoUtil.findMimeTypeMatch("image/png");
+
+ContentType type = ContentType.fromFileExtension("json");
+System.out.println(type.getMimeType()); // application/json
+```
+
+### Loading a custom set of magic rules
+
+```java
+import com.j256.simplemagic.ContentInfoUtil;
+import com.j256.simplemagic.ContentInfoUtil.ErrorCallBack;
+
+ContentInfoUtil.ErrorCallBack errorCallBack = (line, details, e) -> {
+    System.err.println("Problem parsing magic line: " + line + " -- " + details);
+};
+
+ContentInfoUtil util = new ContentInfoUtil("/etc/my-custom-magic-dir", errorCallBack);
+ContentInfo info = util.findMatch(new File("/path/to/unknown-file"));
+```
+
+## Logging configuration
+
+By default the library auto-detects an available logging backend. To force
+a specific backend:
+
+```java
+import com.j256.simplemagic.logger.LoggerFactory;
+import com.j256.simplemagic.logger.LogBackendType;
+
+LoggerFactory.setLogBackendType(LogBackendType.SLF4J);
+```
+
+Or supply your own `LogBackendFactory` implementation via
+`LoggerFactory.setLogBackendFactory(...)`.

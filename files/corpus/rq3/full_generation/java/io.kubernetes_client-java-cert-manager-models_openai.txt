@@ -1,0 +1,401 @@
+# io.kubernetes:client-java-cert-manager-models
+
+Java model classes for working with certificate-management Kubernetes-style resources and their JSON representations.
+
+The library provides strongly typed objects for certificate resources, certificate requests, issuers, ACME orders, and challenges. Models follow a consistent Java bean and fluent-builder style:
+
+- Fluent methods such as `secretName(...)` configure a field and return the current object.
+- Standard getters and setters support conventional Java usage.
+- List and map fields provide convenience methods such as `addDnsNamesItem(...)` and `putLabelsItem(...)`.
+- Every model supports JSON serialization with `toJson()` and deserialization with `fromJson(String)`.
+- Every model exposes `validateJsonObject(JsonObject)` for JSON validation.
+
+## Installation
+
+Use the Maven coordinates for this artifact:
+
+```xml
+<dependency>
+  <groupId>io.kubernetes</groupId>
+  <artifactId>client-java-cert-manager-models</artifactId>
+  <version><!-- version --></version>
+</dependency>
+```
+
+## Package
+
+Model classes are available from:
+
+```java
+import io.cert.manager.models.*;
+```
+
+The top-level Kubernetes resource types use Kubernetes Java client metadata types:
+
+```java
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+import io.kubernetes.client.openapi.models.V1ListMeta;
+```
+
+## Main resource models
+
+The primary resource objects implement `KubernetesObject` and expose the usual Kubernetes resource fields:
+
+- `apiVersion`
+- `kind`
+- `metadata`
+- `spec`
+- `status`
+
+| Resource | Resource class | List class | Spec | Status |
+|---|---|---|---|---|
+| Certificate | `V1Certificate` | `V1CertificateList` | `V1CertificateSpec` | `V1CertificateStatus` |
+| Certificate request | `V1CertificateRequest` | `V1CertificateRequestList` | `V1CertificateRequestSpec` | `V1CertificateRequestStatus` |
+| Challenge | `V1Challenge` | `V1ChallengeList` | `V1ChallengeSpec` | `V1ChallengeStatus` |
+| Cluster-scoped issuer | `V1ClusterIssuer` | `V1ClusterIssuerList` | `V1ClusterIssuerSpec` | `V1ClusterIssuerStatus` |
+| Namespaced issuer | `V1Issuer` | `V1IssuerList` | `V1IssuerSpec` | `V1IssuerStatus` |
+| Order | `V1Order` | `V1OrderList` | `V1OrderSpec` | `V1OrderStatus` |
+
+List resources implement `KubernetesListObject` and provide:
+
+```java
+list.items(items);
+list.addItemsItem(item);
+list.getMetadata(); // V1ListMeta
+```
+
+## Certificates
+
+`V1Certificate` represents a certificate resource. Its `V1CertificateSpec` supports certificate identity, issuer selection, private-key configuration, secret output, renewal configuration, and optional keystore output.
+
+Useful `V1CertificateSpec` fields include:
+
+- `secretName`
+- `issuerRef`
+- `commonName`
+- `dnsNames`
+- `ipAddresses`
+- `emailAddresses`
+- `uris`
+- `literalSubject`
+- `subject`
+- `duration`
+- `renewBefore`
+- `isCA`
+- `usages`
+- `privateKey`
+- `keystores`
+- `secretTemplate`
+- `revisionHistoryLimit`
+
+### Certificate issuer reference
+
+`V1CertificateSpecIssuerRef` identifies an issuer with:
+
+- `name`
+- `kind`
+- `group`
+
+The same `group` / `kind` / `name` reference shape is also used by certificate requests and orders through their respective issuer-reference models.
+
+### Private keys and keystores
+
+`V1CertificateSpecPrivateKey` configures private-key properties:
+
+- `algorithm`
+- `encoding`
+- `rotationPolicy`
+- `size`
+
+Its enum values are represented by:
+
+- `AlgorithmEnum`
+- `EncodingEnum`
+- `RotationPolicyEnum`
+
+`V1CertificateSpecKeystores` can contain JKS and PKCS#12 settings:
+
+- `V1CertificateSpecKeystoresJks`
+- `V1CertificateSpecKeystoresPkcs12`
+
+Both support `create` and a password secret reference with `name` and `key`.
+
+## Certificate requests
+
+`V1CertificateRequest` contains a `V1CertificateRequestSpec` and `V1CertificateRequestStatus`.
+
+The request spec includes:
+
+- `request` as `byte[]`
+- `issuerRef`
+- `duration`
+- `isCA`
+- `usages`
+- request identity information: `username`, `uid`, `groups`, and `extra`
+
+The status includes issued material and lifecycle state:
+
+- `certificate` as `byte[]`
+- `ca` as `byte[]`
+- `conditions`
+- `failureTime`
+
+## Issuers
+
+Both `V1IssuerSpec` and `V1ClusterIssuerSpec` support the same issuer configuration types:
+
+- `acme`
+- `ca`
+- `selfSigned`
+- `vault`
+- `venafi`
+
+### ACME
+
+`V1ClusterIssuerSpecAcme` includes:
+
+- `server`
+- `email`
+- `privateKeySecretRef`
+- `solvers`
+- `caBundle`
+- `skipTLSVerify`
+- `preferredChain`
+- `externalAccountBinding`
+- `disableAccountKeyGeneration`
+- `enableDurationFeature`
+
+ACME solvers are represented by `V1ClusterIssuerSpecAcmeSolversInner`, which combines:
+
+- `dns01`
+- `http01`
+- `selector`
+
+### DNS-01 solvers
+
+`V1ChallengeSpecSolverDns01` supports multiple DNS solver configurations:
+
+- `acmeDNS`
+- `akamai`
+- `azureDNS`
+- `cloudDNS`
+- `cloudflare`
+- `digitalocean`
+- `rfc2136`
+- `route53`
+- `webhook`
+- `cnameStrategy`
+
+Several providers use typed secret references with `name` and `key` fields.
+
+### HTTP-01 solvers
+
+`V1ChallengeSpecSolverHttp01` supports:
+
+- `ingress`
+- `gatewayHTTPRoute`
+
+Ingress settings can include ingress class configuration, templates, pod templates, scheduling affinity, image pull secrets, node selectors, tolerations, and service account settings.
+
+## Challenges and orders
+
+`V1Challenge` represents an individual validation challenge. Its specification includes values such as:
+
+- `authorizationURL`
+- `dnsName`
+- `token`
+- `key`
+- `url`
+- `type`
+- `wildcard`
+- `issuerRef`
+- `solver`
+
+`V1Order` represents an order workflow. Its status includes:
+
+- `state`
+- `url`
+- `finalizeURL`
+- `authorizations`
+- `certificate`
+- `reason`
+- `failureTime`
+
+Order authorization entries can include an identifier, initial state, wildcard indicator, URL, and one or more challenge records.
+
+## Status conditions
+
+Several status models expose condition lists, including certificate, certificate request, issuer, and cluster issuer status.
+
+Condition models contain variations of:
+
+- `type`
+- `status`
+- `reason`
+- `message`
+- `lastTransitionTime`
+- `observedGeneration`
+
+Condition status values use `StatusEnum`. Timestamps are represented as `java.time.OffsetDateTime`.
+
+## Usage examples
+
+### Build and serialize a certificate
+
+```java
+import io.cert.manager.models.V1Certificate;
+import io.cert.manager.models.V1CertificateSpec;
+import io.cert.manager.models.V1CertificateSpecIssuerRef;
+import io.cert.manager.models.V1CertificateSpecPrivateKey;
+import io.cert.manager.models.V1CertificateSpecSecretTemplate;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+
+V1Certificate certificate =
+    new V1Certificate()
+        .apiVersion("your-api-version")
+        .kind("Certificate")
+        .metadata(
+            new V1ObjectMeta()
+                .name("web-tls")
+                .namespace("default"))
+        .spec(
+            new V1CertificateSpec()
+                .secretName("web-tls-secret")
+                .commonName("www.example.test")
+                .addDnsNamesItem("www.example.test")
+                .addDnsNamesItem("example.test")
+                .duration("2160h")
+                .renewBefore("360h")
+                .issuerRef(
+                    new V1CertificateSpecIssuerRef()
+                        .name("production-issuer")
+                        .kind("Issuer")
+                        .group("your-issuer-group"))
+                .privateKey(
+                    new V1CertificateSpecPrivateKey()
+                        .size(2048))
+                .secretTemplate(
+                    new V1CertificateSpecSecretTemplate()
+                        .putLabelsItem("app", "web")
+                        .putAnnotationsItem("example.test/managed", "true")));
+
+String json = certificate.toJson();
+System.out.println(json);
+```
+
+### Configure an ACME issuer with a DNS solver
+
+```java
+import io.cert.manager.models.V1ChallengeSpecSolverDns01;
+import io.cert.manager.models.V1ChallengeSpecSolverDns01Cloudflare;
+import io.cert.manager.models.V1ChallengeSpecSolverDns01CloudflareApiTokenSecretRef;
+import io.cert.manager.models.V1ChallengeSpecSolverSelector;
+import io.cert.manager.models.V1ClusterIssuer;
+import io.cert.manager.models.V1ClusterIssuerSpec;
+import io.cert.manager.models.V1ClusterIssuerSpecAcme;
+import io.cert.manager.models.V1ClusterIssuerSpecAcmePrivateKeySecretRef;
+import io.cert.manager.models.V1ClusterIssuerSpecAcmeSolversInner;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+
+V1ClusterIssuer issuer =
+    new V1ClusterIssuer()
+        .apiVersion("your-api-version")
+        .kind("ClusterIssuer")
+        .metadata(new V1ObjectMeta().name("acme-production"))
+        .spec(
+            new V1ClusterIssuerSpec()
+                .acme(
+                    new V1ClusterIssuerSpecAcme()
+                        .server("https://acme.example.test/directory")
+                        .email("ops@example.test")
+                        .privateKeySecretRef(
+                            new V1ClusterIssuerSpecAcmePrivateKeySecretRef()
+                                .name("acme-account")
+                                .key("private-key"))
+                        .addSolversItem(
+                            new V1ClusterIssuerSpecAcmeSolversInner()
+                                .selector(
+                                    new V1ChallengeSpecSolverSelector()
+                                        .addDnsZonesItem("example.test"))
+                                .dns01(
+                                    new V1ChallengeSpecSolverDns01()
+                                        .cloudflare(
+                                            new V1ChallengeSpecSolverDns01Cloudflare()
+                                                .apiTokenSecretRef(
+                                                    new V1ChallengeSpecSolverDns01CloudflareApiTokenSecretRef()
+                                                        .name("cloudflare-api-token")
+                                                        .key("token")))))));
+
+String issuerJson = issuer.toJson();
+```
+
+### Deserialize a certificate request and inspect its status
+
+```java
+import io.cert.manager.models.V1CertificateRequest;
+
+String json = """
+{
+  "apiVersion": "your-api-version",
+  "kind": "CertificateRequest",
+  "metadata": {
+    "name": "web-tls-request",
+    "namespace": "default"
+  }
+}
+""";
+
+V1CertificateRequest request = V1CertificateRequest.fromJson(json);
+
+if (request.getStatus() != null) {
+  byte[] certificate = request.getStatus().getCertificate();
+  byte[] ca = request.getStatus().getCa();
+
+  System.out.println("Certificate data available: " + (certificate != null));
+  System.out.println("CA data available: " + (ca != null));
+}
+```
+
+`fromJson(...)` and `validateJsonObject(...)` may throw `IOException`, so callers should handle or declare that exception.
+
+### Work with a list response
+
+```java
+import io.cert.manager.models.V1Certificate;
+import io.cert.manager.models.V1CertificateList;
+
+V1CertificateList certificates = V1CertificateList.fromJson(listJson);
+
+for (V1Certificate certificate : certificates.getItems()) {
+  String name =
+      certificate.getMetadata() != null
+          ? certificate.getMetadata().getName()
+          : "<unnamed>";
+
+  System.out.println(name);
+
+  if (certificate.getStatus() != null) {
+    System.out.println("Renewal time: " + certificate.getStatus().getRenewalTime());
+    System.out.println("Not after: " + certificate.getStatus().getNotAfter());
+  }
+}
+```
+
+## JSON support
+
+All model classes share the following JSON-oriented methods:
+
+```java
+public static ModelType fromJson(String jsonString) throws IOException;
+public String toJson();
+public static void validateJsonObject(JsonObject jsonObj) throws IOException;
+```
+
+For example:
+
+```java
+V1Order order = V1Order.fromJson(orderJson);
+String serialized = order.toJson();
+```
+
+Use `fromJson` when receiving resource data as JSON, mutate the resulting Java object through setters or fluent methods, and call `toJson` when a JSON representation is needed.

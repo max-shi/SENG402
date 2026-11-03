@@ -1,0 +1,181 @@
+# sphinx-carousel
+
+`sphinx-carousel` is a [Sphinx](https://www.sphinx-doc.org) extension that
+adds a `carousel` directive for embedding image carousels (sliders) directly
+in your documentation. It generates the HTML markup and static assets needed
+to render a fully interactive, Bootstrap-style carousel — including
+navigation controls, position indicators, and optional captions — from a
+simple, declarative reStructuredText directive.
+
+The extension takes care of:
+
+- Parsing the images (and optional captions) you list inside a `carousel`
+  directive.
+- Building the docutils node tree that represents the carousel structure
+  (outer container, sliding "inner" wrapper, individual slides, controls,
+  indicators, captions).
+- Rendering that node tree to HTML via custom visitor/departure functions.
+- Copying and including the carousel's CSS/JS assets into the built
+  documentation, but only for pages that actually use a carousel.
+
+## Installation
+
+```bash
+pip install sphinx-carousel
+```
+
+Enable it in your Sphinx project's `conf.py`:
+
+```python
+extensions = [
+    "sphinx_carousel.carousel",
+]
+```
+
+## Quick start
+
+Once enabled, use the `carousel` directive anywhere in your `.rst` files:
+
+```rst
+.. carousel::
+
+    _static/photo1.jpg
+    _static/photo2.jpg
+    _static/photo3.jpg
+```
+
+Each line (or bullet item) inside the directive body is treated as an image
+to include as a slide. Building your docs will produce a carousel widget
+with navigation arrows and indicator dots, along with any CSS/JS assets it
+needs — automatically injected only into pages where a carousel is
+actually used.
+
+## How it fits together
+
+### Extension setup (`sphinx_carousel/carousel.py`)
+
+- **`setup(app: Sphinx) -> Dict[str, str]`** — the standard Sphinx extension
+  entry point. It registers the `carousel` directive, the carousel-related
+  docutils nodes, and the event handlers below, returning extension metadata
+  (such as version info) as expected by Sphinx.
+- **`copy_static(app: Sphinx)`** — copies the carousel's static assets (CSS
+  and JavaScript) into the output build directory so they are available to
+  the generated HTML pages.
+- **`include_static_on_demand(app: Sphinx, docname: str, source: str, context: dict, doctree: document)`** —
+  inspects the doctree for a given page and only injects the carousel's
+  static assets (`<link>`/`<script>` references) into pages that actually
+  contain a carousel, keeping pages without carousels free of unnecessary
+  overhead.
+
+### The directive (`sphinx_carousel/directives.py`)
+
+- **`Carousel(SphinxDirective)`** — the directive implementation invoked
+  when you write `.. carousel::` in your documentation.
+  - `images()` — parses the directive's content/arguments into a list of
+    image tuples (image reference plus optional caption text) used to
+    build the slides.
+  - `config_read_flag(name)` — checks (and typically marks) whether a given
+    project configuration value relevant to the carousel has already been
+    consulted for this build, helping avoid redundant asset injection or
+    configuration lookups.
+  - `create_inner_node(images)` — builds the node representing the sliding
+    "inner" region of the carousel, populated with one item node per image.
+  - `run()` — the main directive entry point; assembles the full carousel
+    node tree (main container, inner wrapper with items, controls,
+    indicators, captions) and returns it to Sphinx for inclusion in the
+    document.
+
+### The node tree (`sphinx_carousel/nodes.py`)
+
+The rendered carousel is represented internally as a tree of custom docutils
+nodes, each responsible for rendering a piece of the final HTML:
+
+- **`BaseNode`** — common base class for all carousel nodes. Provides
+  `classes(*classes_in, join=True)` for composing/reading CSS class lists,
+  generic `html_visit`/`html_depart` hooks for the HTML5 writer, and
+  `add_node(app)` to register a node type (and its visitors) with Sphinx.
+- **`CarouselMainNode(BaseNode)`** — the outer `<div>` wrapping an entire
+  carousel instance. All other nodes belonging to one carousel are
+  descendants of, or reference, this node.
+- **`SubNode(BaseNode)`** — base class for nodes that belong to a specific
+  carousel instance. Exposes `main_node()` to look up the owning
+  `CarouselMainNode` and `prefix()` for generating consistent, unique
+  HTML id/class prefixes tied to that instance.
+- **`CarouselInnerNode(SubNode)`** — the sliding container that holds all
+  the individual slide (`CarouselItemNode`) elements.
+- **`CarouselItemNode(SubNode)`** — a single slide (one image) within the
+  carousel.
+- **`CarouselControlNode(SubNode)`** — the previous/next navigation arrows.
+- **`CarouselIndicatorsNode(SubNode)`** — the row of clickable position
+  indicators (dots) used to jump to a specific slide.
+- **`CarouselCaptionNode(SubNode)`** — an optional caption overlay rendered
+  on top of a slide.
+
+The relationship mirrors typical carousel markup:
+
+```
+CarouselMainNode
+├── CarouselIndicatorsNode
+├── CarouselInnerNode
+│   ├── CarouselItemNode
+│   │   └── CarouselCaptionNode (optional)
+│   ├── CarouselItemNode
+│   │   └── CarouselCaptionNode (optional)
+│   └── ...
+└── CarouselControlNode (prev)
+└── CarouselControlNode (next)
+```
+
+Each node implements paired `html_visit`/`html_depart` static/class methods
+that are registered with Sphinx's `HTML5Translator` via `add_node`, so the
+tree can be walked and turned into the appropriate HTML fragments during the
+build.
+
+## Usage examples
+
+### Basic image carousel
+
+```rst
+.. carousel::
+
+    images/slide1.png
+    images/slide2.png
+    images/slide3.png
+```
+
+### Carousel with captions
+
+```rst
+.. carousel::
+
+    images/slide1.png
+       A scenic overview of the project dashboard.
+    images/slide2.png
+       Configuration screen with live preview.
+    images/slide3.png
+       Final results after a successful build.
+```
+
+### Programmatic extension registration
+
+If you are building your own Sphinx extension that depends on
+`sphinx-carousel`, you can require it and rely on its `setup()` function
+being invoked as part of your own setup:
+
+```python
+def setup(app):
+    app.setup_extension("sphinx_carousel.carousel")
+    return {
+        "version": "1.0",
+        "parallel_read_safe": True,
+    }
+```
+
+Because `include_static_on_demand` and `copy_static` are wired up
+automatically by `setup()`, you don't need to manage static assets yourself
+— any page containing a `carousel` directive will automatically receive the
+CSS/JS it needs at build time.
+
+## License
+
+See the `LICENSE` file in this repository for details.

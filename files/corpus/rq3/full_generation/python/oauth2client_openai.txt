@@ -1,0 +1,513 @@
+# oauth2client
+
+`oauth2client` is a Python library for obtaining, storing, refreshing, and applying OAuth 2.0 credentials.
+
+Its API supports several OAuth-oriented workflows:
+
+- Browser-based authorization-code flows
+- Device authorization flows
+- Exchanging an authorization code directly for credentials
+- Service-account and assertion-based credentials
+- Application-default credentials
+- Access-token-only credentials
+- Token refresh and revocation
+- ID-token and signed-JWT verification
+- Credential persistence through files, databases, keyrings, dictionaries, and framework integrations
+- Optional Django, Flask, App Engine, GCE, metadata-server, and developer-shell helpers
+
+## Core concepts
+
+### Credentials
+
+`client.Credentials` is the base credential type. Credential objects can:
+
+- Authorize an HTTP client with `authorize(http)`
+- Refresh tokens with `refresh(http)`
+- Revoke tokens with `revoke(http)`
+- Apply authorization headers with `apply(headers)`
+- Serialize themselves with `to_json()`
+- Be restored from JSON with `new_from_json()` or `from_json()`
+
+The principal credential implementations are:
+
+- `client.OAuth2Credentials` — OAuth 2.0 credentials with access-token lifecycle support.
+- `client.AccessTokenCredentials` — credentials based on an existing access token.
+- `client.GoogleCredentials` — OAuth 2.0 credentials with support for application-default credentials and scoped copies.
+- `client.AssertionCredentials` — credentials capable of signing blobs.
+- `service_account.ServiceAccountCredentials` — service-account credentials created from JSON key material or PKCS#12 key files.
+- Platform-specific assertion credentials:
+  - `contrib.appengine.AppAssertionCredentials`
+  - `contrib.gce.AppAssertionCredentials`
+- `contrib.devshell.DevshellCredentials` — credentials obtained from a developer-shell environment.
+
+### OAuth flows
+
+`client.OAuth2WebServerFlow` represents an interactive OAuth flow. It provides methods to:
+
+- Build an authorization URL with `step1_get_authorize_url()`
+- Start a device flow with `step1_get_device_and_user_codes()`
+- Exchange a code or device-flow result with `step2_exchange()`
+
+Create a flow from a client-secrets file with:
+
+```python
+client.flow_from_clientsecrets(...)
+```
+
+For applications that already have an authorization code, use:
+
+```python
+client.credentials_from_code(...)
+```
+
+or:
+
+```python
+client.credentials_from_clientsecrets_and_code(...)
+```
+
+### Credential storage
+
+`client.Storage` defines the storage interface for persisting credentials. It includes locking-aware primitives:
+
+- `acquire_lock()`
+- `release_lock()`
+- `locked_get()`
+- `locked_put(credentials)`
+- `locked_delete()`
+
+and convenience methods:
+
+- `get()`
+- `put(credentials)`
+- `delete()`
+
+Available storage implementations include:
+
+- `file.Storage`
+- `contrib.dictionary_storage.DictionaryStorage`
+- `contrib.keyring_storage.Storage`
+- `contrib.multiprocess_file_storage.MultiprocessFileStorage`
+- `contrib.sqlalchemy.Storage`
+- `contrib.django_util.storage.DjangoORMStorage`
+- `contrib.appengine.StorageByKeyName`
+
+## Quick start: exchange an authorization code
+
+If your application has already received an authorization code, exchange it for credentials and authorize an HTTP client.
+
+```python
+from oauth2client import client
+from oauth2client import transport
+
+http = transport.get_http_object()
+
+credentials = client.credentials_from_code(
+    client_id='your-client-id',
+    client_secret='your-client-secret',
+    scope='https://api.example.test/read',
+    code='authorization-code-from-provider',
+    redirect_uri='postmessage',
+    http=http,
+)
+
+authorized_http = credentials.authorize(http)
+
+response, content = transport.request(
+    authorized_http,
+    'https://api.example.test/v1/profile',
+    method='GET',
+)
+```
+
+When appropriate for your authorization server, PKCE parameters can be supplied during code exchange:
+
+```python
+credentials = client.credentials_from_code(
+    client_id='your-client-id',
+    client_secret='your-client-secret',
+    scope='https://api.example.test/read',
+    code='authorization-code-from-provider',
+    redirect_uri='https://example.test/oauth/callback',
+    pkce=True,
+    code_verifier='your-pkce-code-verifier',
+)
+```
+
+Use `_pkce.code_verifier()` and `_pkce.code_challenge()` to create PKCE values:
+
+```python
+from oauth2client import _pkce
+
+verifier = _pkce.code_verifier()
+challenge = _pkce.code_challenge(verifier)
+```
+
+## Web-server authorization flow
+
+Use `flow_from_clientsecrets()` to create a flow using client configuration stored in a client-secrets file.
+
+```python
+from oauth2client import client
+
+flow = client.flow_from_clientsecrets(
+    filename='client_secrets.json',
+    scope='https://api.example.test/read',
+    redirect_uri='https://example.test/oauth/callback',
+    prompt='consent',
+)
+
+authorization_url = flow.step1_get_authorize_url(
+    redirect_uri='https://example.test/oauth/callback',
+    state='request-specific-state',
+)
+
+# Redirect the user to authorization_url.
+```
+
+After your callback receives the authorization code:
+
+```python
+credentials = flow.step2_exchange(
+    code='authorization-code-from-callback',
+)
+
+credentials_json = credentials.to_json()
+```
+
+Persist credentials through any `client.Storage` implementation:
+
+```python
+# storage is a configured client.Storage implementation.
+storage.put(credentials)
+
+# Later:
+credentials = storage.get()
+```
+
+## Device authorization flow
+
+`OAuth2WebServerFlow` also supports a device-style flow. Request device and user codes, present the verification URL and user code to the user, then exchange the completed device flow.
+
+```python
+from oauth2client import client
+from oauth2client import transport
+
+flow = client.flow_from_clientsecrets(
+    filename='client_secrets.json',
+    scope='https://api.example.test/read',
+)
+
+http = transport.get_http_object()
+
+device_info = flow.step1_get_device_and_user_codes(http=http)
+
+print('Visit:', device_info.verification_url)
+print('Enter code:', device_info.user_code)
+
+credentials = flow.step2_exchange(
+    http=http,
+    device_flow_info=device_info,
+)
+```
+
+A `client.DeviceFlowInfo` value contains:
+
+- `device_code`
+- `user_code`
+- `interval`
+- `verification_url`
+- `user_code_expiry`
+
+## Service-account credentials
+
+`service_account.ServiceAccountCredentials` supports service-account credentials created from a JSON key file, a JSON key dictionary, or a PKCS#12 key file.
+
+```python
+from oauth2client import service_account
+from oauth2client import transport
+
+credentials = service_account.ServiceAccountCredentials.from_json_keyfile_name(
+    filename='service-account.json',
+    scopes='https://api.example.test/read',
+)
+
+http = transport.get_http_object()
+authorized_http = credentials.authorize(http)
+
+response, content = transport.request(
+    authorized_http,
+    'https://api.example.test/v1/resource',
+)
+```
+
+Create a scoped copy when scopes must be changed:
+
+```python
+scoped_credentials = credentials.create_scoped(
+    'https://api.example.test/write',
+)
+```
+
+Create delegated credentials for another subject:
+
+```python
+delegated_credentials = credentials.create_delegated(
+    'user@example.test',
+)
+```
+
+Service-account credentials can also sign data:
+
+```python
+signature = credentials.sign_blob(b'data to sign')
+```
+
+## Application-default credentials
+
+`client.GoogleCredentials` provides application-default credential helpers.
+
+```python
+from oauth2client import client
+
+credentials = client.GoogleCredentials.get_application_default()
+```
+
+Credentials can also be loaded from a credential stream:
+
+```python
+credentials = client.GoogleCredentials.from_stream(
+    'application-default-credentials.json',
+)
+```
+
+To save credentials to a well-known location:
+
+```python
+client.save_to_well_known_file(credentials)
+```
+
+## Refreshing and revoking tokens
+
+OAuth credentials expose refresh and revoke operations.
+
+```python
+from oauth2client import transport
+
+http = transport.get_http_object()
+
+credentials.refresh(http)
+credentials.revoke(http)
+```
+
+Check expiration or retrieve an access token:
+
+```python
+if credentials.access_token_expired():
+    credentials.refresh(http)
+
+access_token = credentials.get_access_token(http=http)
+```
+
+Use `has_scopes()` to check whether credentials already include required scopes:
+
+```python
+if credentials.has_scopes('https://api.example.test/read'):
+    print('Required scope is available')
+```
+
+## Credential serialization
+
+Most credential types support JSON serialization.
+
+```python
+serialized = credentials.to_json()
+
+restored = client.Credentials.new_from_json(serialized)
+```
+
+Credential subclasses also expose `from_json()` methods where supported.
+
+## HTTP helpers
+
+`transport` provides helpers for creating and using HTTP clients:
+
+```python
+from oauth2client import transport
+
+http = transport.get_http_object()
+authorized_http = transport.wrap_http_for_auth(credentials, http)
+
+response, content = transport.request(
+    authorized_http,
+    'https://api.example.test/v1/resource',
+    method='GET',
+    headers={'Accept': 'application/json'},
+)
+```
+
+Other transport utilities include:
+
+- `transport.get_cached_http()`
+- `transport.clean_headers(headers)`
+- `transport.wrap_http_for_jwt_access(credentials, http)`
+- `transport.MemoryCache`
+
+## ID tokens and signed JWTs
+
+Verify an ID token with:
+
+```python
+from oauth2client import client
+
+claims = client.verify_id_token(
+    id_token='signed-id-token',
+    audience='your-client-id',
+)
+```
+
+The `crypt` module provides helpers for producing and verifying signed JWTs:
+
+```python
+from oauth2client import crypt
+
+jwt = crypt.make_signed_jwt(
+    signer=signer,
+    payload={'sub': 'subject-id'},
+)
+
+claims = crypt.verify_signed_jwt_with_certs(
+    jwt=jwt,
+    certs=certificates,
+    audience='your-client-id',
+)
+```
+
+Signer and verifier implementations are available through:
+
+- `_openssl_crypt.OpenSSLSigner` and `_openssl_crypt.OpenSSLVerifier`
+- `_pure_python_crypt.RsaSigner` and `_pure_python_crypt.RsaVerifier`
+- `_pycrypto_crypt.PyCryptoSigner` and `_pycrypto_crypt.PyCryptoVerifier`
+
+## Client-secrets helpers
+
+Load client-secrets configuration with `clientsecrets`:
+
+```python
+from oauth2client import clientsecrets
+
+configuration = clientsecrets.loadfile('client_secrets.json')
+```
+
+Available functions:
+
+- `clientsecrets.load(fp)`
+- `clientsecrets.loads(s)`
+- `clientsecrets.loadfile(filename, cache=None)`
+
+Invalid configuration may raise `clientsecrets.InvalidClientSecretsError`.
+
+## Framework and environment integrations
+
+### Flask
+
+`contrib.flask_util.UserOAuth2` provides Flask-oriented authorization helpers, including decorators and callback views.
+
+Key methods include:
+
+- `init_app(...)`
+- `authorize_view()`
+- `callback_view()`
+- `required(...)`
+- `credentials()`
+- `has_credentials()`
+- `authorize_url(return_url, **kwargs)`
+- `http(...)`
+
+### Django
+
+`contrib.django_util` provides Django storage, decorators, views, and a model field:
+
+- `get_storage(request)`
+- `UserOAuth2`
+- `decorators.oauth_required`
+- `decorators.oauth_enabled`
+- `views.oauth2_authorize`
+- `views.oauth2_callback`
+- `models.CredentialsField`
+- `storage.DjangoORMStorage`
+
+### App Engine
+
+`contrib.appengine` includes App Engine credential storage and OAuth decorators:
+
+- `StorageByKeyName`
+- `CredentialsModel`
+- `OAuth2Decorator`
+- `OAuth2DecoratorFromClientSecrets`
+- `oauth2decorator_from_clientsecrets(...)`
+
+### Compute and metadata environments
+
+`contrib.gce` includes GCE assertion credentials.
+
+`contrib._metadata` provides metadata-server helpers:
+
+```python
+from oauth2client.contrib import _metadata
+
+service_account = _metadata.get_service_account_info(http)
+token = _metadata.get_token(http)
+```
+
+### Developer shell
+
+`contrib.devshell.DevshellCredentials` provides credentials associated with a developer-shell environment, including:
+
+- `user_email()`
+- `project_id()`
+
+## XSRF utilities
+
+`contrib.xsrfutil` can generate and validate tokens associated with a user and action.
+
+```python
+from oauth2client.contrib import xsrfutil
+
+token = xsrfutil.generate_token(
+    key='secret-key',
+    user_id='user-123',
+    action_id='authorize',
+)
+
+is_valid = xsrfutil.validate_token(
+    key='secret-key',
+    token=token,
+    user_id='user-123',
+    action_id='authorize',
+)
+```
+
+## Errors
+
+The primary exception hierarchy is rooted at `client.Error`. Important specialized errors include:
+
+- `client.FlowExchangeError`
+- `client.AccessTokenRefreshError`
+- `client.HttpAccessTokenRefreshError`
+- `client.TokenRevokeError`
+- `client.AccessTokenCredentialsError`
+- `client.VerifyJwtTokenError`
+- `client.ApplicationDefaultCredentialsError`
+- `client.OAuth2DeviceCodeError`
+- `client.CryptoUnavailableError`
+
+For client-secrets parsing, handle:
+
+- `clientsecrets.Error`
+- `clientsecrets.InvalidClientSecretsError`
+
+For developer-shell use, handle:
+
+- `contrib.devshell.CommunicationError`
+- `contrib.devshell.NoDevshellServer`

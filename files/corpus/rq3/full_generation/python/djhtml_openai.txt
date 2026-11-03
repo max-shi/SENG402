@@ -1,0 +1,215 @@
+# djhtml
+
+`djhtml` provides a mode-based text processing API for documents that may contain plain text, HTML, CSS, JavaScript, comments, and HTML-tag content.
+
+Its public interface centers on:
+
+- **Tokens** represented by `Token.BaseToken`
+- **Lines** that collect tokens and produce text or indentation
+- **Modes** that create tokens while processing different source contexts
+- **Parsing/tokenization lifecycle methods** exposed by `BaseMode`
+- **Regular-expression compilation** for raw token patterns
+- A module entry point via `main()`
+
+## Core concepts
+
+### `Line`
+
+`Line` represents a collection of tokens that make up a line of output or source text.
+
+```python
+from djhtml.lines import Line
+
+line = Line()
+
+text = line.text()
+needs_indentation = line.indents()
+indentation = line.indent(tabwidth=4)
+```
+
+Available methods:
+
+| Method | Description |
+| --- | --- |
+| `append(token)` | Adds a `Token.BaseToken` to the line. |
+| `text()` | Returns the line contents as a string. |
+| `indents()` | Reports whether the line should be indented. |
+| `indent(tabwidth)` | Returns an indentation string for the requested tab width. |
+
+A typical rendering helper can use `indents()` and `indent()` together:
+
+```python
+from djhtml.lines import Line
+
+def render_line(line: Line, tabwidth: int = 4) -> str:
+    prefix = line.indent(tabwidth) if line.indents() else ""
+    return prefix + line.text()
+```
+
+### `Token`
+
+`Token` is the token namespace used throughout the library. Mode implementations create values of type `Token.BaseToken`, and `Line.append()` accepts those tokens.
+
+```python
+from djhtml.tokens import Token
+from djhtml.lines import Line
+
+def add_token(line: Line, token: Token.BaseToken) -> None:
+    line.append(token)
+```
+
+Tokens are generally obtained from a mode's `create_token()` method.
+
+### Modes
+
+`BaseMode` defines the common interface for processing source text. A mode can create a token for a raw source token and may return a different mode for subsequent processing.
+
+```python
+from djhtml.lines import Line
+from djhtml.modes import BaseMode
+from djhtml.tokens import Token
+
+def process_raw_token(
+    mode: BaseMode,
+    raw_token: str,
+    source: str,
+    line: Line,
+) -> tuple[Token.BaseToken, BaseMode]:
+    token, next_mode = mode.create_token(raw_token, source, line)
+    line.append(token)
+    return token, next_mode
+```
+
+The available concrete modes are:
+
+| Mode | Intended context |
+| --- | --- |
+| `DjTXT` | General text processing |
+| `DjHTML` | HTML processing |
+| `DjCSS` | CSS processing |
+| `DjJS` | JavaScript processing |
+| `Comment` | Comment processing |
+| `InsideHTMLTag` | Content inside an HTML tag |
+
+All concrete modes provide:
+
+```python
+create_token(
+    raw_token: str,
+    src: str,
+    line: Line,
+) -> tuple[Token.BaseToken, BaseMode]
+```
+
+`BaseMode` additionally provides lifecycle and inspection methods:
+
+```python
+mode.tokenize()
+mode.parse()
+state = mode.debug()
+indentation = mode.indent(tabwidth=4)
+```
+
+A mode-based processing loop may look like this:
+
+```python
+from djhtml.lines import Line
+from djhtml.modes import DjHTML
+
+source = "<section>Example</section>"
+raw_tokens = ["<section>", "Example", "</section>"]
+
+line = Line()
+mode = DjHTML()
+
+for raw_token in raw_tokens:
+    token, mode = mode.create_token(raw_token, source, line)
+    line.append(token)
+
+formatted_line = (
+    (line.indent(4) if line.indents() else "")
+    + line.text()
+)
+```
+
+The mode returned from `create_token()` should be retained, because processing one token may change the appropriate context for the next token.
+
+## Regular-expression helpers
+
+`compile_re()` accepts a sequence of raw token strings and returns a compiled Python regular-expression pattern.
+
+```python
+from djhtml.modes import compile_re
+
+raw_tokens = [
+    r"<[^>]+>",
+    r"\{[^}]*\}",
+    r"\S+",
+]
+
+pattern = compile_re(raw_tokens)
+
+print(pattern.pattern)
+```
+
+The returned value is a standard `re.Pattern[str]`, so it can be used with the usual regular-expression operations:
+
+```python
+match = pattern.search("<div>content</div>")
+
+if match is not None:
+    print(match.group(0))
+```
+
+## Errors
+
+### `MaxLineLengthExceeded`
+
+`MaxLineLengthExceeded` is raised when processing encounters a maximum-line-length condition.
+
+```python
+from djhtml.modes import MaxLineLengthExceeded
+
+try:
+    # Run document processing here.
+    ...
+except MaxLineLengthExceeded:
+    # Handle input that exceeds the supported line length.
+    ...
+```
+
+## Command-line entry point
+
+The package exposes a `main()` function as its module entry point.
+
+```python
+from djhtml.__main__ import main
+
+main()
+```
+
+It can also be invoked as a Python module:
+
+```bash
+python -m djhtml
+```
+
+## API summary
+
+```python
+from djhtml.__main__ import main
+from djhtml.lines import Line
+from djhtml.modes import (
+    BaseMode,
+    Comment,
+    DjCSS,
+    DjHTML,
+    DjJS,
+    DjTXT,
+    InsideHTMLTag,
+    MaxLineLengthExceeded,
+    OffsetDict,
+    compile_re,
+)
+from djhtml.tokens import Token
+```

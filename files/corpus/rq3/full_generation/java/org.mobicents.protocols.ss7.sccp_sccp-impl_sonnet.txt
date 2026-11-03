@@ -1,0 +1,161 @@
+# sccp-impl
+
+`sccp-impl` is the implementation module of the Mobicents/RestComm SS7 stack's **SCCP (Signaling Connection Control Part)** layer. It provides a concrete, production-grade implementation of SCCP as defined in the ITU-T/ANSI SS7 protocol stack, sitting on top of MTP3 (Message Transfer Part Level 3) and exposing an API for upper-layer SS7 applications (e.g., TCAP, MAP, CAP users) to send and receive SCCP messages.
+
+This library handles:
+
+- Encoding/decoding of all SCCP message types (connectionless: UDT/XUDT/LUDT, connection-oriented: CR/CC/CREF/RLSD/RLC/DT1/DT2/AK/ERR/IT/RSR/RSC, and management: SSA/SSP/SST/etc.)
+- Global title translation and address handling (multiple Global Title formats: GT0001–GT0100)
+- SCCP routing (via configurable rules, MTP3 destinations, and long-message rules)
+- SCCP management procedures (subsystem status, signaling point status, congestion control)
+- Segmentation/reassembly of long messages
+- Persistence of configuration (routing rules, resources) via XML
+
+---
+
+## Core Concepts & Main Classes
+
+### Stack Lifecycle
+
+- **`SccpStackImpl`** — The central entry point. It owns the router, resource manager, congestion control settings, MTP3 user part bindings, and protocol configuration (SCCP protocol version, timers, segmentation thresholds). You configure and `start()`/`stop()` this object to bring the SCCP stack online.
+- **`SccpProviderImpl`** — The runtime interface applications use to send messages and register listeners. Obtained via `SccpStackImpl.getSccpProvider()`.
+- **`SccpManagement`** / **`SccpRoutingControl`** / **`SccpCongestionControl`** — Internal subsystems handling SCCP Management Procedures (SCMG), routing control, and congestion control state machines respectively. They are wired together by `SccpStackImpl` and generally not instantiated directly by application code.
+
+### Messages
+
+- **`MessageFactoryImpl`** — Creates outgoing SCCP messages (`SccpDataMessage`, `SccpNoticeMessage`, `SccpConnCrMessage`, etc.) and decodes incoming raw MTP3 data into `SccpMessageImpl` instances.
+- **`SccpMessageImpl`** and its subclasses (`SccpDataMessageImpl`, `SccpNoticeMessageImpl`, `SccpConnCrMessageImpl`, `SccpConnCcMessageImpl`, `SccpConnRlsdMessageImpl`, `SccpConnDt1MessageImpl`, `SccpConnDt2MessageImpl`, `SccpConnAkMessageImpl`, `SccpConnItMessageImpl`, `SccpConnErrMessageImpl`, `SccpConnRscMessageImpl`, `SccpConnRsrMessageImpl`, `SccpConnRlcMessageImpl`, `SccpConnCrefMessageImpl`) — Concrete representations of each SCCP message type, each capable of `decode()`/`encode()` against wire format.
+- **`SccpSegmentableMessageImpl`** / **`SccpAddressedMessageImpl`** / **`SccpDataNoticeTemplateMessageImpl`** — Intermediate base classes providing shared behavior: addressing (called/calling party), hop counters, and message segmentation/reassembly.
+- **`MessageUtil`** — Static helpers to calculate encoded field lengths for various message types (useful for capacity/length checks before sending).
+- **`EncodingResult`** / **`EncodingResultData`** — Represent the outcome of encoding a message (success, or a specific failure reason such as a missing mandatory parameter), including any resulting solid or segmented byte payloads.
+
+### Parameters
+
+Located under the parameter package, these classes implement each SCCP parameter type (`ProtocolClassImpl`, `HopCounterImpl`, `ImportanceImpl`, `CreditImpl`, `LocalReferenceImpl`, `SegmentationImpl`, `SequencingSegmentingImpl`, `SegmentingReassemblingImpl`, `ReceiveSequenceNumberImpl`, and cause parameters like `ErrorCauseImpl`, `RefusalCauseImpl`, `ReleaseCauseImpl`, `ResetCauseImpl`, `ReturnCauseImpl`). Each supports `encode`/`decode` to/from both `InputStream`/`OutputStream` and raw `byte[]`.
+
+- **`SccpAddressImpl`** — Represents an SCCP address (routing indicator, global title, point code, subsystem number).
+- **`AbstractGlobalTitle`** and its variants (`GlobalTitle0001Impl`, `GlobalTitle0010Impl`, `GlobalTitle0011Impl`, `GlobalTitle0100Impl`, `NoGlobalTitle`) — Implement the different ITU/ANSI Global Title indicator formats.
+- **`DefaultEncodingScheme`**, **`BCDEvenEncodingScheme`**, **`BCDOddEncodingScheme`** — Digit encoding schemes used within Global Titles.
+- **`ParameterFactoryImpl`** — Factory for constructing parameter and address objects, used internally by `MessageFactoryImpl` and available to application code needing to build `SccpAddress`/`GlobalTitle` instances directly.
+
+### Routing
+
+- **`RouterImpl`** — Manages routing rules (`RuleImpl`), routing addresses, long message rules (`LongMessageRuleImpl`), and MTP3 Service Access Points/Destinations (`Mtp3ServiceAccessPointImpl`, `Mtp3DestinationImpl`). Given a called/calling party address, it resolves which rule and destination to use (`findRule`, `findMtp3ServiceAccessPoint`).
+- **`LongMessageRule`** / **`LongMessageRuleType`** — Determine how "long" messages (exceeding standard UDT capacity) are handled per destination point code (LUDT, XUDT, or forbidden).
+- **`Mtp3Destination`** / **`Mtp3ServiceAccessPointImpl`** — Model MTP3-level routing: which destination point codes/SLS ranges are reachable via which MTP3 user part.
+- **`SccpRouterXMLBinding`** — XML (de)serialization binding for persisting router configuration to/from disk.
+
+### Resources & Network State
+
+- **`SccpResourceImpl`** — Tracks remote SCCP resources: remote subsystems (`RemoteSubSystemImpl`), remote signaling point codes (`RemoteSignalingPointCodeImpl`), and concerned signaling point codes (`ConcernedSignalingPointCodeImpl`), including their availability/prohibited state.
+- **`SccpResourceXMLBinding`** — XML persistence binding for resource configuration.
+- **`NetworkIdStateImpl`** — Represents per-network availability/congestion state, keyed by network ID, used across multi-network SCCP deployments.
+
+### Congestion Control
+
+- **`SccpCongestionControl`** — Implements SCCP-level congestion control algorithms (restriction levels, TIMER_A/TIMER_D-based state transitions, N/M thresholds), notifying `SccpManagement` of level changes.
+- **`CongStateTimerA`** / **`CongStateTimerD`** — Runnable timer tasks driving congestion state decay/expiration for a given remote signaling point code.
+
+### Operations & Maintenance
+
+- **`SccpExecutor`** — A shell/CLI command executor (`ShellExecutor`) allowing operational commands to be run against one or more named `SccpStackImpl` instances, useful for management consoles or scripting.
+
+---
+
+## Typical Usage Flow
+
+1. Create and configure an `SccpStackImpl`, wiring in one or more `Mtp3UserPart` implementations (the MTP3 layer you are running against).
+2. Configure routing (`RouterImpl`, via `addRule`, `addMtp3ServiceAccessPoint`, `addMtp3Destination`, `addLongMessageRule`) and resources (`SccpResourceImpl`, via `addRemoteSpc`, `addRemoteSsn`).
+3. Start the stack.
+4. Obtain the `SccpProvider` from the stack, register an `SccpListener` for your subsystem number (SSN), and use `MessageFactory`/`ParameterFactory` to build and send messages.
+5. Handle incoming messages/events through your `SccpListener` and `SccpManagementEventListener` implementations.
+
+---
+
+## Usage Example
+
+### Configuring and starting the stack
+
+```java
+import org.mobicents.protocols.ss7.sccp.impl.SccpStackImpl;
+import org.mobicents.protocols.ss7.sccp.*;
+
+SccpStackImpl sccpStack = new SccpStackImpl("MySccpStack");
+sccpStack.setPersistDir("/opt/sccp/config");
+
+// Bind an MTP3 user part (implementation provided by an MTP3 module)
+sccpStack.setMtp3UserPart(1, myMtp3UserPart);
+
+// Basic protocol configuration
+sccpStack.setSccpProtocolVersion(SccpProtocolVersion.ITU);
+sccpStack.setDeliveryMessageThreadCount(4);
+sccpStack.setMaxDataMessage(3000);
+
+sccpStack.start();
+
+// Configure routing
+Router router = sccpStack.getRouter();
+router.addMtp3ServiceAccessPoint(1, /*mtp3Id*/ 1, /*opc*/ 100, /*ni*/ 2, /*networkId*/ 0);
+router.addMtp3Destination(1, /*destId*/ 1, /*firstDpc*/ 200, /*lastDpc*/ 200,
+        /*firstSls*/ 0, /*lastSls*/ 15, /*slsMask*/ 0xF);
+router.addLongMessageRule(1, 200, 200, LongMessageRuleType.XudtEnabled);
+
+// Register remote resources
+SccpResource resource = sccpStack.getSccpResource();
+resource.addRemoteSpc(1, 200, 0, 0);
+resource.addRemoteSsn(1, 200, 8, 0, false);
+```
+
+### Sending an SCCP data message
+
+```java
+import org.mobicents.protocols.ss7.sccp.*;
+import org.mobicents.protocols.ss7.sccp.parameter.*;
+
+SccpProvider provider = sccpStack.getSccpProvider();
+MessageFactory messageFactory = provider.getMessageFactory();
+ParameterFactory parameterFactory = provider.getParameterFactory();
+
+// Build called and calling party addresses
+GlobalTitle calledGt = parameterFactory.createGlobalTitle("1234567890", 0, NumberingPlan.ISDN_TELEPHONY,
+        parameterFactory.createEncodingScheme((byte) 0x01), NatureOfAddress.INTERNATIONAL);
+SccpAddress calledParty = parameterFactory.createSccpAddress(
+        RoutingIndicator.ROUTING_BASED_ON_GLOBAL_TITLE, calledGt, 0, 8);
+
+SccpAddress callingParty = parameterFactory.createSccpAddress(
+        RoutingIndicator.ROUTING_BASED_ON_DPC_AND_SSN, null, 100, 8);
+
+byte[] payload = "hello".getBytes();
+
+SccpDataMessage message = messageFactory.createDataMessageClass0(
+        calledParty, callingParty, payload, /*localSsn*/ 8,
+        /*returnMessageOnError*/ true, null, null);
+
+provider.send(message);
+```
+
+### Receiving messages
+
+```java
+provider.registerSccpListener(8, new SccpListener() {
+    public void onMessage(SccpDataMessage message) {
+        System.out.println("Received SCCP data from " + message.getCallingPartyAddress());
+    }
+    // other SccpListener callback methods...
+});
+```
+
+### Shutting down
+
+```java
+sccpStack.stop();
+```
+
+---
+
+## Notes
+
+- Message encoding/decoding is version-aware (`SccpProtocolVersion`) to support both ITU and ANSI variants.
+- Long message handling (LUDT/XUDT/segmentation) is configured per-destination via `LongMessageRule` entries and governed by stack-level parameters such as `getMaxDataMessage()`, `getZMarginXudtMessage()`, and `getReassemblyTimerDelay()`.
+- Congestion control behavior (algorithm, timers, thresholds) is tunable via `SccpStackImpl` setters (`setCongControl_Algo`, `setCongControlTIMER_A`, `setCongControlTIMER_D`, `setCongControlN`, `setCongControlM`).
+- Router and resource configuration can be persisted to and reloaded from XML using the provided XML bindings (`SccpRouterXMLBinding`, `SccpResourceXMLBinding`) in conjunction with `RouterImpl.store()` / `SccpStackImpl.store()`.

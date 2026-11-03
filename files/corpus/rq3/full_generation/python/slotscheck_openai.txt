@@ -1,0 +1,355 @@
+# slotscheck
+
+`slotscheck` is a Python library for inspecting classes that use `__slots__` and reporting common slot-related issues.
+
+It provides:
+
+- low-level predicates and inspection helpers for individual classes;
+- checks for unused, overlapping, or duplicate slots;
+- inheritance-oriented checks for classes that should or should not define slots;
+- module/package discovery helpers for finding and walking classes;
+- configuration collection and validation utilities;
+- reporting objects suitable for a command-line or automated checking workflow.
+
+## Installation
+
+Install `slotscheck` with your preferred Python package manager.
+
+```bash
+pip install slotscheck
+```
+
+## Quick start
+
+Inspect a class directly with the helpers in `slotscheck.checks`:
+
+```python
+from slotscheck.checks import (
+    defines_slots,
+    has_duplicate_slots,
+    slots,
+    slots_overlap,
+    unused_slots,
+)
+
+
+class Base:
+    __slots__ = ("name",)
+
+
+class User(Base):
+    __slots__ = ("email", "email")
+
+
+print(defines_slots(User))       # Whether the class defines __slots__
+print(slots(User))               # The class's declared slots, if available
+print(has_duplicate_slots(User)) # Whether a slot name is repeated
+print(slots_overlap(User))       # Whether slots overlap with inherited slots
+print(unused_slots(User))        # Mapping of slot names that appear unused
+```
+
+For a higher-level collection of notices, use `slot_messages`:
+
+```python
+from slotscheck.cli import slot_messages
+
+
+class Base:
+    __slots__ = ("identifier",)
+
+
+class Record(Base):
+    __slots__ = ("identifier", "value")
+
+
+notices = slot_messages(
+    Record,
+    require_superclass=True,
+    require_subclass=False,
+    detect_unused_slots=True,
+    exclude_slots_pattern=None,
+)
+
+for notice in notices:
+    print(notice.for_display(verbose=True))
+```
+
+## Class inspection
+
+The functions in `slotscheck.checks` operate on Python class objects.
+
+### `slots(c)`
+
+```python
+from slotscheck.checks import slots
+
+declared_slots = slots(MyClass)
+```
+
+Returns the slots associated with a class, or `None` when slots are not available for that class.
+
+### `defines_slots(c)`
+
+```python
+from slotscheck.checks import defines_slots
+
+if defines_slots(MyClass):
+    print("MyClass defines slots")
+```
+
+Tests whether a class defines `__slots__`.
+
+### `unused_slots(c)`
+
+```python
+from slotscheck.checks import unused_slots
+
+for name, owner in unused_slots(MyClass).items():
+    print(f"{name} is unused on {owner.__name__}")
+```
+
+Returns a mapping of slot names that appear unused to their associated class.
+
+### Inheritance and duplicate checks
+
+```python
+from slotscheck.checks import (
+    causes_dunder_dict,
+    has_duplicate_slots,
+    has_implicit_dunder_dict,
+    slots_overlap,
+)
+
+if has_duplicate_slots(MyClass):
+    print("Duplicate slot names found")
+
+if slots_overlap(MyClass):
+    print("A slot overlaps with slot inheritance")
+
+if has_implicit_dunder_dict(MyClass):
+    print("The class has an implicit __dict__")
+
+if causes_dunder_dict(MyClass):
+    print("The class causes a __dict__ to be present")
+```
+
+These checks are useful when reviewing class hierarchies that are intended to avoid per-instance dictionaries or to maintain a consistent slot layout.
+
+### Abstract classes
+
+```python
+from slotscheck.checks import is_abstract
+
+if is_abstract(MyClass):
+    print("This is an abstract class")
+```
+
+`is_abstract` identifies whether a class is abstract, allowing callers to treat abstract base classes differently from concrete classes.
+
+## Reporting slot issues
+
+`slot_messages` evaluates a class and yields notice objects.
+
+```python
+from slotscheck.cli import slot_messages
+
+for notice in slot_messages(
+    MyClass,
+    require_superclass=False,
+    require_subclass=True,
+    detect_unused_slots=True,
+    exclude_slots_pattern=None,
+):
+    print(notice.for_display(verbose=False))
+```
+
+The available notice types are:
+
+- `OverlappingSlots` — reports overlapping slots.
+- `DuplicateSlots` — reports duplicate slot declarations.
+- `BadSlotInheritance` — reports slot inheritance issues.
+- `ShouldHaveSlots` — reports a class that should define slots.
+- `UnusedSlots` — reports unused slots.
+- `ModuleSkipped` — reports a module that was skipped.
+
+All notices implement:
+
+```python
+notice.for_display(verbose: bool) -> str
+```
+
+Use `verbose=True` when you want the notice’s more detailed display form.
+
+`Message` also provides `for_display(verbose)` for rendering output, while `ModulesReport` represents reporting at a module-oriented level.
+
+## Adding slots to a class
+
+`add_slots` can be applied to a class as part of class construction:
+
+```python
+from slotscheck.common import add_slots
+
+
+@add_slots
+class Point:
+    x: int
+    y: int
+```
+
+This is useful in codebases that want a reusable way to apply slot-related class transformation.
+
+## Working with collections
+
+`slotscheck.common` contains small utility functions used when building custom checking workflows.
+
+```python
+from slotscheck.common import groupby, map_optional, unique
+
+
+names = ["a", "b", "a", "c"]
+print(list(unique(names)))
+
+
+classes_by_module = groupby(
+    classes,
+    key=lambda cls: cls.__module__,
+)
+
+
+def class_name_if_slotted(cls: type) -> str | None:
+    return cls.__name__ if hasattr(cls, "__slots__") else None
+
+
+slotted_names = list(map_optional(class_name_if_slotted, classes))
+```
+
+Other available helpers include:
+
+- `compose` — composition support;
+- `both` — combines two predicates;
+- `is_protocol` — identifies protocol-like types.
+
+## Discovering modules and classes
+
+The discovery API supports locating modules and traversing class collections.
+
+```python
+from slotscheck.discovery import find_modules
+
+for located in find_modules(project_path):
+    print(located)
+```
+
+Use `module_tree` to build a tree for a module, then use `walk_classes` to iterate through discovered class sets or import failures.
+
+```python
+from slotscheck.discovery import module_tree, walk_classes
+
+tree_or_failure = module_tree(module_name, expected_location=None)
+
+# When a module tree is available:
+for result in walk_classes(tree_or_failure):
+    print(result)
+```
+
+The discovery layer includes:
+
+- `Module` and `Package` — module-tree nodes;
+- `Module.display()` and `Package.display()` — display representations;
+- `filtername(...)` — filtering module trees by module name;
+- `merge(...)` — combining module trees;
+- `consolidate(...)` — consolidating multiple trees;
+- `FailedImport` — represents an import that did not succeed;
+- `UnexpectedImportLocation` and `FileNotInSysPathError` — discovery-related errors.
+
+## Configuration
+
+Configuration is represented by `PartialConfig` and `Config`.
+
+```python
+from pathlib import Path
+
+from slotscheck.config import PartialConfig, collect, find_config_file
+
+
+config_file = find_config_file(Path.cwd())
+
+partial = PartialConfig.load(Path("settings-file"))
+config = collect(
+    from_cli=partial,
+    cwd=Path.cwd(),
+    config=config_file,
+)
+```
+
+`Config.apply(other)` combines a complete configuration with another partial configuration:
+
+```python
+updated = config.apply(other_partial_config)
+```
+
+Configuration validation may raise:
+
+- `InvalidKeys`
+- `InvalidValueType`
+
+## Programmatic command entry point
+
+The `root` function is the top-level checking entry point. It accepts files, module names, configuration settings, and check options.
+
+```python
+from slotscheck.cli import root
+
+root(
+    files=[],
+    module=["my_package"],
+    verbose=True,
+    settings=None,
+    require_superclass=True,
+    require_subclass=False,
+    strict_imports=True,
+    detect_unused_slots=True,
+    exclude_slots=None,
+    exclude_classes=None,
+    include_classes=None,
+    exclude_modules=None,
+    include_modules=None,
+)
+```
+
+The available options allow callers to control:
+
+- whether superclasses are expected to define slots;
+- whether subclasses are expected to define slots;
+- whether import behavior should be strict;
+- whether unused-slot detection is enabled;
+- slot, class, and module inclusion/exclusion filters;
+- display verbosity;
+- settings/configuration selection.
+
+## Typical workflow
+
+A typical integration looks like this:
+
+1. Discover modules or receive classes from another tool.
+2. Run `slot_messages` for each class.
+3. Render each resulting notice with `for_display`.
+4. Treat any notices as lint-style diagnostics in CI or local development.
+
+```python
+from slotscheck.cli import slot_messages
+
+def check_class(cls: type) -> list[str]:
+    return [
+        notice.for_display(verbose=True)
+        for notice in slot_messages(
+            cls,
+            require_superclass=True,
+            require_subclass=True,
+            detect_unused_slots=True,
+            exclude_slots_pattern=None,
+        )
+    ]
+```
+
+This approach makes `slotscheck` suitable for custom linters, test suites, repository validation scripts, and tools that enforce slot conventions across Python class hierarchies.

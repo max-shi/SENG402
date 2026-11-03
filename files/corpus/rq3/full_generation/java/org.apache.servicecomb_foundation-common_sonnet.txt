@@ -1,0 +1,284 @@
+# foundation-common
+
+`foundation-common` is a general-purpose utility library used across Apache
+ServiceComb projects. It provides a broad set of building blocks for
+everyday Java development, including:
+
+- Encryption/decryption abstractions (`Cipher`, `Encryption`)
+- Event bus support built on Guava's `EventBus`
+- Networking helpers (endpoint parsing, IP/port utilities)
+- JSON serialization helpers backed by Jackson
+- Reflection and lambda-based getter/setter generation for high-performance
+  bean access
+- Configuration loading (properties/XML) with classpath pattern matching
+- Common concurrency utilities (thread factories, condition waiters,
+  suppressed-exception runnables)
+- Miscellaneous helpers for versioning, file permissions, HTTP status
+  codes, multi-part file handling, and more
+
+This library has no single "entry point" — instead it is a toolbox that
+higher-level ServiceComb modules depend upon for common, cross-cutting
+functionality.
+
+## Table of Contents
+
+- [Authentication & Encryption](#authentication--encryption)
+- [Event Bus](#event-bus)
+- [Networking](#networking)
+- [JSON Utilities](#json-utilities)
+- [Reflection & Fast Getters/Setters](#reflection--fast-gettersSetters)
+- [Configuration Loading](#configuration-loading)
+- [Concurrency Utilities](#concurrency-utilities)
+- [Multipart File Handling](#multipart-file-handling)
+- [Miscellaneous Utilities](#miscellaneous-utilities)
+- [Usage Examples](#usage-examples)
+
+---
+
+## Authentication & Encryption
+
+### `Cipher` / `DefaultCipher` / `ShaAKSKCipher`
+
+`Cipher` defines a simple contract for decrypting a `char[]` payload, with a
+`name()` used to identify the cipher implementation. `DefaultCipher` is a
+no-op/default implementation, while `ShaAKSKCipher` implements a
+SHA-based AK/SK (Access Key / Secret Key) decryption scheme, typically
+wired up through `FoundationCommonAuthConfiguration` as a Spring bean.
+
+### `Encryption` / `Encryptions` / `NoEncryption`
+
+`Encryption` is an SPI-style interface for encoding/decoding `char[]` data,
+tagged with a string (`tags`) that can be used to select or scope
+encryption behavior. Multiple `Encryption` implementations can be ordered
+via `getOrder()`. `Encryptions` is the static facade that looks up and
+applies the appropriate registered `Encryption` implementation for both
+`String` and `char[]` payloads. `NoEncryption` is a pass-through
+implementation used as a fallback/default.
+
+### `KeyPairUtils` / `KeyPairEntry` / `Keypair4Auth`
+
+Utilities for generating asymmetric key pairs, signing content, and
+verifying signatures. `KeyPairEntry` and `Keypair4Auth` are simple data
+holders for a `PrivateKey`/`PublicKey` pair (and its encoded form).
+
+---
+
+## Event Bus
+
+### `EventManager` / `SimpleEventBus` / `SimpleSubscriber`
+
+`EventManager` provides static convenience methods (`register`,
+`unregister`, `post`, `getEventBus`) around a shared `EventBus` instance
+(implemented by `SimpleEventBus`, an extension of Guava's `EventBus`).
+`SimpleSubscriber` wraps a listener instance and its `@Subscribe`-annotated
+method, supporting ordering via `getOrder()`.
+
+### `AlarmEvent`
+
+A simple event type carrying a `Type` enum value, meant to be posted onto
+the event bus to signal alarm conditions.
+
+---
+
+## Networking
+
+### `IpPort` / `URIEndpointObject` / `NetUtils`
+
+`IpPort` is a basic host/port value object with an `InetSocketAddress`
+accessor. `URIEndpointObject` extends `IpPort` to parse ServiceComb-style
+endpoint URIs (e.g., detecting SSL, WebSocket, and HTTP/2 support, and
+extracting query parameters). `NetUtils` offers static helpers for parsing
+addresses into `IpPort`, resolving host names/addresses, checking whether a
+port is available, and formatting byte counts in human-readable form.
+
+---
+
+## JSON Utilities
+
+### `JsonUtils` / `RestObjectMapper` / `AbstractRestObjectMapper`
+
+`JsonUtils` is a static facade over a Jackson `ObjectMapper` for common
+read/write/convert operations. `RestObjectMapper` is a concrete
+`ObjectMapper` subclass (extending `AbstractRestObjectMapper`) configured
+for REST-style serialization, including a `convertToString` method for
+scalar conversion. Custom (de)serializers such as
+`JavaxServletPartDeserializer` and `JavaxServletPartSerializer` (registered
+via `PartModule`) add support for serializing `javax.servlet.http.Part`
+objects.
+
+---
+
+## Reflection & Fast Getters/Setters
+
+### `LambdaMetafactoryUtils` / `Getter` / `Setter` and primitive variants
+
+`LambdaMetafactoryUtils` generates high-performance getter/setter lambdas
+for fields and methods using `LambdaMetafactory`, avoiding the overhead of
+standard reflection on every call. Generic `Getter<C, F>` / `Setter<C, F>`
+interfaces are complemented by primitive-specialized variants
+(`IntGetter`, `LongSetter`, `BoolGetter`, etc.) to avoid boxing. Helper
+implementations `ArrayGetter`/`ArraySetter` and `MapGetter`/`MapSetter`
+provide index- and key-based access for arrays and maps respectively.
+
+### `ReflectUtils`
+
+Lower-level reflective helpers: setting fields by name, finding methods,
+extracting generic type arguments, and instantiating array types.
+
+---
+
+## Configuration Loading
+
+### `ConfigLoader` / `AbstractLoader` / `PropertiesLoader` / `XmlLoaderUtils`
+
+`ConfigLoader` defines a generic `load()` contract. `AbstractLoader`
+implements it against a list of Spring-style resource location patterns,
+and `PropertiesLoader` loads and merges `.properties` files found across
+those patterns. `XmlLoaderUtils` provides static helpers for parsing XML
+resources into DOM `Document`s or bound Java objects, and merging XML
+elements.
+
+### `PaaSResourceUtils` / `PaaSPropertiesLoaderUtils`
+
+Static helpers for resolving and sorting Spring `Resource`s matching
+location patterns, and merging properties files found across resources.
+
+---
+
+## Concurrency Utilities
+
+- **`CommonThread`** — a `Thread` subclass with `shutdown()`/`isRunning()`
+  lifecycle support.
+- **`NamedThreadFactory`** — a `ThreadFactory` that assigns a configurable
+  name prefix to created threads.
+- **`ConcurrentHashMapEx`** — a `ConcurrentHashMap` extension with a
+  `computeIfAbsent` implementation tuned for different concurrency
+  semantics.
+- **`SuppressedRunnableWrapper`** — wraps a `Runnable`, swallowing
+  exceptions (optionally routing them to a custom error handler).
+- **`ConditionWaiter<T>`** — runs an asynchronous task and blocks until
+  completion, polling at a configurable interval.
+
+---
+
+## Multipart File Handling
+
+### `AbstractPart` / `FilePart` / `InputStreamPart` / `ResourcePart`
+
+These classes implement `javax.servlet.http.Part` for different data
+sources: a name/content-type/size wrapper (`AbstractPart`), a file on disk
+(`FilePart`, implementing `FilePartForSend` with optional
+delete-after-finished semantics), a raw `InputStream` (`InputStreamPart`),
+and a Spring `Resource` (`ResourcePart`). `PartUtils.getSinglePart` builds a
+`Part` from an arbitrary value.
+
+---
+
+## Miscellaneous Utilities
+
+- **`Version`** — parses and compares `major.minor.patch.build`-style
+  version strings.
+- **`VersionedCache`** — a named, versioned cache wrapper supporting
+  expiration/staleness checks between cache generations.
+- **`RegisterManager<KEY, VALUE>` / `AbstractObjectManager`** — generic
+  registries mapping keys (or key "owners") to values, with lazy
+  creation support.
+- **`HttpStatus` / `HttpStatusManager` / `HttpStatusUtils`** — JAX-RS style
+  `StatusType` implementation and lookup/registration of HTTP status
+  codes, including custom/non-standard ones.
+- **`HttpUtils`** — URI encoding/decoding and header-value parsing (e.g.,
+  extracting filename or charset from headers).
+- **`BeanUtils`** — access to the Spring `ApplicationContext` and bean
+  lookup helpers, including SPI bean collection via `addBeans`.
+- **`LegacyPropertyFactory`** — static access to a Spring `Environment`
+  for reading typed configuration properties.
+- **`FilePerm`** — POSIX/ACL file permission helpers.
+- **`ExceptionUtils` / `FortifyUtils`** — exception message/stack
+  formatting utilities.
+- **`DynamicEnum<T>` / `DynamicEnumCache<T>` / `EnumUtils`** — support for
+  "enum-like" values that can be extended dynamically at runtime beyond a
+  fixed set of static constants.
+
+---
+
+## Usage Examples
+
+### Encrypting/decrypting sensitive values
+
+```java
+import org.apache.servicecomb.foundation.common.encrypt.Encryptions;
+
+char[] plain = "my-secret-value".toCharArray();
+char[] encoded = Encryptions.encode(plain, "aksk");
+
+// ... later, or elsewhere in the system ...
+char[] decoded = Encryptions.decode(encoded, "aksk");
+```
+
+### Posting and subscribing to events
+
+```java
+import com.google.common.eventbus.Subscribe;
+import org.apache.servicecomb.foundation.common.event.EventManager;
+import org.apache.servicecomb.foundation.common.event.AlarmEvent;
+
+public class AlarmListener {
+    @Subscribe
+    public void onAlarm(AlarmEvent event) {
+        System.out.println("Received alarm: " + event.getType());
+    }
+}
+
+// registration
+AlarmListener listener = new AlarmListener();
+EventManager.register(listener);
+
+// posting an event from anywhere in the application
+EventManager.post(new AlarmEvent(AlarmEvent.Type.CIRCUIT_BREAKER_OPEN));
+```
+
+### Parsing a ServiceComb-style endpoint
+
+```java
+import org.apache.servicecomb.foundation.common.net.URIEndpointObject;
+
+URIEndpointObject endpoint =
+    new URIEndpointObject("rest://127.0.0.1:8080?sslEnabled=true&http2Enabled=false");
+
+String host = endpoint.getHostOrIp();
+int port = endpoint.getPort();
+boolean ssl = endpoint.isSslEnabled();
+```
+
+### Fast, reflection-free field access
+
+```java
+import org.apache.servicecomb.foundation.common.utils.LambdaMetafactoryUtils;
+import org.apache.servicecomb.foundation.common.utils.bean.Getter;
+import java.lang.reflect.Field;
+
+Field nameField = MyBean.class.getDeclaredField("name");
+Getter<MyBean, String> nameGetter = LambdaMetafactoryUtils.createGetter(nameField);
+
+MyBean bean = new MyBean();
+String name = nameGetter.get(bean); // avoids reflective invoke() overhead
+```
+
+### Loading merged properties from the classpath
+
+```java
+import org.apache.servicecomb.foundation.common.config.PaaSResourceUtils;
+import java.util.Properties;
+
+Properties merged =
+    PaaSResourceUtils.loadMergedProperties("classpath*:config/*.properties");
+```
+
+### Serializing/deserializing JSON
+
+```java
+import org.apache.servicecomb.foundation.common.utils.JsonUtils;
+
+String json = JsonUtils.writeValueAsString(myObject);
+MyObject restored = JsonUtils.readValue(json.getBytes(), MyObject.class);
+```

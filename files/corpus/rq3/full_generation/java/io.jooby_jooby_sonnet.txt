@@ -1,0 +1,232 @@
+# Jooby
+
+Jooby is a modular, lightweight web framework for building HTTP applications and services on the JVM. It provides an abstraction over HTTP servers (Netty, Jetty, Undertow-style implementations) through a common `Server` and `Context` API, along with routing, request/response handling, sessions, WebSockets, Server-Sent Events, validation, and pluggable serialization — all designed to be fast, embeddable, and easy to extend.
+
+## Introduction
+
+At its core, Jooby exposes a `Router` that maps incoming requests to `Route.Handler` implementations, giving each handler access to a `Context` object representing the current request/response cycle. Around this core, the library layers:
+
+- **Content negotiation & body handling** (`Body`, `MediaType`, `MessageDecoder`, `MessageEncoder`)
+- **Sessions & Flash state** (`Session`, `SessionStore`, `SessionToken`, `FlashMap`)
+- **Cookies** (`Cookie`, `SameSite`)
+- **File uploads/downloads** (`FileUpload`, `FileDownload`, `AttachedFile`, `InlineFile`)
+- **Static asset serving** (`AssetHandler`, `AssetSource`, `Asset`)
+- **WebSockets & SSE** (`WebSocket`, `WebSocketConfigurer`, `ServerSentEmitter`)
+- **Validation & error handling** (`ErrorHandler`, `StatusCodeException`, `HttpProblem`, `ValidationResult`)
+- **Dependency/service registry** (`Registry`, `ServiceRegistry`, `ServiceKey`)
+- **Extensions** for modular composition (`Extension`, `OpenAPIModule`, `GracefulShutdown`)
+- **Value conversion** (`Value`, `ValueFactory`, `Converter`) used throughout for path/query/form/header parameters
+
+Jooby is server-agnostic: the `Server` interface abstracts over concrete server implementations, configured via `ServerOptions` and `SslOptions`, and started with one or more `Jooby` application instances.
+
+## Core Concepts
+
+### Context
+
+`Context` is the central object passed to every route handler. It exposes:
+
+- **Request data**: `path()`, `query()`, `header()`, `form()`, `body()`, `files()`, cookies, session, flash attributes
+- **Response building**: `send(...)` overloads (bytes, strings, streams, files, channels), `render(Object)`, `setResponseType`, `setResponseCode`, `setResponseHeader`
+- **Upgrades**: `upgrade(WebSocket.Initializer)` and `upgrade(ServerSentEmitter.Handler)` for WebSocket/SSE support
+- **Lifecycle hooks**: `onComplete(Route.Complete)`, `dispatch(...)` for moving work between I/O and worker threads
+
+`DefaultContext` supplies default implementations for many of these methods, and `ForwardingContext` lets you wrap and decorate an existing `Context` (used internally for read-only views, HEAD requests, and WebSocket senders).
+
+### Body & Value
+
+`Value` is the unifying abstraction for any piece of request data — a query parameter, form field, header, path variable, or session attribute. It supports type coercion (`to(Class)`, `toList`, `toOptional`, etc.) via a pluggable `Converter` registered in a `ValueFactory`.
+
+`Body` extends `Value` and represents the raw request payload, with helpers to read it as bytes, a stream, a channel, or decode it into an object via `to(Type)`/`decode(...)`.
+
+### Routing primitives
+
+- `Route.Handler` — the function that processes a request and produces a response
+- `Route.Filter` — wraps a handler to add behavior (logging, CORS, rate limiting, etc.)
+- `Route.Before` / `Route.Complete` — lifecycle callbacks executed before/after a request
+
+Several built-in filters live under `io.jooby.handler`:
+
+| Class | Purpose |
+|---|---|
+| `AccessLogHandler` | Request/response access logging |
+| `AssetHandler` | Serve static files/classpath resources |
+| `CorsHandler` | CORS support |
+| `CsrfHandler` | CSRF token validation |
+| `HeadHandler` | Automatic HEAD request handling |
+| `RateLimitHandler` | Token-bucket rate limiting |
+| `SSLHandler` | Force HTTPS redirects |
+| `TraceHandler` | HTTP TRACE support |
+| `WebVariables` | Expose request-scoped variables |
+
+### Sessions, Cookies & Flash
+
+`Session` objects are backed by a `SessionStore`, which can be in-memory (`SessionStore.memory(...)`) or cryptographically signed and stateless (`SessionStore.signed(...)`), with the session identifier transported via a `SessionToken` (cookie, header, or a combination). `Cookie` supports signing (`Cookie.sign`/`unsign`) and standard attributes (domain, path, `SameSite`, max-age). `FlashMap` provides one-request-lifetime message passing, typically backed by a cookie.
+
+### Error handling
+
+`ErrorHandler` (with `DefaultErrorHandler` as the built-in implementation) converts exceptions into HTTP responses. The `io.jooby.exception` package provides a hierarchy of `StatusCodeException` subclasses (`BadRequestException`, `NotFoundException`, `ForbiddenException`, `UnauthorizedException`, `MethodNotAllowedException`, etc.), each convertible to an `HttpProblem` for RFC 7807–style error bodies. `ValidationResult` and `ValidationExceptionMapper` support mapping bean-validation failures to structured errors.
+
+### WebSockets & Server-Sent Events
+
+- Register a `WebSocket.Initializer` via `Context#upgrade(WebSocket.Initializer)`, then configure `onConnect`, `onMessage`, `onError`, `onClose` callbacks through `WebSocketConfigurer`.
+- Register an SSE stream via `Context#upgrade(ServerSentEmitter.Handler)`; use `ServerSentEmitter#send(...)` to push `ServerSentMessage`s to the client, with automatic keep-alive support.
+
+### Output & Rendering
+
+`Output` and `BufferedOutput` are the abstractions used to write response bytes efficiently, produced by an `OutputFactory` (configurable via `OutputOptions` for buffer size/direct memory). `MessageEncoder`/`MessageDecoder` and `TemplateEngine` (for view rendering via `ModelAndView`/`MapModelAndView`) plug into content negotiation so `ctx.render(Object)` picks the right encoder.
+
+### Services & Extensions
+
+`ServiceRegistry` (accessible from any `Registry`, including `Context`) is a simple keyed container for application-scoped services, supporting single values, lists (`MultiBinder`), and maps (`MapBinder`) keyed by `ServiceKey`. `Extension` is the unit of modular installation — modules like `OpenAPIModule` and `GracefulShutdown` implement it to hook into application startup.
+
+### Servers
+
+`Server` abstracts the underlying HTTP engine. Load one with `Server.loadServer()`, configure it with `ServerOptions` (ports, threads, SSL via `SslOptions`, output buffering), and start it with one or more `Jooby` application instances.
+
+## Usage Examples
+
+### Basic routing and responses
+
+```java
+import io.jooby.Jooby;
+import io.jooby.StatusCode;
+
+public class App extends Jooby {
+  {
+    get("/", ctx -> "Hello, Jooby!");
+
+    get("/users/{id}", ctx -> {
+      String id = ctx.path("id").value();
+      return Map.of("id", id, "name", "Jane Doe");
+    });
+
+    post("/users", ctx -> {
+      User user = ctx.body(User.class);
+      ctx.setResponseCode(StatusCode.CREATED);
+      return user;
+    });
+  }
+
+  public static void main(String[] args) {
+    runApp(args, App::new);
+  }
+}
+```
+
+### Query, header, and cookie access
+
+```java
+get("/search", ctx -> {
+  String q = ctx.query("q").value("");
+  int page = ctx.query("page").intValue(1);
+  String auth = ctx.header("Authorization").valueOrNull();
+  String theme = ctx.cookie("theme", "light").value();
+  return Map.of("q", q, "page", page, "theme", theme);
+});
+```
+
+### Sessions
+
+```java
+get("/cart/add", ctx -> {
+  Session session = ctx.session();
+  session.put("itemCount", session.get("itemCount").intValue(0) + 1);
+  return "Item added";
+});
+```
+
+### File uploads and downloads
+
+```java
+post("/upload", ctx -> {
+  FileUpload upload = ctx.file("document");
+  Path saved = Files.createTempFile("upload-", upload.getFileName());
+  Files.copy(upload.stream(), saved, StandardCopyOption.REPLACE_EXISTING);
+  return "Uploaded: " + upload.getFileName();
+});
+
+get("/download/report.pdf", ctx ->
+  ctx.send(new AttachedFile(reportPath, "report.pdf"))
+);
+```
+
+### Static assets
+
+```java
+import io.jooby.handler.AssetHandler;
+import io.jooby.handler.AssetSource;
+
+assets("/static/*", new AssetHandler(
+    AssetSource.create(getClass().getClassLoader(), "/static")
+  )
+  .setMaxAge(Duration.ofDays(7))
+  .setETag(true)
+);
+```
+
+### Error handling
+
+```java
+error((ctx, cause, code) -> {
+  if (cause instanceof NotFoundException) {
+    ctx.setResponseCode(StatusCode.NOT_FOUND);
+    ctx.render(HttpProblem.notFound("Resource not found"));
+  } else {
+    ctx.setResponseCode(code);
+    ctx.render(HttpProblem.internalServerError());
+  }
+});
+```
+
+### WebSockets
+
+```java
+ws("/chat", (ctx, configurer) -> {
+  configurer.onConnect(ws -> ws.send("Welcome!"));
+  configurer.onMessage((ws, message) -> {
+    ws.getSessions().forEach(peer -> peer.send(message.value()));
+  });
+  configurer.onClose((ws, status) -> System.out.println("Closed: " + status));
+});
+```
+
+### Server-Sent Events
+
+```java
+get("/events", ctx -> ctx.upgrade(emitter -> {
+  emitter.keepAlive(15, TimeUnit.SECONDS);
+  Timer timer = new Timer();
+  timer.scheduleAtFixedRate(new TimerTask() {
+    public void run() {
+      emitter.send("tick", Instant.now().toString());
+    }
+  }, 0, 1000);
+  emitter.onClose(timer::cancel);
+}));
+```
+
+### CORS, rate limiting, and access logs
+
+```java
+import io.jooby.handler.*;
+
+use(new AccessLogHandler());
+use(new CorsHandler());
+use(new RateLimitHandler(key -> Bucket.builder().build()));
+```
+
+### Starting with explicit server options
+
+```java
+ServerOptions options = new ServerOptions()
+    .setPort(8080)
+    .setIoThreads(4)
+    .setWorkerThreads(32);
+
+Server server = Server.loadServer(options);
+server.start(new App());
+```
+
+## License
+
+See the repository's LICENSE file for details.

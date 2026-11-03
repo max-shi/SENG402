@@ -1,0 +1,168 @@
+# client-java-cert-manager-models
+
+Java model classes for [cert-manager](https://cert-manager.io/) Kubernetes resources, generated for use with the [io.kubernetes:client-java](https://github.com/kubernetes-client/java) library. This library provides strongly-typed Plain Old Java Object (POJO) representations of cert-manager's Custom Resource Definitions (CRDs), enabling type-safe interaction with cert-manager objects through the official Kubernetes Java client.
+
+## Overview
+
+This library implements the data model layer for cert-manager's core API types. Each top-level resource implements `io.kubernetes.client.common.KubernetesObject` (for single resources) or `io.kubernetes.client.common.KubernetesListObject` (for list responses), which makes them directly compatible with the generic Kubernetes Java client's typed API calls, informers, and listers.
+
+Every model class follows a consistent builder-style pattern:
+
+- A no-arg constructor.
+- Fluent "with"-style setters that return `this` (e.g. `.spec(...)`, `.metadata(...)`) for chaining.
+- Traditional JavaBean `getX()` / `setX()` accessors.
+- `equals()`, `hashCode()`, and `toString()` overrides.
+- JSON (de)serialization helpers: `toJson()`, static `fromJson(String)`, and static `validateJsonObject(JsonObject)`.
+
+### Top-level resources
+
+| Resource | Purpose |
+|---|---|
+| `V1Certificate` / `V1CertificateList` | Declarative request for a TLS certificate to be issued and kept up to date, stored in a Secret. |
+| `V1CertificateRequest` / `V1CertificateRequestList` | A single request to an issuer to sign a CSR, typically created automatically by the Certificate controller. |
+| `V1Issuer` / `V1IssuerList` | Namespaced representation of a certificate-issuing authority (ACME, CA, self-signed, Vault, Venafi). |
+| `V1ClusterIssuer` / `V1ClusterIssuerList` | Cluster-scoped equivalent of `V1Issuer`. |
+| `V1Order` / `V1OrderList` | Represents an ACME order tracked against an ACME server during certificate issuance. |
+| `V1Challenge` / `V1ChallengeList` | Represents a single ACME challenge (HTTP-01 or DNS-01) that must be completed to prove domain ownership. |
+
+Each top-level type is composed of a `*Spec` class describing desired state and, where applicable, a `*Status` class describing observed state — mirroring the standard Kubernetes spec/status convention.
+
+### Certificate model
+
+- **`V1CertificateSpec`** — desired certificate attributes: `secretName`, `commonName`, `dnsNames`, `ipAddresses`, `emailAddresses`, `uris`, `duration`, `renewBefore`, `usages`, `isCA`, `privateKey`, `subject`, `keystores`, `secretTemplate`, `issuerRef`, `additionalOutputFormats`, `literalSubject`, `revisionHistoryLimit`, `encodeUsagesInRequest`.
+  - `V1CertificateSpecIssuerRef` — reference to the `Issuer`/`ClusterIssuer` that should sign the certificate.
+  - `V1CertificateSpecPrivateKey` — key `algorithm`, `size`, `encoding`, `rotationPolicy`.
+  - `V1CertificateSpecSubject` — X.509 subject fields (`organizations`, `countries`, `localities`, etc).
+  - `V1CertificateSpecKeystores` — JKS/PKCS#12 keystore generation settings, each with a password secret reference.
+  - `V1CertificateSpecSecretTemplate` — labels/annotations to stamp onto the generated Secret.
+  - `V1CertificateSpecAdditionalOutputFormatsInner` — extra output formats (e.g. combined PEM, DER) for the Secret.
+- **`V1CertificateStatus`** — observed state: `conditions`, `notBefore`, `notAfter`, `renewalTime`, `revision`, `failedIssuanceAttempts`, `lastFailureTime`, `nextPrivateKeySecretName`.
+  - `V1CertificateStatusConditionsInner` — a standard Kubernetes-style condition (`type`, `status`, `reason`, `message`, `lastTransitionTime`, `observedGeneration`).
+
+### CertificateRequest model
+
+`V1CertificateRequestSpec` carries the raw CSR bytes (`request`), `duration`, `issuerRef`, `usages`, `isCA`, and impersonation metadata (`username`, `uid`, `groups`, `extra`) used when the request was created on behalf of another user. `V1CertificateRequestStatus` holds the resulting `certificate`, `ca` bundle, `conditions`, and `failureTime`.
+
+### Issuer / ClusterIssuer model
+
+`V1IssuerSpec` and `V1ClusterIssuerSpec` share the same structure — a union of exactly one issuer backend:
+
+- **`V1ClusterIssuerSpecAcme`** — ACME issuer config: `server`, `email`, `privateKeySecretRef`, `skipTLSVerify`, `externalAccountBinding`, `preferredChain`, `caBundle`, and a list of `solvers` (`V1ClusterIssuerSpecAcmeSolversInner`), each combining an HTTP-01 or DNS-01 solver with an optional `selector`.
+- **`V1ClusterIssuerSpecCa`** — signs using a CA keypair stored in a Secret (`secretName`, `crlDistributionPoints`, `ocspServers`).
+- **`V1ClusterIssuerSpecSelfSigned`** — self-signed issuer.
+- **`V1ClusterIssuerSpecVault`** — HashiCorp Vault PKI backend, with `auth` supporting AppRole, Kubernetes, or token-based authentication.
+- **`V1ClusterIssuerSpecVenafi`** — Venafi Cloud or TPP backend.
+
+`V1IssuerStatus` / `V1ClusterIssuerStatus` expose `conditions` and ACME account state (`acme`, via `V1ClusterIssuerStatusAcme`).
+
+### ACME solver model (DNS-01 / HTTP-01)
+
+Used both by `V1ChallengeSpecSolver` (on individual Challenges) and `V1ClusterIssuerSpecAcmeSolversInner` (on Issuers):
+
+- **`V1ChallengeSpecSolverDns01`** — one of many supported DNS providers: `acmeDNS`, `akamai`, `azureDNS`, `cloudDNS`, `cloudflare`, `digitalocean`, `rfc2136`, `route53`, or a generic `webhook`.
+- **`V1ChallengeSpecSolverHttp01`** — HTTP-01 solving via `ingress` (with pod/ingress template customization, including affinity, tolerations, image pull secrets) or `gatewayHTTPRoute`.
+- **`V1ChallengeSpecSolverSelector`** — restricts a solver to certificates matching `dnsNames`, `dnsZones`, or `matchLabels`.
+
+### Order / Challenge model
+
+- **`V1OrderSpec`** / **`V1OrderStatus`** — tracks an ACME order's `dnsNames`, `request` (CSR), `issuerRef`, resulting `certificate`, and per-domain `authorizations` (each with its own `challenges`).
+- **`V1ChallengeSpec`** / **`V1ChallengeStatus`** — a single challenge's `type`, `token`, `key`, `url`, `dnsName`, `wildcard` flag, `solver`, and its resolution `state` (`presented`, `processing`, `reason`).
+
+## Installation
+
+```xml
+<dependency>
+    <groupId>io.kubernetes</groupId>
+    <artifactId>client-java-cert-manager-models</artifactId>
+    <version>${cert-manager-models.version}</version>
+</dependency>
+```
+
+This library is intended to be used alongside `io.kubernetes:client-java` and its generic/dynamic API clients (e.g. `GenericKubernetesApi`), which operate on `KubernetesObject`/`KubernetesListObject` implementations such as the ones provided here.
+
+## Usage
+
+### Building a `Certificate` resource
+
+```java
+import io.cert.manager.models.*;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+
+import java.util.List;
+
+V1Certificate certificate = new V1Certificate()
+        .apiVersion("cert-manager.io/v1")
+        .kind("Certificate")
+        .metadata(new V1ObjectMeta()
+                .name("example-com-tls")
+                .namespace("default"))
+        .spec(new V1CertificateSpec()
+                .secretName("example-com-tls")
+                .commonName("example.com")
+                .dnsNames(List.of("example.com", "www.example.com"))
+                .duration("2160h")
+                .renewBefore("360h")
+                .privateKey(new V1CertificateSpecPrivateKey()
+                        .algorithm(V1CertificateSpecPrivateKey.AlgorithmEnum.RSA)
+                        .size(2048))
+                .issuerRef(new V1CertificateSpecIssuerRef()
+                        .name("letsencrypt-prod")
+                        .kind("ClusterIssuer")
+                        .group("cert-manager.io")));
+
+String json = certificate.toJson();
+```
+
+### Defining a `ClusterIssuer` with an ACME/HTTP-01 solver
+
+```java
+import io.cert.manager.models.*;
+import io.kubernetes.client.openapi.models.V1ObjectMeta;
+
+import java.util.List;
+
+V1ClusterIssuer issuer = new V1ClusterIssuer()
+        .apiVersion("cert-manager.io/v1")
+        .kind("ClusterIssuer")
+        .metadata(new V1ObjectMeta().name("letsencrypt-prod"))
+        .spec(new V1ClusterIssuerSpec()
+                .acme(new V1ClusterIssuerSpecAcme()
+                        .server("https://acme-v02.api.letsencrypt.org/directory")
+                        .email("admin@example.com")
+                        .privateKeySecretRef(new V1ClusterIssuerSpecAcmePrivateKeySecretRef()
+                                .name("letsencrypt-prod-account-key"))
+                        .solvers(List.of(
+                                new V1ClusterIssuerSpecAcmeSolversInner()
+                                        .http01(new V1ChallengeSpecSolverHttp01()
+                                                .ingress(new V1ChallengeSpecSolverHttp01Ingress()
+                                                        .propertyClass("nginx")))))));
+```
+
+### Parsing a resource from JSON returned by the Kubernetes API
+
+```java
+import io.cert.manager.models.V1Certificate;
+
+String responseBody = /* JSON payload from a Kubernetes API call */ "";
+V1Certificate certificate = V1Certificate.fromJson(responseBody);
+
+if (certificate.getStatus() != null) {
+    certificate.getStatus().getConditions().forEach(condition ->
+            System.out.printf("Condition %s = %s (%s)%n",
+                    condition.getType(), condition.getStatus(), condition.getReason()));
+}
+```
+
+### Reading `CertificateRequest` results
+
+```java
+import io.cert.manager.models.V1CertificateRequest;
+
+V1CertificateRequest request = V1CertificateRequest.fromJson(jsonPayload);
+byte[] issuedCert = request.getStatus().getCertificate();
+byte[] caBundle = request.getStatus().getCa();
+```
+
+## Compatibility
+
+These models are designed to slot into the broader `io.kubernetes:client-java` ecosystem — use them with `ApiClient`, `GenericKubernetesApi`, or custom informers/listers wherever a typed cert-manager resource is required.

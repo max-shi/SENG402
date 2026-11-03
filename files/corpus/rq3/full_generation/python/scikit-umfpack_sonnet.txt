@@ -1,0 +1,142 @@
+# scikit-umfpack
+
+**scikit-umfpack** provides Python bindings to the [UMFPACK](https://people.engr.tamu.edu/davis/suitesparse.html) sparse direct solver library (part of SuiteSparse). It plugs into the SciPy sparse ecosystem, giving you fast LU factorization and solving of large sparse linear systems `A x = b`, where `A` is a `scipy.sparse` matrix.
+
+The library exposes both a high-level, SciPy-style interface (`spsolve`, `splu`, `UmfpackLU`) for quick one-off solves, and a lower-level `UmfpackContext` class that gives direct, fine-grained control over UMFPACK's symbolic/numeric factorization pipeline, diagnostic reporting, and solver options.
+
+## Installation
+
+```
+pip install scikit-umfpack
+```
+
+scikit-umfpack requires the UMFPACK library (from SuiteSparse) to be available on your system, along with SciPy and NumPy.
+
+## API Overview
+
+### High-level interface
+
+- **`spsolve(A, b)`** — Solve the sparse linear system `A x = b` directly and return the solution. This is the simplest entry point, analogous to `scipy.sparse.linalg.spsolve`, but backed by UMFPACK.
+
+- **`splu(A)`** — Compute a sparse LU decomposition of `A` and return a `UmfpackLU` object that can be reused to solve multiple right-hand sides without refactorizing.
+
+- **`UmfpackLU`** — An object-oriented wrapper around a UMFPACK LU factorization, mirroring the interface of `scipy.sparse.linalg.SuperLU`. Once created (typically via `splu`), it exposes:
+  - `solve(b)` — solve `A x = b` for a single dense right-hand side vector.
+  - `solve_sparse(B)` — solve `A X = B` for a sparse (multi-column) right-hand side.
+  - `shape()` — the shape of the original matrix `A`.
+  - `L()`, `U()` — the lower and upper triangular factors of the decomposition.
+  - `R()` — the row-scaling factor used internally by UMFPACK.
+  - `perm_c()`, `perm_r()` — the column and row permutation vectors applied during factorization.
+  - `nnz()` — number of nonzero entries in the factorization.
+
+### Low-level interface
+
+- **`UmfpackContext`** — A thin, stateful wrapper around the UMFPACK C library, subclassing `Struct` (a small generic attribute container used throughout the module for holding option/info structures). It manages the full UMFPACK workflow explicitly:
+  - `symbolic(mtx)` — perform symbolic analysis of the sparsity pattern.
+  - `numeric(mtx)` — perform numeric factorization (requires a prior or automatic symbolic step).
+  - `lu(mtx)` — perform a full factorization, returning factorization data.
+  - `solve(sys, mtx, rhs, autoTranspose=False)` — solve a specified system type (e.g. `Ax=b`, `A^T x = b`, etc.) using an existing or freshly computed factorization.
+  - `linsolve(sys, mtx, rhs, autoTranspose=False)` — convenience method combining factorization and solve in one call.
+  - `report_symbolic()`, `report_numeric()`, `report_control()`, `report_info()` — print UMFPACK's internal diagnostic reports.
+  - `strControl()`, `strInfo()` — return human-readable strings describing UMFPACK's control parameters and factorization info/statistics.
+  - `free_symbolic()`, `free_numeric()`, `free()` — release internal UMFPACK memory associated with symbolic analysis, numeric factorization, or both.
+
+- **`configure(**kwargs)`** — Set global/default configuration options (e.g. default control parameters) used by `UmfpackContext` instances.
+
+- **`Struct`** — A minimal helper class used as a generic namespace object for grouping related attributes (such as control parameters or info dictionaries) with attribute-style access.
+
+- **`updateDictWithVars(adict, module, pattern, group=None)`** — Utility function that scans a module for variables matching a naming pattern and inserts them into a dictionary, used internally to build UMFPACK's control/info parameter maps.
+
+- **`UmfpackWarning`** — A custom `UserWarning` subclass raised for non-fatal issues encountered during UMFPACK operations (e.g. singular or near-singular matrices).
+
+### How the pieces fit together
+
+- `spsolve` and `splu` are convenience wrappers built on top of `UmfpackContext`; they cover the common case of "factorize and solve" without requiring you to manage symbolic/numeric steps yourself.
+- `UmfpackLU`, returned by `splu`, caches the factorization so it can be reused efficiently for multiple right-hand sides.
+- `UmfpackContext` is the underlying engine that both high-level functions ultimately rely on, and it's the class to use when you need explicit control over symbolic analysis, numeric factorization, transposed solves, or UMFPACK diagnostics.
+
+## Usage Examples
+
+### Quick solve
+
+```python
+import numpy as np
+import scipy.sparse as sp
+from scikits.umfpack import spsolve
+
+A = sp.csc_matrix([[2.0, 0, 0],
+                    [0, 3.0, 0],
+                    [0, 0, 4.0]])
+b = np.array([1.0, 2.0, 3.0])
+
+x = spsolve(A, b)
+print(x)
+```
+
+### Reusing a factorization with `splu`
+
+```python
+import numpy as np
+import scipy.sparse as sp
+from scikits.umfpack import splu
+
+A = sp.csc_matrix([[4.0, 1.0], [1.0, 3.0]])
+lu = splu(A)
+
+b1 = np.array([1.0, 2.0])
+b2 = np.array([3.0, 4.0])
+
+x1 = lu.solve(b1)
+x2 = lu.solve(b2)
+
+print("shape:", lu.shape())
+print("nnz:", lu.nnz())
+print("L factor:\n", lu.L().toarray())
+print("U factor:\n", lu.U().toarray())
+```
+
+### Low-level control with `UmfpackContext`
+
+```python
+import numpy as np
+import scipy.sparse as sp
+from scikits.umfpack import UmfpackContext
+
+A = sp.csc_matrix([[4.0, 1.0], [1.0, 3.0]])
+b = np.array([1.0, 2.0])
+
+ctx = UmfpackContext()
+
+# Explicit symbolic + numeric factorization
+ctx.symbolic(A)
+ctx.numeric(A)
+
+# Solve Ax = b using the existing factorization
+x = ctx.solve(sys='Ax=b', mtx=A, rhs=b)
+print(x)
+
+# Print diagnostic info
+ctx.report_info()
+
+# Free internal UMFPACK resources when done
+ctx.free()
+```
+
+### One-shot factor-and-solve with `linsolve`
+
+```python
+from scikits.umfpack import UmfpackContext
+import scipy.sparse as sp
+import numpy as np
+
+A = sp.csc_matrix([[4.0, 1.0], [1.0, 3.0]])
+b = np.array([1.0, 2.0])
+
+ctx = UmfpackContext()
+x = ctx.linsolve(sys='Ax=b', mtx=A, rhs=b)
+print(x)
+```
+
+## License
+
+See `LICENSE` for details.

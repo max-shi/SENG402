@@ -1,0 +1,235 @@
+# webresource
+
+`webresource` provides an object-oriented model for web-facing resources such as scripts, stylesheets, and links. It includes tools for grouping resources, resolving dependencies or ordering, and rendering the resulting resources as text.
+
+The library is suited to applications that need to collect static assets, decide whether they should be included, generate URLs, and render them into a document.
+
+## Core concepts
+
+### Resources
+
+`Resource` is the base type for a renderable file-based resource.
+
+It exposes information about the underlying file and its rendered form:
+
+- `file_name()` — resource file name.
+- `file_path()` — resource file path.
+- `file_data()` — resource content as `bytes`.
+- `file_hash()` — a resource hash.
+- `unique_key()` — a key that uniquely identifies the resource.
+- `resource_url(base_url)` — URL for the resource under a base URL.
+- `render(base_url)` — rendered output for the resource.
+
+Specialized resource types are available for common web-resource categories:
+
+| Class | Purpose |
+| --- | --- |
+| `ScriptResource` | A script resource, with optional integrity information. |
+| `StyleResource` | A stylesheet-like linked resource. |
+| `LinkResource` | A general linked resource. |
+| `LinkMixin` | Shared rendering behavior for linked resources. |
+
+### Shared resource settings
+
+Both individual resources and groups inherit from `ResourceMixin`.
+
+`ResourceMixin` provides common settings:
+
+- `path` — an optional path associated with the resource or group.
+- `directory` — an optional directory associated with the resource or group.
+- `include` — whether the item should be included. This can be a boolean or a callable returning a boolean.
+- `remove()` — remove the item.
+- `copy()` — create a copy of the item.
+
+The getter/setter pairs in the API are exposed as writable properties:
+
+```python
+resource.path = "assets/app.js"
+resource.directory = "assets"
+resource.include = True
+```
+
+An inclusion decision may also be deferred:
+
+```python
+resource.include = lambda: is_feature_enabled()
+```
+
+### Resource groups
+
+`ResourceGroup` collects resources and other groups.
+
+```python
+group.add(member)
+```
+
+A group can report all of its members or filter them by resource kind:
+
+- `members()` — all resources and nested groups.
+- `scripts()` — script resources.
+- `styles()` — style resources.
+- `links()` — link resources.
+
+### Resolution and rendering
+
+Two classes provide the final stages of resource handling:
+
+- `ResourceResolver` resolves resources into a list of `Resource` objects.
+- `ResourceRenderer` renders resources into a string.
+- `GracefulResourceRenderer` is a renderer variant intended for graceful rendering behavior.
+
+The exception hierarchy includes errors for invalid resource states and dependency problems:
+
+- `ResourceError`
+- `ResourceConflictError`
+- `ResourceCircularDependencyError`
+- `ResourceMissingDependencyError`
+
+All library-specific exceptions derive from `ValueError` through `ResourceError`.
+
+## Example: define and group web resources
+
+```python
+from webresource.groups import ResourceGroup
+from webresource.resources import ScriptResource, StyleResource, LinkResource
+
+app_script = ScriptResource()
+app_script.path = "static/js/app.js"
+app_script.include = True
+
+site_style = StyleResource()
+site_style.path = "static/css/site.css"
+
+documentation_link = LinkResource()
+documentation_link.path = "static/docs/index.html"
+
+assets = ResourceGroup()
+assets.add(app_script)
+assets.add(site_style)
+assets.add(documentation_link)
+
+print(assets.members())
+print(assets.scripts())
+print(assets.styles())
+print(assets.links())
+```
+
+## Example: conditional inclusion
+
+Use a callable when inclusion should be evaluated dynamically.
+
+```python
+from webresource.resources import ScriptResource
+
+debug_script = ScriptResource()
+debug_script.path = "static/js/debug.js"
+
+debug_enabled = False
+debug_script.include = lambda: debug_enabled
+
+# The resource's inclusion state can be evaluated when needed.
+should_include = debug_script.include
+```
+
+## Example: generate resource URLs and render output
+
+```python
+from webresource.resources import ScriptResource
+
+script = ScriptResource()
+script.path = "static/js/application.js"
+
+url = script.resource_url("/my-site")
+output = script.render("/my-site")
+
+print(url)
+print(output)
+```
+
+`render()` returns a string suitable for use in a rendered document, while `resource_url()` returns the resource URL without requiring the caller to construct it manually.
+
+## Example: script integrity
+
+`ScriptResource` supports an optional integrity value.
+
+```python
+from webresource.resources import ScriptResource
+
+script = ScriptResource()
+script.path = "static/js/vendor.js"
+script.integrity = "sha384-example"
+
+print(script.integrity)
+print(script.render("/assets"))
+```
+
+The `integrity` property accepts a string, `None`, or a boolean value.
+
+## Example: resolve resources
+
+A `ResourceResolver` produces a list of resolved `Resource` instances.
+
+```python
+from webresource.resolver import ResourceResolver
+
+resolver = ResourceResolver()
+resources = resolver.resolve()
+
+for resource in resources:
+    print(resource.unique_key())
+```
+
+Dependency-related resolution failures can be handled through the library’s exception classes:
+
+```python
+from webresource.exceptions import (
+    ResourceCircularDependencyError,
+    ResourceConflictError,
+    ResourceMissingDependencyError,
+)
+from webresource.resolver import ResourceResolver
+
+try:
+    resources = ResourceResolver().resolve()
+except ResourceCircularDependencyError:
+    print("A circular resource dependency was detected.")
+except ResourceMissingDependencyError:
+    print("A required resource dependency is missing.")
+except ResourceConflictError:
+    print("Conflicting resources were found.")
+```
+
+## Example: render resources
+
+```python
+from webresource.renderer import ResourceRenderer
+
+renderer = ResourceRenderer()
+rendered_resources = renderer.render()
+
+print(rendered_resources)
+```
+
+When an application needs the graceful renderer variant:
+
+```python
+from webresource.renderer import GracefulResourceRenderer
+
+renderer = GracefulResourceRenderer()
+rendered_resources = renderer.render()
+```
+
+## API summary
+
+| Type | Primary role |
+| --- | --- |
+| `ResourceMixin` | Common path, directory, inclusion, removal, and copying behavior. |
+| `Resource` | Base file-backed renderable resource. |
+| `ScriptResource` | Renderable script resource with integrity support. |
+| `StyleResource` | Renderable style resource. |
+| `LinkResource` | Renderable link resource. |
+| `ResourceGroup` | Collection of resources and nested groups. |
+| `ResourceResolver` | Resolves resources into a list. |
+| `ResourceRenderer` | Renders resources into text. |
+| `GracefulResourceRenderer` | Alternative renderer with graceful behavior. |
+| `ResourceConfig` | Resource-related configuration type. |

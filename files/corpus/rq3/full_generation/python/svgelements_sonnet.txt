@@ -1,0 +1,157 @@
+# svgelements
+
+`svgelements` is a pure-Python library for parsing, representing, and manipulating SVG documents and the geometric primitives that make them up. It provides a full object model for SVG elements (paths, shapes, groups, text, images, patterns, clip paths, etc.), along with the supporting geometry and styling primitives needed to work with them: 2D points, angles, transformation matrices, colors, lengths/units, and viewboxes.
+
+The library can parse an SVG file or SVG source into a tree of Python objects, let you query and transform that tree (bounding boxes, path segments, point-on-curve calculations, matrix transforms, etc.), and serialize elements back out to SVG (`d` path strings, XML strings, or files).
+
+## Key Concepts
+
+### Core value types
+
+- **`Length`** — represents an SVG length value (e.g. `"10px"`, `"2in"`, `"50%"`) and can resolve it to pixels, inches, mm, cm, or other units, optionally relative to a viewbox, font size, or PPI.
+- **`Color`** — represents an RGBA color. Supports parsing from CSS-style strings (`"red"`, `"#ff0000"`, `"rgb(255,0,0)"`, `"hsl(...)"`), conversion between RGB/HSL, alpha/opacity manipulation, blending, and distance metrics between colors.
+- **`Point`** — a 2D point/vector with complex-number semantics (real/imaginary parts), supporting distance, angle, polar coordinates, reflection, and convex hull calculations. Points can be transformed through a `Matrix`.
+- **`Angle`** — a `float` subclass representing an angle, with conversions between radians, degrees, gradians, and turns, plus parsing from SVG angle strings.
+- **`Matrix`** — a 2D affine transformation matrix (as used by SVG `transform` attributes). Supports parsing transform strings, composing transforms (`pre_*`/`post_*` scale, rotate, translate, skew), inversion, and mapping points/vectors. Class methods provide convenient constructors (`Matrix.translate(...)`, `Matrix.rotate(...)`, `Matrix.scale(...)`, `Matrix.identity()`, etc.) as well as perspective/affine mapping between coordinate quads.
+- **`Viewbox`** — computes the transform needed to fit an SVG `viewBox` into a given viewport, honoring `preserveAspectRatio`-style alignment.
+
+### SVG element model
+
+All SVG elements derive, directly or indirectly, from **`SVGElement`**, which provides property assignment from constructor args/objects/dicts, rendering (resolving lengths/percentages against context), and XML serialization (`write_xml`, `string_xml`).
+
+Mixins add specific capabilities to elements:
+
+- **`Transformable`** — anything that has a `transform` attribute and a bounding box (`bbox`), and can be “reified” (transform baked into the geometry).
+- **`GraphicObject`** — anything with paint/stroke properties (fill, stroke, stroke width) and rendering behavior.
+
+Shape/geometry classes:
+
+- **`Shape`** (extends `SVGElement`, `GraphicObject`, `Transformable`) — the base for all drawable vector shapes. Supports sampling points along the shape (`point`, `npoint`), measuring `length`, retrieving `segments`, computing a `d` path string, and bounding boxes.
+- **`Path`** — a mutable sequence of `PathSegment` objects representing an SVG `<path>`. Provides a fluent API to build paths (`move`, `line`, `horizontal`, `vertical`, `quad`, `smooth_quad`, `cubic`, `smooth_cubic`, `arc`, `closed`), subpath extraction (`subpath`, `as_subpaths`, `count_subpaths`), reversing, and arc/bezier approximation helpers.
+- **`PathSegment`** and its subclasses — `Move`, `Linear` (base of `Line` and `Close`), `Curve` (base of `QuadraticBezier`, `CubicBezier`, `Arc`) — represent individual path commands. Each supports `point`/`npoint` sampling, `length`, `bbox`, `reverse`, `d` serialization, and intersection testing (`intersect`, `find_intersections`).
+- **`Rect`**, **`Ellipse`**, **`Circle`**, **`SimpleLine`**, **`Polyline`**, **`Polygon`** — basic SVG shapes (`<rect>`, `<ellipse>`, `<circle>`, `<line>`, `<polyline>`, `<polygon>`), each able to compute its own `segments()` (as `PathSegment`s) and be `reify`-ed.
+- **`Subpath`** — a view onto a contiguous run of segments within a `Path` (e.g., between `Move` commands), with its own `segments`, `bbox`, `d`, and `reverse`.
+
+Container and other document elements:
+
+- **`Group`** — a list-like container of elements (`<g>`), with `bbox`, `select` (filter children by predicate), and `reify`.
+- **`Use`** — represents an SVG `<use>` reference, list-like, referencing/instancing other elements.
+- **`ClipPath`** — represents `<clipPath>` contents.
+- **`Pattern`** — represents `<pattern>` fills, including its own viewbox transform.
+- **`Text`** — represents `<text>`, with font parsing (`parse_font`, `font_list`, `weight`, `font_face`) and bounding box computation.
+- **`Image`** — represents `<image>`, with support for loading image data from a file or embedded data (`load`, `load_data`, `load_file`) and deriving its geometry from the loaded image (`set_values_by_image`).
+- **`Desc`**, **`Title`** — represent `<desc>` and `<title>` metadata elements.
+- **`SVG`** (extends `Group`) — represents the root `<svg>` document. `SVG.parse(...)` is the main entry point for loading an SVG file or string into the object model. Provides `get_element_by_id`, `get_element_by_url`, `elements()` (iterate/filter the whole tree), and its own `viewbox_transform`.
+
+### Serialization helpers
+
+- **`tostring(node)`** — serialize an element to an XML string.
+- **`write(node, f, pretty=True, **kwargs)`** — write an element to a file-like object as XML.
+
+## Installation
+
+```
+pip install svgelements
+```
+
+## Usage Examples
+
+### Parsing an SVG file and inspecting its contents
+
+```python
+from svgelements import SVG
+
+svg = SVG.parse("drawing.svg")
+
+for element in svg.elements():
+    print(type(element).__name__, getattr(element, "id", None))
+```
+
+### Working with a path
+
+```python
+from svgelements import Path
+
+path = Path("M0,0 L100,0 C120,0 150,30 150,50 Z")
+
+print("Length:", path.length())
+print("Bounding box:", path.bbox())
+
+# Sample a point 50% along the path
+midpoint = path.point(0.5)
+print("Midpoint:", midpoint)
+
+# Iterate over segments
+for segment in path.segments():
+    print(segment, segment.d())
+```
+
+### Building a path programmatically
+
+```python
+from svgelements import Path
+
+p = Path()
+p.move(0, 0)
+p.line(100, 0)
+p.cubic(120, 0, 150, 30, 150, 50)
+p.closed()
+
+print(p.d())
+```
+
+### Transforms
+
+```python
+from svgelements import Matrix, Point
+
+m = Matrix.identity()
+m.post_translate(10, 20)
+m.post_rotate(0.5)  # radians
+m.post_scale(2.0, 2.0)
+
+pt = Point(5, 5)
+transformed = pt.matrix_transform(m)
+print(transformed)
+```
+
+### Colors
+
+```python
+from svgelements import Color
+
+c = Color("rgba(255, 0, 0, 0.5)")
+print(c.red, c.green, c.blue, c.opacity)
+
+blended = c.blend(Color("blue"))
+print(blended.hex)
+```
+
+### Working with shapes and bounding boxes
+
+```python
+from svgelements import Rect, Circle
+
+rect = Rect(x=10, y=10, width=100, height=50)
+circle = Circle(cx=50, cy=50, r=25)
+
+print(rect.bbox())
+print(list(circle.segments()))
+```
+
+### Writing SVG back out
+
+```python
+from svgelements import SVG, write
+
+svg = SVG.parse("drawing.svg")
+
+with open("output.svg", "wb") as f:
+    write(svg, f)
+```
+
+## Notes
+
+- Many geometric APIs accept an `error`/`min_depth` pair (e.g. `length()`, `segment_length()`) to control the precision of numerical curve-length approximation.
+- Elements support both `reify()` (bake the current transform into the element's own coordinates) and lazy transformation (`transformed=True/False` parameters on `segments()`, `bbox()`, and `d()`), letting you choose whether to work in local or global coordinate space.
+- `Length` and `Matrix.render()` accept contextual parameters (`ppi`, `viewbox`, `font_size`, `font_height`, `relative_length`) so that relative/percentage-based values can be resolved against the surrounding document context.

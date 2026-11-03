@@ -1,0 +1,97 @@
+# python-undefined
+
+`python-undefined` provides an `Undefined` type and a corresponding type-checking helper for representing values that are *not defined*.
+
+This can be useful when an application needs to distinguish between:
+
+- a value that was not supplied at all;
+- a value explicitly set to `None`;
+- a regular value.
+
+## API overview
+
+### `Undefined`
+
+```python
+class Undefined:
+    ...
+```
+
+`Undefined` represents an undefined value. Create an instance when a value needs to carry an explicit “not provided” state.
+
+```python
+from undefined import Undefined
+
+value = Undefined()
+```
+
+### `is_undefined`
+
+```python
+def is_undefined(o: object, /) -> TypeIs[Undefined]:
+    ...
+```
+
+Returns whether an object is an `Undefined` value.
+
+The argument is positional-only. In addition to runtime checking, its `TypeIs[Undefined]` return annotation allows supported type checkers to narrow the type of a value inside a successful condition.
+
+```python
+from undefined import Undefined, is_undefined
+
+value: object = Undefined()
+
+if is_undefined(value):
+    # `value` is understood as `Undefined` here by type checkers.
+    print("No value was provided")
+```
+
+## Usage
+
+### Distinguish omitted values from `None`
+
+When `None` is a meaningful value, use `Undefined` to represent the omitted case.
+
+```python
+from undefined import Undefined, is_undefined
+
+def update_display_name(name: str | None | Undefined) -> str:
+    if is_undefined(name):
+        return "Leave the existing display name unchanged"
+
+    if name is None:
+        return "Clear the display name"
+
+    return f"Set the display name to {name!r}"
+
+
+print(update_display_name(Undefined()))
+print(update_display_name(None))
+print(update_display_name("Ada"))
+```
+
+### Use an undefined default in configuration handling
+
+```python
+from undefined import Undefined, is_undefined
+
+UNDEFINED = Undefined()
+
+def resolve_timeout(config: dict[str, object]) -> int | None:
+    timeout = config.get("timeout", UNDEFINED)
+
+    if is_undefined(timeout):
+        # No timeout setting was supplied.
+        return 30
+
+    if timeout is None:
+        # An explicit null value disables the timeout.
+        return None
+
+    if isinstance(timeout, int):
+        return timeout
+
+    raise TypeError("timeout must be an integer, None, or omitted")
+```
+
+In this pattern, `Undefined` lets the code preserve the difference between a missing `"timeout"` key and a key whose value is explicitly `None`.

@@ -1,0 +1,488 @@
+# layoutparser
+
+`layoutparser` is a Python library for working with document layout data. It provides:
+
+- Geometry primitives for intervals, rectangles, quadrilaterals, and text-bearing regions
+- A `Layout` container for collections of layout elements
+- Coordinate transformations, intersections, unions, containment checks, cropping, padding, shifting, and scaling
+- Import/export helpers for JSON, CSV, pandas DataFrames, and PDF documents
+- Model interfaces for document-layout detection backends
+- OCR agent interfaces for Tesseract and Google Cloud Vision
+- Utilities for grouping text blocks and detecting text lines
+- Visualization helpers for drawing regions and text on images
+
+## Core concepts
+
+### Layout elements
+
+The library represents document regions with coordinate-aware elements:
+
+| Type | Description |
+|---|---|
+| `Interval` | A one-dimensional coordinate interval. |
+| `Rectangle` | A rectangular region. |
+| `Quadrilateral` | A four-point region, useful for non-axis-aligned document content. |
+| `TextBlock` | A layout element that combines geometric information with text-oriented metadata. |
+| `Layout` | A mutable sequence of layout elements. |
+
+`Interval`, `Rectangle`, and `Quadrilateral` derive from `BaseCoordElement`. They share a common set of geometry operations, including:
+
+- `width()`, `height()`, `area()`
+- `coordinates()` and `points()`
+- `condition_on(other)` and `relative_to(other)`
+- `is_in(other, soft_margin={}, center=False)`
+- `intersect(other, strict=True)` and `union(other, strict=True)`
+- `pad(...)`, `shift(...)`, and `scale(...)`
+- `crop_image(image)`
+- `to_dict()` / `from_dict(...)`
+
+`TextBlock` exposes corresponding geometry operations while carrying text-related information.
+
+### Coordinate conversions
+
+Geometry types can be converted between forms:
+
+- `Interval.to_rectangle()` and `Interval.to_quadrilateral()`
+- `Rectangle.to_interval(axis, **kwargs)` and `Rectangle.to_quadrilateral()`
+- `Quadrilateral.to_interval(axis, **kwargs)` and `Quadrilateral.to_rectangle()`
+- `TextBlock.to_interval(...)`, `TextBlock.to_rectangle()`, and `TextBlock.to_quadrilateral()`
+
+The utility functions in `layoutparser.elements.utils` support lower-level coordinate and polygon work:
+
+```python
+from layoutparser.elements.utils import (
+    cvt_coordinates_to_points,
+    cvt_points_to_coordinates,
+    perspective_transformation,
+    polygon_area,
+    vertice_in_polygon,
+)
+```
+
+## Working with layouts
+
+A `Layout` is a mutable sequence of layout elements. In addition to standard sequence behavior, it supports batch operations across its contained blocks:
+
+- Coordinate transforms: `relative_to`, `condition_on`, `shift`, `pad`, `scale`
+- Spatial filtering: `is_in`, `filter_by`
+- Image extraction: `crop_image`
+- Ordering: `sort`
+- Metadata collection: `get_texts`, `get_info`
+- Serialization: `to_dict`
+- Tabular conversion: `to_dataframe`
+- Type grouping: `get_homogeneous_blocks`
+
+### Example: load and filter a layout
+
+```python
+from layoutparser.io.basic import load_json
+
+layout = load_json("page_layout.json")
+
+# Keep only blocks inside a target region.
+filtered_layout = layout.filter_by(target_region)
+
+# Sort blocks with a custom key.
+ordered_layout = filtered_layout.sort(
+    key=lambda block: block.coordinates(),
+)
+
+# Extract text values from text-capable blocks.
+texts = ordered_layout.get_texts()
+
+# Convert layout data into a pandas DataFrame.
+df = ordered_layout.to_dataframe()
+```
+
+## Loading and saving layout data
+
+### JSON and dictionaries
+
+Use `load_json` to load serialized layout data from disk, or `load_dict` for already-loaded Python data.
+
+```python
+from layoutparser.io.basic import load_dict, load_json
+
+layout = load_json("layout.json")
+
+data = [
+    {
+        # Serialized element data
+    }
+]
+layout_from_data = load_dict(data)
+```
+
+Both functions return either a single `BaseLayoutElement` or a `Layout`, depending on the input data.
+
+Layout elements and `Layout` objects can be serialized with `to_dict()`:
+
+```python
+serialized = layout.to_dict()
+```
+
+### CSV and pandas DataFrames
+
+```python
+import pandas as pd
+
+from layoutparser.io.basic import load_csv, load_dataframe
+
+layout = load_csv("regions.csv")
+
+df = pd.read_csv("regions.csv")
+layout_from_df = load_dataframe(df)
+
+# Optionally request a specific block type when loading.
+text_layout = load_dataframe(df, block_type="TextBlock")
+```
+
+## PDF support
+
+`load_pdf` extracts layout information from each page in a PDF. It can optionally return rendered page images alongside the page layouts.
+
+```python
+from layoutparser.io.pdf import load_pdf
+
+pages = load_pdf("document.pdf")
+
+for page_number, page_layout in enumerate(pages, start=1):
+    print(f"Page {page_number}: {len(page_layout)} layout elements")
+    print(page_layout.get_texts())
+```
+
+To retrieve page images as well:
+
+```python
+from layoutparser.io.pdf import load_pdf
+
+page_layouts, page_images = load_pdf(
+    "document.pdf",
+    load_images=True,
+    dpi=150,
+)
+
+for layout, image in zip(page_layouts, page_images):
+    cropped_regions = layout.crop_image(image)
+```
+
+For direct extraction from a PDF page object:
+
+```python
+from layoutparser.io.pdf import extract_words_for_page
+
+word_layout = extract_words_for_page(
+    page,
+    x_tolerance=1.5,
+    y_tolerance=2,
+    keep_blank_chars=False,
+    use_text_flow=True,
+)
+```
+
+## Layout detection models
+
+The library defines a common `BaseLayoutModel` interface for document-layout detection models. Implementations include:
+
+- `Detectron2LayoutModel`
+- `EfficientDetLayoutModel`
+- `PaddleDetectionLayoutModel`
+
+Each model exposes a `detect(image)` method and accepts NumPy arrays or PIL images through `image_loader(...)`.
+
+For backend-independent model construction, use `AutoLayoutModel`:
+
+```python
+from layoutparser.models.auto_layoutmodel import AutoLayoutModel
+
+model = AutoLayoutModel(
+    config_path="model-configuration",
+    model_path="optional-model-weights",
+    label_map={
+        0: "Text",
+        1: "Title",
+        2: "Table",
+    },
+    device="cpu",
+)
+
+layout = model.detect(image)
+
+for block in layout:
+    print(block.coordinates())
+```
+
+Model configuration strings can be inspected and normalized with the configuration helpers:
+
+```python
+from layoutparser.models.model_config import (
+    add_identifier_for_config,
+    is_lp_layout_model_config_any_format,
+    layout_model_config_parser,
+)
+
+config = "model-configuration"
+
+if is_lp_layout_model_config_any_format(config):
+    parsed = layout_model_config_parser(config)
+    print(parsed.full())
+    print(parsed.short())
+    print(parsed.brief())
+    print(parsed.dual())
+
+identified_config = add_identifier_for_config(config, "custom-id")
+```
+
+## OCR
+
+OCR support is provided through a common `BaseOCRAgent` interface. Available agent types include:
+
+- `TesseractAgent`
+- `GCVAgent`
+
+OCR feature-type enums are available as:
+
+- `TesseractFeatureType`
+- `GCVFeatureType`
+
+### Tesseract example
+
+```python
+from layoutparser.ocr.tesseract_agent import TesseractAgent
+
+ocr_agent = TesseractAgent.with_tesseract_executable(
+    "/path/to/tesseract"
+)
+
+layout = ocr_agent.detect(
+    image,
+    return_response=False,
+    return_only_text=False,
+)
+
+texts = layout.get_texts()
+```
+
+To retain the OCR engine response:
+
+```python
+response = ocr_agent.detect(
+    image,
+    return_response=True,
+)
+
+TesseractAgent.save_response(response, "ocr-response.json")
+loaded_response = TesseractAgent.load_response("ocr-response.json")
+```
+
+### Google Cloud Vision example
+
+```python
+from layoutparser.ocr.gcv_agent import GCVAgent
+
+ocr_agent = GCVAgent.with_credential(
+    "service-account.json"
+)
+
+layout = ocr_agent.detect(
+    image,
+    return_only_text=False,
+    agg_output_level=None,
+)
+
+for block in layout:
+    print(block.coordinates())
+```
+
+Google Cloud Vision responses can also be saved and restored:
+
+```python
+response = ocr_agent.detect(image, return_response=True)
+
+GCVAgent.save_response(response, "gcv-response.json")
+loaded_response = GCVAgent.load_response("gcv-response.json")
+```
+
+## Text grouping and line detection
+
+The `layoutparser.tools.shape_operations` module provides utilities for common document-text post-processing tasks.
+
+### Detect lines from text blocks
+
+```python
+from layoutparser.tools.shape_operations import simple_line_detection
+
+lines = simple_line_detection(
+    layout,
+    x_tolerance=10,
+    y_tolerance=10,
+)
+```
+
+### Group text blocks by category
+
+```python
+from layoutparser.tools.shape_operations import group_textblocks_based_on_category
+
+merged_groups = group_textblocks_based_on_category(
+    text_blocks,
+    union_group=True,
+)
+
+separate_groups = group_textblocks_based_on_category(
+    text_blocks,
+    union_group=False,
+)
+```
+
+### Generic one-dimensional connected-component analysis
+
+```python
+from layoutparser.tools.shape_operations import (
+    generalized_connected_component_analysis_1d,
+)
+
+groups = generalized_connected_component_analysis_1d(
+    sequence=items,
+    scoring_func=lambda left, right: int(left == right),
+    aggregation_func=lambda component: component,
+    default_score_value=0,
+)
+```
+
+## Visualization
+
+Use the visualization utilities to draw detected layout regions and associated text onto an image.
+
+### Draw region boxes
+
+```python
+from layoutparser.visualization import draw_box
+
+annotated = draw_box(
+    canvas=image,
+    layout=layout,
+    box_width=2,
+    box_alpha=0.5,
+    box_color="red",
+    show_element_id=True,
+    show_element_type=True,
+)
+```
+
+Color maps can be used to style blocks by category:
+
+```python
+from layoutparser.visualization import draw_box
+
+annotated = draw_box(
+    canvas=image,
+    layout=layout,
+    color_map={
+        "Text": "blue",
+        "Title": "green",
+        "Table": "orange",
+    },
+)
+```
+
+### Draw transparent regions
+
+```python
+from layoutparser.visualization import draw_transparent_box
+
+overlay = draw_transparent_box(
+    canvas=image,
+    blocks=layout,
+    color_map={"Text": "blue"},
+    alpha=0.25,
+)
+```
+
+### Draw text annotations
+
+```python
+from layoutparser.visualization import draw_text
+
+annotated = draw_text(
+    canvas=image,
+    layout=layout,
+    arrangement="lr",
+    font_size=14,
+    text_color="black",
+    with_box_on_text=True,
+    with_layout=True,
+)
+```
+
+## Backend availability
+
+Optional backend availability can be checked before creating models or OCR agents:
+
+```python
+from layoutparser.file_utils import (
+    is_detectron2_available,
+    is_effdet_available,
+    is_gcv_available,
+    is_paddle_available,
+    is_pytesseract_available,
+    is_torch_available,
+    is_torch_cuda_available,
+)
+
+print("Torch:", is_torch_available())
+print("CUDA:", is_torch_cuda_available())
+print("Detectron2:", is_detectron2_available())
+print("EfficientDet:", is_effdet_available())
+print("Paddle:", is_paddle_available())
+print("Tesseract:", is_pytesseract_available())
+print("Google Cloud Vision:", is_gcv_available())
+```
+
+Use `requires_backends(...)` when building integrations that need to validate optional dependencies:
+
+```python
+from layoutparser.file_utils import requires_backends
+
+requires_backends(SomeFeature, ["torch"])
+```
+
+## Typical workflow
+
+A typical document-processing workflow is:
+
+1. Load a document image or PDF.
+2. Use a layout model to detect document regions.
+3. Filter, sort, group, or transform the resulting `Layout`.
+4. Run OCR on the page or selected cropped regions.
+5. Export layout data to JSON, CSV-compatible data, or a pandas DataFrame.
+6. Visualize the results for inspection.
+
+```python
+from layoutparser.io.pdf import load_pdf
+from layoutparser.models.auto_layoutmodel import AutoLayoutModel
+from layoutparser.visualization import draw_box
+
+page_layouts, page_images = load_pdf(
+    "report.pdf",
+    load_images=True,
+)
+
+model = AutoLayoutModel(
+    config_path="model-configuration",
+    device="cpu",
+)
+
+for page_layout, page_image in zip(page_layouts, page_images):
+    detected_layout = model.detect(page_image)
+
+    detected_layout = detected_layout.sort(
+        key=lambda block: block.coordinates()
+    )
+
+    preview = draw_box(
+        page_image,
+        detected_layout,
+        show_element_type=True,
+    )
+```

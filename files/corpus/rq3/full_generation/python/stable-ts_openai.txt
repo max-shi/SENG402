@@ -1,0 +1,1051 @@
+# stable-ts
+
+`stable-ts` is a Python library for speech transcription workflows built around Whisper-compatible models. Its API focuses on producing and working with timestamped transcription results, including word-level timing, alignment, timestamp refinement, silence-aware adjustments, segment regrouping, subtitle export, audio preprocessing, and support for multiple Whisper model interfaces.
+
+A typical workflow is:
+
+1. Load a Whisper-compatible model.
+2. Transcribe audio into a `WhisperResult`.
+3. Optionally align or refine timestamps.
+4. Suppress or adjust timestamps around detected silence.
+5. Regroup, split, merge, or otherwise edit segments.
+6. Export text, JSON, SRT, VTT, TSV, ASS, or word-level subtitle output.
+
+## Features
+
+- **Whisper transcription with word timestamps**
+- **Stable word and segment timing results**
+- **Post-processing and segment regrouping**
+- **Text-to-audio alignment**
+- **Timestamp refinement**
+- **Silence detection and timestamp suppression**
+- **Audio loading, resampling, filtering, and denoising**
+- **Demucs, DFNet, and noise-reduction helpers**
+- **OpenAI Whisper-compatible, faster-whisper, Hugging Face, and MLX-oriented entry points**
+- **Subtitle and transcript export**
+- **Video comparison encoding for subtitle files**
+
+---
+
+## Core workflow
+
+The primary result type is `WhisperResult`. Transcription and alignment functions return this object, which provides operations for inspecting, editing, regrouping, and exporting timestamped content.
+
+```python
+from stable_whisper.whisper_word_level.original_whisper import load_model
+
+model = load_model("base")
+result = model.transcribe("meeting.wav")
+
+print(result.text())
+print(result.duration())
+
+result.regroup()
+result.to_dict()
+```
+
+Depending on model adaptation, transcription is available through functions such as:
+
+- `transcribe_stable(...)`
+- `transcribe_minimal(...)`
+- `faster_transcribe(...)`
+- `WhisperHF.transcribe(...)`
+- `WhisperMLX.transcribe(...)`
+- `transcribe_any(...)`
+
+---
+
+## Installation
+
+Install the package using your preferred Python package-management workflow. Some capabilities may rely on optional model backends or audio-processing dependencies.
+
+The API includes availability checks for optional components:
+
+```python
+from stable_whisper.audio.demucs import is_demucs_available
+from stable_whisper.audio.dfnet import is_dfnet_available
+from stable_whisper.audio.noisereduce import is_noisereduce_available
+from stable_whisper.audio.utils import is_ytdlp_available
+
+print("Demucs:", is_demucs_available())
+print("DFNet:", is_dfnet_available())
+print("Noise reduction:", is_noisereduce_available())
+print("yt-dlp:", is_ytdlp_available())
+```
+
+---
+
+# Transcription
+
+## OpenAI Whisper-compatible models
+
+Load a model with `load_model()` and call its stable transcription method.
+
+```python
+from stable_whisper.whisper_word_level.original_whisper import load_model
+
+model = load_model(
+    "base",
+    device="cuda",
+)
+
+result = model.transcribe(
+    "interview.mp3",
+    language="en",
+    task="transcribe",
+    word_timestamps=True,
+    regroup=True,
+    suppress_silence=True,
+    vad=True,
+    vad_threshold=0.35,
+    min_word_dur=0.1,
+    verbose=True,
+)
+
+print(result.text())
+```
+
+The stable transcription entry point supports extensive controls for decoding, timestamp generation, silence handling, audio processing, streaming, clipping, and resuming:
+
+```python
+result = model.transcribe(
+    "recording.wav",
+    temperature=(0.0, 0.2, 0.4),
+    initial_prompt="This is a technical discussion.",
+    word_timestamps=True,
+    suppress_silence=True,
+    suppress_word_ts=True,
+    vad=True,
+    min_silence_dur=0.2,
+    denoiser="demucs",
+    only_voice_freq=True,
+    regroup=True,
+)
+```
+
+You can also invoke the function directly:
+
+```python
+from stable_whisper.whisper_word_level.original_whisper import (
+    load_model,
+    transcribe_stable,
+)
+
+model = load_model("small")
+
+result = transcribe_stable(
+    model,
+    "lecture.wav",
+    word_timestamps=True,
+    regroup=True,
+)
+```
+
+## Minimal transcription
+
+Use `transcribe_minimal()` when you want a smaller configuration surface while retaining word timestamps and silence-related options.
+
+```python
+from stable_whisper.whisper_word_level.original_whisper import (
+    load_model,
+    transcribe_minimal,
+)
+
+model = load_model("base")
+
+result = transcribe_minimal(
+    model,
+    "note.m4a",
+    word_timestamps=True,
+    vad=True,
+    suppress_silence=True,
+    regroup=True,
+)
+```
+
+---
+
+## faster-whisper-style models
+
+Load a faster model with `load_faster_whisper()` and use its transcription method.
+
+```python
+from stable_whisper.whisper_word_level.faster_whisper import load_faster_whisper
+
+model = load_faster_whisper("base")
+
+result = model.transcribe(
+    "podcast.mp3",
+    word_timestamps=True,
+    regroup=True,
+    suppress_silence=True,
+    vad=True,
+)
+
+print(result.text())
+```
+
+The standalone transcription function is also available:
+
+```python
+from stable_whisper.whisper_word_level.faster_whisper import faster_transcribe
+
+result = faster_transcribe(
+    model,
+    "podcast.mp3",
+    word_timestamps=True,
+    progress_callback=lambda value: print("Progress:", value),
+)
+```
+
+---
+
+## Hugging Face pipeline models
+
+Create a Hugging Face Whisper wrapper with `load_hf_whisper()`.
+
+```python
+from stable_whisper.whisper_word_level.hf_whisper import load_hf_whisper
+
+model = load_hf_whisper(
+    "openai/whisper-base",
+    device="cuda",
+)
+
+result = model.transcribe(
+    "speech.wav",
+    language="en",
+    task="transcribe",
+    batch_size=24,
+    word_timestamps=True,
+    vad=True,
+    suppress_silence=True,
+)
+
+print(result.text())
+```
+
+`WhisperHF` exposes:
+
+- `sampling_rate()`
+- `model_name()`
+- `transcribe(...)`
+- `as_vanilla_model()`
+
+---
+
+## MLX-oriented models
+
+Use `load_mlx_whisper()` to construct an MLX-backed wrapper.
+
+```python
+from stable_whisper.whisper_word_level.mlx_whisper import load_mlx_whisper
+
+model = load_mlx_whisper("base")
+
+result = model.transcribe(
+    "speech.wav",
+    language="en",
+    word_timestamps=True,
+    regroup=True,
+    vad=True,
+)
+
+print(result.text())
+```
+
+---
+
+# Results and timestamps
+
+## `WhisperResult`
+
+`WhisperResult` represents a timestamped transcription. It provides result-wide operations such as silence adjustment, segment manipulation, splitting, merging, searching, and serialization.
+
+Common methods include:
+
+| Method | Purpose |
+|---|---|
+| `text()` | Return the transcription text. |
+| `duration()` | Return the result duration. |
+| `to_dict()` | Serialize the result into a dictionary. |
+| `segments_to_dicts()` | Export segment dictionaries. |
+| `all_words()` | Return all word-level timing objects. |
+| `all_tokens()` | Return all token IDs. |
+| `find()` | Search result content using a pattern. |
+| `regroup()` | Apply a regrouping operation. |
+| `reset()` | Reset the result state. |
+| `force_order()` | Force timestamp ordering. |
+| `raise_for_unsorted()` | Validate timestamp ordering. |
+
+### Inspecting results
+
+```python
+result = model.transcribe("audio.wav")
+
+print("Duration:", result.duration())
+print("Text:", result.text())
+
+data = result.to_dict()
+segments = result.segments_to_dicts()
+
+print(data)
+print(segments)
+```
+
+### Searching a transcription
+
+```python
+matches = result.find(r"\bimportant\b", word_level=True)
+
+print(matches.segment_indices())
+```
+
+### Getting content at a time range
+
+```python
+content = result.get_content_by_time(
+    (30.0, 45.0),
+    within=True,
+    segment_level=False,
+)
+
+for word in content:
+    print(word.to_display_str())
+```
+
+Set `segment_level=True` to retrieve matching `Segment` objects instead of words.
+
+---
+
+## `Segment`
+
+A `Segment` represents a timed portion of a result. It can contain word-level timing information and supports splitting, merging, locking, duration adjustment, and serialization.
+
+Useful operations include:
+
+- `text()`
+- `tokens()`
+- `start()` / `end()`
+- `duration()`
+- `word_count()`
+- `char_count()`
+- `to_dict()`
+- `split(...)`
+- `add(...)`
+- `add_words(...)`
+- `apply_min_dur(...)`
+- `suppress_silence(...)`
+- `lock_left()`, `lock_right()`, and `lock_both()`
+
+---
+
+## `WordTiming`
+
+A `WordTiming` object represents a word and its timing data.
+
+Useful methods include:
+
+- `start()` / `end()`
+- `duration()`
+- `to_dict()`
+- `to_display_str()`
+- `offset_time(...)`
+- `rescale_time(...)`
+- `round_all_timestamps()`
+- `suppress_silence(...)`
+- `lock_left()`, `lock_right()`, and `lock_both()`
+
+---
+
+# Editing and regrouping results
+
+## Split segments by gaps
+
+```python
+result.split_by_gap(
+    max_gap=0.5,
+    lock=False,
+    newline=False,
+)
+```
+
+## Merge nearby segments
+
+```python
+result.merge_by_gap(
+    min_gap=0.15,
+    max_words=12,
+    max_chars=80,
+)
+```
+
+## Split at punctuation
+
+```python
+result.split_by_punctuation(
+    punctuation=".?!",
+    min_words=3,
+)
+```
+
+Punctuation can also be provided as a list of strings or punctuation pairs.
+
+## Split by length or duration
+
+```python
+result.split_by_length(
+    max_chars=42,
+    max_words=8,
+    even_split=True,
+)
+
+result.split_by_duration(
+    max_dur=4.0,
+    even_split=True,
+)
+```
+
+## Merge all segments
+
+```python
+result.merge_all_segments()
+```
+
+## Remove repetitions or unwanted words
+
+```python
+result.remove_repetition(
+    max_words=2,
+    case_sensitive=False,
+)
+
+result.remove_words_by_str(
+    ["um", "uh", "you know"],
+    case_sensitive=False,
+)
+```
+
+## Lock timing boundaries
+
+Locks can be used to protect boundaries while regrouping or adjusting content.
+
+```python
+result.lock(
+    startswith="[",
+    endswith="]",
+    left=True,
+    right=True,
+)
+```
+
+To unlock all segment words:
+
+```python
+result.unlock_all_segments()
+```
+
+---
+
+# Alignment and refinement
+
+## Align text to audio
+
+`align()` aligns text, token IDs, or an existing `WhisperResult` against audio.
+
+```python
+from stable_whisper.alignment import align
+from stable_whisper.whisper_word_level.original_whisper import load_model
+
+model = load_model("base")
+
+aligned = align(
+    model,
+    "voiceover.wav",
+    "Welcome to the project demonstration.",
+    language="en",
+)
+
+if aligned is not None:
+    print(aligned.text())
+```
+
+The input text can be:
+
+- A string
+- A list of token IDs
+- A `WhisperResult`
+
+Example using an existing result:
+
+```python
+original = model.transcribe("voiceover.wav")
+
+aligned = align(
+    model,
+    "voiceover.wav",
+    original,
+    language="en",
+    remove_instant_words=True,
+    max_word_dur=3.0,
+)
+```
+
+## Add or replace word timings
+
+Use `align_words()` to align word timestamps for an existing result.
+
+```python
+from stable_whisper.alignment import align_words
+
+result = model.transcribe(
+    "presentation.wav",
+    word_timestamps=False,
+)
+
+aligned_result = align_words(
+    model,
+    "presentation.wav",
+    result,
+    language="en",
+    normalize_text=True,
+    inplace=True,
+)
+```
+
+## Refine existing timestamps
+
+`refine()` adjusts timestamps for a result that already contains timing information.
+
+```python
+from stable_whisper.alignment import refine
+
+result = model.transcribe("discussion.wav", word_timestamps=True)
+
+refined = refine(
+    model,
+    "discussion.wav",
+    result,
+    steps="se",
+    precision=0.02,
+    word_level=True,
+    inplace=True,
+)
+```
+
+Refinement options include probability and duration thresholds, word-level control, batch mode, and timestamp precision.
+
+## Locate text in audio
+
+Use `locate()` to find occurrences of text within an audio source.
+
+```python
+from stable_whisper.alignment import locate
+
+matches = locate(
+    model,
+    "long_recording.wav",
+    "thank you for listening",
+    language="en",
+    count=2,
+    duration_window=4.0,
+    probability_threshold=0.5,
+)
+
+for match in matches:
+    print(match)
+```
+
+---
+
+# Silence handling
+
+The library exposes silence-related APIs at several levels:
+
+- During transcription through `suppress_silence`, `vad`, `vad_threshold`, and related options.
+- On a result using `adjust_by_silence()`.
+- Directly through `suppress_silence()`.
+- Through VAD and non-VAD helpers.
+
+## Adjust a result by silence
+
+```python
+result = model.transcribe(
+    "call.wav",
+    word_timestamps=True,
+    suppress_silence=False,
+)
+
+result.adjust_by_silence(
+    "call.wav",
+    vad=True,
+    vad_threshold=0.35,
+    min_silence_dur=0.2,
+    word_level=True,
+)
+```
+
+## Suppress timestamps using known silence intervals
+
+```python
+import numpy as np
+from stable_whisper.stabilization import suppress_silence
+
+silent_starts = np.array([5.2, 17.8])
+silent_ends = np.array([6.0, 18.4])
+
+suppress_silence(
+    result,
+    silent_starts,
+    silent_ends,
+    min_word_dur=0.1,
+    nonspeech_error=0.1,
+)
+```
+
+## Obtain a VAD silence function
+
+```python
+from stable_whisper.stabilization import get_vad_silence_func
+
+silence_func = get_vad_silence_func(
+    onnx=False,
+    verbose=True,
+)
+```
+
+## Visualize suppression behavior
+
+```python
+from stable_whisper.stabilization import visualize_suppression
+
+visualize_suppression(
+    "audio.wav",
+    output="suppression.png",
+    vad=True,
+    vad_threshold=0.35,
+)
+```
+
+---
+
+# Audio preprocessing
+
+## Prepare audio
+
+`prep_audio()` accepts file paths, arrays, tensors, and bytes, returning a `torch.Tensor`.
+
+```python
+from stable_whisper.audio import prep_audio
+
+audio_tensor = prep_audio(
+    "recording.wav",
+    only_voice_freq=True,
+    verbose=True,
+)
+```
+
+Optional preprocessing settings include denoisers, Demucs options, voice-frequency filtering, output sample rate, and FFmpeg-only loading.
+
+```python
+audio_tensor = prep_audio(
+    "recording.wav",
+    denoiser="dfnet",
+    denoiser_options={},
+    only_voice_freq=True,
+)
+```
+
+## Load and resample audio
+
+```python
+from stable_whisper.audio.utils import load_audio, resample
+
+audio = load_audio("recording.wav", sr=16_000)
+audio_8k = resample(audio, in_sr=16_000, out_sr=8_000)
+```
+
+## Standardize arbitrary audio input
+
+```python
+from stable_whisper.audio.utils import standardize_audio
+
+audio_tensor = standardize_audio(
+    "recording.wav",
+    resample_sr=(None, 16_000),
+)
+```
+
+## Apply a voice-frequency filter
+
+```python
+from stable_whisper.audio.utils import voice_freq_filter
+
+filtered = voice_freq_filter(
+    audio_tensor,
+    sr=16_000,
+    lower_freq=100,
+    upper_freq=8_000,
+)
+```
+
+## Save processed audio
+
+```python
+from stable_whisper.audio.output import save_audio_tensor
+
+save_audio_tensor(
+    audio_tensor,
+    path="processed.wav",
+    sr=16_000,
+    overwrite=True,
+)
+```
+
+---
+
+# Denoising helpers
+
+The audio API provides dedicated helpers for several denoising paths.
+
+## Demucs
+
+```python
+from stable_whisper.audio.demucs import demucs_audio
+
+clean_audio = demucs_audio(
+    "music_and_speech.wav",
+    output_sr=16_000,
+    verbose=True,
+)
+```
+
+## DFNet
+
+```python
+from stable_whisper.audio.dfnet import dfnet_audio
+
+clean_audio = dfnet_audio(
+    "noisy_speech.wav",
+    output_sr=16_000,
+)
+```
+
+## Noise reduction
+
+```python
+from stable_whisper.audio.noisereduce import noisereduce_audio
+
+clean_audio = noisereduce_audio(
+    "noisy_speech.wav",
+    output_sr=16_000,
+    device="cuda",
+)
+```
+
+---
+
+# `AudioLoader`
+
+`AudioLoader` is an audio input type accepted by several transcription and alignment APIs. It exposes methods for chunked or streamed processing, duration queries, callbacks, saving intermediate audio, and navigation between loaded sections.
+
+Selected methods include:
+
+- `get_duration()`
+- `get_total_samples()`
+- `next_chunk(...)`
+- `next_valid_chunk(...)`
+- `skip_to_next_section()`
+- `terminate()`
+- `save_denoised_audio(...)`
+- `save_final_audio(...)`
+- `update_post_prep_callback(...)`
+
+This makes it suitable for workflows that need to load audio progressively rather than supplying a single file path or tensor.
+
+---
+
+# Subtitle and text export
+
+The text-output helpers accept result dictionaries or segment lists. Convert a `WhisperResult` using `to_dict()` or `segments_to_dicts()` before export.
+
+## Save JSON
+
+```python
+from stable_whisper.text_output import save_as_json
+
+save_as_json(
+    result.to_dict(),
+    "transcript.json",
+    ensure_ascii=False,
+)
+```
+
+Load it again later:
+
+```python
+from stable_whisper.text_output import load_result
+
+data = load_result("transcript.json")
+```
+
+## Export SRT
+
+```python
+from stable_whisper.text_output import result_to_srt_vtt
+
+result_to_srt_vtt(
+    result.to_dict(),
+    filepath="transcript.srt",
+    vtt=False,
+    segment_level=True,
+    word_level=True,
+)
+```
+
+## Export WebVTT
+
+```python
+result_to_srt_vtt(
+    result.to_dict(),
+    filepath="transcript.vtt",
+    vtt=True,
+)
+```
+
+## Export TSV
+
+```python
+from stable_whisper.text_output import result_to_tsv
+
+result_to_tsv(
+    result.to_dict(),
+    filepath="transcript.tsv",
+    segment_level=True,
+    word_level=True,
+)
+```
+
+## Export ASS subtitles
+
+```python
+from stable_whisper.text_output import result_to_ass
+
+result_to_ass(
+    result.to_dict(),
+    filepath="transcript.ass",
+    font="Arial",
+    font_size=28,
+    karaoke=True,
+)
+```
+
+## Export plain text
+
+```python
+from stable_whisper.text_output import result_to_txt
+
+result_to_txt(
+    result.to_dict(),
+    filepath="transcript.txt",
+)
+```
+
+## Convert timestamps manually
+
+```python
+from stable_whisper.text_output import sec2srt, sec2vtt, sec2ass
+
+print(sec2srt(65.432))
+print(sec2vtt(65.432))
+print(sec2ass(65.432))
+```
+
+---
+
+# Generic transcription adapter
+
+`transcribe_any()` provides a way to run an arbitrary inference function and normalize its output into a `WhisperResult`.
+
+```python
+from stable_whisper.non_whisper.transcribe import transcribe_any
+
+def my_inference(audio, **kwargs):
+    # Return data produced by a custom speech-recognition backend.
+    return {
+        "segments": [],
+        "text": "",
+    }
+
+result = transcribe_any(
+    my_inference,
+    "input.wav",
+    audio_type="path",
+    model_sr=16_000,
+    regroup=True,
+    suppress_silence=True,
+    vad=True,
+)
+```
+
+This is useful when integrating a backend that is not exposed through one of the dedicated Whisper wrappers.
+
+---
+
+# Result validation and utility helpers
+
+## Timestamp validation
+
+```python
+from stable_whisper.stabilization.utils import valid_ts
+
+is_valid = valid_ts(result.segments_to_dicts())
+print(is_valid)
+```
+
+## Verify ascending values
+
+```python
+from stable_whisper.stabilization.utils import is_ascending_sequence
+
+print(is_ascending_sequence([0.0, 1.2, 1.5, 3.0]))
+```
+
+## Format timestamps
+
+```python
+from stable_whisper.utils import format_timestamp
+
+print(format_timestamp(3723.45, always_include_hours=True))
+```
+
+## Configure global overwrite behavior
+
+```python
+from stable_whisper.default import set_global_overwrite_permission
+
+set_global_overwrite_permission(True)
+```
+
+---
+
+# Video subtitle comparison
+
+`encode_video_comparison()` can encode a comparison video using an audio file and one or more subtitle files.
+
+```python
+from stable_whisper.video_output import encode_video_comparison
+
+output_path = encode_video_comparison(
+    "audio.wav",
+    subtitle_files=[
+        "original.srt",
+        "refined.srt",
+    ],
+    output_videopath="comparison.mp4",
+    labels=["Original", "Refined"],
+    overwrite=True,
+)
+
+print(output_path)
+```
+
+Set `only_cmd=True` to obtain the generated command rather than running the encoding operation.
+
+---
+
+# Quantization
+
+The quantization utilities operate on PyTorch modules and Whisper-compatible models.
+
+```python
+from stable_whisper.quantization import ptdq_linear
+from stable_whisper.whisper_word_level.original_whisper import load_model
+
+model = load_model("base", device="cpu")
+ptdq_linear(model)
+```
+
+For more general module replacement:
+
+```python
+from stable_whisper.quantization import replace_modules
+
+replace_modules(model, only_linear=True)
+```
+
+---
+
+# Command-line entry point
+
+A CLI function is available:
+
+```python
+from stable_whisper.whisper_word_level.cli import cli
+
+cli()
+```
+
+You may also provide a command string programmatically:
+
+```python
+cli("--help")
+```
+
+---
+
+# Typical end-to-end example
+
+```python
+from stable_whisper.whisper_word_level.original_whisper import load_model
+from stable_whisper.alignment import refine
+from stable_whisper.text_output import result_to_srt_vtt, save_as_json
+
+# 1. Load a model.
+model = load_model("base", device="cuda")
+
+# 2. Transcribe with word timing and silence handling.
+result = model.transcribe(
+    "session.wav",
+    language="en",
+    word_timestamps=True,
+    vad=True,
+    suppress_silence=True,
+    min_word_dur=0.1,
+    regroup=True,
+)
+
+# 3. Refine timestamps.
+result = refine(
+    model,
+    "session.wav",
+    result,
+    word_level=True,
+    precision=0.02,
+    inplace=True,
+)
+
+# 4. Regroup subtitles into readable chunks.
+result.split_by_punctuation(
+    punctuation=".?!",
+    min_words=2,
+)
+
+result.split_by_length(
+    max_chars=42,
+    max_words=9,
+)
+
+# 5. Export the final result.
+save_as_json(result.to_dict(), "session.json", ensure_ascii=False)
+
+result_to_srt_vtt(
+    result.to_dict(),
+    filepath="session.srt",
+    vtt=False,
+    segment_level=True,
+    word_level=True,
+)
+
+print(result.text())
+```

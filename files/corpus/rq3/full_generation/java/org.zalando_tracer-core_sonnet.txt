@@ -1,0 +1,140 @@
+# tracer-core
+
+`tracer-core` is a small Java library for generating and propagating **trace IDs** (also known as correlation IDs or flow IDs) through an application. It is designed to help correlate log entries, requests, and asynchronous tasks across threads and executors, making it easier to trace a single logical operation through a distributed or multi-threaded system.
+
+## Overview
+
+At the heart of the library is the `Tracer` interface, which manages one or more named traces. Each trace has a name (e.g. `X-Flow-ID`) and a generated value that can be started, retrieved, propagated across threads, and stopped.
+
+### Core concepts
+
+- **`Tracer`** — the central entry point. It starts and stops traces, exposes the current trace values, and provides helpers to wrap `Runnable`/`Callable` tasks so that trace context is carried over to other threads.
+- **`Trace`** — represents a single named trace and its current value (`getName()`, `getValue()`).
+- **`Generator`** — a strategy for creating trace values. Several implementations are provided:
+  - `UUIDGenerator` — generates a standard UUID.
+  - `Random64Generator` / `Random128Generator` — generate random 64-bit / 128-bit identifiers.
+  - `FlowIDGenerator` — generates flow-style identifiers suitable for request tracing.
+  - `PhraseGenerator` — generates human-readable phrase-based identifiers.
+- **`TraceListener`** — a callback interface invoked when a trace starts (`onStart`) or stops (`onStop`). Useful for logging or integrating with other systems.
+  - `LoggingTraceListener` — logs trace start/stop events via SLF4J.
+  - `MDCTraceListener` — copies trace values into SLF4J's MDC (Mapped Diagnostic Context) so they appear in log output.
+  - `StackedTraceListener` / `StackedMDCTraceListener` — like `MDCTraceListener`, but supports nested/stacked trace scopes (e.g. when a trace name is reused in nested contexts).
+- **`TracingExecutors`** — utility class that wraps `Executor`, `ExecutorService`, and `ScheduledExecutorService` instances so that trace context is automatically propagated to tasks submitted to them.
+
+### Creating a Tracer
+
+A `Tracer` can be created in two ways:
+
+```java
+// Simple creation with default generators for each named trace
+Tracer tracer = Tracer.create("X-Flow-ID", "X-Request-ID");
+```
+
+```java
+// Full control via the builder
+Tracer tracer = Tracer.builder()
+        .trace("X-Flow-ID", new FlowIDGenerator())
+        .trace("X-Request-ID", new UUIDGenerator())
+        .listener(new LoggingTraceListener())
+        .listener(new MDCTraceListener())
+        .build();
+```
+
+(See `TracerFactory.Builder` for the exact builder API.)
+
+## Basic Usage
+
+### Starting and stopping a trace
+
+```java
+Tracer tracer = Tracer.create("X-Flow-ID");
+
+// Start all traces with freshly generated values
+tracer.start();
+
+Trace flowId = tracer.get("X-Flow-ID");
+System.out.println(flowId.getName() + " = " + flowId.getValue());
+
+// ... handle a request ...
+
+tracer.stop();
+```
+
+### Starting a trace with externally supplied values
+
+If trace values already exist (e.g. from an incoming HTTP header), you can supply them via a `Function<String, String>` provider instead of generating new ones:
+
+```java
+Map<String, String> incomingHeaders = extractHeaders(request);
+
+tracer.start(name -> incomingHeaders.get(name));
+```
+
+### Inspecting all active traces
+
+```java
+tracer.forEach((name, value) -> System.out.println(name + ": " + value));
+
+Map<String, String> snapshot = tracer.snapshot();
+```
+
+### Propagating trace context to other threads
+
+`Tracer` provides convenience methods to wrap tasks so trace values follow them across threads:
+
+```java
+ExecutorService executor = Executors.newFixedThreadPool(4);
+
+Runnable task = () -> System.out.println("Running with trace: " + tracer.get("X-Flow-ID").getValue());
+
+// Wrap a single task
+executor.submit(tracer.manage(task));
+
+// Or wrap the whole executor so every submitted task is traced
+ExecutorService tracedExecutor = TracingExecutors.manage(executor, tracer);
+tracedExecutor.submit(task);
+```
+
+The `manage`, `preserve`, and `tryPreserve` variants (available both on `Tracer` and `TracingExecutors`) differ in how they treat the current thread's trace context when submitting the wrapped task:
+
+- **`manage`** — starts a new trace context for the task and cleans it up afterward.
+- **`preserve`** — captures the currently active trace values at submission time and re-applies them when the task runs, restoring the previous state afterward.
+- **`tryPreserve`** — like `preserve`, but only acts if a trace context is currently active, avoiding starting one unnecessarily.
+
+A `delegate` variant is also available, which lets you supply your own `Function<String, String>` provider to resolve trace values when the task runs, instead of relying on generators or captured context.
+
+### Using MDC integration for logging
+
+```java
+Tracer tracer = Tracer.builder()
+        .trace("X-Flow-ID", new FlowIDGenerator())
+        .listener(new MDCTraceListener())
+        .build();
+
+tracer.start();
+// Trace values are now available in MDC and will appear in log patterns like %X{X-Flow-ID}
+logger.info("Handling request");
+tracer.stop();
+```
+
+For scenarios where the same trace name may be nested (e.g. recursive calls or nested request scopes), use `StackedMDCTraceListener` instead of `MDCTraceListener` to correctly push and pop values.
+
+## Executors
+
+`TracingExecutors` mirrors the `Tracer`'s task-wrapping semantics at the executor level, so you don't need to wrap every submitted task individually:
+
+```java
+ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+ScheduledExecutorService tracedScheduler = TracingExecutors.preserve(scheduler, tracer);
+
+tracedScheduler.schedule(() -> {
+    // runs with the trace context captured at schedule() time
+}, 5, TimeUnit.SECONDS);
+```
+
+## Summary
+
+- Use `Tracer.create(...)` or `Tracer.builder()` to configure named traces and generators.
+- Call `tracer.start()` / `tracer.start(provider)` at the beginning of a unit of work, and `tracer.stop()` at the end.
+- Use `TraceListener` implementations (`LoggingTraceListener`, `MDCTraceListener`, `StackedMDCTraceListener`) to integrate with logging.
+- Use `Tracer`'s task-wrapping methods or `TracingExecutors` to propagate trace context across threads and executors.

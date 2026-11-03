@@ -1,0 +1,421 @@
+# org.openbase:jps
+
+`org.openbase:jps` is a Java property and command-line configuration library. It provides a typed property model, a central `JPService` for registering and parsing properties, and a set of ready-made property types for common values such as booleans, numbers, strings, files, directories, enums, classes, lists, and maps.
+
+Applications define properties as classes, register them with `JPService`, parse application arguments, and then retrieve typed values from the service.
+
+## Core concepts
+
+### Properties
+
+`AbstractJavaProperty<V>` is the base type for all properties.
+
+A property has:
+
+- A value type `V`
+- One or more string identifiers supplied at construction time
+- A description
+- An optional registered default value
+- Parsing state, available through `isParsed()`
+- Syntax and example metadata through `getSyntax()` and `getDefaultExample()`
+- Optional dependencies exposed by `getDependencyList()`
+
+The base class provides:
+
+```java
+V getValue();
+void update(V value);
+V getDefaultValue() throws JPNotAvailableException;
+boolean isParsed();
+ValueType getValueType();
+List<Class<? extends AbstractJavaProperty<?>>> getDependencyList();
+```
+
+Custom properties normally extend one of the preset property types and provide a human-readable description.
+
+### `JPService`
+
+`JPService` is the static service used to configure and access properties. Its responsibilities include:
+
+- Setting application and submodule names
+- Registering property classes and default values
+- Parsing argument arrays or lists
+- Retrieving parsed values and property instances
+- Printing help and errors
+- Managing application logger selection
+- Supporting test mode and service reset
+
+The usual lifecycle is:
+
+1. Set an application name, if desired.
+2. Register property classes.
+3. Parse application arguments.
+4. Read typed property values.
+
+```java
+JPService.setApplicationName("example-app");
+JPService.registerProperty(MyProperty.class, defaultValue);
+JPService.parse(args);
+
+ValueType value = JPService.getValue(MyProperty.class);
+```
+
+### Preset property types
+
+The `org.openbase.jps.preset` package supplies base classes for common Java value types:
+
+| Property base class | Value type |
+|---|---|
+| `AbstractJPBoolean` | `Boolean` |
+| `AbstractJPInteger` | `Integer` |
+| `AbstractJPLong` | `Long` |
+| `AbstractJPFloat` | `Float` |
+| `AbstractJPDouble` | `Double` |
+| `AbstractJPString` | `String` |
+| `AbstractJPTime` | `Long` |
+| `AbstractJPClass<C>` | `Class<C>` |
+| `AbstractJPEnum<E>` | `E` |
+| `AbstractJPMethod<C>` | `Method` |
+| `AbstractJPList<VALUE>` | `List<VALUE>` |
+| `AbstractJPListString` | `List<String>` |
+| `AbstractJPMap<KEY, VALUE>` | `Map<KEY, VALUE>` |
+| `AbstractJPMapStringString` | `Map<String, String>` |
+| `AbstractJPFile` | `File` |
+| `AbstractJPDirectory` | `File` |
+
+The class and enum property bases expose `detectTypeClass()`, which returns the detected class associated with the generic property type.
+
+### Built-in properties
+
+The library includes several predefined property classes that may be registered when an application needs their behavior:
+
+- `JPHelp`
+- `JPVerbose`
+- `JPDebugMode`
+- `JPVisualDebugMode`
+- `JPForce`
+- `JPTestMode`
+- `JPInitialize`
+- `JPShowGUI`
+- `JPReadOnly`
+- `JPReset`
+- `JPLocale`
+- `JPLogLevel`
+- `JPPropertyFile`
+- `JPPrefix`
+- `JPLocalUserPrefix`
+- `JPSystemDirectory`
+- `JPShareDirectory`
+- `JPVarDirectory`
+- `JPTmpDirectory`
+
+`JPService` also provides convenience checks for several modes:
+
+```java
+boolean test = JPService.testMode();
+boolean verbose = JPService.verboseMode();
+boolean force = JPService.forceMode();
+boolean debug = JPService.debugMode();
+```
+
+## Installation
+
+Add `org.openbase:jps` to your Java build using the dependency coordinates appropriate for your build tool:
+
+```text
+org.openbase:jps
+```
+
+## Quick start
+
+The following example defines an integer property, registers it with a default value, parses the application arguments, and retrieves the resulting value.
+
+```java
+import org.openbase.jps.core.JPService;
+import org.openbase.jps.exception.JPServiceException;
+import org.openbase.jps.preset.AbstractJPInteger;
+
+public final class ExampleApplication {
+
+    public static final class Port extends AbstractJPInteger {
+
+        public Port() {
+            super(new String[]{"port"});
+        }
+
+        @Override
+        public String getDescription() {
+            return "The TCP port used by the application.";
+        }
+    }
+
+    public static void main(String[] args) throws JPServiceException {
+        JPService.setApplicationName("example-application");
+
+        // Register the property and its default value.
+        JPService.registerProperty(Port.class, 8080);
+
+        // Parse the supplied application arguments.
+        JPService.parse(args);
+
+        // Retrieve the resolved typed value.
+        int port = JPService.getValue(Port.class);
+
+        System.out.println("Starting on port " + port);
+    }
+}
+```
+
+The property identifier is supplied to the superclass constructor as a `String[]`. The service can then use the registered property while parsing the argument array supplied to `parse`.
+
+## Defining properties
+
+A property can be created by extending a preset type. For example, a string property:
+
+```java
+import org.openbase.jps.preset.AbstractJPString;
+
+public final class ConfigurationName extends AbstractJPString {
+
+    public ConfigurationName() {
+        super(new String[]{"configuration-name"});
+    }
+
+    @Override
+    public String getDescription() {
+        return "Name of the active configuration.";
+    }
+}
+```
+
+Register it before parsing:
+
+```java
+JPService.registerProperty(ConfigurationName.class, "default");
+JPService.parse(args);
+
+String configurationName = JPService.getValue(ConfigurationName.class);
+```
+
+For a property without a supplied default value, use the `getValue` overload that accepts an alternative:
+
+```java
+String configurationName =
+        JPService.getValue(ConfigurationName.class, "fallback");
+```
+
+## Pre-evaluating a value
+
+`JPService.getPreEvaluatedValue` evaluates a property from a supplied argument array without requiring callers to first retrieve the property through the normal parsed configuration flow.
+
+```java
+int port = JPService.getPreEvaluatedValue(
+        ExampleApplication.Port.class,
+        args,
+        8080);
+```
+
+An overload without an alternative value is also available:
+
+```java
+int port = JPService.getPreEvaluatedValue(
+        ExampleApplication.Port.class,
+        args);
+```
+
+This overload may throw `JPServiceException` if the value cannot be made available.
+
+## Working with registered properties
+
+Use `getProperty` when access to the property object itself is needed:
+
+```java
+ExampleApplication.Port portProperty =
+        JPService.getProperty(ExampleApplication.Port.class);
+
+boolean parsed = portProperty.isParsed();
+Integer value = portProperty.getValue();
+String syntax = portProperty.getSyntax();
+String description = portProperty.getDescription();
+```
+
+Defaults can be replaced after registration:
+
+```java
+JPService.overwriteDefaultValue(ExampleApplication.Port.class, 9090);
+```
+
+A property instance can also be updated directly:
+
+```java
+portProperty.update(10000);
+```
+
+## Help and error handling
+
+`JPService` can print generated help information:
+
+```java
+JPService.printHelp();
+```
+
+For command-line programs that should report parsing failures and terminate, use:
+
+```java
+JPService.parseAndExitOnError(args);
+```
+
+Errors can also be printed explicitly:
+
+```java
+try {
+    JPService.parse(args);
+} catch (JPServiceException exception) {
+    JPService.printError("Unable to parse application arguments.", exception);
+}
+```
+
+`awaitUserConfirmationOrExit` is available for flows that require an explicit user confirmation:
+
+```java
+JPService.awaitUserConfirmationOrExit(
+        "This operation will modify local files. Continue?",
+        "Operation cancelled.",
+        1);
+```
+
+## Files and directories
+
+`AbstractJPFile` and `AbstractJPDirectory` represent `File`-valued properties. They are constructed with file handling settings:
+
+```java
+new AbstractJPFile(
+    new String[]{"output"},
+    existenceHandling,
+    autoCreateMode
+);
+```
+
+File properties expose:
+
+```java
+AutoMode autoCreateMode = property.getAutoCreateMode();
+ExistenceHandling existenceHandling = property.getExistenceHandling();
+FileType type = property.getType();
+
+File parent = property.getParentDirectory();
+property.validate();
+```
+
+`AbstractJPFile.convertIntoValidFileName` can be used when deriving a file name from arbitrary text:
+
+```java
+String safeName = AbstractJPFile.convertIntoValidFileName("report: April/May");
+```
+
+For direct file handling outside the property system, `FileHandler` provides overloads that accept either a URI string or a `File`:
+
+```java
+File result = FileHandler.handle(
+        uri,
+        fileType,
+        existenceHandling,
+        autoMode);
+```
+
+A custom `FileCreator` can be supplied when creation behavior is needed:
+
+```java
+File result = FileHandler.handle(
+        file,
+        fileType,
+        existenceHandling,
+        autoMode,
+        creator);
+```
+
+## Testing
+
+`JPService` offers support for test-oriented configuration:
+
+```java
+JPService.setupJUnitTestMode();
+```
+
+The service state can be cleared between tests:
+
+```java
+JPService.reset();
+```
+
+A typical test setup might look like:
+
+```java
+import org.openbase.jps.core.JPService;
+import org.openbase.jps.exception.JPServiceException;
+
+public class PropertyTestSetup {
+
+    public void configure() throws JPServiceException {
+        JPService.reset();
+        JPService.setupJUnitTestMode();
+
+        JPService.registerProperty(
+                ExampleApplication.Port.class,
+                8080);
+    }
+}
+```
+
+## Exceptions
+
+All library-specific checked exceptions derive from `JPServiceException`:
+
+- `JPServiceException` — general service failure
+- `JPBadArgumentException` — invalid argument-related input
+- `JPParsingException` — parsing failure
+- `JPValidationException` — property validation failure
+- `JPNotAvailableException` — requested property value is unavailable
+- `JPInitializationException` — initialization failure
+
+Most application code can handle the common base type:
+
+```java
+try {
+    JPService.parse(args);
+    int port = JPService.getValue(ExampleApplication.Port.class);
+} catch (JPServiceException exception) {
+    JPService.printError(exception);
+}
+```
+
+## Logging
+
+Applications may obtain an application logger through `JPService`:
+
+```java
+Logger logger = JPService.getApplicationLogger();
+```
+
+A fallback logger can be provided:
+
+```java
+Logger logger = JPService.getApplicationLogger(defaultLogger);
+```
+
+## Utility methods
+
+`JPService.newLineFormatter` formats text with a caller-provided line separator and maximum line length:
+
+```java
+String formatted = JPService.newLineFormatter(
+        text,
+        System.lineSeparator(),
+        80);
+```
+
+The argument array last supplied to the service can be retrieved using:
+
+```java
+String[] parsedArgs = JPService.getArgs();
+```

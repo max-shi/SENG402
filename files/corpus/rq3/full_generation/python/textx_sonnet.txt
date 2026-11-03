@@ -1,0 +1,340 @@
+# textX
+
+textX is a meta-language and Python framework for building Domain-Specific
+Languages (DSLs). You describe the grammar of your language in a small,
+declarative textX grammar language, and textX builds a **meta-model** for
+you. From that meta-model you can parse ("instantiate") textual models into
+plain Python object graphs, without writing any parser code by hand.
+
+textX also provides tooling around the core parsing/meta-model machinery:
+
+- A command-line interface (`textx`) for checking models, listing registered
+  languages/generators, and generating output artifacts.
+- Export utilities to visualize meta-models and models as diagrams (Graphviz
+  `.dot` and PlantUML).
+- A scoping subsystem for resolving cross-references between model objects,
+  including references across multiple model files, custom name-lookup
+  strategies, and a relative-reference expression language (RREL).
+- A registration mechanism so third-party packages can register their own
+  textX-based languages and code generators, discoverable via entry points
+  and the CLI.
+
+## Installation
+
+```
+pip install textx
+```
+
+## Core concepts
+
+### Meta-models
+
+A meta-model is created from a grammar description (a string or a file
+written in the textX grammar language). The meta-model knows the rules of
+your language and can be used repeatedly to parse ("instantiate") models.
+
+```python
+from textx import metamodel_from_str, metamodel_from_file
+
+grammar = '''
+Model: entities+=Entity;
+Entity: 'entity' name=ID '{' attributes+=Attribute '}';
+Attribute: name=ID ':' type=ID;
+'''
+
+mm = metamodel_from_str(grammar)
+# or
+mm = metamodel_from_file('mydsl.tx')
+```
+
+Key entry points:
+
+- `metamodel_from_str(lang_desc, metamodel=None, **kwargs)` – build a
+  meta-model from a grammar string.
+- `metamodel_from_file(file_name, **kwargs)` – build a meta-model from a
+  grammar file.
+- `TextXMetaModel` – the resulting meta-model object. Notable methods:
+  - `model_from_str(model_str, file_name=None, ...)` / `model_from_file(file_name, ...)` –
+    parse a textual model into a Python object graph.
+  - `register_model_processor(model_processor)` – hook that runs after a
+    model (and all imported models) is fully constructed and resolved.
+  - `register_obj_processors(obj_processors)` – hooks that run when
+    instances of specific rules are created, useful for validation or
+    value post-processing.
+  - `register_scope_providers(sp)` – configure how cross-references are
+    resolved for particular rules/attributes.
+  - `validate()` / `validate_user_classes()` – sanity-check the meta-model
+    and any user-supplied classes mapped to grammar rules.
+- `TextXMetaMetaModel` – a meta-meta-model level object exposing
+  `metamodel()`, `model_from_str`/`model_from_file`, and
+  `grammar_model_from_str`/`grammar_model_from_file`, useful for working
+  with the textX grammar language itself as a textX-defined language.
+
+### Models
+
+Once you have a meta-model, calling `model_from_str`/`model_from_file`
+returns a Python object graph representing your model. Each grammar rule
+becomes a Python class (a `TextXMetaClass` instance), and rule instances
+become objects of these classes, with attributes filled in as declared by
+the grammar (`MetaAttr`).
+
+```python
+model = mm.model_from_str('''
+entity Person {
+    name: string
+    age: int
+}
+''')
+
+for entity in model.entities:
+    print(entity.name, [a.name for a in entity.attributes])
+```
+
+### Working with model objects (`textx.model`)
+
+Utility functions operate on any object inside a parsed model:
+
+- `get_model(obj)` – get the root model object containing `obj`.
+- `get_metamodel(obj)` – get the meta-model that produced `obj`'s model.
+- `get_parent_of_type(typ, obj)` – walk up the containment tree to find an
+  ancestor of a given type/rule name.
+- `get_children(selector, root, ...)` / `get_children_of_type(typ, root, ...)` –
+  traverse the object graph, optionally filtering by a predicate or type.
+- `get_location(model_obj)` – get file/line/column info for error messages
+  and diagnostics.
+- `textx_isinstance(obj, obj_cls)` – type-check against textX meta-classes.
+- `textxerror_wrap(obj_processor)` – wrap an object processor so that any
+  exception it raises is turned into a `TextXError` with position info.
+
+```python
+from textx import get_children_of_type, get_parent_of_type, get_model
+
+attrs = get_children_of_type('Attribute', model)
+for attr in attrs:
+    owner_entity = get_parent_of_type('Entity', attr)
+    print(f'{attr.name} belongs to {owner_entity.name}')
+```
+
+### Errors
+
+All textX errors derive from `TextXError`:
+
+- `TextXSyntaxError` – raised when the input text does not conform to the
+  grammar.
+- `TextXSemanticError` – raised for semantic issues (e.g. unresolved
+  references, failed object processors).
+- `TextXRegistrationError` – raised for problems registering languages or
+  generators.
+
+```python
+from textx.exceptions import TextXSyntaxError, TextXSemanticError
+
+try:
+    model = mm.model_from_str(bad_input)
+except TextXSyntaxError as e:
+    print('Syntax error:', e)
+except TextXSemanticError as e:
+    print('Semantic error:', e)
+```
+
+## Model parameters
+
+`ModelParams` and `ModelParamDefinitions` support passing named parameters
+into model loading (e.g., for parametrized model imports), including
+declaring expected parameters with descriptions and validating supplied
+values against them via `check_params(source, **kwargs)`.
+
+## Scoping and cross-references
+
+Real-world DSLs often need references between objects — within one model
+file or across several. The `textx.scoping` package and
+`textx.scoping.providers` module supply this.
+
+- `GlobalModelRepository` / `ModelRepository` – manage the set of loaded
+  models (including imported/related models), track which models have been
+  loaded, and provide callbacks used during reference resolution.
+- `ModelLoader` – base for objects that need to load additional models
+  (e.g., import providers) via `load_models(model)`.
+- Helper functions: `get_all_models_including_attached_models(model)`,
+  `get_included_models(model)`, `is_file_included(filename, model)`,
+  `remove_models_from_repositories(models, models_to_be_removed)`.
+
+Common scope providers (register these with
+`metamodel.register_scope_providers(...)`):
+
+- `PlainName` – simple by-name lookup within the local model.
+- `FQN` – fully-qualified name lookup (dotted paths) across the model.
+- `ImportURI`, `FQNImportURI`, `PlainNameImportURI` – resolve references to
+  objects defined in other files, loaded via import statements in the
+  grammar/model.
+- `GlobalRepo`, `FQNGlobalRepo`, `PlainNameGlobalRepo` – share a global
+  repository of models matched by filename pattern, useful when many models
+  reference a common set of files without explicit imports.
+- `RelativeName`, `ExtRelativeName` – resolve references relative to a
+  containing object, with `get_reference_propositions(obj, attr, name_part)`
+  supporting IDE-style auto-completion.
+
+```python
+from textx.scoping.providers import FQN
+
+mm.register_scope_providers({'*.*': FQN()})
+```
+
+### RREL — relative reference expression language
+
+`textx.scoping.rrel` implements a small expression language (parent
+navigation, dotted paths, brackets, repetition) for describing how to
+resolve a reference relative to the referencing object. Use
+`create_rrel_scope_provider(rrel_tree_or_string, split_string=None, **kwargs)`
+to turn an RREL expression into a scope provider, or use `parse(rrel_expression)`,
+`find(obj, lookup_list, rrel_tree, ...)` and `find_object_with_path(...)`
+for lower-level control.
+
+```python
+from textx.scoping.rrel import create_rrel_scope_provider
+
+mm.register_scope_providers({
+    'Reference.target': create_rrel_scope_provider('^parent.entities')
+})
+```
+
+### Scoping tools
+
+`textx.scoping.tools` offers helper utilities frequently used inside custom
+scope providers and obj/model processors:
+
+- `needs_to_be_resolved(parent_obj, attr_name)`
+- `get_list_of_concatenated_objects(def_obj, path_to_extension)`
+- `get_parser(model_obj)`
+- `get_recursive_parent_with_typename(obj, desired_parent_typename)`
+- `get_named_obj_in_list(obj_list, name)`
+- `resolve_model_path(obj, dot_separated_name, follow_named_element_in_lists=False)`
+- `get_unique_named_object_in_all_models(root, name)`,
+  `get_unique_named_object(root, name)`,
+  `check_unique_named_object_has_class(root, name, class_name)`
+
+## Exporting diagrams
+
+`textx.export` renders meta-models and models to Graphviz DOT or PlantUML for
+visualization/documentation.
+
+```python
+from textx.export import metamodel_export, model_export, PlantUmlRenderer
+
+metamodel_export(mm, 'mydsl_metamodel.dot')
+model_export(model, 'mymodel.dot')
+
+# Or export using PlantUML instead of the default DOT renderer:
+metamodel_export(mm, 'mydsl_metamodel.pu', renderer=PlantUmlRenderer())
+```
+
+Lower-level helpers (`dot_escape`, `html_escape`, `dot_repr`,
+`dot_match_str`, `get_unified_classes`, `Renderer`, `DotRenderer`,
+`PlantUmlRenderer`, `Attr`, `Cls`) support building custom renderers, and
+`metamodel_export_tofile` / `model_export_to_file` allow exporting to an
+already-open file object.
+
+## Generators (`textx.generators`)
+
+Helpers for building code-generator tools on top of textX models:
+
+- `get_output_filename(input_file, output_path, fileext)` – compute an
+  output file name/location for generated artifacts.
+- `gen_file(input_file, output_file, gen_callback, overwrite=False, success_message='Done.')` –
+  drive generation of a single output file, skipping if it already exists
+  unless `overwrite=True`.
+- `metamodel_generate_dot(metamodel, model, output_path, overwrite, debug)` /
+  `model_generate_dot(metamodel, model, output_path, overwrite, debug)` –
+  generate DOT visualizations for a meta-model or model.
+- `metamodel_generate_plantuml(metamodel, model, output_path, overwrite, debug, **custom_args)` –
+  generate PlantUML visualizations.
+
+## Registering languages and generators
+
+textX supports a plugin-style registry so that other packages (or your own
+tools) can advertise their DSLs and generators, and have them discoverable
+through the CLI.
+
+```python
+from textx.registration import (
+    LanguageDesc, GeneratorDesc, GeneratorParam,
+    register_language, register_generator,
+    metamodel_for_language, generator_for_language_target,
+)
+
+# Register a language for auto-discovery on files matching a pattern
+register_language('mydsl', pattern='*.mydsl', description='My little DSL',
+                   metamodel=lambda **kwargs: metamodel_from_file('mydsl.tx', **kwargs))
+
+# Register a code generator targeting, e.g., "python" from "mydsl" models
+register_generator('mydsl', target='python', description='Generate Python code',
+                    generator=my_generator_function)
+```
+
+Related APIs:
+
+- `language_descriptions()` / `generator_descriptions()` – list everything
+  registered.
+- `language_description(language_name)` / `generator_description(language_name, target_name, any_permitted=False)` –
+  look up a specific registration.
+- `metamodel_for_language(language_name, **kwargs)` – get (and cache) a
+  meta-model instance for a registered language.
+- `languages_for_file(...)`, `language_for_file(...)`,
+  `metamodels_for_file(...)`, `metamodel_for_file(...)` – resolve languages
+  and meta-models automatically based on a file name/pattern.
+- `generator_for_language_target(language_name, target_name, any_permitted=False)` –
+  look up the generator callable for a language/target pair.
+- `register_language_with_project(...)`, `register_generator_with_project(...)` –
+  variants that also record project metadata (name/version) for the
+  registration.
+- `clear_language_registrations()` / `clear_generator_registrations()` –
+  reset the registries (useful in tests).
+- Decorators `@language(name, pattern=None)` and
+  `@generator(language, target, custom_args=None)` for registering a
+  meta-model factory function or a generator function declaratively:
+
+```python
+from textx.registration import language, generator
+
+@language('mydsl', '*.mydsl')
+def mydsl_metamodel(**kwargs):
+    return metamodel_from_file('mydsl.tx', **kwargs)
+
+@generator('mydsl', 'python')
+def mydsl_generate_python(metamodel, model, output_path, overwrite, debug, **kwargs):
+    ...
+```
+
+## Command-line interface
+
+Once a `textx` console script is installed, it exposes subcommands built
+around the registration system:
+
+- `textx check <model>` – parse and validate a model file (via
+  `textx/cli/check.py`'s `check`).
+- `textx list-languages` – list all registered languages
+  (`list_languages`).
+- `textx list-generators` – list all registered generators
+  (`list_generators`).
+- `textx generate <model> --target <target>` – run a registered generator
+  against a model (`generate`).
+- `textx version` – print the installed textX version (`version`).
+
+```
+$ textx list-languages
+$ textx check mymodel.mydsl
+$ textx generate mymodel.mydsl --target python
+```
+
+## Summary
+
+- Define your language grammar and get a `TextXMetaModel` via
+  `metamodel_from_str`/`metamodel_from_file`.
+- Parse models into Python object graphs with `model_from_str`/`model_from_file`.
+- Traverse and query models using `textx.model` helpers
+  (`get_children_of_type`, `get_parent_of_type`, `get_model`, etc.).
+- Resolve cross-references with `textx.scoping` providers, including RREL
+  expressions for relative references and multi-file model repositories.
+- Visualize meta-models/models with `textx.export`.
+- Build reusable languages and generators with `textx.registration`, and
+  expose them through the `textx` CLI.

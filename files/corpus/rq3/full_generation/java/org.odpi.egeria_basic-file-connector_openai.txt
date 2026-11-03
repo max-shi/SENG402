@@ -1,0 +1,209 @@
+# Basic File Connector
+
+`org.odpi.egeria:basic-file-connector` provides connector types for working with a local file or folder through a small, metadata-oriented API.
+
+The library exposes a common `BasicFileStore` interface for retrieving a `File` object and basic filesystem attributes:
+
+- File or folder name
+- Length
+- Creation date
+- Last-update date
+- Last-access date
+
+It also provides separate connector and provider classes for file and folder use cases, plus exceptions and error codes for file-related failures.
+
+## Main types
+
+### `BasicFileStore`
+
+`BasicFileStore` is the primary consumer-facing interface.
+
+```java
+public interface BasicFileStore {
+    File getFile() throws FileException;
+    long getFileLength() throws FileException;
+    String getFileName() throws FileException, FileReadException;
+    Date getCreationDate() throws FileException, FileReadException;
+    Date getLastUpdateDate() throws FileException, FileReadException;
+    Date getLastAccessDate() throws FileException, FileReadException;
+}
+```
+
+Use this interface when application code only needs to inspect a file-system object and should not depend on whether the underlying connector represents a file or a folder.
+
+### `BasicFileStoreConnector`
+
+`BasicFileStoreConnector` is a connector for an individual file. It implements `BasicFileStore` and adds file-specific operations:
+
+- `setFileStoreName(String fileStoreName)` — set the file-store name used by the connector.
+- `touchFile()` — perform a touch operation on the file and return a boolean result.
+- `start()` — start the connector.
+- `disconnect()` — release the connector.
+
+```java
+BasicFileStoreConnector connector = new BasicFileStoreConnector();
+connector.setFileStoreName("example.txt");
+connector.start();
+```
+
+### `BasicFolderConnector`
+
+`BasicFolderConnector` implements `BasicFileStore` for a folder-oriented connection.
+
+It provides:
+
+- `initialize(String connectorInstanceId, Connection connectionDetails)`
+- File-store metadata methods from `BasicFileStore`
+- `disconnect()`
+
+Unlike `BasicFileStoreConnector`, its public API does not expose `setFileStoreName()` or `touchFile()`.
+
+### Provider classes
+
+The library includes provider classes for the two connector types:
+
+- `BasicFileStoreProvider`
+- `BasicFolderProvider`
+
+Both extend `OpenConnectorProviderBase` and expose a public no-argument constructor. They are intended for environments that obtain connectors through provider-based configuration.
+
+### Exceptions and error codes
+
+#### `FileReadException`
+
+`FileReadException` is a checked connector exception used when file information cannot be read. It retains the relevant file name:
+
+```java
+String fileName = exception.getFileName();
+```
+
+It also supports related properties and caught exceptions through its constructors.
+
+#### `BasicFileConnectorErrorCode`
+
+`BasicFileConnectorErrorCode` defines error categories associated with file and folder handling:
+
+- `FILE_NOT_SPECIFIED`
+- `DIRECTORY_SPECIFIED`
+- `FILE_NOT_READABLE`
+- `FOLDER_NOT_SPECIFIED`
+- `FILE_NOT_DIRECTORY`
+- `FOLDER_NOT_READABLE`
+- `FOLDER_NOT_FOUND`
+- `FILE_NOT_FOUND`
+- `UNEXPECTED_SECURITY_EXCEPTION`
+- `UNEXPECTED_IO_EXCEPTION`
+
+Each value can provide an `ExceptionMessageDefinition`:
+
+```java
+ExceptionMessageDefinition definition =
+        BasicFileConnectorErrorCode.FILE_NOT_FOUND.getMessageDefinition();
+```
+
+## Usage examples
+
+### Read metadata through `BasicFileStore`
+
+Write application code against `BasicFileStore` when it only needs common file-system metadata.
+
+```java
+import java.io.File;
+import java.util.Date;
+
+public class FileStoreInspector {
+
+    public void inspect(BasicFileStore fileStore) {
+        try {
+            String name = fileStore.getFileName();
+            long length = fileStore.getFileLength();
+
+            Date created = fileStore.getCreationDate();
+            Date updated = fileStore.getLastUpdateDate();
+            Date accessed = fileStore.getLastAccessDate();
+
+            File file = fileStore.getFile();
+
+            System.out.println("Name: " + name);
+            System.out.println("Length: " + length);
+            System.out.println("Created: " + created);
+            System.out.println("Last updated: " + updated);
+            System.out.println("Last accessed: " + accessed);
+            System.out.println("File object: " + file);
+        } catch (Exception e) {
+            // Handle FileException and FileReadException according to
+            // the application's error-handling policy.
+            throw new RuntimeException("Unable to inspect file store", e);
+        }
+    }
+}
+```
+
+Because both `BasicFileStoreConnector` and `BasicFolderConnector` implement `BasicFileStore`, the same inspection logic can be used with either connector type.
+
+### Work with an individual file connector
+
+The following example sets a file-store name, starts the connector, reads metadata, performs a touch operation, and disconnects when finished.
+
+```java
+public class FileConnectorExample {
+
+    public void processFile() {
+        BasicFileStoreConnector connector = new BasicFileStoreConnector();
+
+        try {
+            connector.setFileStoreName("reports/daily-report.txt");
+            connector.start();
+
+            System.out.println("File name: " + connector.getFileName());
+            System.out.println("File length: " + connector.getFileLength());
+            System.out.println("Last update: " + connector.getLastUpdateDate());
+
+            boolean touched = connector.touchFile();
+            System.out.println("Touch operation result: " + touched);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to process the file", e);
+        } finally {
+            connector.disconnect();
+        }
+    }
+}
+```
+
+### Initialize and inspect a folder connector
+
+A `BasicFolderConnector` can be initialized with a connector instance identifier and `Connection` details, then used through the shared `BasicFileStore` methods.
+
+```java
+public class FolderConnectorExample {
+
+    public void inspectFolder(String connectorInstanceId, Connection connection) {
+        BasicFolderConnector connector = new BasicFolderConnector();
+
+        try {
+            connector.initialize(connectorInstanceId, connection);
+
+            System.out.println("Folder name: " + connector.getFileName());
+            System.out.println("Reported length: " + connector.getFileLength());
+            System.out.println("Created: " + connector.getCreationDate());
+            System.out.println("Last updated: " + connector.getLastUpdateDate());
+
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to inspect the folder", e);
+        } finally {
+            connector.disconnect();
+        }
+    }
+}
+```
+
+## Connector lifecycle
+
+The connector classes expose lifecycle-related methods:
+
+- `BasicFileStoreConnector.start()`
+- `BasicFolderConnector.initialize(...)`
+- `disconnect()` on both connector classes
+
+Call `disconnect()` when the connector is no longer needed, including when an operation fails after connector creation.

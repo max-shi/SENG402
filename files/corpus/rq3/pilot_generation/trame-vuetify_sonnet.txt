@@ -1,0 +1,160 @@
+# trame-vuetify
+
+`trame-vuetify` provides [Vuetify](https://vuetifyjs.com/) components and layouts for [trame](https://github.com/Kitware/trame), allowing you to build reactive, Material Design web applications entirely from Python. It exposes the full Vuetify component library as Python classes, along with ready-to-use application layouts, so you can construct rich UIs without writing any JavaScript or HTML.
+
+The library supports both **Vuetify 2** (Vue 2) and **Vuetify 3** (Vue 3), letting you pick the ecosystem that best fits your trame application.
+
+## Features
+
+- Complete Python bindings for Vuetify 2 and Vuetify 3 component sets
+- Ready-made page layouts (`SinglePageLayout`, `SinglePageWithDrawerLayout`, `VAppLayout`) for quickly scaffolding an application shell
+- Automatic module registration with a trame server via `initialize()`/`setup()` functions
+- Utility helpers for working with tabular data (e.g. converting pandas DataFrames into Vuetify data-table–compatible structures)
+- Code-generation scripts used to keep the component bindings in sync with upstream Vuetify releases
+
+## Installation
+
+```bash
+pip install trame-vuetify
+```
+
+## Core Concepts
+
+### Widget modules
+
+The library is organized into three widget entry points, mirroring the supported Vuetify versions:
+
+- `trame.widgets.vuetify2` — Vuetify 2 components (aliased as `vuetify` for backward compatibility)
+- `trame.widgets.vuetify3` — Vuetify 3 components
+- `trame.widgets.vuetify` — convenience import that resolves to whichever version is active
+
+Each module exposes an `initialize(server)` function that registers the corresponding client assets (JS/CSS) with your trame server. This is typically called automatically when you import the widget module and create a server, but can also be invoked manually.
+
+Underneath, each version has a corresponding module `setup(server, **kargs)` function (in `trame_vuetify.module.vue2`, `trame_vuetify.module.vue3`, and an experimental `trame_vuetify.module.vue3_lab`) responsible for wiring up the trame server's asset pipeline.
+
+### Components
+
+All Vuetify components are exposed as Python classes inheriting from `HtmlElement`, which itself derives from trame's `AbstractElement`. Component names follow Vuetify's own naming convention prefixed with `V`, e.g.:
+
+- `VBtn`, `VCard`, `VTextField`, `VSelect`, `VDataTable`
+- Layout primitives: `VContainer`, `VRow`, `VCol`, `VSheet`
+- Navigation: `VAppBar`, `VNavigationDrawer`, `VTabs`, `VBreadcrumbs`
+- Feedback & overlays: `VDialog`, `VSnackbar`, `VTooltip`, `VMenu`, `VOverlay`
+- Transitions: `VFadeTransition`, `VScaleTransition`, `VExpandTransition`, and more
+
+Each class constructor accepts keyword arguments corresponding to the underlying Vuetify component's props, events, and slots, following trame's usual widget conventions (state bindings, event callbacks, and children passed positionally).
+
+Vuetify 3 additionally includes newer/experimental components (e.g. `VNumberInput`, `VDateInput`, `VPullToRefresh`, `VFileUpload`, `VHotkey`) which can be unlocked via `enable_lab()` before building your UI.
+
+### Layouts
+
+`trame_vuetify.ui.vuetify` (Vue 2) and `trame_vuetify.ui.vuetify3` (Vue 3) provide layout helpers built on top of `AbstractLayout`:
+
+- **`VAppLayout`** — a minimal layout wrapping your content in a `VApp` root component.
+- **`SinglePageLayout`** — a standard single-page app shell with a toolbar/app-bar, main content area, and optional footer. Includes an `on_server_reload()` hook for refreshing UI state during development.
+- **`SinglePageWithDrawerLayout`** — extends `SinglePageLayout` with a built-in navigation drawer.
+
+A helper function, `get_trame_versions()`, reports version information about the installed trame/trame-vuetify stack, useful for diagnostics.
+
+### Data helpers
+
+- `cast_to_serializable(value)` — converts Python values (e.g. numpy/pandas types) into JSON-serializable equivalents suitable for sending to the client.
+- `dataframe_to_grid(dataframe, options={})` — converts a pandas `DataFrame` into a headers/items structure compatible with `VDataTable`.
+
+## Usage Examples
+
+### Basic single-page app (Vuetify 3)
+
+```python
+from trame.app import get_server
+from trame.widgets import vuetify3 as v3
+from trame_vuetify.ui.vuetify3 import SinglePageLayout
+
+server = get_server()
+state, ctrl = server.state, server.controller
+
+state.count = 0
+
+def increment():
+    state.count += 1
+
+with SinglePageLayout(server) as layout:
+    layout.title.set_text("My Trame App")
+
+    with layout.toolbar:
+        v3.VSpacer()
+        v3.VBtn("Increment", click=increment)
+
+    with layout.content:
+        with v3.VContainer():
+            v3.VCard(
+                v3.VCardTitle("Counter"),
+                v3.VCardText("Count: {{ count }}"),
+            )
+
+if __name__ == "__main__":
+    server.start()
+```
+
+### App with a navigation drawer
+
+```python
+from trame.app import get_server
+from trame.widgets import vuetify3 as v3
+from trame_vuetify.ui.vuetify3 import SinglePageWithDrawerLayout
+
+server = get_server()
+
+with SinglePageWithDrawerLayout(server) as layout:
+    layout.title.set_text("Dashboard")
+
+    with layout.drawer:
+        with v3.VList():
+            v3.VListItem("Home")
+            v3.VListItem("Settings")
+
+    with layout.content:
+        with v3.VContainer(fluid=True):
+            v3.VAlert("Welcome!", type="info")
+
+server.start()
+```
+
+### Displaying a DataFrame with `VDataTable`
+
+```python
+import pandas as pd
+from trame.widgets import vuetify3 as v3
+from trame_vuetify.widgets.vuetify3 import dataframe_to_grid
+
+df = pd.DataFrame({"name": ["Alice", "Bob"], "age": [30, 25]})
+grid = dataframe_to_grid(df)
+
+state.headers = grid["headers"]
+state.items = grid["items"]
+
+v3.VDataTable(headers=("headers", grid["headers"]), items=("items", grid["items"]))
+```
+
+### Enabling lab components (Vuetify 3)
+
+```python
+from trame_vuetify.widgets.vuetify3 import enable_lab
+import trame.widgets.vuetify3 as v3
+
+enable_lab()
+
+v3.VNumberInput(v_model=("value", 0))
+```
+
+## Choosing Vuetify 2 vs Vuetify 3
+
+Import from `trame.widgets.vuetify2` (Vue 2/Vuetify 2) or `trame.widgets.vuetify3` (Vue 3/Vuetify 3) depending on the version you need. The generic `trame.widgets.vuetify` module tracks whichever version is configured as the active client backend for your trame application, making it easy to write version-agnostic code where possible.
+
+## Development Notes
+
+The `vue2/generate_python.py` and `vue3/generate_python.py` scripts (along with their `.header.py` templates) are used internally to regenerate the Python component bindings from Vuetify's own component metadata whenever a new Vuetify release is targeted. These are development tools and not part of the runtime public API.
+
+## License
+
+See the `LICENSE` file for details.

@@ -1,0 +1,205 @@
+# Spring Social LinkedIn
+
+Spring Social LinkedIn is an extension to [Spring Social](https://github.com/spring-projects/spring-social) that provides integration with LinkedIn's REST API. It allows Java applications to connect to LinkedIn using OAuth2, retrieve and search user profiles, manage connections, post shares and network updates, interact with groups, search and bookmark jobs, and follow companies — all through a clean, strongly-typed Java API.
+
+## Features
+
+- OAuth2-based authentication and connection management with LinkedIn (via Spring Social's `ConnectionFactory` and `ServiceProvider` abstractions)
+- Access to a user's own profile and full profile details, plus profile search
+- Reading and managing first/second-degree connections and network statistics
+- Reading, creating, liking, and commenting on network updates and shares
+- Sending messages and connection invitations
+- Searching, following, and inspecting companies and their products
+- Searching, bookmarking, and retrieving job listings
+- Reading and interacting with LinkedIn Groups (posts, comments, likes, membership)
+- Spring Security integration for LinkedIn-based authentication
+
+## Core Concepts
+
+### `LinkedIn`
+
+The central entry point to the API. It's a Spring Social `ApiBinding` that exposes a set of operation interfaces, each responsible for a specific area of LinkedIn functionality:
+
+```java
+public interface LinkedIn extends ApiBinding {
+    ConnectionOperations connectionOperations();
+    NetworkUpdateOperations networkUpdateOperations();
+    ProfileOperations profileOperations();
+    CompanyOperations companyOperations();
+    CommunicationOperations communicationOperations();
+    JobOperations jobOperations();
+    GroupOperations groupOperations();
+    RestOperations restOperations();
+}
+```
+
+The concrete implementation, `LinkedInTemplate`, is constructed with an OAuth2 access token:
+
+```java
+LinkedIn linkedin = new LinkedInTemplate(accessToken);
+```
+
+### Operation Interfaces
+
+- **`ProfileOperations`** — Fetch the authenticated user's profile (`getUserProfile()`, `getUserProfileFull()`), look up other profiles by ID or public URL, and search for people (`search(SearchParameters)`).
+- **`ConnectionOperations`** — Retrieve a user's connections and aggregate network statistics.
+- **`NetworkUpdateOperations`** — Read the network activity feed, like/comment on updates, post new updates, and share content (`share(NewShare)`).
+- **`CompanyOperations`** — Look up companies by ID, universal name, or email domain; search companies; follow/unfollow companies; list a company's products.
+- **`CommunicationOperations`** — Send messages to connections and send connection invitations.
+- **`JobOperations`** — Search job postings, fetch job details, and manage job bookmarks.
+- **`GroupOperations`** — Fetch group details and memberships, browse and post to group discussion boards, and manage likes/comments on group posts.
+
+### Domain Model
+
+The library models LinkedIn's data as a rich object graph, all rooted in `LinkedInObject` (which exposes any unmapped `extraData` returned by the API). Key domain classes include:
+
+- **Profile-related:** `LinkedInProfile`, `LinkedInProfileFull`, `Position`, `Education`, `Recommendation`, `Location`, `PhoneNumber`, `ImAccount`, `TwitterAccount`
+- **Companies & jobs:** `Company`, `CompanyLocation` (referenced), `Product`, `Job`, `JobPosition`, `JobBookmark`
+- **Sharing & updates:** `Share`, `CurrentShare`, `NewShare`, `LinkedInNetworkUpdate`, and its various `UpdateContent*` subclasses (`UpdateContentShare`, `UpdateContentCompany`, `UpdateContentConnection`, `UpdateContentGroup`, `UpdateContentFollow`, `UpdateContentRecommendation`, `UpdateContentStatus`, `UpdateContentViral`, `UpdateContentPersonActivity`)
+- **Groups:** `Group`, `GroupSettings`, `GroupMemberships`, `GroupSuggestions`, `Post`, `PostComment`
+- **Search results:** All paginated results extend `SearchResult` (e.g. `LinkedInProfiles`, `Companies`, `Jobs`, `JobBookmarks`, `GroupMemberships`, `GroupSuggestions`, `PostComments`, `Products`)
+
+### Search Parameters
+
+- **`SearchParameters`** configures people search (keywords, name, company, title, school, location, sort, facets via `addFacet(FacetType, String)`).
+- **`JobSearchParameters`** configures job search (keywords, company name, job title, location, distance, sort).
+
+### Spring Integration
+
+- **`LinkedInConnectionFactory`** — creates OAuth2 connections to LinkedIn for use with Spring Social's connection framework.
+- **`LinkedInServiceProvider`** — provides low-level OAuth2 service access and builds `LinkedIn` API instances from access tokens.
+- **`LinkedInAdapter`** — adapts a `LinkedIn` API binding to Spring Social's generic `ApiAdapter`, fetching profile info and updating status.
+- **`LinkedInApiHelper`** — resolves a `LinkedIn` instance for use in Spring MVC controllers via `ApiHelper`.
+- **`LinkedInAuthenticationService`** — integrates LinkedIn OAuth2 login with Spring Security.
+
+## Usage Examples
+
+### Creating an API instance
+
+```java
+// Using an access token obtained via OAuth2 flow (e.g. from Spring Social's connection framework)
+LinkedIn linkedin = new LinkedInTemplate(accessToken);
+```
+
+### Fetching the current user's profile
+
+```java
+ProfileOperations profileOps = linkedin.profileOperations();
+
+LinkedInProfile profile = profileOps.getUserProfile();
+System.out.println(profile.getFirstName() + " " + profile.getLastName());
+
+LinkedInProfileFull fullProfile = profileOps.getUserProfileFull();
+for (Position position : fullProfile.getPositions()) {
+    System.out.println(position.getTitle() + " at " + position.getCompany().getName());
+}
+```
+
+### Searching for people
+
+```java
+SearchParameters params = new SearchParameters();
+params.setKeywords("java developer");
+params.setCountryCode("us");
+params.setCount(25);
+
+LinkedInProfiles results = profileOps.search(params);
+for (LinkedInProfile p : results.getPeople()) {
+    System.out.println(p.getFirstName() + " " + p.getLastName() + " - " + p.getHeadline());
+}
+```
+
+### Posting a share and reading the network feed
+
+```java
+NetworkUpdateOperations updateOps = linkedin.networkUpdateOperations();
+
+NewShare share = new NewShare();
+share.setComment("Excited to share this update!");
+share.setVisibility(NewShareVisibility.ANYONE); // enum referenced by NewShare
+URI shareLocation = updateOps.share(share);
+
+List<LinkedInNetworkUpdate> updates = updateOps.getNetworkUpdates(0, 20);
+for (LinkedInNetworkUpdate update : updates) {
+    System.out.println(update.getUpdateType() + " at " + update.getTimestamp());
+}
+```
+
+### Working with connections and messaging
+
+```java
+ConnectionOperations connectionOps = linkedin.connectionOperations();
+List<LinkedInProfile> connections = connectionOps.getConnections(0, 50);
+
+NetworkStatistics stats = connectionOps.getNetworkStatistics();
+System.out.println("1st degree: " + stats.getFirstDegreeCount());
+
+CommunicationOperations commOps = linkedin.communicationOperations();
+commOps.sendMessage("Hello", "Great connecting with you!", connections.get(0).getId());
+```
+
+### Searching and bookmarking jobs
+
+```java
+JobOperations jobOps = linkedin.jobOperations();
+
+JobSearchParameters jobParams = new JobSearchParameters();
+jobParams.setKeywords("backend engineer");
+jobParams.setCountryCode("us");
+jobParams.setCount(10);
+
+Jobs jobs = jobOps.searchJobs(jobParams);
+for (Job job : jobs.getJobs()) {
+    System.out.println(job.getPosition().getTitle() + " - " + job.getCompany().getName());
+    jobOps.bookmarkJob(job.getId());
+}
+```
+
+### Interacting with groups
+
+```java
+GroupOperations groupOps = linkedin.groupOperations();
+
+GroupMemberships memberships = groupOps.getGroupMemberships();
+for (GroupSettings settings : memberships.getMemberships()) {
+    Group group = settings.getGroup();
+    System.out.println("Member of: " + group.getName());
+
+    GroupPosts posts = groupOps.getPosts(group.getId());
+    // interact with posts, e.g.:
+    // groupOps.likePost(postId);
+    // groupOps.addCommentToPost(postId, "Great insight!");
+}
+```
+
+### Working with companies
+
+```java
+CompanyOperations companyOps = linkedin.companyOperations();
+
+Companies searchResults = companyOps.search("acme");
+for (Company company : searchResults.getCompanies()) {
+    System.out.println(company.getName() + " (" + company.getIndustry() + ")");
+}
+
+companyOps.startFollowingCompany(searchResults.getCompanies().get(0).getId());
+
+Products products = companyOps.getProducts(searchResults.getCompanies().get(0).getId(), 0, 10);
+```
+
+## Spring Social Connection Framework Integration
+
+To integrate LinkedIn login and connection management into a Spring application:
+
+```java
+@Bean
+public ConnectionFactory<LinkedIn> linkedInConnectionFactory() {
+    return new LinkedInConnectionFactory("your-consumer-key", "your-consumer-secret");
+}
+```
+
+Combine with `LinkedInAdapter` to plug into Spring Social's `ConnectionRepository` and `UsersConnectionRepository` infrastructure, and `LinkedInAuthenticationService` to enable "Sign in with LinkedIn" via Spring Security.
+
+## License
+
+This project is part of the Spring Social family of extensions and follows the same open-source licensing model.

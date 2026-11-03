@@ -1,0 +1,73 @@
+# web-fragments
+
+`web-fragments` is a small Django library for building **composable, reusable pieces of HTML** ("fragments") that can be rendered independently or combined into a larger page. It is especially useful when building modular UIs, embeddable widgets, or systems where multiple independent components need to contribute their own HTML, CSS, and JavaScript to a page without stepping on each other's toes.
+
+A `Fragment` bundles together HTML content and its associated static resources (CSS, JavaScript, inline scripts). Fragments can be combined, nested, and serialized, and a `FragmentView` base class makes it easy to expose a fragment as its own Django view—either as a full standalone HTML page or as an isolated HTML snippet suitable for AJAX injection into an existing page.
+
+## Installation
+
+Add `web_fragments` to your `INSTALLED_APPS`:
+
+```python
+INSTALLED_APPS = [
+    ...
+    "web_fragments.apps.WebFragmentsConfig",
+]
+```
+
+## Core Concepts
+
+### `Fragment`
+
+The `Fragment` class represents a piece of renderable content along with any resources (CSS/JS) it depends on.
+
+- `add_content(content)` — sets or appends the fragment's HTML body.
+- `add_css(text)` / `add_css_url(url)` — attach inline or linked CSS.
+- `add_javascript(text)` / `add_javascript_url(url)` — attach inline or linked JavaScript.
+- `add_resource(text, mimetype, placement=None)` / `add_resource_url(url, mimetype, placement=None)` — lower-level resource registration for arbitrary resource types and placements (e.g. head, foot).
+- `add_fragment_resources(fragment)` / `add_resources(fragments)` — pull in resources from one or more child fragments, useful when composing fragments together.
+- `initialize_js(js_func, json_args=None)` — emit a JS initialization call with JSON-serialized arguments.
+- `body_html()`, `head_html()`, `foot_html()` — render the fragment's content and resources for insertion at different points in a page.
+- `resources_to_html(placement)` / `resource_to_html(resource)` — lower-level rendering helpers for resource lists.
+- `to_dict()` / `from_dict(pods)` — serialize/deserialize a fragment, e.g. for caching or passing between processes.
+- `resources()` — access the full list of registered resources.
+
+### `FragmentView`
+
+`FragmentView` is a Django class-based view (subclass of `View`) that renders a `Fragment`.
+
+- `render_to_fragment(request, **kwargs)` — build and return a `Fragment` instance representing this view's content. This is the method you typically override.
+- `render_to_standalone_html(request, fragment, **kwargs)` — wrap a fragment in a full HTML document (`<html>`, `<head>`, `<body>`), pulling in the fragment's CSS/JS resources.
+- `render_standalone_response(request, fragment, **kwargs)` — wraps `render_to_standalone_html` in an `HttpResponse`.
+- `get(request, *args, **kwargs)` — default handler that calls `render_to_fragment` and returns an appropriate response depending on whether the request is standalone or embedded (e.g. via an `HX-Request`/AJAX-style header check).
+
+## Example
+
+```python
+from web_fragments.fragment import Fragment
+from web_fragments.views import FragmentView
+
+class WeatherWidgetView(FragmentView):
+    def render_to_fragment(self, request, **kwargs):
+        fragment = Fragment()
+        fragment.add_content("<div class='weather'>72°F and sunny</div>")
+        fragment.add_css(".weather { font-weight: bold; }")
+        fragment.add_javascript_url("/static/js/weather.js")
+        fragment.initialize_js("initWeather", json_args={"city": "Springfield"})
+        return fragment
+```
+
+Composing fragments:
+
+```python
+page = Fragment()
+page.add_content("<div id='dashboard'></div>")
+
+widget = WeatherWidgetView().render_to_fragment(request)
+page.add_fragment_resources(widget)
+page.add_content(widget.body_html())
+
+html = page.body_html() + page.head_html() + page.foot_html()
+```
+
+Requesting `/weather/` directly returns a full standalone HTML page; requesting it via an embedded/AJAX call returns just the fragment's HTML for insertion into an existing page.

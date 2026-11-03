@@ -1,0 +1,556 @@
+# openeo Python Client
+
+`openeo` is a Python library for building, submitting, and managing geospatial processing workflows through openEO-compatible services.
+
+The library centers on **process graphs**: instead of immediately processing raster or vector data locally, operations such as loading collections, filtering data, calculating indices, reducing dimensions, and exporting results are composed into a graph. That graph can then be executed synchronously, downloaded directly, or run as an asynchronous batch job.
+
+It also includes helpers for:
+
+- Connecting to and authenticating with remote backends.
+- Working with raster data cubes, vector cubes, and machine-learning models.
+- Managing batch jobs, result assets, user files, and processing services.
+- Creating reusable user-defined processes.
+- Running and packaging UDFs.
+- Handling metadata, STAC resources, dates, bounding boxes, configuration, and testing utilities.
+- Building process graphs directly with the functional `openeo.processes` API.
+
+## Core workflow
+
+A typical remote-processing workflow is:
+
+1. Create a `Connection`.
+2. Authenticate.
+3. Load a collection as a `DataCube`.
+4. Chain processing operations on the cube.
+5. Download a synchronous result or create and monitor a batch job.
+
+```python
+from openeo.rest.connection import connect
+
+connection = connect("https://example.com/openeo")
+
+# Select an authentication mechanism supported by the backend.
+connection.authenticate_oidc()
+
+cube = connection.load_collection(
+    "SENTINEL2",
+    spatial_extent={
+        "west": 4.0,
+        "south": 51.0,
+        "east": 4.8,
+        "north": 51.5,
+        "crs": "EPSG:4326",
+    },
+    temporal_extent=["2024-05-01", "2024-05-31"],
+    bands=["B04", "B08"],
+)
+
+result = (
+    cube
+    .ndvi(nir="B08", red="B04", target_band="NDVI")
+    .aggregate_temporal_period(period="month", reducer="mean")
+    .save_result(format="GTiff")
+)
+
+result.download("ndvi-monthly.tif")
+```
+
+## Connections and authentication
+
+Use `connect()` to create a `Connection` to an openEO endpoint.
+
+```python
+from openeo.rest.connection import connect
+
+connection = connect(
+    "https://example.com/openeo",
+    auto_validate=True,
+)
+```
+
+`Connection` provides discovery and account methods:
+
+```python
+capabilities = connection.capabilities()
+print(capabilities.api_version())
+
+collections = connection.list_collections()
+print(connection.list_collection_ids())
+
+account = connection.describe_account()
+formats = connection.list_file_formats()
+runtimes = connection.list_udf_runtimes()
+```
+
+### Authentication options
+
+The connection API supports basic and bearer-token authentication as well as multiple OpenID Connect flows.
+
+```python
+# Basic authentication
+connection.authenticate_basic(username="alice", password="secret")
+
+# Use a supplied bearer token
+connection.authenticate_bearer_token("token-value")
+
+# Generic OIDC authentication
+connection.authenticate_oidc()
+
+# Other supported OIDC flows
+connection.authenticate_oidc_authorization_code()
+connection.authenticate_oidc_client_credentials()
+connection.authenticate_oidc_resource_owner_password_credentials(
+    username="alice",
+    password="secret",
+)
+connection.authenticate_oidc_refresh_token()
+connection.authenticate_oidc_device()
+```
+
+Authentication-related configuration can be managed with `AuthConfig` and `RefreshTokenStore`.
+
+## Raster processing with `DataCube`
+
+`DataCube` represents a raster-oriented process graph. Methods return new cubes, allowing operations to be chained.
+
+### Loading data
+
+```python
+cube = connection.load_collection(
+    "SENTINEL2",
+    spatial_extent={
+        "west": 5.0,
+        "south": 50.5,
+        "east": 5.5,
+        "north": 51.0,
+    },
+    temporal_extent=["2024-01-01", "2024-01-31"],
+    bands=["B02", "B03", "B04", "B08"],
+)
+```
+
+Collections can also be loaded through `DataCube.load_collection()`. Other loading methods include:
+
+- `connection.load_stac()` / `DataCube.load_stac()`
+- `connection.load_result()`
+- `connection.load_stac_from_job()`
+- `connection.load_geojson()`
+- `connection.load_url()`
+- `connection.load_ml_model()`
+
+### Filtering and selecting data
+
+```python
+filtered = (
+    cube
+    .filter_temporal("2024-01-10", "2024-01-20")
+    .filter_bbox(west=5.1, south=50.6, east=5.3, north=50.8)
+    .filter_bands(["B04", "B08"])
+)
+```
+
+Spatial filtering also accepts geometries, GeoJSON-compatible data, paths, `Parameter` instances, and vector cubes where supported.
+
+```python
+filtered = cube.filter_spatial({
+    "type": "Polygon",
+    "coordinates": [[
+        [5.1, 50.6],
+        [5.3, 50.6],
+        [5.3, 50.8],
+        [5.1, 50.8],
+        [5.1, 50.6],
+    ]],
+})
+```
+
+### Common cube operations
+
+The API exposes arithmetic, logical, temporal, dimensional, and spatial operations.
+
+```python
+ndvi = cube.ndvi(nir="B08", red="B04", target_band="NDVI")
+
+monthly_mean = ndvi.aggregate_temporal_period(
+    period="month",
+    reducer="mean",
+)
+
+resampled = monthly_mean.resample_spatial(
+    resolution=10,
+    projection="EPSG:4326",
+    method="near",
+)
+```
+
+Examples of available operations include:
+
+- Arithmetic: `add`, `subtract`, `multiply`, `divide`, `power`
+- Math: `ln`, `log2`, `log10`, `slope`, `aspect`
+- Band operations: `band`, `filter_bands`, `reduce_bands`
+- Temporal processing: `filter_temporal`, `aggregate_temporal`, `aggregate_temporal_period`, `reduce_temporal`
+- Spatial processing: `filter_bbox`, `filter_spatial`, `aggregate_spatial`, `reduce_spatial`
+- Dimension changes: `add_dimension`, `drop_dimension`, `rename_dimension`, `flatten_dimensions`
+- Masking and merging: `mask`, `mask_polygon`, `merge_cubes`
+- Resampling: `resample_spatial`, `resample_cube_spatial`, `resample_cube_temporal`
+- Radar and atmospheric operations: `sar_backscatter`, `ard_surface_reflectance`, `atmospheric_correction`
+
+## Synchronous execution and downloads
+
+A cube can be executed directly or downloaded after adding a result-saving process.
+
+```python
+result = cube.save_result(
+    format="NetCDF",
+    options={},
+)
+
+result.download("result.nc")
+```
+
+For responses that are directly representable in Python, use `execute()`:
+
+```python
+response = cube.execute()
+```
+
+`Connection.download()` and `Connection.execute()` accept a process graph, a graph-building object, JSON source, path, or a list of graphable objects.
+
+## Batch jobs
+
+Use batch jobs for longer-running processing.
+
+```python
+job = cube.execute_batch(
+    outputfile="output.tif",
+    out_format="GTiff",
+    title="Monthly NDVI",
+    description="NDVI calculation and monthly aggregation",
+)
+
+print(job.status())
+```
+
+Alternatively, create a job explicitly and control its lifecycle:
+
+```python
+job = cube.create_job(
+    out_format="GTiff",
+    title="NDVI export",
+)
+
+job.start()
+job.start_and_wait()
+
+metadata = job.describe()
+logs = job.logs()
+results = job.get_results()
+
+asset = results.get_asset()
+asset_path = asset.download("downloaded-result.tif")
+```
+
+A job can also expose multiple output assets:
+
+```python
+paths = results.download_files("job-results")
+```
+
+Useful `BatchJob` methods include:
+
+- `status()`
+- `describe()`
+- `start()` and `stop()`
+- `delete()`
+- `estimate()`
+- `logs()`
+- `list_results()`
+- `download_result()`
+- `download_results()`
+- `start_and_wait()`
+- `run_synchronous()`
+
+## Vector data with `VectorCube`
+
+`VectorCube` represents vector-oriented process graphs. It can be created from GeoJSON or a remote URL.
+
+```python
+vector = connection.load_geojson({
+    "type": "FeatureCollection",
+    "features": [],
+})
+
+filtered = vector.filter_bbox(
+    west=4.0,
+    south=51.0,
+    east=4.8,
+    north=51.5,
+)
+
+result = filtered.save_result(format="GeoJSON")
+result.download("features.geojson")
+```
+
+Vector cubes can run UDFs, filter features, train random-forest models, and rasterize data against a target `DataCube`.
+
+```python
+rasterized = vector.vector_to_raster(target=cube)
+```
+
+## Process graph building
+
+The `openeo.processes` module provides functions and a `ProcessBuilder` class for constructing graphs directly. Each process function returns a `ProcessBuilder`.
+
+```python
+from openeo import processes
+
+graph = processes.save_result(
+    processes.ndvi(
+        processes.load_collection(
+            id="SENTINEL2",
+            spatial_extent={
+                "west": 4.0,
+                "south": 51.0,
+                "east": 4.8,
+                "north": 51.5,
+            },
+            temporal_extent=["2024-05-01", "2024-05-31"],
+            bands=["B04", "B08"],
+        )
+    ),
+    format="GTiff",
+)
+
+flat_graph = graph.flat_graph()
+```
+
+The process API covers a broad range of operations, including:
+
+- Scalar and array operations such as `add`, `mean`, `array_element`, and `quantiles`.
+- Text and date operations such as `text_contains`, `date_between`, and `date_shift`.
+- Raster and vector processes such as `filter_bbox`, `reduce_dimension`, `vector_buffer`, and `save_result`.
+- Machine-learning processes such as `predict_onnx`, `predict_random_forest`, and `load_ml_model`.
+
+Graphs can be serialized as JSON:
+
+```python
+json_text = graph.to_json()
+```
+
+## Reusable process parameters and user-defined processes
+
+Use `Parameter` to describe reusable process inputs.
+
+```python
+from openeo.api.process import Parameter
+
+spatial_extent = Parameter.spatial_extent()
+temporal_extent = Parameter.temporal_interval()
+bands = Parameter.array(
+    name="bands",
+    description="Bands to process.",
+    item_schema={"type": "string"},
+)
+
+print(spatial_extent.to_dict())
+```
+
+A graph can be stored as a user-defined process through `Connection.save_user_defined_process()`.
+
+```python
+udp = connection.save_user_defined_process(
+    user_defined_process_id="my-process",
+    process_graph=graph,
+    parameters=[spatial_extent, temporal_extent, bands],
+    summary="Example reusable process",
+)
+
+description = udp.describe()
+```
+
+Existing user-defined processes can be listed and accessed with:
+
+```python
+processes = connection.list_user_defined_processes()
+udp = connection.user_defined_process("my-process")
+```
+
+## UDF support
+
+The `UDF` class describes user-defined code to run in a supported runtime.
+
+```python
+from openeo.rest._datacube import UDF
+
+udf = UDF.from_file(
+    "my_udf.py",
+    runtime="Python",
+    version="latest",
+)
+
+processed = cube.apply_dimension(
+    process=udf,
+    dimension="bands",
+)
+```
+
+The `openeo.udf` API provides data structures and local utilities for UDF workflows:
+
+- `UdfData`
+- `XarrayDataCube`
+- `FeatureCollection`
+- `StructuredData`
+- `run_udf_code()`
+- `execute_local_udf()`
+- `extract_udf_dependencies()`
+
+For example, an `XarrayDataCube` can be loaded from and saved to files:
+
+```python
+from openeo.udf.xarraydatacube import XarrayDataCube
+
+cube_data = XarrayDataCube.from_file("input.nc", fmt="netcdf")
+cube_data.save_to_file("output.nc", fmt="netcdf")
+```
+
+## Metadata and spatial utilities
+
+`CollectionMetadata` and `CubeMetadata` expose cube dimensions and band metadata.
+
+```python
+metadata = connection.collection_metadata("SENTINEL2")
+
+print(metadata.dimension_names())
+print(metadata.band_names())
+
+if metadata.has_temporal_dimension():
+    temporal_dimension = metadata.temporal_dimension()
+```
+
+`BBoxDict` provides a normalized bounding-box representation:
+
+```python
+from openeo.util import to_bbox_dict
+
+bbox = to_bbox_dict([4.0, 51.0, 4.8, 51.5], crs="EPSG:4326")
+geometry = bbox.as_geometry()
+```
+
+Other useful helpers include:
+
+- `get_temporal_extent()`
+- `date_to_rfc3339()`
+- `normalize_crs()`
+- `guess_format()`
+- `load_json()`
+- `ensure_dir()`
+- `deep_get()` and `deep_set()`
+
+## Spectral indices
+
+The spectral-index helpers compute or append named indices to a `DataCube`.
+
+```python
+from openeo.extra.spectral_indices.spectral_indices import append_index
+
+cube_with_ndvi = append_index(
+    cube,
+    index="NDVI",
+    variable_map={
+        "N": "B08",
+        "R": "B04",
+    },
+)
+```
+
+Available helpers include:
+
+- `list_indices()`
+- `compute_index()`
+- `append_index()`
+- `compute_indices()`
+- `append_indices()`
+- `compute_and_rescale_indices()`
+- `append_and_rescale_indices()`
+
+## Configuration
+
+Client configuration is represented by `ClientConfig`.
+
+```python
+from openeo.config import get_config, get_config_option
+
+config = get_config()
+print(config.dump())
+
+timeout = get_config_option("timeout", default="30")
+```
+
+Configuration directories can be resolved with:
+
+```python
+from openeo.config import get_user_config_dir, get_user_data_dir
+
+config_dir = get_user_config_dir()
+data_dir = get_user_data_dir()
+```
+
+## Local execution
+
+`LocalConnection` offers a local-style connection interface with collection loading, STAC loading, process construction, and execution returning an `xarray.DataArray`.
+
+Its API mirrors key remote operations such as:
+
+- `list_collections()`
+- `describe_collection()`
+- `load_collection()`
+- `load_stac()`
+- `datacube_from_process()`
+- `execute()`
+
+## Testing helpers
+
+The library includes utilities for testing process graphs, results, and STAC data.
+
+```python
+from openeo.testing.results import assert_xarray_dataarray_allclose
+
+assert_xarray_dataarray_allclose(
+    actual="actual.nc",
+    expected="expected.nc",
+)
+```
+
+Additional helpers include:
+
+- `DummyBackend` and `build_capabilities()` for mocked backend behavior.
+- `TestDataLoader` for test resource loading.
+- `StacDummyBuilder` for STAC items, collections, catalogs, and assets.
+- `assert_job_results_allclose()` for comparing batch-job outputs.
+
+## Exceptions
+
+The base exception is `BaseOpenEoException`. Common specialized exceptions include:
+
+- `OpenEoClientException`
+- `OpenEoRestError`
+- `OpenEoApiError`
+- `CapabilitiesException`
+- `JobFailedException`
+- `OperatorException`
+- `BandMathException`
+- `MetadataException`
+- `InvalidBBoxException`
+- `InvalidTimeSeriesException`
+- `OpenEoUdfException`
+
+Catch `OpenEoClientException` for client-side and backend-interaction failures:
+
+```python
+from openeo.rest import OpenEoClientException
+
+try:
+    connection.list_collections()
+except OpenEoClientException as exc:
+    print(f"openEO request failed: {exc}")
+```

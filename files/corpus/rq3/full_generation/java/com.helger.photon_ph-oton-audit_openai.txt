@@ -1,0 +1,576 @@
+# ph-oton-audit
+
+`com.helger.photon:ph-oton-audit` provides audit-trail APIs for Java applications. It models audit entries such as create, modify, delete, undelete, and execute operations; associates them with a current user and success state; and offers several ways to handle recorded events:
+
+- application-wide static audit helpers;
+- synchronous, asynchronous, logging, and no-op auditors;
+- audit managers for querying retained audit items;
+- XML micro-type converters for audit records;
+- a second-generation (`v2`) structured audit-event API with extensible consumers.
+
+## Core concepts
+
+### Audit actions
+
+`EAuditActionType` identifies the operation being audited:
+
+- `CREATE`
+- `MODIFY`
+- `DELETE`
+- `UNDELETE`
+- `EXECUTE`
+
+It implements `IHasID<String>`, so action types can be represented by an ID:
+
+```java
+EAuditActionType action = EAuditActionType.CREATE;
+String actionID = action.getID();
+
+EAuditActionType parsed = EAuditActionType.getFromIDOrNull(actionID);
+```
+
+### Success state
+
+Audit operations use `ESuccess` to represent whether the action succeeded or failed. `IAuditItem` also exposes convenience access through `isSuccess()`.
+
+### Current user
+
+Auditors receive an `ICurrentUserIDProvider`, which is used to identify the user responsible for an audit entry.
+
+For tests or simple setups, `MockCurrentUserIDProvider` is available:
+
+```java
+ICurrentUserIDProvider currentUser =
+    new MockCurrentUserIDProvider("alice");
+```
+
+`MockCurrentUserIDProvider.getInstance()` provides a shared instance when a custom user ID is not required.
+
+---
+
+## Quick start
+
+The simplest integration is to configure an application-wide auditor with `AuditHelper` and use its convenience methods.
+
+```java
+import com.helger.photon.audit.AuditHelper;
+import com.helger.photon.audit.LoggingAuditor;
+import com.helger.photon.audit.mock.MockCurrentUserIDProvider;
+
+// Configure once during application initialization.
+AuditHelper.setAuditor(
+    new LoggingAuditor(new MockCurrentUserIDProvider("alice"))
+);
+
+// Record successful and failed operations.
+AuditHelper.onAuditCreateSuccess(Customer.class, "customer-4711");
+AuditHelper.onAuditModifySuccess(Customer.class, "email address", "customer-4711");
+AuditHelper.onAuditDeleteFailure(Customer.class, "customer-4711");
+
+// Record an action that is not tied to a specific object type.
+AuditHelper.onAuditExecuteSuccess("Import customer data", "customers.csv");
+```
+
+The helper methods cover the standard action types and automatically select the corresponding `EAuditActionType` and success value.
+
+If no custom auditor is needed, install the default auditor:
+
+```java
+AuditHelper.setDefaultAuditor();
+
+boolean defaultAuditorIsActive = AuditHelper.isDefaultAuditorSet();
+```
+
+Retrieve the currently configured auditor with:
+
+```java
+IAuditor auditor = AuditHelper.getAuditor();
+```
+
+---
+
+## Auditors
+
+`IAuditor` is the main recording interface.
+
+```java
+public interface IAuditor {
+  void createAuditItem(
+      EAuditActionType actionType,
+      ESuccess success,
+      ObjectType actionObjectType,
+      String action,
+      Object... args);
+}
+```
+
+In addition to `createAuditItem`, it provides default convenience methods:
+
+- `onCreateSuccess` / `onCreateFailure`
+- `onModifySuccess` / `onModifyFailure`
+- `onDeleteSuccess` / `onDeleteFailure`
+- `onUndeleteSuccess` / `onUndeleteFailure`
+- `onExecuteSuccess` / `onExecuteFailure`
+
+The create, delete, and undelete methods accept an `ObjectType` and optional arguments. Modify methods additionally accept a description of what changed. Execute methods can be used with or without an `ObjectType`.
+
+### `AbstractAuditor`
+
+`AbstractAuditor` is a base implementation of `IAuditor`. It is useful when implementing a custom auditor while reusing common handling for:
+
+- `ICurrentUserIDProvider`
+- `IAuditActionStringProvider`
+- standard audit-item creation
+
+```java
+ICurrentUserIDProvider currentUser =
+    new MockCurrentUserIDProvider("alice");
+
+AbstractAuditor auditor = new LoggingAuditor(currentUser);
+
+ICurrentUserIDProvider provider = auditor.getCurrentUserIDProvider();
+auditor.setCurrentUserIDProvider(new MockCurrentUserIDProvider("bob"));
+
+IAuditActionStringProvider strings = auditor.getActionStringProvider();
+auditor.setActionStringProvider(strings);
+```
+
+### `LoggingAuditor`
+
+`LoggingAuditor` is an auditor implementation intended for logging audit entries.
+
+```java
+LoggingAuditor auditor =
+    new LoggingAuditor(new MockCurrentUserIDProvider("alice"), "[audit]");
+
+auditor.onCreateSuccess(Customer.class, "customer-4711");
+auditor.onExecuteFailure("Send welcome message", "customer-4711");
+```
+
+Its common prefix is available through `getCommonPrefix()`.
+
+To format an audit item using the built-in representation:
+
+```java
+String text = LoggingAuditor.getDefaultAuditItemString(auditItem);
+```
+
+### `AsynchronousAuditor`
+
+`AsynchronousAuditor` queues audit items and delegates processing of batches to an `IConcurrentPerformer<List<IAuditItem>>`.
+
+```java
+IConcurrentPerformer<List<IAuditItem>> performer = items -> {
+  for (IAuditItem item : items) {
+    // Forward each item to a persistence or transport layer.
+  }
+};
+
+AsynchronousAuditor auditor =
+    new AsynchronousAuditor(
+        new MockCurrentUserIDProvider("alice"),
+        performer);
+
+auditor.onModifySuccess(Customer.class, "status", "customer-4711");
+
+int queuedItems = auditor.getQueueLength();
+
+// Stop the asynchronous auditor when the application shuts down.
+EChange stopped = auditor.stop();
+```
+
+### `DoNothingAuditor`
+
+`DoNothingAuditor` is suitable for disabling audit recording while still providing an `IAuditor` implementation.
+
+```java
+IAuditor auditor =
+    new DoNothingAuditor(new MockCurrentUserIDProvider("test-user"));
+```
+
+This can be useful for tests or deployments where audit output is intentionally suppressed.
+
+---
+
+## Audit records
+
+### `IAuditItem`
+
+`IAuditItem` represents a recorded audit operation. Each item has:
+
+- a timestamp (`LocalDateTime`);
+- a user ID;
+- an `EAuditActionType`;
+- an `ESuccess` state;
+- an action string.
+
+```java
+LocalDateTime dateTime = item.getDateTime();
+String userID = item.getUserID();
+EAuditActionType type = item.getType();
+String typeID = item.getTypeID();
+ESuccess success = item.getSuccess();
+boolean wasSuccessful = item.isSuccess();
+String action = item.getAction();
+```
+
+### `AuditItem`
+
+`AuditItem` is the concrete implementation of `IAuditItem`.
+
+```java
+AuditItem item = new AuditItem(
+    "alice",
+    EAuditActionType.CREATE,
+    ESuccess.SUCCESS,
+    "Created customer customer-4711"
+);
+```
+
+A constructor accepting an explicit timestamp is also available:
+
+```java
+AuditItem historicalItem = new AuditItem(
+    LocalDateTime.of(2025, 1, 15, 10, 30),
+    "alice",
+    EAuditActionType.MODIFY,
+    ESuccess.SUCCESS,
+    "Changed customer email address"
+);
+```
+
+### `AuditItemList`
+
+`AuditItemList` is a container for audit items with count and retrieval methods.
+
+```java
+AuditItemList items = new AuditItemList();
+
+int count = items.getItemCount();
+ICommonsList<IAuditItem> all = items.getAllItems();
+List<IAuditItem> latest = items.getLastItems(20);
+```
+
+---
+
+## Audit managers
+
+`IAuditManager` combines audit writing and querying concerns:
+
+```java
+public interface IAuditManager {
+  boolean isInMemory();
+  String getBaseDir();
+  IAuditor getAuditor();
+  List<IAuditItem> getLastAuditItems(int maxItems);
+  void stop();
+  LocalDate getEarliestAuditDate();
+}
+```
+
+### `AuditManager`
+
+`AuditManager` provides an asynchronous auditor and date-oriented audit-item access.
+
+```java
+ICurrentUserIDProvider currentUser =
+    new MockCurrentUserIDProvider("alice");
+
+AuditManager manager = new AuditManager("/var/lib/myapp/audit", currentUser);
+
+try {
+  // Record entries through the manager's auditor.
+  manager.getAuditor().onCreateSuccess(Customer.class, "customer-4711");
+
+  // Retrieve recent entries.
+  List<IAuditItem> recent = manager.getLastAuditItems(50);
+
+  // Retrieve records for a particular day.
+  ICommonsList<IAuditItem> today =
+      manager.getAllAuditItemsOfDate(LocalDate.now());
+
+  // Inspect manager state.
+  boolean inMemory = manager.isInMemory();
+  String baseDir = manager.getBaseDir();
+  int count = manager.getAuditItemCount();
+  LocalDate firstAvailableDate = manager.getEarliestAuditDate();
+} finally {
+  manager.stop();
+}
+```
+
+The class also exposes helper methods for date-based relative audit locations:
+
+```java
+String yearDirectory =
+    AuditManager.getRelativeAuditDirectoryYear(2025);
+
+String dayDirectory =
+    AuditManager.getRelativeAuditDirectory(LocalDate.now());
+
+String filename =
+    AuditManager.getRelativeAuditFilename(LocalDate.now());
+```
+
+To process audit records from an XML micro-document, use `readFromXML`:
+
+```java
+AuditManager.readFromXML(document, auditItem -> {
+  System.out.println(auditItem.getAction());
+});
+```
+
+### `SimpleAuditManager`
+
+`SimpleAuditManager` is both an `IAuditor` and a manager for audit records associated with a single filename.
+
+```java
+SimpleAuditManager manager = new SimpleAuditManager(
+    "/var/lib/myapp/audit.xml",
+    new MockCurrentUserIDProvider("alice")
+);
+
+manager.onDeleteSuccess(Customer.class, "customer-4711");
+
+int count = manager.getAuditItemCount();
+ICommonsList<IAuditItem> allItems = manager.getAllAuditItems();
+List<IAuditItem> lastTen = manager.getLastAuditItems(10);
+```
+
+### `DoNothingAuditManager`
+
+`DoNothingAuditManager` is an `IAuditManager` implementation for applications that need the manager API but do not need active audit storage.
+
+```java
+IAuditManager manager = new DoNothingAuditManager();
+
+IAuditor auditor = manager.getAuditor();
+List<IAuditItem> items = manager.getLastAuditItems(10);
+
+manager.stop();
+```
+
+---
+
+## XML conversion
+
+The library provides micro-type converters for audit data:
+
+- `AuditItemMicroTypeConverter` for `AuditItem`
+- `AuditEventMicroTypeConverter` for `v2` `AuditEvent`
+- `MicroTypeConverterRegistrar_ph_oton_audit` for registering audit converters with an `IMicroTypeConverterRegistry`
+
+Example converter registration:
+
+```java
+IMicroTypeConverterRegistry registry = ...;
+
+new MicroTypeConverterRegistrar_ph_oton_audit()
+    .registerMicroTypeConverter(registry);
+```
+
+Direct conversion is also available through the converter classes:
+
+```java
+AuditItemMicroTypeConverter converter =
+    new AuditItemMicroTypeConverter();
+
+IMicroElement element =
+    converter.convertToMicroElement(item, null, "audit-item");
+
+AuditItem restored =
+    converter.convertToNative(element);
+```
+
+---
+
+## Structured audit events (`v2`)
+
+The `v2` API models audit data as structured `AuditEvent` objects with named fields. This is useful when downstream systems need more than a formatted action string.
+
+### `AuditEvent`
+
+An `AuditEvent` contains:
+
+- a numeric event ID;
+- creation date and time;
+- actor;
+- origin;
+- action type;
+- success state;
+- a collection of `AuditField` values.
+
+```java
+long id = event.getID();
+LocalDateTime created = event.getCreationDateTime();
+
+String actor = event.getActor();
+String origin = event.getOrigin();
+EAuditActionType action = event.getAction();
+String actionID = event.getActionID();
+ESuccess success = event.getSuccess();
+
+boolean hasActor = event.hasActor();
+boolean hasOrigin = event.hasOrigin();
+boolean hasAction = event.hasAction();
+boolean hasSuccess = event.hasSuccess();
+
+ICommonsList<AuditField> fields = event.getAllFields();
+```
+
+### `AuditField`
+
+`AuditField` stores a field name and value.
+
+```java
+AuditField customerID = new AuditField("customerId", "customer-4711");
+AuditField hiddenToken = AuditField.createWithHiddenValue("accessToken");
+
+String name = customerID.getName();
+String value = customerID.getValue();
+```
+
+Use `hasName()` and `hasValue()` when field presence needs to be checked.
+
+### Building an event
+
+`AuditEventBuilder` creates events and can use an `IAuditSettings` instance or an `ICurrentUserIDProvider`.
+
+> Note: the builder method is named `setSucces`, matching the public API spelling.
+
+```java
+import com.helger.photon.audit.EAuditActionType;
+import com.helger.photon.audit.v2.AuditEventBuilder;
+import com.helger.photon.audit.v2.domain.AuditEvent;
+
+AuditEvent event = new AuditEventBuilder()
+    .setCurrentUserIDProvider(new MockCurrentUserIDProvider("alice"))
+    .setOrigin("customer-service")
+    .setAction(EAuditActionType.MODIFY)
+    .setSucces(ESuccess.SUCCESS)
+    .addField("customerId", "customer-4711")
+    .addField("changedProperty", "email")
+    .addFieldHiddenValue("authorization")
+    .build();
+```
+
+An explicit actor can be provided instead of relying on the current-user provider:
+
+```java
+AuditEvent event = new AuditEventBuilder()
+    .setActor("system")
+    .setOrigin("scheduled-job")
+    .setAction(EAuditActionType.EXECUTE)
+    .setSucces(ESuccess.SUCCESS)
+    .addField("job", "daily customer cleanup")
+    .build();
+```
+
+`getRealActorID()` exposes the actor identity resolved by the builder.
+
+### Event settings
+
+`AuditSettings` configures suppliers for event IDs and event creation timestamps.
+
+```java
+AuditSettings settings = new AuditSettings()
+    .setAuditEventIDProvider(() -> 1001L)
+    .setAuditEventDateTimeProvider(LocalDateTime::now);
+
+AuditEvent event = new AuditEventBuilder()
+    .setSettings(settings)
+    .setActor("alice")
+    .setAction(EAuditActionType.CREATE)
+    .setSucces(ESuccess.SUCCESS)
+    .build();
+```
+
+Default providers can be obtained from `AuditDefaultSettings`:
+
+```java
+ILongSupplier idProvider =
+    AuditDefaultSettings.getDefaultAuditEventIDProvider();
+
+Supplier<LocalDateTime> timestampProvider =
+    AuditDefaultSettings.getDefaultAuditEventDateTimeProvider();
+```
+
+### Consuming events
+
+Implement `IAuditEventConsumer` to send events to a destination such as a database, message queue, log sink, or external audit service.
+
+```java
+IAuditEventConsumer consumer = event -> {
+  System.out.println(
+      event.getCreationDateTime() + " " +
+      event.getActor() + " " +
+      event.getActionID()
+  );
+};
+
+consumer.consumeAuditEvent(event);
+```
+
+`AuditEventConsumerPipeline` combines multiple consumers and exposes exception callbacks:
+
+```java
+AuditEventConsumerPipeline pipeline =
+    new AuditEventConsumerPipeline();
+
+pipeline.consumers().add(event -> {
+  // Store the event.
+});
+
+pipeline.consumers().add(event -> {
+  // Send the event elsewhere.
+});
+
+pipeline.exceptionCallbacks().add(exception -> {
+  // Handle consumer failures.
+});
+
+pipeline.consumeAuditEvent(event);
+```
+
+### Bridging the original auditor API to v2 events
+
+`Audit2Bridge` implements `IAuditor` and converts classic audit calls into `AuditEvent` instances sent to an `IAuditEventConsumer`.
+
+```java
+IAuditEventConsumer consumer = event -> {
+  // Persist or forward the structured event.
+};
+
+Audit2Bridge auditor = new Audit2Bridge(
+    new MockCurrentUserIDProvider("alice"),
+    consumer,
+    String::valueOf
+);
+
+auditor.onCreateSuccess(Customer.class, "customer-4711");
+auditor.onModifyFailure(Customer.class, "email address", "customer-4711");
+```
+
+The bridge exposes its configured user provider and event consumer:
+
+```java
+ICurrentUserIDProvider userProvider =
+    auditor.getCurrentUserIDProvider();
+
+IAuditEventConsumer eventConsumer =
+    auditor.getAuditEventConsumer();
+```
+
+---
+
+## Choosing an integration approach
+
+| Requirement | Suggested API |
+|---|---|
+| Add simple application-wide audit calls | `AuditHelper` |
+| Write audit entries to logs | `LoggingAuditor` |
+| Process audit entries in batches asynchronously | `AsynchronousAuditor` |
+| Keep and query classic `IAuditItem` records | `AuditManager` or `SimpleAuditManager` |
+| Disable audit output without changing calling code | `DoNothingAuditor` or `DoNothingAuditManager` |
+| Produce structured events with fields | `AuditEventBuilder` and `IAuditEventConsumer` |
+| Migrate existing `IAuditor` calls to v2 events | `Audit2Bridge` |

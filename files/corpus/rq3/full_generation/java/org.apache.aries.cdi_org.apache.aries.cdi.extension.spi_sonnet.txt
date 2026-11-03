@@ -1,0 +1,152 @@
+# Aries CDI Extension SPI
+
+`org.apache.aries.cdi.extension.spi` provides a small set of Service Provider Interface (SPI) types that let you build **CDI portable extensions that plug into the Aries CDI runtime's own extension pipeline**. It sits on top of the standard `javax.enterprise.inject.spi` container lifecycle events and gives extension authors three capabilities:
+
+1. **Flagging annotated types as potential OSGi service candidates** (`ProcessPotentialService`).
+2. **Declaring additional service types that should be merged into a bean's service registration** (`MergeServiceTypes`).
+3. **Dynamically registering additional CDI `Extension` instances — together with their observer methods — into the running container** (`RegisterExtension`).
+
+These classes are typically used from within your own CDI `Extension`, observing the standard container events (such as `ProcessAnnotatedType`) and, in turn, firing the custom events defined here so that the Aries CDI runtime can pick them up and act on them.
+
+## Core Concepts
+
+### `ProcessPotentialService`
+
+`ProcessPotentialService` wraps a standard CDI `ProcessAnnotatedType<?>` event. It is constructed directly from that event and exposes:
+
+- `getProcessAnnotatedType()` — the original container event this instance was derived from.
+- `getAnnotatedType()` — convenience accessor for the annotated type being processed.
+- `configureAnnotatedType()` — an `AnnotatedTypeConfigurator<?>` that lets you modify the annotated type (add/remove annotations, members, etc.) before it is finalized.
+
+An extension typically observes `ProcessAnnotatedType<?>`, decides that the discovered type is a candidate for OSGi service registration, wraps it in a `ProcessPotentialService`, and fires the resulting event so that other extensions (including the Aries CDI runtime itself) can further refine or accept it as a service.
+
+### `MergeServiceTypes`
+
+`MergeServiceTypes` is used to tell the runtime which additional service types should be merged into the eventual service registration for a given bean. It is built via one of its static factory methods rather than a public constructor:
+
+- `MergeServiceTypes.forEvent(ProcessAnnotatedType<?> pat)`
+- `MergeServiceTypes.forEvent(ProcessPotentialService pat)`
+
+Both return a `Builder` that is scoped to the corresponding lifecycle event. Once configured, the builder produces a `MergeServiceTypes` instance exposing:
+
+- `getTypes()` — the array of service types that should be merged.
+- `getProcessAnnotatedType()` — the original `ProcessAnnotatedType` this merge applies to.
+
+Fire the resulting event from your extension so that consumers listening for `MergeServiceTypes` can incorporate the extra types into the bean's service definition.
+
+### `RegisterExtension`
+
+`RegisterExtension` allows an extension author to hand the Aries CDI runtime an additional CDI `Extension` instance, along with observer methods to attach to it, so it can be woven into bean discovery dynamically. It exposes:
+
+- `RegisterExtension(Extension extension)` — wraps the extension you want to register.
+- `getExtension()` — returns the wrapped `Extension`.
+- `registerObserver()` — creates and returns a new `ObserverBuilder` to describe an observer method to attach to the extension.
+- `getBuilders()` — returns all `ObserverBuilder`s registered so far, for inspection by the runtime.
+
+This is useful when your extension needs to contribute behavior (and observer methods) that cannot be expressed purely through a statically declared `Extension` class, but instead needs to be assembled programmatically at bootstrap time.
+
+## How the Pieces Fit Together
+
+A typical flow looks like this:
+
+1. Your `Extension` observes the standard CDI `ProcessAnnotatedType<?>` event during bean discovery.
+2. If the annotated type looks like a service candidate, you construct a `ProcessPotentialService` from it and fire that event.
+3. Whoever is interested (your own extension, or another one) observes `ProcessPotentialService`, inspects/modifies the type via `configureAnnotatedType()`, and may decide additional interfaces should be exposed as services.
+4. To communicate that, you obtain a `MergeServiceTypes.Builder` via `MergeServiceTypes.forEvent(...)`, configure it, and fire the resulting `MergeServiceTypes` event so the runtime merges those types into the final service registration.
+5. If your extension needs to inject entirely new CDI extensions and observer methods into the deployment, you wrap them with `RegisterExtension` and call `registerObserver()` for each observer you want attached, then fire/register that as appropriate for your integration point.
+
+## Usage Examples
+
+### Example 1: Marking a type as a potential service and merging extra service types
+
+```java
+import javax.enterprise.event.Observes;
+import javax.enterprise.inject.spi.BeanManager;
+import javax.enterprise.inject.spi.Extension;
+import javax.enterprise.inject.spi.ProcessAnnotatedType;
+
+import org.apache.aries.cdi.extension.spi.adapt.MergeServiceTypes;
+import org.apache.aries.cdi.extension.spi.adapt.ProcessPotentialService;
+
+public class MyServiceDetectingExtension implements Extension {
+
+    void processAnnotatedType(
+            @Observes ProcessAnnotatedType<?> pat,
+            BeanManager beanManager) {
+
+        // Only act on types that look like service candidates.
+        if (!looksLikeAService(pat)) {
+            return;
+        }
+
+        // Wrap the container event so downstream observers can treat
+        // this annotated type as a potential OSGi service.
+        ProcessPotentialService potentialService =
+                new ProcessPotentialService(pat);
+
+        beanManager.getEvent().fire(potentialService);
+    }
+
+    void processPotentialService(
+            @Observes ProcessPotentialService pps,
+            BeanManager beanManager) {
+
+        // Inspect or adjust the annotated type before it is finalized.
+        pps.configureAnnotatedType();
+
+        // Declare that additional interfaces should be merged into the
+        // eventual service registration for this bean.
+        MergeServiceTypes.Builder builder =
+                MergeServiceTypes.forEvent(pps);
+
+        MergeServiceTypes mergeServiceTypes = builder.build();
+
+        beanManager.getEvent().fire(mergeServiceTypes);
+    }
+
+    void onMergedTypes(@Observes MergeServiceTypes mergeServiceTypes) {
+        Class<?>[] types = mergeServiceTypes.getTypes();
+        // Consume the merged service types, e.g. for logging/diagnostics.
+        System.out.println("Merging service types: " + java.util.Arrays.toString(types));
+    }
+
+    private boolean looksLikeAService(ProcessAnnotatedType<?> pat) {
+        // Custom detection logic based on annotations, naming
+        // conventions, implemented interfaces, etc.
+        return true;
+    }
+}
+```
+
+### Example 2: Dynamically registering an additional extension with observers
+
+```java
+import javax.enterprise.event.Observes;
+import javax.enterprise.inject.spi.BeforeBeanDiscovery;
+import javax.enterprise.inject.spi.Extension;
+
+import org.apache.aries.cdi.extension.spi.adapt.RegisterExtension;
+
+public class DynamicExtensionRegistrar implements Extension {
+
+    void beforeBeanDiscovery(@Observes BeforeBeanDiscovery bbd) {
+
+        // The extension you want the runtime to become aware of.
+        Extension delegate = new SomeAdditionalExtension();
+
+        RegisterExtension registration = new RegisterExtension(delegate);
+
+        // Describe one or more observer methods that should be attached
+        // to the registered extension.
+        registration.registerObserver();
+
+        // At this point `registration.getBuilders()` reflects everything
+        // that has been configured and can be inspected by the runtime
+        // that consumes RegisterExtension instances.
+    }
+}
+```
+
+## Summary
+
+This library is not a standalone runtime — it is the contract between custom CDI extensions and the Aries CDI implementation. Use `ProcessPotentialService` and `MergeServiceTypes` to participate in how CDI beans are turned into OSGi service registrations, and use `RegisterExtension` to contribute additional extensions and observer methods into the deployment programmatically.

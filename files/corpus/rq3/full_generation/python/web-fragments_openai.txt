@@ -1,0 +1,258 @@
+# web-fragments
+
+`web-fragments` provides a small API for building reusable HTML fragments together with the CSS, JavaScript, and other resources they require.
+
+A `Fragment` can collect content and resources, render its resources into head/body/footer HTML, serialize its state, and combine resources from other fragments. `FragmentView` provides a Django view base class for rendering fragments in response to requests, including standalone HTML responses.
+
+## Core concepts
+
+### `Fragment`
+
+`Fragment` is the central object in the library. It represents a piece of rendered content plus the resources needed to display or initialize it.
+
+A fragment can contain:
+
+- Content added with `add_content()`
+- Inline resources added with `add_resource()`
+- External resource URLs added with `add_resource_url()`
+- CSS and JavaScript convenience helpers
+- JavaScript initialization calls
+- Resources collected from other fragments
+
+Fragments can produce HTML for different document locations:
+
+- `head_html()` for head resources
+- `body_html()` for fragment body content
+- `foot_html()` for footer resources
+- `resources_to_html(placement)` for resources at a specific placement
+
+### `FragmentView`
+
+`FragmentView` is a Django `View` subclass for serving fragments.
+
+Override `render_to_fragment()` to create and return a `Fragment` for the current request. The view's `get()` method can then render the fragment, while the standalone rendering methods are available when a complete HTML response is needed.
+
+### `WebFragmentsConfig`
+
+`WebFragmentsConfig` is the Django application configuration class for the library.
+
+## Creating a fragment
+
+Create a fragment, add HTML content, and attach the CSS and JavaScript it needs:
+
+```python
+from web_fragments.fragment import Fragment
+
+
+def greeting_fragment(name):
+    fragment = Fragment()
+
+    fragment.add_content(f"<section class='greeting'>Hello, {name}!</section>")
+
+    fragment.add_css("""
+        .greeting {
+            padding: 1rem;
+            border-radius: 0.25rem;
+            background: #f3f4f6;
+        }
+    """)
+
+    fragment.add_javascript("""
+        console.log("Greeting fragment loaded");
+    """)
+
+    return fragment
+```
+
+Render the generated pieces where appropriate in a page template or response:
+
+```python
+fragment = greeting_fragment("Ada")
+
+head = fragment.head_html()
+body = fragment.body_html()
+foot = fragment.foot_html()
+```
+
+## Adding external resources
+
+Use the URL helpers when a resource is hosted separately:
+
+```python
+from web_fragments.fragment import Fragment
+
+fragment = Fragment()
+fragment.add_content("<div id='chart'></div>")
+
+fragment.add_css_url("https://cdn.example.com/chart.css")
+fragment.add_javascript_url("https://cdn.example.com/chart.js")
+```
+
+For more general resource types, use `add_resource()` or `add_resource_url()` directly:
+
+```python
+fragment.add_resource(
+    text="console.log('inline resource')",
+    mimetype="text/javascript",
+)
+
+fragment.add_resource_url(
+    url="https://example.com/widget.js",
+    mimetype="text/javascript",
+)
+```
+
+Both general resource methods accept an optional `placement` argument when resource placement needs to be specified.
+
+## Initializing JavaScript
+
+A fragment can register a JavaScript initialization function, optionally with JSON-compatible arguments:
+
+```python
+from web_fragments.fragment import Fragment
+
+fragment = Fragment()
+fragment.add_content("<div id='user-card'></div>")
+
+fragment.initialize_js(
+    "initializeUserCard",
+    {
+        "user_id": 42,
+        "theme": "dark",
+    },
+)
+```
+
+This is useful when a fragment's JavaScript needs data associated with the rendered content.
+
+## Combining fragments
+
+A page often contains several independently generated fragments. Resource helpers allow a parent fragment to collect the resources needed by its children.
+
+```python
+from web_fragments.fragment import Fragment
+
+profile = Fragment()
+profile.add_content("<section class='profile'>Profile</section>")
+profile.add_css(".profile { font-weight: bold; }")
+
+activity = Fragment()
+activity.add_content("<section class='activity'>Recent activity</section>")
+activity.add_javascript("console.log('activity loaded');")
+
+page = Fragment()
+page.add_content(profile.body_html())
+page.add_content(activity.body_html())
+
+page.add_fragment_resources(profile)
+page.add_fragment_resources(activity)
+```
+
+When several fragments are available, use `add_resources()`:
+
+```python
+page.add_resources([profile, activity])
+```
+
+## Serializing fragments
+
+Fragments support dictionary conversion through `to_dict()` and `from_dict()`:
+
+```python
+from web_fragments.fragment import Fragment
+
+fragment = Fragment()
+fragment.add_content("<p>Saved fragment content</p>")
+
+data = fragment.to_dict()
+
+restored_fragment = Fragment.from_dict(data)
+```
+
+This can be useful when fragment data needs to be passed between application layers or stored in a serialized form.
+
+## Serving fragments with Django
+
+Subclass `FragmentView` and implement `render_to_fragment()`:
+
+```python
+from web_fragments.fragment import Fragment
+from web_fragments.views import FragmentView
+
+
+class UserSummaryView(FragmentView):
+    def render_to_fragment(self, request, **kwargs):
+        user = request.user
+
+        fragment = Fragment()
+        fragment.add_content(
+            f"<article class='user-summary'>"
+            f"<h2>{user.username}</h2>"
+            f"<p>Signed in user</p>"
+            f"</article>"
+        )
+
+        fragment.add_css("""
+            .user-summary {
+                padding: 1rem;
+                border: 1px solid #ddd;
+            }
+        """)
+
+        return fragment
+```
+
+`FragmentView` also exposes methods for standalone output:
+
+- `render_standalone_response(request, fragment, **kwargs)`
+- `render_to_standalone_html(request, fragment, **kwargs)`
+
+For example, a view implementation can explicitly create a fragment and render it as a standalone response:
+
+```python
+from web_fragments.fragment import Fragment
+from web_fragments.views import FragmentView
+
+
+class StandaloneGreetingView(FragmentView):
+    def get(self, request, *args, **kwargs):
+        fragment = Fragment()
+        fragment.add_content("<main><h1>Hello!</h1></main>")
+        fragment.add_css("main { max-width: 50rem; margin: 2rem auto; }")
+
+        return self.render_standalone_response(request, fragment)
+```
+
+## API summary
+
+### `Fragment`
+
+| Method | Purpose |
+| --- | --- |
+| `resources()` | Access the fragment's resources. |
+| `to_dict()` | Convert a fragment to a dictionary representation. |
+| `from_dict(pods)` | Build a fragment from a dictionary representation. |
+| `add_content(content)` | Add content to the fragment. |
+| `add_resource(text, mimetype, placement=None)` | Add an inline resource. |
+| `add_resource_url(url, mimetype, placement=None)` | Add a resource by URL. |
+| `add_css(text)` | Add inline CSS. |
+| `add_css_url(url)` | Add CSS from a URL. |
+| `add_javascript(text)` | Add inline JavaScript. |
+| `add_javascript_url(url)` | Add JavaScript from a URL. |
+| `add_fragment_resources(fragment)` | Add resources from another fragment. |
+| `add_resources(fragments)` | Add resources from multiple fragments. |
+| `initialize_js(js_func, json_args=None)` | Register JavaScript initialization. |
+| `body_html()` | Render fragment body HTML. |
+| `head_html()` | Render head resources as HTML. |
+| `foot_html()` | Render footer resources as HTML. |
+| `resources_to_html(placement)` | Render resources for a placement. |
+| `resource_to_html(resource)` | Render an individual resource as HTML. |
+
+### `FragmentView`
+
+| Method | Purpose |
+| --- | --- |
+| `get(request, *args, **kwargs)` | Handle a GET request. |
+| `render_to_fragment(request, **kwargs)` | Create the fragment for a request. |
+| `render_standalone_response(request, fragment, **kwargs)` | Render a fragment as a standalone response. |
+| `render_to_standalone_html(request, fragment, **kwargs)` | Render standalone HTML for a fragment. |

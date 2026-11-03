@@ -1,0 +1,318 @@
+# ReactiveWizard Server
+
+`se.fortnox.reactivewizard:reactivewizard-server` provides server-side building blocks for running a reactive HTTP server. Its API centers on:
+
+- Dispatching incoming HTTP requests through `RequestHandler` implementations
+- Configuring a Reactor `HttpServer`
+- Tracking active connections for coordinated shutdown
+- Registering JAX-RS resource providers
+- Wiring server components through a module/configuration system
+
+The primary runtime entry point is `RwServer`, which is a `Thread` responsible for hosting the configured server.
+
+## Main components
+
+### `RwServer`
+
+`RwServer` represents the running server process.
+
+```java
+public class RwServer extends Thread
+```
+
+Construct it with server configuration, request handling, connection tracking, shutdown handling, and optionally a set of server configurers:
+
+```java
+new RwServer(
+    ServerConfig config,
+    CompositeRequestHandler compositeRequestHandler,
+    ConnectionCounter connectionCounter,
+    Set<ReactorServerConfigurer> serverConfigurers,
+    LoggingShutdownHandler loggingShutdownHandler
+);
+```
+
+A shorter constructor is also available when no explicit `ReactorServerConfigurer` set is supplied:
+
+```java
+new RwServer(
+    ServerConfig config,
+    CompositeRequestHandler compositeRequestHandler,
+    ConnectionCounter connectionCounter,
+    LoggingShutdownHandler loggingShutdownHandler
+);
+```
+
+Useful methods:
+
+- `start()` — inherited from `Thread`; starts the server thread.
+- `run()` — executes the server thread’s work.
+- `getServer()` — returns the underlying `DisposableServer`.
+- `registerShutdownDependency(Runnable)` — registers work that should be considered during shutdown.
+
+### `ServerConfig`
+
+`ServerConfig` contains the server settings exposed by this module.
+
+| Setting | Getter | Setter |
+|---|---|---|
+| Port | `getPort()` | `setPort(int)` |
+| Enabled state | `isEnabled()` | `setEnabled(boolean)` |
+| Maximum header size | `getMaxHeaderSize()` | `setMaxHeaderSize(int)` |
+| Maximum initial request-line length | `getMaxInitialLineLengthDefault()` | `setMaxInitialLineLengthDefault(int)` |
+| Maximum request size | `getMaxRequestSize()` | `setMaxRequestSize(int)` |
+| Shutdown timeout | `getShutdownTimeoutSeconds()` | `setShutdownTimeoutMs(int)` |
+| Gzip enabled state | `isEnableGzip()` | `setEnableGzip(boolean)` |
+| Shutdown delay | `getShutdownDelaySeconds()` | `setShutdownDelaySeconds(int)` |
+
+Example:
+
+```java
+ServerConfig config = new ServerConfig();
+config.setPort(8080);
+config.setEnabled(true);
+config.setEnableGzip(true);
+
+config.setMaxHeaderSize(16 * 1024);
+config.setMaxInitialLineLengthDefault(4 * 1024);
+config.setMaxRequestSize(10 * 1024 * 1024);
+
+config.setShutdownDelaySeconds(5);
+config.setShutdownTimeoutMs(30_000);
+```
+
+### `CompositeRequestHandler`
+
+`CompositeRequestHandler` is a `RequestHandler` that combines a set of request handlers and coordinates request-level concerns through:
+
+- `ExceptionHandler`
+- `ConnectionCounter`
+- `RequestLogger`
+
+```java
+CompositeRequestHandler handler = new CompositeRequestHandler(
+    handlers,
+    exceptionHandler,
+    connectionCounter,
+    requestLogger
+);
+```
+
+It implements the reactive request handler operation:
+
+```java
+Publisher<Void> result = handler.apply(request, response);
+```
+
+The handler accepts an `HttpServerRequest` and `HttpServerResponse`, then returns a reactive `Publisher<Void>` representing request processing.
+
+### `ConnectionCounter`
+
+`ConnectionCounter` tracks a connection count and can be used to wait for active connections to drain.
+
+```java
+ConnectionCounter connectionCounter = new ConnectionCounter();
+
+connectionCounter.increase();
+try {
+    // Connection is active.
+} finally {
+    connectionCounter.decrease();
+}
+```
+
+Inspect or wait for the count:
+
+```java
+long activeConnections = connectionCounter.getCount();
+
+boolean drained = connectionCounter.awaitZero(10, TimeUnit.SECONDS);
+if (!drained) {
+    // Connections did not reach zero during the requested wait period.
+}
+```
+
+### `ReactorServerConfigurer`
+
+`ReactorServerConfigurer` customizes a Reactor `HttpServer`.
+
+```java
+public interface ReactorServerConfigurer {
+    HttpServer configure(HttpServer httpServer);
+
+    default int prio();
+}
+```
+
+Implement this interface to apply server-level options:
+
+```java
+ReactorServerConfigurer customConfigurer = new ReactorServerConfigurer() {
+    @Override
+    public HttpServer configure(HttpServer httpServer) {
+        return httpServer;
+    }
+
+    @Override
+    public int prio() {
+        return 100;
+    }
+};
+```
+
+The `prio()` method can be used when multiple configurers need an ordering.
+
+Provided configurers include:
+
+- `NoContentFixConfigurer`
+- `RequestSizesConfigurer`
+
+`RequestSizesConfigurer` is constructed from `ServerConfig`:
+
+```java
+ReactorServerConfigurer requestSizesConfigurer =
+    new RequestSizesConfigurer(config);
+```
+
+`NoContentFixConfigurer` has a no-argument constructor:
+
+```java
+ReactorServerConfigurer noContentConfigurer =
+    new NoContentFixConfigurer();
+```
+
+### `JaxRsResourceRegistry`
+
+`JaxRsResourceRegistry` collects JAX-RS resource providers and exposes them as an object array.
+
+```java
+JaxRsResourceRegistry registry = new JaxRsResourceRegistry();
+
+registry.add(resourceProvider);
+
+Object[] resources = registry.getResources();
+```
+
+This is useful when resource providers are discovered or assembled in one part of an application and later supplied to JAX-RS-related infrastructure.
+
+### `ServerModule` and `ServerConfigurerScanner`
+
+`ServerModule` participates in application wiring through the `AutoBindModule` API:
+
+```java
+ServerModule serverModule = new ServerModule(
+    injectAnnotatedScanner,
+    configFactory,
+    serverConfigurerScanner
+);
+```
+
+Its `configure(Binder)` method contributes server-related bindings:
+
+```java
+serverModule.configure(binder);
+```
+
+`ServerConfigurerScanner` extends `AbstractClassScanner` and is intended to visit a `ClassScanner`:
+
+```java
+ServerConfigurerScanner scanner = new ServerConfigurerScanner();
+scanner.visit(classScanner);
+```
+
+## Usage examples
+
+## Start a server with explicit configuration
+
+The following example shows how application-provided request handlers and lifecycle dependencies can be assembled into an `RwServer`.
+
+```java
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import se.fortnox.reactivewizard.server.CompositeRequestHandler;
+import se.fortnox.reactivewizard.server.ConnectionCounter;
+import se.fortnox.reactivewizard.server.RwServer;
+import se.fortnox.reactivewizard.server.ServerConfig;
+import se.fortnox.reactivewizard.server.modifiers.NoContentFixConfigurer;
+import se.fortnox.reactivewizard.server.modifiers.RequestSizesConfigurer;
+
+// These values are supplied by the surrounding application or dependency setup.
+Set<RequestHandler> handlers = /* request handlers */;
+ExceptionHandler exceptionHandler = /* exception handling component */;
+RequestLogger requestLogger = /* request logging component */;
+LoggingShutdownHandler loggingShutdownHandler = /* shutdown logging component */;
+
+ServerConfig config = new ServerConfig();
+config.setPort(8080);
+config.setEnabled(true);
+config.setEnableGzip(true);
+config.setMaxHeaderSize(16 * 1024);
+config.setMaxRequestSize(10 * 1024 * 1024);
+config.setShutdownDelaySeconds(5);
+config.setShutdownTimeoutMs(30_000);
+
+ConnectionCounter connectionCounter = new ConnectionCounter();
+
+CompositeRequestHandler requestHandler = new CompositeRequestHandler(
+    handlers,
+    exceptionHandler,
+    connectionCounter,
+    requestLogger
+);
+
+Set<ReactorServerConfigurer> configurers = Set.of(
+    new RequestSizesConfigurer(config),
+    new NoContentFixConfigurer()
+);
+
+RwServer server = new RwServer(
+    config,
+    requestHandler,
+    connectionCounter,
+    configurers,
+    loggingShutdownHandler
+);
+
+server.start();
+```
+
+## Coordinate application shutdown
+
+Use `ConnectionCounter` to determine whether connections have drained, and register dependencies that should participate in the server shutdown sequence.
+
+```java
+RwServer.registerShutdownDependency(() -> {
+    // Perform application-specific shutdown coordination here.
+});
+
+boolean noOpenConnections = connectionCounter.awaitZero(15, TimeUnit.SECONDS);
+
+if (!noOpenConnections) {
+    System.err.println("Timed out while waiting for active connections to close.");
+}
+```
+
+## Register JAX-RS resource providers
+
+```java
+JaxRsResourceRegistry resourceRegistry = new JaxRsResourceRegistry();
+
+resourceRegistry.add(customerResourceProvider);
+resourceRegistry.add(orderResourceProvider);
+
+Object[] jaxRsResources = resourceRegistry.getResources();
+```
+
+The resulting `Object[]` can be passed to the part of an application responsible for configuring JAX-RS resources.
+
+## Typical composition
+
+A typical application composition looks like this:
+
+1. Create and populate `ServerConfig`.
+2. Create one shared `ConnectionCounter`.
+3. Assemble application `RequestHandler` instances into a `CompositeRequestHandler`.
+4. Add optional `ReactorServerConfigurer` implementations such as request-size configuration.
+5. Construct and start `RwServer`.
+6. During shutdown, use `ConnectionCounter.awaitZero(...)` and `RwServer.registerShutdownDependency(...)` to coordinate graceful termination.

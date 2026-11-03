@@ -1,0 +1,476 @@
+# wasabi-experiment-objects
+
+`com.intuit.wasabi:wasabi-experiment-objects` provides Java domain objects for representing and validating experimentation data.
+
+The library models concepts commonly used in experiment management:
+
+- Experiments and experiment creation requests
+- Buckets and allocation metadata
+- Pages and experiment-to-page relationships
+- Prioritized experiments
+- Lists/batches of experiment objects
+- Context and profile-related request data
+- Experiment and bucket state validation
+- Structured error codes and exceptions
+
+The package is primarily a collection of serializable, mutable value objects with getters, setters, equality support, and builder entry points.
+
+## Installation
+
+Add the dependency to your build.
+
+### Maven
+
+```xml
+<dependency>
+    <groupId>com.intuit.wasabi</groupId>
+    <artifactId>wasabi-experiment-objects</artifactId>
+    <version><!-- version --></version>
+</dependency>
+```
+
+### Gradle
+
+```gradle
+implementation("com.intuit.wasabi:wasabi-experiment-objects:<version>")
+```
+
+## Core model
+
+### `Experiment`
+
+`Experiment` is the main experiment representation. It implements `ExperimentBase`, `Cloneable`, and `Serializable`.
+
+An experiment includes:
+
+- Identity: `Experiment.ID`
+- Display metadata: label, description, tags, creator ID
+- Application: `Application.Name`
+- Scheduling: start and end times
+- State: `Experiment.State`
+- Targeting: rule and JSON rule representation
+- Allocation: sampling percent and associated buckets
+- Personalization and model configuration
+- Priority, exclusions, and page associations
+- Result-related fields such as hypothesis and results
+
+Useful methods include:
+
+```java
+Experiment.getID();
+Experiment.getState();
+Experiment.getBuckets();
+Experiment.getExperimentPageList();
+Experiment.isStateTransitionValid(desiredState);
+Experiment.isChangeable();
+Experiment.isDeleted();
+Experiment.calculateLastDay();
+```
+
+Create an experiment through its builder entry point:
+
+```java
+Experiment.Builder builder = Experiment.withID(experimentId);
+```
+
+Or initialize a builder from an existing instance:
+
+```java
+Experiment.Builder builder = Experiment.from(existingExperiment);
+```
+
+### `NewExperiment`
+
+`NewExperiment` represents input used when defining a new experiment. It also implements `ExperimentBase`.
+
+It contains many of the configuration fields available on `Experiment`, including:
+
+- ID, label, application, description, and tags
+- Start/end dates and sampling percentage
+- Targeting rule
+- Personalization settings and model information
+- User cap and rapid-experiment settings
+- Source URL and experiment type
+
+Use either constructor or the builder entry point:
+
+```java
+NewExperiment request = new NewExperiment(experimentId);
+
+NewExperiment.Builder builder = NewExperiment.withID(experimentId);
+```
+
+### `Bucket`
+
+`Bucket` represents a variant within an experiment.
+
+A bucket is associated with an experiment ID and contains:
+
+- `Bucket.Label`
+- Control designation
+- Allocation percentage
+- Description
+- State
+- Payload
+
+```java
+Bucket bucket = new Bucket();
+bucket.setExperimentID(experimentId);
+bucket.setControl(Boolean.FALSE);
+bucket.setAllocationPercent(50.0);
+bucket.setDescription("Variant experience");
+bucket.setPayload("{\"variant\":\"treatment\"}");
+```
+
+Bucket construction also has builder entry points:
+
+```java
+Bucket.Builder builder = Bucket.newInstance(experimentId, bucketLabel);
+Bucket.Builder copiedBuilder = Bucket.from(bucket);
+```
+
+Use `isStateTransitionValid` to check a requested bucket state change:
+
+```java
+boolean valid = bucket.isStateTransitionValid(desiredBucketState);
+```
+
+### `ExperimentBase`
+
+`ExperimentBase` is a shared interface implemented by experiment-like objects:
+
+- `Experiment`
+- `NewExperiment`
+- `PrioritizedExperiment`
+
+It exposes common experiment properties:
+
+```java
+Experiment.ID getID();
+String getDescription();
+String getRule();
+Date getStartTime();
+Date getEndTime();
+Experiment.Label getLabel();
+Experiment.State getState();
+Application.Name getApplicationName();
+Boolean getIsPersonalizationEnabled();
+Set<String> getTags();
+```
+
+Use this interface when code needs to work with different experiment representations without depending on a specific concrete class.
+
+```java
+void logExperiment(ExperimentBase experiment) {
+    System.out.println(experiment.getID());
+    System.out.println(experiment.getState());
+}
+```
+
+### `PrioritizedExperiment`
+
+`PrioritizedExperiment` is an experiment representation that includes an explicit priority. It implements `ExperimentBase`, `Cloneable`, and `Serializable`.
+
+```java
+PrioritizedExperiment.Builder builder =
+        PrioritizedExperiment.withID(experimentId);
+
+PrioritizedExperiment.Builder fromExperiment =
+        PrioritizedExperiment.from(experiment, 10);
+```
+
+It supports the same broad experiment metadata categories as `Experiment`, plus:
+
+```java
+Integer getPriority();
+void setPriority(Integer priority);
+```
+
+### Pages
+
+The page-related classes model page identities and experiment associations.
+
+| Class | Purpose |
+|---|---|
+| `Page` | Represents a page through `Page.Name`. |
+| `ExperimentPage` | Associates a page name with whether new assignments are allowed. |
+| `PageExperiment` | Associates an experiment ID and label with whether new assignments are allowed. |
+| `ExperimentPageList` | Holds a list of `ExperimentPage` instances. |
+
+Create an `ExperimentPage` with its builder entry point:
+
+```java
+ExperimentPage.Builder builder =
+        ExperimentPage.withAttributes(pageName, true);
+```
+
+Create a page-to-experiment association:
+
+```java
+PageExperiment.Builder builder =
+        PageExperiment.withAttributes(experimentId, experimentLabel, true);
+```
+
+The `allowNewAssignment` property is available on both `ExperimentPage` and `PageExperiment`:
+
+```java
+boolean allowed = experimentPage.getAllowNewAssignment();
+experimentPage.setAllowNewAssignment(false);
+```
+
+## Collection wrappers
+
+The library provides lightweight container classes for API boundaries and batch-oriented operations.
+
+| Class | Contents |
+|---|---|
+| `BucketList` | `List<Bucket>` |
+| `ExperimentList` | `List<Experiment>` |
+| `ExperimentIDList` | `List<Experiment.ID>` |
+| `ExperimentPageList` | `List<ExperimentPage>` |
+| `PrioritizedExperimentList` | `List<PrioritizedExperiment>` |
+| `ExperimentBatch` | Experiment labels plus profile data |
+
+### Example: assembling an experiment list
+
+```java
+Experiment first = new Experiment();
+first.setID(firstExperimentId);
+first.setDescription("First experiment");
+
+Experiment second = new Experiment();
+second.setID(secondExperimentId);
+second.setDescription("Second experiment");
+
+ExperimentList experiments = new ExperimentList();
+experiments.addExperiment(first);
+experiments.addExperiment(second);
+
+List<Experiment> values = experiments.getExperiments();
+```
+
+Several list types also support an initial capacity:
+
+```java
+BucketList buckets = new BucketList(2);
+buckets.addBucket(controlBucket);
+buckets.addBucket(treatmentBucket);
+```
+
+### Example: selecting experiments by ID
+
+```java
+List<Experiment.ID> ids = new ArrayList<>();
+ids.add(firstExperimentId);
+ids.add(secondExperimentId);
+
+ExperimentIDList.Builder builder =
+        ExperimentIDList.withExperimentIDList(ids);
+```
+
+### `ExperimentBatch`
+
+`ExperimentBatch` combines experiment labels with profile data and exposes personalization parameters.
+
+```java
+ExperimentBatch.Builder builder = ExperimentBatch.newInstance();
+```
+
+Read profile-related maps from an existing batch:
+
+```java
+Map<String, Object> profile = batch.getProfile();
+Map<String, Object> personalization = batch.getPersonalizationParameters();
+```
+
+Set profile and label collections directly:
+
+```java
+batch.setProfile(profile);
+batch.setLabels(labels);
+```
+
+## Context
+
+`Context` wraps a string context value.
+
+```java
+Context context = Context.valueOf("mobile");
+
+String value = context.getContext();
+context.setContext("web");
+```
+
+It also provides builder entry points:
+
+```java
+Context.Builder builder = Context.newInstance("mobile");
+Context.Builder copiedBuilder = Context.from(context);
+```
+
+## Validation
+
+`ExperimentValidator` provides validation methods for experiments, experiment creation requests, bucket configurations, descriptions, and state changes.
+
+```java
+ExperimentValidator validator = new ExperimentValidator();
+
+validator.validateExperiment(experiment);
+validator.validateNewExperiment(newExperiment);
+validator.validateExperimentBuckets(experiment.getBuckets());
+validator.validateDescriptionNotEmpty(experiment.getDescription());
+```
+
+### Validating state transitions
+
+Validate experiment state changes:
+
+```java
+validator.validateStateTransition(oldExperimentState, newExperimentState);
+```
+
+Validate bucket state changes:
+
+```java
+validator.validateBucketStateTransition(oldBucketState, desiredBucketState);
+```
+
+Ensure an experiment is in a draft state before an operation that requires it:
+
+```java
+validator.ensureStateIsDraft(experiment);
+```
+
+You can also perform a boolean transition check directly on an object:
+
+```java
+if (experiment.isStateTransitionValid(desiredState)) {
+    experiment.setState(desiredState);
+}
+```
+
+## Exceptions and error codes
+
+The library includes runtime exception types for common validation failures:
+
+- `InvalidBucketStateTransitionException`
+- `InvalidExperimentStateException`
+- `InvalidExperimentStateTransitionException`
+- `InvalidIdentifierException`
+- `WasabiException`
+
+`WasabiException` exposes structured error information:
+
+```java
+try {
+    validator.validateExperiment(experiment);
+} catch (WasabiException e) {
+    ErrorCode code = e.getErrorCode();
+    String detail = e.getDetailMessage();
+    String message = e.getMessage();
+}
+```
+
+### `ErrorCode`
+
+`ErrorCode` identifies broad categories of errors, including invalid arguments, identifiers, list sizes, state transitions, missing resources, constraint violations, assignment failures, authentication failures, and repository/database errors.
+
+```java
+ErrorCode code = ErrorCode.fromString("INVALID_IDENTIFIER");
+
+int responseCode = code.getResponseCode();
+String text = code.toString();
+```
+
+## End-to-end example
+
+The following example creates an in-memory experiment object, attaches buckets, associates a page configuration, validates it, and places it in a list.
+
+```java
+import com.intuit.wasabi.experimentobjects.Bucket;
+import com.intuit.wasabi.experimentobjects.BucketList;
+import com.intuit.wasabi.experimentobjects.Experiment;
+import com.intuit.wasabi.experimentobjects.ExperimentList;
+import com.intuit.wasabi.experimentobjects.ExperimentPage;
+import com.intuit.wasabi.experimentobjects.ExperimentValidator;
+
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+// Assume these typed values are obtained from the surrounding application.
+Experiment.ID experimentId = existingExperimentId;
+Experiment.Label experimentLabel = existingExperimentLabel;
+Bucket.Label controlLabel = existingControlLabel;
+Bucket.Label treatmentLabel = existingTreatmentLabel;
+Experiment.State draftState = existingDraftState;
+Page.Name pageName = existingPageName;
+
+Experiment experiment = new Experiment();
+experiment.setID(experimentId);
+experiment.setLabel(experimentLabel);
+experiment.setDescription("Checkout layout comparison");
+experiment.setStartTime(new Date());
+experiment.setState(draftState);
+experiment.setSamplingPercent(100.0);
+
+Bucket control = new Bucket();
+control.setExperimentID(experimentId);
+control.setLabel(controlLabel);
+control.setControl(Boolean.TRUE);
+control.setAllocationPercent(50.0);
+control.setDescription("Existing checkout layout");
+
+Bucket treatment = new Bucket();
+treatment.setExperimentID(experimentId);
+treatment.setLabel(treatmentLabel);
+treatment.setControl(Boolean.FALSE);
+treatment.setAllocationPercent(50.0);
+treatment.setDescription("Updated checkout layout");
+
+List<Bucket> bucketValues = new ArrayList<>();
+bucketValues.add(control);
+bucketValues.add(treatment);
+experiment.setBuckets(bucketValues);
+
+ExperimentPage page = new ExperimentPage();
+page.setName(pageName);
+page.setAllowNewAssignment(true);
+
+List<ExperimentPage> pages = new ArrayList<>();
+pages.add(page);
+experiment.setExperimentPageList(pages);
+
+ExperimentValidator validator = new ExperimentValidator();
+validator.validateExperiment(experiment);
+validator.validateExperimentBuckets(experiment.getBuckets());
+
+ExperimentList experimentList = new ExperimentList();
+experimentList.addExperiment(experiment);
+```
+
+## Object behavior
+
+Most domain objects expose:
+
+- Mutable property setters
+- Getters for stored properties
+- `equals` and `hashCode`
+- A readable `toString`
+
+Some objects additionally support cloning:
+
+- `Experiment`
+- `ExperimentPage`
+- `PageExperiment`
+- `PrioritizedExperiment`
+
+```java
+Experiment copy = experiment.clone();
+```
+
+For `ExperimentPage`, `PageExperiment`, and `PrioritizedExperiment`, `clone()` declares `CloneNotSupportedException`:
+
+```java
+ExperimentPage copy = page.clone();
+```

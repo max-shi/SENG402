@@ -1,0 +1,538 @@
+# glacispring-common
+
+`com.github.shepherdviolet.glacimon:glacispring-common` is a Java/Spring utility library that provides common infrastructure for Spring applications.
+
+Its API covers:
+
+- Spring auto-configuration and servlet lifecycle integration
+- YAML property-source loading
+- Encrypted configuration-property support
+- Graceful application shutdown coordination
+- Dynamic `DataSource` routing
+- Spring Expression Language (SpEL) evaluation
+- Spring AOP and CGLIB proxy utilities
+- Request, file, collection, and startup helpers
+- Extension points for processing annotated bean members and instantiating interface-backed beans
+
+## Installation
+
+Add the library to your build using the version appropriate for your project:
+
+```xml
+<dependency>
+    <groupId>com.github.shepherdviolet.glacimon</groupId>
+    <artifactId>glacispring-common</artifactId>
+    <version><!-- version --></version>
+</dependency>
+```
+
+The library integrates with Spring Framework APIs and, for some features, Spring Boot APIs.
+
+---
+
+## Feature overview
+
+| Area | Main types | Purpose |
+|---|---|---|
+| Auto-configuration | `GlacispringCommonAutoConfiguration`, `GlacispringCommonProperties` | Registers common configuration and exposes servlet-listener settings. |
+| Servlet lifecycle | `GlacispringServletContextListener` | A `ServletContextListener` implementation for application lifecycle handling. |
+| Properties and YAML | `YamlPropertySourceFactory`, `OptionalYamlPropertySourceFactory` | Load YAML files as Spring `PropertySource` instances. |
+| Encrypted properties | `CryptoPropBeanFactoryPostProcessor`, `CryptoPropDecryptor`, `SimpleCryptoPropDecryptor` | Decrypt property values while Spring property sources are processed. |
+| Graceful shutdown | `GracefulShutdown` | Coordinate stopping request intake and waiting for active requests to complete. |
+| Dynamic data sources | `DynamicDataSource` | Route JDBC operations to a selected named `DataSource`. |
+| SpEL | `SpelExpressionResolver` | Validate and evaluate Spring Expression Language expressions. |
+| Formatting | `SequenceFormatter` | Format strings from object or map data using configurable providers/processors. |
+| Proxy helpers | `SpringAopUtils`, `SpringCglibUtils` | Inspect proxies, retrieve proxy targets, and create empty CGLIB-backed instances. |
+| Servlet requests | `ServletRequestUtils` | Read common HTTP request details, headers, parameters, and bodies. |
+| Temporary files | `TempFileBucket`, `HourlyTempFileBucket` | Organize temporary files in date- or hour-oriented bucket directories. |
+| Bean extension points | `MemberProcessor`, `InterfaceInstantiator` | Process annotated members and instantiate interface-oriented configuration objects. |
+
+---
+
+## Spring auto-configuration and servlet lifecycle
+
+`GlacispringCommonAutoConfiguration` exposes `GlacispringCommonProperties`. The properties object currently controls whether servlet-context listener support is enabled:
+
+```java
+GlacispringCommonProperties properties = new GlacispringCommonProperties();
+properties.setServletContextListenerEnabled(true);
+
+boolean enabled = properties.isServletContextListenerEnabled();
+```
+
+`GlacispringServletContextListener` implements Spring's servlet lifecycle contract:
+
+```java
+ServletContextListener listener = new GlacispringServletContextListener();
+```
+
+The listener receives standard `ServletContextEvent` callbacks through:
+
+- `contextInitialized(ServletContextEvent)`
+- `contextDestroyed(ServletContextEvent)`
+
+---
+
+## YAML property sources
+
+Use `YamlPropertySourceFactory` where Spring expects a `PropertySourceFactory` and the resource is YAML-based:
+
+```java
+YamlPropertySourceFactory factory = new YamlPropertySourceFactory();
+
+PropertySource<?> propertySource =
+        factory.createPropertySource("applicationYaml", encodedResource);
+```
+
+`OptionalYamlPropertySourceFactory` is an alternative YAML factory intended for cases where an optional resource may need to be handled:
+
+```java
+OptionalYamlPropertySourceFactory factory = new OptionalYamlPropertySourceFactory();
+
+PropertySource<?> propertySource =
+        factory.createPropertySource("optionalSettings", encodedResource);
+```
+
+Both factories accept an `EncodedResource` and can throw `IOException`.
+
+---
+
+## Encrypted configuration properties
+
+The crypto-property API is centered around `CryptoPropDecryptor`:
+
+```java
+public interface CryptoPropDecryptor {
+    String decrypt(String name, String value);
+    void setEnv(CryptoPropEnv env);
+}
+```
+
+A built-in decryptor is available through `SimpleCryptoPropDecryptor`. The associated utility class can encrypt a value and wrap it for use as a property value.
+
+```java
+String key = "your-key-material";
+
+String encryptedPropertyValue =
+        SimpleCryptoPropUtils.encryptAndWrap("db-password", key);
+
+String plaintext =
+        SimpleCryptoPropUtils.unwrapAndDecrypt(encryptedPropertyValue, key);
+```
+
+Useful key and cipher helpers include:
+
+```java
+String aesKey = SimpleCryptoPropUtils.generateAesKey();
+
+RsaKeyPair keyPair = SimpleCryptoPropUtils.generateRsaKeyPair();
+
+boolean cipherValue = CommonCryptoPropUtils.isCipher(encryptedPropertyValue);
+String wrapped = CommonCryptoPropUtils.wrapCipher("cipher-text");
+String unwrapped = CommonCryptoPropUtils.unwrapCipher(wrapped);
+
+String digest = CommonCryptoPropUtils.sha256("text");
+```
+
+### Integrating a decryptor with Spring
+
+`CryptoPropConfiguration` provides the principal Spring components:
+
+- a `CryptoPropDecryptor`
+- an `ICryptoPropertySourceConverter`
+- a `CryptoPropBeanFactoryPostProcessor`
+
+A custom decryptor can implement `CryptoPropDecryptor` directly, or extend `AbstractCryptoPropDecryptor`:
+
+```java
+public class MyDecryptor extends AbstractCryptoPropDecryptor {
+
+    @Override
+    public String decrypt(String name, String value) {
+        // Apply application-specific decryption.
+        return value;
+    }
+}
+```
+
+A programmatic configuration can be assembled as follows:
+
+```java
+CryptoPropDecryptor decryptor = new SimpleCryptoPropDecryptor("your-key-material");
+
+ICryptoPropertySourceConverter converter =
+        DefaultCryptoPropertySourceConverterUtils.createDefault(decryptor);
+
+CryptoPropBeanFactoryPostProcessor postProcessor =
+        new CryptoPropBeanFactoryPostProcessor(converter);
+```
+
+`CryptoPropBeanFactoryPostProcessor` participates in Spring bean-factory processing and converts property sources before properties are consumed by the application.
+
+### Property-source wrappers
+
+The library provides wrappers for several Spring property-source variants:
+
+- `CryptoPropertySource<T>`
+- `CryptoEnumerablePropertySource<T>`
+- `CryptoMapPropertySource`
+- `CryptoSystemEnvironmentPropertySource`
+
+Each wrapper delegates to an existing Spring `PropertySource` and decrypts values as properties are resolved. Boot-oriented variants additionally implement `OriginLookup<String>`:
+
+- `CryptoPropertySourceForBoot2<T>`
+- `CryptoEnumerablePropertySourceForBoot2<T>`
+- `CryptoMapPropertySourceForBoot2`
+- `CryptoSystemEnvironmentPropertySourceForBoot2`
+
+For custom conversion behavior, implement `ICryptoPropertySourceConverter`:
+
+```java
+public class MyPropertySourceConverter implements ICryptoPropertySourceConverter {
+
+    @Override
+    public void convertPropertySources(MutablePropertySources propertySources) {
+        // Replace or wrap property sources as needed.
+    }
+
+    @Override
+    public void setEnv(CryptoPropEnv env) {
+        // Read supporting configuration if necessary.
+    }
+}
+```
+
+`DefaultCryptoPropertySourceConverter` also supports configuration of proxy interception and skipped property-source names:
+
+```java
+DefaultCryptoPropertySourceConverter converter =
+        new DefaultCryptoPropertySourceConverter(decryptor);
+
+converter.setInterceptByProxy(true);
+converter.setSkipPropertySources("somePropertySource");
+```
+
+---
+
+## Graceful shutdown
+
+`GracefulShutdown` is a `SmartLifecycle` implementation for coordinated shutdown. A subclass defines:
+
+1. How the application stops accepting new requests.
+2. How the application determines that all existing requests are complete.
+
+```java
+public class RequestGracefulShutdown extends GracefulShutdown {
+
+    public RequestGracefulShutdown() {
+        super(30_000L);
+    }
+
+    @Override
+    public void stopAcceptingRequests() {
+        // Disable incoming request acceptance.
+    }
+
+    @Override
+    public boolean isAllRequestsCompleted() {
+        // Return true when no active requests remain.
+        return true;
+    }
+}
+```
+
+Tune lifecycle behavior with:
+
+```java
+RequestGracefulShutdown shutdown = new RequestGracefulShutdown();
+
+shutdown.setTimeout(30_000L);
+shutdown.setCheckInterval(500L);
+```
+
+The shutdown sequence can also be initiated explicitly:
+
+```java
+shutdown.onShutdownPhase();
+```
+
+Because it implements `SmartLifecycle`, Spring can manage it as part of application startup and shutdown. It exposes standard lifecycle methods including `start()`, `stop()`, `stop(Runnable)`, `isRunning()`, `getPhase()`, and `isAutoStartup()`.
+
+---
+
+## Dynamic data sources
+
+`DynamicDataSource` extends Spring's `AbstractRoutingDataSource` and routes operations using a named data source selection.
+
+```java
+DynamicDataSource dynamicDataSource = new DynamicDataSource("primary");
+dynamicDataSource.setDataSources(dataSourceProvider);
+```
+
+Select the data source to use for the current execution context:
+
+```java
+DynamicDataSource.selectDataSource("reporting");
+
+// Perform database work using the routing data source.
+```
+
+The constructor accepts the name of the default data source. Data sources are supplied through an `ObjectProvider<Map<String, DataSource>>`.
+
+---
+
+## SpEL expression resolution
+
+`SpelExpressionResolver` validates and evaluates Spring Expression Language expressions.
+
+```java
+SpelExpressionResolver resolver = new SpelExpressionResolver();
+
+resolver.checkExpression("#enabled");
+
+Map<String, Object> variables = new HashMap<>();
+variables.put("enabled", true);
+variables.put("retries", 3);
+
+Object value = resolver.resolveExpression("#retries + 1", variables);
+
+boolean enabled =
+        resolver.resolveExpressionToBoolean("#enabled", variables);
+```
+
+Resolvers can also be constructed with:
+
+- a SpEL root object,
+- a Spring `BeanFactory`, or
+- both a root object and a bean factory.
+
+```java
+SpelExpressionResolver resolver =
+        new SpelExpressionResolver(rootObject, beanFactory);
+```
+
+Expression parsing can throw `ParseException`; evaluation can additionally throw `EvaluationException`.
+
+---
+
+## Sequence formatting
+
+`SequenceFormatter` formats a string against either an arbitrary data object or a `Map<String, Object>`.
+
+```java
+SequenceFormatter formatter = SequenceFormatter.defaultFormatter();
+
+Map<String, Object> values = new HashMap<>();
+values.put("orderId", "A-1001");
+
+String result = formatter.format("order", values);
+```
+
+For customized value resolution or transformation, construct a formatter with named `ValueProvider` and `ValueProcessor` maps:
+
+```java
+SequenceFormatter formatter =
+        new SequenceFormatter(valueProviders, valueProcessors);
+
+String result = formatter.format(formatDefinition, values);
+```
+
+Formatting methods may throw `SequenceFormatException`.
+
+---
+
+## Servlet request utilities
+
+`ServletRequestUtils` provides static helpers for commonly needed servlet request data:
+
+```java
+String uri = ServletRequestUtils.getUri(request);
+String method = ServletRequestUtils.getMethod(request);
+
+HttpHeaders headers = ServletRequestUtils.getHttpHeaders(request);
+Map<String, String> parameters = ServletRequestUtils.getHttpParams(request);
+
+byte[] body = ServletRequestUtils.readBody(request);
+```
+
+`readBody` can throw `IOException`.
+
+---
+
+## Temporary file buckets
+
+`TempFileBucket` resolves files below a root directory using day-oriented retention configuration:
+
+```java
+TempFileBucket bucket = new TempFileBucket("/var/tmp/my-service", 7);
+
+File file = bucket.get("upload.bin");
+```
+
+A custom date-directory prefix can be supplied:
+
+```java
+TempFileBucket bucket =
+        new TempFileBucket("/var/tmp/my-service", 7, "day-");
+```
+
+`HourlyTempFileBucket` provides an hour-oriented variant:
+
+```java
+HourlyTempFileBucket bucket =
+        new HourlyTempFileBucket("/var/tmp/my-service", 24, "hour-");
+
+File file = bucket.get("payload.json");
+```
+
+`get` may throw `IOException`.
+
+---
+
+## Collection normalization
+
+`IndexedMapToArrayListFixer` converts compatible map and collection structures:
+
+```java
+Map<String, Object> normalizedMap =
+        IndexedMapToArrayListFixer.processMap(sourceMap);
+
+List<Object> normalizedList =
+        IndexedMapToArrayListFixer.processList(sourceCollection);
+```
+
+Use these helpers when application data may represent list-like values through indexed map entries and needs to be normalized into Java lists.
+
+---
+
+## Spring AOP and CGLIB utilities
+
+`SpringAopUtils` identifies Spring proxy types and retrieves underlying proxy targets.
+
+```java
+if (SpringAopUtils.isAopProxy(bean)) {
+    boolean jdkProxy = SpringAopUtils.isJdkProxy(bean);
+    boolean cglibProxy = SpringAopUtils.isCglibProxy(bean);
+
+    Object target = SpringAopUtils.getProxyTarget(bean);
+}
+```
+
+Proxy-target access can throw:
+
+- `ProxyTypeNotMatchException`
+- `ProxyTargetGetException`
+
+For code executing within an exposed Spring AOP invocation, obtain the current proxy:
+
+```java
+MyService proxy = SpringAopUtils.getCurrentProxy();
+```
+
+`SpringCglibUtils` creates an empty instance of a class:
+
+```java
+MyType instance = SpringCglibUtils.newEmptyInstance(MyType.class);
+```
+
+---
+
+## Bean factory helpers
+
+### Boxed factory beans
+
+`BoxedFactoryBean` exposes an existing object through Spring's `FactoryBean` contract:
+
+```java
+BoxedFactoryBean factoryBean =
+        new BoxedFactoryBean(MyService.class, myService);
+
+Object bean = factoryBean.getObject();
+Class<?> type = factoryBean.getObjectType();
+```
+
+### Member processors
+
+`MemberProcessor<AnnotationType>` is an extension point for visiting fields and methods that carry a specific annotation.
+
+```java
+public class MyMemberProcessor implements MemberProcessor<MyAnnotation> {
+
+    @Override
+    public Class<MyAnnotation> acceptAnnotationType() {
+        return MyAnnotation.class;
+    }
+
+    @Override
+    public void visitField(
+            Object bean,
+            String beanName,
+            Field field,
+            MyAnnotation annotation,
+            ApplicationContext applicationContext) {
+        // Process an annotated field.
+    }
+
+    @Override
+    public void visitMethod(
+            Object bean,
+            String beanName,
+            Method method,
+            MyAnnotation annotation,
+            ApplicationContext applicationContext) {
+        // Process an annotated method.
+    }
+}
+```
+
+`MemberVisitBeanPostProcessor` performs bean post-processing, while `MemberProcessorConfig` exposes a corresponding `BeanPostProcessor`. `MemberProcessorSelector` is an `ImportSelector` for importing the related configuration.
+
+### Interface instantiation
+
+`InterfaceInstantiator` abstracts creation and bean-name resolution for an interface type:
+
+```java
+public class MyInterfaceInstantiator implements InterfaceInstantiator {
+
+    @Override
+    public Object newInstance(Class<?> interfaceType) throws Exception {
+        // Create an implementation for interfaceType.
+        return null;
+    }
+
+    @Override
+    public String resolveBeanName(String interfaceType) throws Exception {
+        return interfaceType;
+    }
+}
+```
+
+Provided implementations include:
+
+- `DefaultInterfaceInstantiator`
+- `ContextAwaredInterfaceInstantiator`
+
+`InterfaceInstFactoryBean4<T>` exposes instantiated values through Spring's `FactoryBean<T>` API:
+
+```java
+InterfaceInstantiator instantiator = new DefaultInterfaceInstantiator();
+
+InterfaceInstFactoryBean4<MyApi> factoryBean =
+        new InterfaceInstFactoryBean4<>(MyApi.class, instantiator);
+
+MyApi instance = factoryBean.getObject();
+```
+
+`InterfaceInstConfig` provides a `BeanDefinitionRegistryPostProcessor`, and `InterfaceInstSelector` can import the supporting configuration.
+
+---
+
+## Startup helper
+
+Start a non-web Spring Boot application with:
+
+```java
+SpringStartupUtils.startNonWebSpringBootApp(MyApplication.class, args);
+```
+
+This helper accepts the application source class and command-line arguments.

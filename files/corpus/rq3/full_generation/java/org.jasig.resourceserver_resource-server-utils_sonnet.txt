@@ -1,0 +1,174 @@
+# resource-server-utils
+
+`resource-server-utils` is a Java library that provides runtime support for web applications that use aggregated and minified CSS/JavaScript resources, as described by "skin XML" configuration files. It provides:
+
+- A pluggable API (`ResourcesElementsProvider`) for resolving resource URLs and rendering resource `<link>`/`<script>` markup from a skin configuration, with support for different levels of resource aggregation/minification.
+- Servlet `Filter` implementations that make the resource provider available to the request lifecycle, add cache-control headers to static resources, and enable HTTP page caching that is aware of aggregation state.
+- A JSP tag library that lets JSP authors emit aggregated resource markup, minify inline JavaScript, and resolve individual resource URLs directly from a page.
+
+This library does not perform the actual aggregation/minification of files — that is expected to happen elsewhere (e.g. a build step or a resource-server webapp). Instead, it provides the runtime glue that lets a web application discover what the current "included" resource strategy is (raw, aggregated, or aggregated+minified) and render the correct markup and URLs for it.
+
+## Core Concepts
+
+### Skin XML
+
+Many APIs in this library take a `skinXml` `String` parameter. This is expected to be the path/identifier of an XML configuration file describing the CSS/JS resources for a "skin" (theme) of your application. The provider reads this file to determine which resources belong to a skin and how they should be rendered.
+
+### `Included`
+
+`Included` is an enum (used throughout the API) representing the current resource inclusion strategy for a request — for example, whether resources should be served individually, aggregated together, or aggregated and minified. The active `Included` type can be set as a library-wide default and/or determined per-request (e.g. via a request parameter or attribute), which allows things like "debug mode" toggling between raw and aggregated resources.
+
+## Main Classes
+
+### `ResourcesElementsProvider`
+
+The central interface of the library. Implementations are responsible for:
+
+- `resolveResourceUrl(HttpServletRequest, String)` — Resolves a single resource path to its final, request-appropriate URL (e.g. accounting for aggregation, versioning, or CDN prefixes).
+- `setDefaultIncludedType(Included)` / `getDefaultIncludedType()` — Configure/read the fallback `Included` strategy.
+- `getIncludedType(HttpServletRequest)` — Determine the effective `Included` strategy for a given request.
+- `getResourcesParameter(HttpServletRequest, String skinXml, String name)` — Read a named parameter/value out of a skin XML document.
+- `getResourcesXmlFragment(HttpServletRequest, String skinXml)` — Get the resources for a skin as a DOM `NodeList`.
+- `getResourcesHtmlFragment(HttpServletRequest, String skinXml)` — Get the resources for a skin pre-rendered as an HTML fragment (`<link>`/`<script>` tags), ready to be included in a page.
+- `getResources(HttpServletRequest, String skinXml)` — Get a structured `Resources` object representing the parsed skin configuration.
+
+### `ResourcesElementsProviderImpl`
+
+The default Spring-friendly implementation of `ResourcesElementsProvider`. It implements `ResourceLoaderAware`, `ServletContextAware`, and `InitializingBean`, so it is designed to be configured as a Spring bean and wired into your `ApplicationContext`. Configuration options include:
+
+- `setResourcesDao(ResourcesDao)` — supplies the DAO responsible for reading/parsing skin XML resource definitions.
+- `setRegisterWithServletContext(boolean)` — when `true`, registers this instance in the `ServletContext` so it can be looked up later by non-Spring-managed code (e.g. filters, tags) via `ResourcesElementsProviderUtils`.
+- `setResolvedResourceCache(Map<String, String>)`, `setHtmlResourcesCache(Map<String, String>)`, `setXmlResourcesCache(Map<String, DocumentFragment>)` — allow pluggable caches (e.g. backed by Ehcache, ConcurrentHashMap, etc.) to avoid repeatedly resolving URLs or re-parsing skin XML on every request.
+
+### `ResourcesElementsProviderUtils`
+
+A static utility class for retrieving a `ResourcesElementsProvider` from a `ServletContext`:
+
+- `getResourcesElementsProvider(ServletContext)` — Looks up a previously-registered provider (see `setRegisterWithServletContext`), returning `null` (or similar) if none is registered.
+- `getOrCreateResourcesElementsProvider(ServletContext)` — Looks up a registered provider, or creates and registers a default one if none exists yet.
+
+This is the primary integration point for filters and tags that need access to the provider but are not themselves Spring beans.
+
+## Servlet Filters
+
+### `AggregationAwareFilterBean`
+
+A generic `Filter` wrapper that delegates to another `Filter` (set via `setFilter`) while making a `ResourcesElementsProvider` available during the request. Useful for wrapping third-party or framework filters so that they can be aggregation-aware without modifying their code directly.
+
+### `CacheExpirationFilter`
+
+A `GenericFilterBean` that sets HTTP cache-control/expiration headers on responses. `setCacheMaxAge(int)` configures how long (in seconds) resources should be cached by clients. `setResourcesElementsProvider(...)` allows the filter to adjust caching behavior based on the current `Included` type (e.g. shorter cache times for un-aggregated/debug resources).
+
+### `PathBasedCacheExpirationFilter`
+
+A more flexible variant of `CacheExpirationFilter` that allows different cache max-ages to be configured per URL path pattern via `setCacheMaxAges(Map<String, ? extends Number>)`.
+
+## Page Caching Filters
+
+### `AggregationAwarePageCachingFilter`
+
+Extends Ehcache's `SimpleCachingHeadersPageCachingFilter` to make full-page caching aware of the current resource aggregation state (via `setResourcesElementsProvider`), ensuring that cached pages are correctly invalidated/varied when the aggregation strategy changes.
+
+### `ConfigurablePageCachingFilter`
+
+A concrete, configurable subclass of `AggregationAwarePageCachingFilter` that accepts a `CacheManager` (and optional cache name) via its constructor, making it easy to instantiate programmatically (e.g. from a Spring configuration) rather than relying solely on `web.xml`/`init-param` configuration. `getCacheName()` exposes the configured Ehcache cache name.
+
+## JSP Tag Library
+
+### `AggregatedResourcesTag`
+
+A `TagSupport` tag that, given a `path` (skin XML location, set via `setPath`/`getPath`), renders the appropriate aggregated (or non-aggregated, depending on `Included` type) resource markup directly into the JSP output.
+
+### `ResourceIncludeTag`
+
+A `TagSupport` tag that resolves a single resource path (set via `setValue`/`getValue`) to its final URL (`getUrl()`), either writing it directly to the page or exposing it as a scoped variable (`setVar`/`getVar`) for further use in the JSP.
+
+### `JavaScriptMinificationTag`
+
+A `BodyTagSupport` tag that minifies inline JavaScript contained within its body before it is written to the page output.
+
+## Usage Examples
+
+### Configuring `ResourcesElementsProviderImpl` as a Spring bean
+
+```xml
+<bean id="resourcesDao" class="org.jasig.resourceserver.utils.aggr.YourResourcesDaoImpl" />
+
+<bean id="resourcesElementsProvider"
+      class="org.jasig.resourceserver.utils.aggr.ResourcesElementsProviderImpl">
+    <property name="resourcesDao" ref="resourcesDao" />
+    <property name="registerWithServletContext" value="true" />
+    <property name="defaultIncludedType" value="AGGREGATED" />
+</bean>
+```
+
+Registering with the servlet context (`registerWithServletContext=true`) makes the provider discoverable by filters and tags that aren't Spring beans, via `ResourcesElementsProviderUtils`.
+
+### Looking up the provider from a filter or servlet
+
+```java
+ResourcesElementsProvider provider =
+    ResourcesElementsProviderUtils.getOrCreateResourcesElementsProvider(request.getServletContext());
+
+String resolvedUrl = provider.resolveResourceUrl(request, "/css/main.css");
+```
+
+### Configuring cache expiration headers in `web.xml`
+
+```xml
+<filter>
+    <filter-name>cacheExpirationFilter</filter-name>
+    <filter-class>org.jasig.resourceserver.utils.filter.PathBasedCacheExpirationFilter</filter-class>
+    <init-param>
+        <param-name>cacheMaxAges</param-name>
+        <param-value>
+            /scripts/*=31536000
+            /styles/*=31536000
+            /images/*=604800
+        </param-value>
+    </init-param>
+</filter>
+<filter-mapping>
+    <filter-name>cacheExpirationFilter</filter-name>
+    <url-pattern>/*</url-pattern>
+</filter-mapping>
+```
+
+### Enabling aggregation-aware page caching
+
+```java
+CacheManager cacheManager = CacheManager.getInstance();
+ConfigurablePageCachingFilter pageCachingFilter =
+    new ConfigurablePageCachingFilter(cacheManager, "myPageCache");
+pageCachingFilter.setResourcesElementsProvider(resourcesElementsProvider);
+```
+
+Register the filter instance with your servlet container (e.g. via a `FilterRegistrationBean` in a programmatic Servlet 3.0+ configuration, or a custom bootstrap that wires filters manually).
+
+### Rendering aggregated resources in a JSP
+
+```jsp
+<%@ taglib uri="http://source.jasig.org/schemas/resource-server/tags" prefix="rs" %>
+
+<rs:aggregatedResources path="/WEB-INF/skin.xml" />
+```
+
+### Resolving an individual resource URL in a JSP
+
+```jsp
+<rs:resourceURL value="/scripts/app.js" var="appJsUrl" />
+<script src="${appJsUrl}"></script>
+```
+
+### Minifying inline JavaScript in a JSP
+
+```jsp
+<rs:js>
+    var greeting = "Hello, world!";
+    console.log(greeting);
+</rs:js>
+```
+
+## Summary
+
+`resource-server-utils` supplies the request-time infrastructure needed to work with pre-aggregated and pre-minified web resources: a provider abstraction for resolving and rendering resource markup, servlet filters for cache-control and aggregation-aware page caching, and a JSP tag library for embedding resources and minified script directly into views. It is designed to be wired together with Spring (for the provider implementation) and standard servlet filter configuration, while remaining accessible to non-Spring code via `ResourcesElementsProviderUtils`.

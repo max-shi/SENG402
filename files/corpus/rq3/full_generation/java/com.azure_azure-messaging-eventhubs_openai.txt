@@ -1,0 +1,523 @@
+# Azure Event Hubs client library for Java
+
+`com.azure:azure-messaging-eventhubs` provides Java clients and models for sending events to, receiving events from, and processing events in an Event Hub.
+
+The library offers:
+
+- **Synchronous and reactive producer clients**
+- **Synchronous and reactive consumer clients**
+- **Buffered event production**
+- **Batch creation and sending**
+- **Partition-aware sending and receiving**
+- **Event processing with checkpointing and partition ownership**
+- **Connection-string and credential-based client configuration**
+
+## Core concepts
+
+### Events
+
+`EventData` represents an event payload and its metadata.
+
+```java
+EventData event = new EventData("hello from Java");
+
+event.setMessageId("message-42");
+event.setCorrelationId("request-123");
+event.setContentType("text/plain");
+event.getProperties().put("source", "orders");
+```
+
+An event can be created from:
+
+- `byte[]`
+- `ByteBuffer`
+- `String`
+- `BinaryData`
+
+Received events expose Event Hubs-related metadata, including:
+
+- Offset: `getOffset()` / `getOffsetString()`
+- Sequence number: `getSequenceNumber()`
+- Enqueued time: `getEnqueuedTime()`
+- Partition key: `getPartitionKey()`
+
+### Event positions
+
+`EventPosition` identifies where a consumer begins reading from a partition.
+
+```java
+EventPosition beginning = EventPosition.earliest();
+EventPosition end = EventPosition.latest();
+
+EventPosition byOffset = EventPosition.fromOffsetString("12345");
+EventPosition bySequence = EventPosition.fromSequenceNumber(100L);
+EventPosition inclusiveSequence = EventPosition.fromSequenceNumber(100L, true);
+
+EventPosition byTime = EventPosition.fromEnqueuedTime(Instant.now().minus(Duration.ofMinutes(5)));
+```
+
+### Partitions
+
+An Event Hub contains partitions. Clients can enumerate partition IDs and inspect partition information through `PartitionProperties`.
+
+```java
+PartitionProperties properties = producer.getPartitionProperties("0");
+
+long firstSequence = properties.getBeginningSequenceNumber();
+long lastSequence = properties.getLastEnqueuedSequenceNumber();
+String lastOffset = properties.getLastEnqueuedOffset();
+Instant lastEnqueuedTime = properties.getLastEnqueuedTime();
+boolean empty = properties.isEmpty();
+```
+
+## Client builders
+
+The following builders configure and create clients:
+
+| Builder | Creates |
+|---|---|
+| `EventHubClientBuilder` | Producer and consumer clients |
+| `EventHubBufferedProducerClientBuilder` | Buffered producer clients |
+| `EventProcessorClientBuilder` | Event processor clients |
+
+Builders support connection strings and several credential types:
+
+- `TokenCredential`
+- `AzureNamedKeyCredential`
+- `AzureSasCredential`
+
+They also expose common transport and connection configuration such as proxy, retry, transport type, client options, configuration, and custom endpoint address.
+
+## Sending events
+
+### Send events with the synchronous producer
+
+Use `EventHubClientBuilder` to create an `EventHubProducerClient`.
+
+```java
+import com.azure.messaging.eventhubs.EventData;
+import com.azure.messaging.eventhubs.EventHubClientBuilder;
+import com.azure.messaging.eventhubs.EventHubProducerClient;
+import com.azure.messaging.eventhubs.models.SendOptions;
+
+import java.util.Arrays;
+
+String connectionString = System.getenv("EVENT_HUBS_CONNECTION_STRING");
+String eventHubName = System.getenv("EVENT_HUB_NAME");
+
+try (EventHubProducerClient producer = new EventHubClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .buildProducerClient()) {
+
+    EventData first = new EventData("first event");
+    first.getProperties().put("type", "created");
+
+    EventData second = new EventData("second event");
+    second.getProperties().put("type", "updated");
+
+    producer.send(Arrays.asList(first, second));
+
+    SendOptions options = new SendOptions()
+        .setPartitionId("0");
+
+    producer.send(Arrays.asList(
+        new EventData("event sent to partition 0")
+    ), options);
+}
+```
+
+`SendOptions` can target either:
+
+- A partition with `setPartitionId`
+- A partition key with `setPartitionKey`
+
+```java
+SendOptions options = new SendOptions()
+    .setPartitionKey("customer-1001");
+
+producer.send(Arrays.asList(new EventData("customer update")), options);
+```
+
+### Create and send an event batch
+
+`EventDataBatch` helps construct a batch that fits within a maximum size. `tryAdd` indicates whether an event could be added.
+
+```java
+import com.azure.messaging.eventhubs.EventData;
+import com.azure.messaging.eventhubs.EventDataBatch;
+import com.azure.messaging.eventhubs.EventHubClientBuilder;
+import com.azure.messaging.eventhubs.EventHubProducerClient;
+import com.azure.messaging.eventhubs.models.CreateBatchOptions;
+
+try (EventHubProducerClient producer = new EventHubClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .buildProducerClient()) {
+
+    CreateBatchOptions batchOptions = new CreateBatchOptions()
+        .setMaximumSizeInBytes(256 * 1024)
+        .setPartitionId("1");
+
+    EventDataBatch batch = producer.createBatch(batchOptions);
+
+    for (int i = 0; i < 100; i++) {
+        EventData event = new EventData("event-" + i);
+
+        if (!batch.tryAdd(event)) {
+            break;
+        }
+    }
+
+    System.out.printf(
+        "Sending %d events (%d of %d bytes)%n",
+        batch.getCount(),
+        batch.getSizeInBytes(),
+        batch.getMaxSizeInBytes());
+
+    producer.send(batch);
+}
+```
+
+### Send events with the reactive producer
+
+`EventHubProducerAsyncClient` exposes Reactor `Mono` and `Flux` types.
+
+```java
+import com.azure.messaging.eventhubs.EventData;
+import com.azure.messaging.eventhubs.EventHubClientBuilder;
+import com.azure.messaging.eventhubs.EventHubProducerAsyncClient;
+
+import java.util.Arrays;
+
+EventHubProducerAsyncClient producer = new EventHubClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .buildAsyncProducerClient();
+
+producer.send(Arrays.asList(
+        new EventData("one"),
+        new EventData("two"),
+        new EventData("three")))
+    .doFinally(signal -> producer.close())
+    .block();
+```
+
+The asynchronous producer can also create batches asynchronously:
+
+```java
+producer.createBatch()
+    .flatMap(batch -> {
+        batch.tryAdd(new EventData("batched event"));
+        return producer.send(batch);
+    })
+    .block();
+```
+
+## Receiving events
+
+### Receive from a specific partition
+
+`EventHubConsumerClient` receives synchronously from one partition. Supply a partition ID, maximum event count, and starting position.
+
+```java
+import com.azure.messaging.eventhubs.EventHubClientBuilder;
+import com.azure.messaging.eventhubs.EventHubConsumerClient;
+import com.azure.messaging.eventhubs.models.EventPosition;
+import com.azure.messaging.eventhubs.models.PartitionEvent;
+
+import java.time.Duration;
+
+try (EventHubConsumerClient consumer = new EventHubClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .consumerGroup("$Default")
+    .buildConsumerClient()) {
+
+    Iterable<PartitionEvent> events = consumer.receiveFromPartition(
+        "0",
+        20,
+        EventPosition.earliest(),
+        Duration.ofSeconds(30));
+
+    for (PartitionEvent partitionEvent : events) {
+        EventData event = partitionEvent.getData();
+
+        System.out.printf(
+            "Partition=%s Sequence=%s Offset=%s Body=%s%n",
+            partitionEvent.getPartitionContext().getPartitionId(),
+            event.getSequenceNumber(),
+            event.getOffsetString(),
+            event.getBodyAsString());
+    }
+}
+```
+
+A `PartitionEvent` combines:
+
+- `PartitionContext`, identifying the namespace, Event Hub, consumer group, and partition
+- `EventData`, containing the received event
+- Optional `LastEnqueuedEventProperties`, when enabled
+
+### Receive reactively
+
+`EventHubConsumerAsyncClient` offers partition-specific and general receive operations as `Flux<PartitionEvent>`.
+
+```java
+import com.azure.messaging.eventhubs.EventHubClientBuilder;
+import com.azure.messaging.eventhubs.EventHubConsumerAsyncClient;
+import com.azure.messaging.eventhubs.models.EventPosition;
+
+EventHubConsumerAsyncClient consumer = new EventHubClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .consumerGroup("$Default")
+    .buildAsyncConsumerClient();
+
+consumer.receiveFromPartition("0", EventPosition.latest())
+    .subscribe(
+        event -> System.out.println(event.getData().getBodyAsString()),
+        error -> {
+            System.err.println("Receive failed: " + error.getMessage());
+            consumer.close();
+        });
+```
+
+To receive using the consumer's general receive operation:
+
+```java
+consumer.receive(true)
+    .subscribe(event -> {
+        String partitionId = event.getPartitionContext().getPartitionId();
+        System.out.println(partitionId + ": " + event.getData().getBodyAsString());
+    });
+```
+
+`ReceiveOptions` supports additional receive configuration:
+
+```java
+import com.azure.messaging.eventhubs.models.ReceiveOptions;
+
+ReceiveOptions receiveOptions = new ReceiveOptions()
+    .setOwnerLevel(10L)
+    .setTrackLastEnqueuedEventProperties(true);
+
+consumer.receiveFromPartition("0", EventPosition.latest(), receiveOptions)
+    .subscribe(event -> {
+        System.out.println(event.getData().getBodyAsString());
+
+        if (event.getLastEnqueuedEventProperties() != null) {
+            System.out.println(
+                "Last enqueued sequence: "
+                    + event.getLastEnqueuedEventProperties().getSequenceNumber());
+        }
+    });
+```
+
+## Buffered production
+
+`EventHubBufferedProducerClient` queues events for later sending. Enqueue methods return an `Integer`, and `flush()` can be used to flush buffered events.
+
+```java
+import com.azure.messaging.eventhubs.EventData;
+import com.azure.messaging.eventhubs.EventHubBufferedProducerClient;
+import com.azure.messaging.eventhubs.EventHubBufferedProducerClientBuilder;
+
+import java.time.Duration;
+
+try (EventHubBufferedProducerClient producer = new EventHubBufferedProducerClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .maxEventBufferLengthPerPartition(500)
+    .maxWaitTime(Duration.ofSeconds(5))
+    .onSendBatchSucceeded(context -> {
+        System.out.printf(
+            "Sent buffered batch of events for partition %s%n",
+            context.getPartitionId());
+    })
+    .onSendBatchFailed(context -> {
+        System.err.printf(
+            "Buffered send failed for partition %s: %s%n",
+            context.getPartitionId(),
+            context.getThrowable());
+    })
+    .buildClient()) {
+
+    producer.enqueueEvent(new EventData("first buffered event"));
+    producer.enqueueEvent(new EventData("second buffered event"));
+
+    System.out.println("Buffered event count: " + producer.getBufferedEventCount());
+
+    producer.flush();
+}
+```
+
+Buffered sends can be directed with `SendOptions`:
+
+```java
+producer.enqueueEvent(
+    new EventData("partition-specific buffered event"),
+    new SendOptions().setPartitionId("0"));
+```
+
+## Event processing and checkpointing
+
+`EventProcessorClient` coordinates event processing through callbacks configured on `EventProcessorClientBuilder`. It uses a `CheckpointStore` to track checkpoints and partition ownership.
+
+A `CheckpointStore` implementation provides these operations:
+
+- List ownership records with `listOwnership`
+- Claim ownership with `claimOwnership`
+- List checkpoints with `listCheckpoints`
+- Persist a checkpoint with `updateCheckpoint`
+
+Checkpoint and ownership records are represented by:
+
+- `Checkpoint`
+- `PartitionOwnership`
+
+During processing, `EventContext` and `EventBatchContext` provide checkpoint operations:
+
+```java
+context.updateCheckpoint();
+```
+
+or:
+
+```java
+context.updateCheckpointAsync()
+    .subscribe();
+```
+
+### Configure an event processor
+
+```java
+import com.azure.messaging.eventhubs.EventProcessorClient;
+import com.azure.messaging.eventhubs.EventProcessorClientBuilder;
+import com.azure.messaging.eventhubs.CheckpointStore;
+
+import java.time.Duration;
+
+// Supply an application-specific CheckpointStore implementation.
+CheckpointStore checkpointStore = getCheckpointStore();
+
+EventProcessorClient processor = new EventProcessorClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .consumerGroup("$Default")
+    .checkpointStore(checkpointStore)
+    .processEvent(context -> {
+        EventData event = context.getEventData();
+
+        System.out.printf(
+            "Received from partition %s: %s%n",
+            context.getPartitionContext().getPartitionId(),
+            event.getBodyAsString());
+
+        context.updateCheckpoint();
+    })
+    .processError(errorContext -> {
+        System.err.printf(
+            "Processing error for partition %s: %s%n",
+            errorContext.getPartitionContext().getPartitionId(),
+            errorContext.getThrowable());
+    })
+    .processPartitionInitialization(initializationContext -> {
+        System.out.println(
+            "Initializing partition "
+                + initializationContext.getPartitionContext().getPartitionId());
+    })
+    .processPartitionClose(closeContext -> {
+        System.out.println(
+            "Closing partition "
+                + closeContext.getPartitionContext().getPartitionId()
+                + " because " + closeContext.getCloseReason());
+    })
+    .loadBalancingStrategy(LoadBalancingStrategy.BALANCED)
+    .loadBalancingUpdateInterval(Duration.ofSeconds(10))
+    .buildEventProcessorClient();
+
+processor.start();
+
+// Keep the processor running for the duration required by the application.
+
+processor.stop();
+```
+
+For batch-based processing, use `processEventBatch`:
+
+```java
+EventProcessorClient processor = new EventProcessorClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .checkpointStore(checkpointStore)
+    .processEventBatch(batchContext -> {
+        for (EventData event : batchContext.getEvents()) {
+            System.out.println(event.getBodyAsString());
+        }
+
+        batchContext.updateCheckpoint();
+    }, 100, Duration.ofSeconds(30))
+    .processError(errorContext ->
+        System.err.println(errorContext.getThrowable()))
+    .buildEventProcessorClient();
+```
+
+The builder also supports:
+
+- `LoadBalancingStrategy.BALANCED`
+- `LoadBalancingStrategy.GREEDY`
+- Per-partition initial positions through `initialPartitionEventPosition`
+- Last-enqueued-event tracking through `trackLastEnqueuedEventProperties`
+- Event prefetch configuration through `prefetchCount`
+
+## Inspecting Event Hub metadata
+
+Producer and consumer clients can retrieve Event Hub and partition metadata.
+
+```java
+try (EventHubConsumerClient consumer = new EventHubClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .consumerGroup("$Default")
+    .buildConsumerClient()) {
+
+    EventHubProperties eventHub = consumer.getEventHubProperties();
+
+    System.out.println("Event Hub: " + eventHub.getName());
+    System.out.println("Created at: " + eventHub.getCreatedAt());
+
+    for (String partitionId : eventHub.getPartitionIds()) {
+        PartitionProperties partition = consumer.getPartitionProperties(partitionId);
+
+        System.out.printf(
+            "Partition %s: last sequence=%d, last offset=%s%n",
+            partition.getId(),
+            partition.getLastEnqueuedSequenceNumber(),
+            partition.getLastEnqueuedOffset());
+    }
+}
+```
+
+## Connection string utilities
+
+`EventHubConnectionStringProperties` parses a connection string into its components.
+
+```java
+import com.azure.messaging.eventhubs.models.EventHubConnectionStringProperties;
+
+EventHubConnectionStringProperties properties =
+    EventHubConnectionStringProperties.parse(connectionString);
+
+System.out.println(properties.getEndpoint());
+System.out.println(properties.getFullyQualifiedNamespace());
+System.out.println(properties.getEntityPath());
+System.out.println(properties.getSharedAccessKeyName());
+```
+
+## Resource management
+
+Producer, consumer, and buffered producer clients implement `Closeable`. Close them when they are no longer needed.
+
+```java
+try (EventHubProducerClient producer = new EventHubClientBuilder()
+    .connectionString(connectionString, eventHubName)
+    .buildProducerClient()) {
+
+    producer.send(java.util.Collections.singletonList(
+        new EventData("event")));
+}
+```
+
+For asynchronous clients, call `close()` when processing or subscriptions are complete.

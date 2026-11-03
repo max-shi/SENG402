@@ -1,0 +1,272 @@
+# scikit-umfpack
+
+scikit-umfpack provides a Python interface for solving linear systems and working with LU decompositions of matrices.
+
+The library offers two levels of API:
+
+- **Convenience functions** for solving a system or creating an LU factorization.
+- **`UmfpackContext`** for applications that need explicit control over symbolic analysis, numeric factorization, solving, reporting, and resource cleanup.
+
+## Quick start
+
+For a one-off linear solve, use `spsolve`:
+
+```python
+from scikits.umfpack.interface import spsolve
+
+# A is a matrix and b is a compatible right-hand-side vector.
+x = spsolve(A, b)
+```
+
+For repeated solves with the same matrix and different right-hand sides, create a factorization first:
+
+```python
+from scikits.umfpack.interface import splu
+
+lu = splu(A)
+
+x1 = lu.solve(b1)
+x2 = lu.solve(b2)
+```
+
+Reusing a factorization can be useful when the matrix stays fixed while the right-hand side changes.
+
+## API overview
+
+### Convenience interface
+
+#### `spsolve(A, b)`
+
+Solve a linear system with matrix `A` and right-hand side `b`.
+
+```python
+x = spsolve(A, b)
+```
+
+Use this when you need a solution for a single system and do not need to inspect or reuse the factorization.
+
+#### `splu(A)`
+
+Compute an LU decomposition for `A`.
+
+```python
+lu = splu(A)
+```
+
+The returned object is an `UmfpackLU` instance.
+
+---
+
+### `UmfpackLU`
+
+`UmfpackLU` represents an LU factorization produced by `splu`. It can solve systems using the factorization and expose decomposition-related data.
+
+#### Solve with a dense or vector right-hand side
+
+```python
+x = lu.solve(b)
+```
+
+#### Solve with a sparse right-hand side
+
+```python
+X = lu.solve_sparse(B)
+```
+
+#### Inspect factorization data
+
+```python
+matrix_shape = lu.shape()
+lower = lu.L()
+upper = lu.U()
+row_scaling_or_related_data = lu.R()
+column_permutation = lu.perm_c()
+row_permutation = lu.perm_r()
+stored_entries = lu.nnz()
+```
+
+The available inspection methods are:
+
+| Method | Purpose |
+|---|---|
+| `shape()` | Return the shape associated with the factorization. |
+| `L()` | Return the lower-factor data. |
+| `U()` | Return the upper-factor data. |
+| `R()` | Return factorization-related `R` data. |
+| `perm_c()` | Return the column permutation data. |
+| `perm_r()` | Return the row permutation data. |
+| `nnz()` | Return the number of stored nonzero entries associated with the factorization. |
+
+Example:
+
+```python
+from scikits.umfpack.interface import splu
+
+lu = splu(A)
+
+L = lu.L()
+U = lu.U()
+
+print("shape:", lu.shape())
+print("nonzeros:", lu.nnz())
+print("row permutation:", lu.perm_r())
+print("column permutation:", lu.perm_c())
+```
+
+---
+
+### `UmfpackContext`
+
+`UmfpackContext` provides a lower-level workflow for explicit matrix analysis, factorization, solving, reporting, and cleanup.
+
+```python
+from scikits.umfpack.umfpack import UmfpackContext
+
+ctx = UmfpackContext()
+```
+
+A typical explicit workflow separates the symbolic and numeric stages:
+
+```python
+ctx = UmfpackContext()
+
+ctx.symbolic(A)
+ctx.numeric(A)
+
+x = ctx.solve(sys, A, b)
+
+ctx.free()
+```
+
+The `sys` argument selects the system form to solve. Its accepted values depend on the surrounding application and solver configuration.
+
+#### Context methods
+
+| Method | Purpose |
+|---|---|
+| `symbolic(mtx)` | Perform symbolic processing for a matrix. |
+| `numeric(mtx)` | Perform numeric factorization for a matrix. |
+| `solve(sys, mtx, rhs, autoTranspose=False)` | Solve a system using the context. |
+| `linsolve(sys, mtx, rhs, autoTranspose=False)` | Perform a linear solve in one call. |
+| `lu(mtx)` | Obtain LU-related results for a matrix. |
+| `report_symbolic()` | Report information about symbolic processing. |
+| `report_numeric()` | Report information about numeric processing. |
+| `report_control()` | Report current control settings. |
+| `report_info()` | Report solver information. |
+| `strControl()` | Return a string representation of control settings. |
+| `strInfo()` | Return a string representation of solver information. |
+| `free_symbolic()` | Release symbolic-analysis resources. |
+| `free_numeric()` | Release numeric-factorization resources. |
+| `free()` | Release context-managed resources. |
+
+#### Context example
+
+```python
+from scikits.umfpack.umfpack import UmfpackContext
+
+ctx = UmfpackContext()
+
+try:
+    # Analyze and factorize the matrix explicitly.
+    ctx.symbolic(A)
+    ctx.numeric(A)
+
+    # Solve for multiple right-hand sides using the prepared context.
+    x1 = ctx.solve(sys, A, b1)
+    x2 = ctx.solve(sys, A, b2)
+
+    # Optional diagnostic output.
+    print(ctx.strControl())
+    print(ctx.strInfo())
+
+finally:
+    # Release symbolic and numeric resources.
+    ctx.free()
+```
+
+#### Automatic transpose option
+
+Both `solve` and `linsolve` accept an `autoTranspose` argument:
+
+```python
+x = ctx.solve(sys, A, b, autoTranspose=True)
+```
+
+Set this option when your application requires the context to handle transposition automatically.
+
+---
+
+### Configuration
+
+#### `configure(**kwargs)`
+
+Configure library behavior with keyword arguments.
+
+```python
+from scikits.umfpack.umfpack import configure
+
+configure(...)
+```
+
+The supported configuration keyword names depend on the available solver settings.
+
+---
+
+### Supporting public types and utilities
+
+#### `UmfpackWarning`
+
+A warning category derived from `UserWarning`.
+
+```python
+from scikits.umfpack.umfpack import UmfpackWarning
+```
+
+Applications can use it when filtering or handling warnings associated with this library:
+
+```python
+import warnings
+from scikits.umfpack.umfpack import UmfpackWarning
+
+warnings.filterwarnings("always", category=UmfpackWarning)
+```
+
+#### `Struct`
+
+`Struct` is a public base type used by `UmfpackContext`.
+
+```python
+from scikits.umfpack.umfpack import Struct, UmfpackContext
+
+assert isinstance(UmfpackContext(), Struct)
+```
+
+#### `updateDictWithVars(adict, module, pattern, group=None)`
+
+Update a dictionary using variables selected from a module according to a pattern.
+
+```python
+from scikits.umfpack.umfpack import updateDictWithVars
+
+updateDictWithVars(target, source_module, pattern)
+```
+
+An optional `group` argument can further select a group of matching variables:
+
+```python
+updateDictWithVars(target, source_module, pattern, group="example")
+```
+
+## Choosing an interface
+
+Use the convenience interface when:
+
+- You need one solution: `spsolve(A, b)`.
+- You want a reusable factorization: `lu = splu(A)`.
+
+Use `UmfpackContext` when:
+
+- You need separate symbolic and numeric stages.
+- You need solver reports or textual status information.
+- You need explicit resource management.
+- You need to control solve behavior through `sys` or `autoTranspose`.

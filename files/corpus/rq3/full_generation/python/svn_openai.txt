@@ -1,0 +1,253 @@
+# svn
+
+`svn` is a Python interface for working with Subversion repositories and working copies. It provides clients for local working-copy operations, remote repository operations, repository administration, and common commands such as inspection, history, diffs, exports, and status checks.
+
+The library is organized around a shared client API:
+
+- `LocalClient` works with a local Subversion working copy.
+- `RemoteClient` works with a remote repository location.
+- `Admin` provides repository administration functionality.
+- `get_client()` selects an appropriate client for a URL or filesystem path.
+
+## Installation
+
+Install the package using your preferred Python package workflow.
+
+```bash
+pip install svn
+```
+
+## Quick start
+
+Use `get_client()` when you have a URL or path and want the library to choose the appropriate client.
+
+```python
+from svn.utility import get_client
+
+client = get_client("https://example.invalid/svn/project")
+
+client.checkout("/tmp/project")
+```
+
+For a local working copy, use a local client to inspect and modify files, then commit changes.
+
+```python
+from svn.local import LocalClient
+
+client = LocalClient("/tmp/project")
+
+client.add("new_module.py")
+client.commit("Add new module", rel_filepaths=["new_module.py"])
+```
+
+## API overview
+
+### `LocalClient`
+
+`LocalClient` is intended for operations on an existing local working copy. In addition to the shared commands provided by `CommonClient`, it supports working-copy changes and maintenance.
+
+```python
+from svn.local import LocalClient
+
+client = LocalClient("/path/to/working-copy")
+```
+
+Local-only operations:
+
+| Method | Description |
+|---|---|
+| `add(rel_path)` | Add a path to version control. |
+| `commit(message, rel_filepaths=[])` | Commit one or more relative paths with a commit message. |
+| `update(rel_filepaths=[], revision=None)` | Update paths in the working copy, optionally to a revision. |
+| `cleanup()` | Perform working-copy cleanup. |
+
+Example:
+
+```python
+from svn.local import LocalClient
+
+working_copy = LocalClient("/tmp/project")
+
+working_copy.update()
+working_copy.add("docs/notes.txt")
+working_copy.commit(
+    "Add project notes",
+    rel_filepaths=["docs/notes.txt"],
+)
+```
+
+### `RemoteClient`
+
+`RemoteClient` is intended for operations against a remote repository URL. It includes the shared repository inspection APIs and supports checkout.
+
+```python
+from svn.remote import RemoteClient
+
+repository = RemoteClient("https://example.invalid/svn/project")
+repository.checkout("/tmp/project")
+```
+
+Remote-specific operation:
+
+| Method | Description |
+|---|---|
+| `checkout(path, revision=None)` | Check out the repository into a local path, optionally at a revision. |
+
+Example:
+
+```python
+from svn.remote import RemoteClient
+
+repository = RemoteClient("https://example.invalid/svn/project")
+
+repository.checkout("/tmp/project", revision=125)
+```
+
+### Shared client operations
+
+Both `LocalClient` and `RemoteClient` inherit common functionality through `CommonClient`. These methods support reading repository or working-copy information.
+
+| Method | Description |
+|---|---|
+| `run_command(subcommand, args, **kwargs)` | Run a Subversion subcommand with arguments. |
+| `info(rel_path=None, revision=None)` | Retrieve information for a path, optionally at a revision. |
+| `properties(rel_path=None)` | Retrieve properties for a path. |
+| `cat(rel_filepath, revision=None)` | Read a file's contents, optionally at a revision. |
+| `log_default(...)` | Retrieve log history with filtering and history options. |
+| `export(to_path, revision=None, force=False)` | Export content to a target path. |
+| `status(rel_path=None)` | Retrieve status information. |
+| `list(extended=False, rel_path=None)` | List entries at a path. |
+| `list_recursive(rel_path=None, yield_dirs=False, path_filter_cb=None)` | Recursively list entries, optionally including directories or filtering paths. |
+| `diff_summary(old, new, rel_path=None)` | Retrieve a summary of differences between two revisions or targets. |
+| `diff(old, new, rel_path=None)` | Retrieve differences between two revisions or targets. |
+| `url()` | Retrieve the associated URL. |
+| `path()` | Retrieve the associated path. |
+
+Example: inspect a repository and browse files.
+
+```python
+from svn.remote import RemoteClient
+
+client = RemoteClient("https://example.invalid/svn/project")
+
+print(client.url())
+
+metadata = client.info()
+print(metadata)
+
+for entry in client.list(extended=True):
+    print(entry)
+
+readme = client.cat("README.md")
+print(readme)
+```
+
+Example: inspect a local working copy.
+
+```python
+from svn.local import LocalClient
+
+client = LocalClient("/tmp/project")
+
+print("Working-copy path:", client.path())
+print("Repository URL:", client.url())
+
+print(client.status())
+
+for path in client.list_recursive(yield_dirs=True):
+    print(path)
+```
+
+### History and diffs
+
+Use `log_default()` to retrieve history, with optional date, revision, file-path, and merge-history controls.
+
+```python
+from datetime import datetime
+from svn.remote import RemoteClient
+
+client = RemoteClient("https://example.invalid/svn/project")
+
+history = client.log_default(
+    timestamp_from_dt=datetime(2024, 1, 1),
+    timestamp_to_dt=datetime(2024, 12, 31),
+    limit=20,
+    rel_filepath="src",
+    use_merge_history=True,
+)
+
+for entry in history:
+    print(entry)
+```
+
+Compare two revisions with either a summary or a full diff.
+
+```python
+from svn.remote import RemoteClient
+
+client = RemoteClient("https://example.invalid/svn/project")
+
+summary = client.diff_summary(100, 110, rel_path="src")
+print(summary)
+
+changes = client.diff(100, 110, rel_path="src")
+print(changes)
+```
+
+### `Admin`
+
+`Admin` provides repository administration functionality.
+
+```python
+from svn.admin import Admin
+
+admin = Admin()
+admin.create("/path/to/new-repository")
+```
+
+The `create()` method accepts an optional `svnadmin_filepath` argument when a specific administration command path should be used.
+
+```python
+from svn.admin import Admin
+
+admin = Admin()
+admin.create(
+    "/srv/svn/new-project",
+    svnadmin_filepath="svnadmin",
+)
+```
+
+### `get_client()`
+
+`get_client(url_or_path, *args, **kwargs)` creates a client for a supplied URL or path.
+
+```python
+from svn.utility import get_client
+
+client = get_client("/tmp/project")
+
+print(client.info())
+print(client.status())
+```
+
+It can also be used with a repository URL.
+
+```python
+from svn.utility import get_client
+
+client = get_client("https://example.invalid/svn/project")
+
+for item in client.list():
+    print(item)
+```
+
+## Low-level command support
+
+All client classes inherit command execution support through `CommonBase`.
+
+| Method | Description |
+|---|---|
+| `external_command(cmd, success_code=0, do_combine=False, return_binary=False, environment={}, wd=None)` | Execute an external command with configurable expected success code, output handling, environment, and working directory. |
+| `rows_to_dict(rows, lc=True)` | Convert rows into dictionaries, optionally normalizing key case. |
+
+For typical Subversion workflows, prefer the higher-level methods on `LocalClient`, `RemoteClient`, and `Admin`.

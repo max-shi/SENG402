@@ -1,0 +1,205 @@
+# google-cloud-securitycenter
+
+Python client library for [Google Security Command Center](https://cloud.google.com/security-command-center) (SCC), Google Cloud's centralized vulnerability and threat reporting service. This library provides idiomatic Python clients for managing security findings, assets, sources, mute configurations, notification configs, resource value configurations, BigQuery exports, and custom detection modules across an organization, folder, or project.
+
+## Installation
+
+```bash
+pip install google-cloud-securitycenter
+```
+
+## Overview
+
+The library exposes several API versions, each with its own client, corresponding to different generations of the Security Command Center API:
+
+- `google.cloud.securitycenter_v1` — the primary, most feature-complete API surface.
+- `google.cloud.securitycenter_v1beta1` and `securitycenter_v1p1beta1` — earlier API versions retained for backward compatibility.
+- `google.cloud.securitycenter_v2` — the newer API surface, with a reorganized resource path structure (e.g. BigQuery exports and notification configs are now nested under a `location`).
+
+Each version follows the same general pattern:
+
+- **`SecurityCenterClient`** — a synchronous client for calling the Security Center API.
+- **`SecurityCenterAsyncClient`** — an `asyncio`-compatible counterpart with the same methods, all coroutines.
+- **Pagers** (`pagers.py`) — iterable/async-iterable wrappers (e.g. `ListFindingsPager`, `ListAssetsAsyncPager`, `GroupFindingsPager`) that transparently handle pagination for `list_*` and `group_*` calls.
+- **Transports** (`transports/`) — pluggable transport implementations (`grpc`, `grpc_asyncio`, `rest`) that the clients use under the hood. Most users will not interact with these directly.
+- **Types** (`types/`) — `proto.Message` subclasses representing requests, responses, and domain objects such as `Finding`, `Asset` (v1/v1beta1 only), `Source`, `MuteConfig`, `NotificationConfig`, `BigQueryExport`, `ResourceValueConfig`, `ValuedResource`, `AttackPath`, `Simulation`, and many nested metadata types (`Vulnerability`, `Kubernetes`, `Container`, `IamBinding`, `Process`, `Indicator`, `Compliance`, `Access`, etc.) that appear as fields on findings and assets.
+
+### Core resources and operations
+
+The clients group functionality around a handful of core resource types:
+
+- **Sources** (`create_source`, `get_source`, `update_source`, `list_sources`) — represent the origin of findings, such as a security scanner.
+- **Findings** (`create_finding`, `update_finding`, `list_findings`, `group_findings`, `set_finding_state`, `set_mute`, `bulk_mute_findings`) — the individual security issues or observations reported against a resource.
+- **Assets** (`list_assets`, `group_assets` — v1/v1beta1/v1p1beta1 only) — cloud resources being monitored. In `securitycenter_v2`, asset-related information is instead represented as part of `Resource` and related types embedded in findings.
+- **Mute Configs** (`create_mute_config`, `get_mute_config`, `update_mute_config`, `delete_mute_config`, `list_mute_configs`) — rules for automatically muting findings that match certain criteria.
+- **Notification Configs** (`create_notification_config`, `get_notification_config`, `update_notification_config`, `delete_notification_config`, `list_notification_configs`) — configurations for streaming findings to a Pub/Sub topic.
+- **BigQuery Exports** (`create_big_query_export`, `get_big_query_export`, `update_big_query_export`, `delete_big_query_export`, `list_big_query_exports`) — continuous exports of findings to BigQuery datasets.
+- **Resource Value Configs** (`create`/`batch_create`/`get`/`update`/`delete`/`list_resource_value_configs`) and **Valued Resources** (`get_valued_resource`, `list_valued_resources`) — let you assign a business value to resources, used in attack path simulations.
+- **Simulations & Attack Paths** (`get_simulation`, `list_attack_paths`) — results of Security Command Center's attack path simulation feature.
+- **Security Health Analytics Custom Modules** and **Event Threat Detection Custom Modules** (v1 only) — create, update, list, validate, and simulate custom detectors (`create_security_health_analytics_custom_module`, `simulate_security_health_analytics_custom_module`, `create_event_threat_detection_custom_module`, `validate_event_threat_detection_custom_module`, and their "effective" and "descendant" list variants).
+- **IAM policy management** (`get_iam_policy`, `set_iam_policy`, `test_iam_permissions`) — standard IAM bindings on Security Command Center resources.
+- **Long-running operations** (`run_asset_discovery`, `bulk_mute_findings`, plus generic `list_operations`, `get_operation`, `delete_operation`, `cancel_operation`) — asynchronous operations return `Operation`/`AsyncOperation` objects that can be polled for completion.
+- **Security Marks** (`update_security_marks`) — user-defined labels attached to assets or findings.
+
+### Resource path helpers
+
+Each `SecurityCenterClient` class provides static helper methods for constructing and parsing fully-qualified resource names, such as `SecurityCenterClient.source_path(...)`, `SecurityCenterClient.finding_path(...)`, `SecurityCenterClient.mute_config_path(...)`, `SecurityCenterClient.big_query_export_path(...)`, and corresponding `parse_*_path` methods, along with generic helpers like `common_organization_path`, `common_project_path`, `common_folder_path`, and `common_location_path`.
+
+## Usage
+
+### Creating a client
+
+```python
+from google.cloud import securitycenter_v1
+
+client = securitycenter_v1.SecurityCenterClient()
+```
+
+Clients can also be constructed from service account credentials:
+
+```python
+client = securitycenter_v1.SecurityCenterClient.from_service_account_file(
+    "path/to/service-account.json"
+)
+```
+
+### Listing findings
+
+```python
+from google.cloud import securitycenter_v1
+
+client = securitycenter_v1.SecurityCenterClient()
+
+# Parent can be an organization, folder, or project "sources/-" path.
+parent = client.source_path("123456789", "-")
+
+for finding_result in client.list_findings(request={"parent": parent}):
+    finding = finding_result.finding
+    print(finding.name, finding.category, finding.state)
+```
+
+### Creating a source and a finding
+
+```python
+from google.cloud import securitycenter_v1
+from google.cloud.securitycenter_v1 import Finding
+from google.protobuf.timestamp_pb2 import Timestamp
+
+client = securitycenter_v1.SecurityCenterClient()
+
+org_name = client.common_organization_path("123456789")
+
+source = client.create_source(
+    request={
+        "parent": org_name,
+        "source": {
+            "display_name": "My Custom Scanner",
+            "description": "Detects misconfigurations in my environment",
+        },
+    }
+)
+
+now = Timestamp()
+now.GetCurrentTime()
+
+finding = client.create_finding(
+    request={
+        "parent": source.name,
+        "finding_id": "samplefindingid1",
+        "finding": {
+            "state": Finding.State.ACTIVE,
+            "resource_name": "//cloudresourcemanager.googleapis.com/organizations/123456789",
+            "category": "MEDIUM_RISK_ONE",
+            "event_time": now,
+        },
+    }
+)
+print(f"Created finding: {finding.name}")
+```
+
+### Muting findings in bulk
+
+```python
+operation = client.bulk_mute_findings(
+    request={
+        "parent": org_name,
+        "filter": 'category="MEDIUM_RISK_ONE"',
+    }
+)
+response = operation.result()
+```
+
+### Using the async client
+
+```python
+import asyncio
+from google.cloud import securitycenter_v1
+
+async def list_findings():
+    client = securitycenter_v1.SecurityCenterAsyncClient()
+    parent = client.source_path("123456789", "-")
+
+    async for result in await client.list_findings(request={"parent": parent}):
+        print(result.finding.name)
+
+asyncio.run(list_findings())
+```
+
+### Working with mute configs
+
+```python
+from google.cloud import securitycenter_v1
+
+client = securitycenter_v1.SecurityCenterClient()
+org_name = client.common_organization_path("123456789")
+
+mute_config = client.create_mute_config(
+    request={
+        "parent": org_name,
+        "mute_config_id": "my-mute-rule",
+        "mute_config": {
+            "description": "Mute low severity findings",
+            "filter": 'severity="LOW"',
+        },
+    }
+)
+
+for config in client.list_mute_configs(request={"parent": org_name}):
+    print(config.name, config.filter)
+```
+
+### Exporting findings to BigQuery
+
+```python
+from google.cloud import securitycenter_v1
+
+client = securitycenter_v1.SecurityCenterClient()
+org_name = client.common_organization_path("123456789")
+
+export = client.create_big_query_export(
+    request={
+        "parent": org_name,
+        "big_query_export_id": "my-export",
+        "big_query_export": {
+            "description": "Export all active findings",
+            "filter": 'state="ACTIVE"',
+            "dataset": "projects/my-project/datasets/my_dataset",
+        },
+    }
+)
+print(export.name)
+```
+
+## Choosing an API version
+
+If you are starting a new integration, prefer `securitycenter_v1` or `securitycenter_v2`, which offer the fullest set of capabilities including resource value configurations, valued resources, attack path simulation, and custom detection modules. The `v1beta1` and `v1p1beta1` clients are provided for compatibility with existing integrations built against those API versions.
+
+## Transports
+
+Each client supports multiple transports:
+
+- `grpc` (default, synchronous)
+- `grpc_asyncio` (used by the `*AsyncClient` classes)
+- `rest` (HTTP/JSON)
+
+Transport selection and custom interceptors (via `SecurityCenterRestInterceptor` subclassing) allow advanced users to customize request/response handling, such as injecting headers or logging.

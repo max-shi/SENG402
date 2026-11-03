@@ -1,0 +1,213 @@
+# sly
+
+**sly** (Sly Lexer-Yacc) is a pure-Python library for building lexers and parsers using simple, declarative class definitions. It provides two main components:
+
+- `sly.lex.Lexer` — a tokenizer base class that turns raw text into a stream of `Token` objects, driven by regular-expression rules defined as class attributes.
+- `sly.yacc.Parser` — an LALR-style parser base class that consumes tokens and reduces them according to grammar rules defined as decorated methods, ultimately building up a parse result (often an AST).
+
+The two classes are designed to work together: a `Lexer` subclass tokenizes source text, and a `Parser` subclass consumes that token stream and applies grammar rules to produce structured output. Grammar rules are typically expressed as annotated methods on the `Parser` subclass, and the underlying grammar analysis (first/follow sets, LALR tables, conflict detection, etc.) is handled internally by the `Grammar` and `LRTable` classes.
+
+## Installation
+
+```
+pip install sly
+```
+
+## Core Concepts
+
+### Lexer
+
+You define a lexer by subclassing `sly.lex.Lexer` and declaring:
+
+- A set of token names.
+- Regular expression patterns (as string attributes or `@_` decorators, depending on style) associated with those token names.
+- Optional **lexer states**, which can be entered and exited using `begin()`, `push_state()`, and `pop_state()`.
+
+Key methods:
+
+- `tokenize(text, lineno=1, index=0)` — generator that scans `text` and yields `Token` objects.
+- `begin(cls)` — switch the lexer to a different state class.
+- `push_state(cls)` / `pop_state()` — maintain a stack of lexer states, useful for nested contexts (e.g., comments, strings, embedded languages).
+- `error(t)` — called when no pattern matches the current input; override to customize error handling or recovery.
+
+Internally, `LexerMeta` and `LexerMetaDict` are metaclasses/dict types that collect the declared rules and states when a `Lexer` subclass body is executed, and `LexerBuildError` / `PatternError` / `LexError` are raised for problems in rule definitions or during tokenization. `LexerStateChange` is used internally to implement state transitions triggered from within token rules.
+
+### Tokens
+
+- `Token` — a simple object representing a single lexical token, typically exposing attributes like type, value, line number, and index, produced by `tokenize()`.
+- `TokenStr` — a string subclass used internally to attach extra positional/context information to token values.
+
+### Parser
+
+You define a parser by subclassing `sly.yacc.Parser` and declaring grammar rules as methods (decorated to indicate which grammar production they implement), referencing the token names produced by your lexer. Precedence and associativity for tokens can be declared to resolve grammar ambiguities.
+
+Key methods:
+
+- `parse(tokens)` — drive the parser using an iterable/generator of `Token` objects (typically the output of `Lexer.tokenize()`), returning the final reduced result.
+- `error(token)` — called when a syntax error is detected; override to implement custom error reporting or recovery.
+- `errok()` — inform the parser that error recovery has completed and normal parsing may resume.
+- `restart()` — reset the parser's internal state so `parse()` can be called again from scratch.
+- `line_position(value)` / `index_position(value)` — retrieve line number / index information associated with a value produced during parsing (useful for error messages pointing at source locations).
+
+Behind the scenes, when a `Parser` subclass is defined, `ParserMeta` and `ParserMetaDict` collect the declared grammar rules, build a `Grammar` object, run grammar analysis (`compute_first`, `compute_follow`, `find_unreachable`, `infinite_cycles`, `undefined_symbols`, `unused_terminals`, `unused_rules`, `unused_precedence`), and construct an `LRTable` implementing the LALR(1) construction algorithm (closures, gotos, lookahead sets, and the final parsing tables via `lr_parse_table()`). Problems found in the grammar raise `GrammarError` or `LALRError`, which are subclasses of `YaccError`.
+
+Diagnostic and build-time messages (warnings about unused rules, grammar conflicts, etc.) are reported through a `SlyLogger`, which exposes `debug()`, `warning()`, and `error()` methods and can be replaced with a custom logger if desired.
+
+### AST
+
+`sly.ast.AST` is a lightweight base class you can subclass to define your own abstract syntax tree node types, which your parser's grammar rule methods can instantiate and return as the result of each reduction.
+
+### Documentation Parsing
+
+`sly.docparse.DocParseMeta` is a metaclass that supports an alternate style of rule declaration where the grammar/lexer rules are extracted from docstrings rather than decorators, for projects that prefer documenting grammars inline in a specification-like format.
+
+## Usage Example
+
+### A basic calculator lexer and parser
+
+```python
+from sly import Lexer, Parser
+from sly.ast import AST
+
+
+# ---- AST node types -------------------------------------------------
+
+class BinOp(AST):
+    def __init__(self, op, left, right):
+        self.op = op
+        self.left = left
+        self.right = right
+
+
+class Number(AST):
+    def __init__(self, value):
+        self.value = value
+
+
+# ---- Lexer -----------------------------------------------------------
+
+class CalcLexer(Lexer):
+    tokens = { NUMBER, PLUS, MINUS, TIMES, DIVIDE, LPAREN, RPAREN }
+    ignore = ' \t'
+
+    NUMBER = r'\d+'
+    PLUS = r'\+'
+    MINUS = r'-'
+    TIMES = r'\*'
+    DIVIDE = r'/'
+    LPAREN = r'\('
+    RPAREN = r'\)'
+
+    def NUMBER(self, t):
+        t.value = int(t.value)
+        return t
+
+    def error(self, t):
+        print(f"Illegal character {t.value[0]!r} at index {t.index}")
+        self.index += 1
+
+
+# ---- Parser ------------------------------------------------------------
+
+class CalcParser(Parser):
+    tokens = CalcLexer.tokens
+
+    precedence = (
+        ('left', PLUS, MINUS),
+        ('left', TIMES, DIVIDE),
+    )
+
+    @_('expr PLUS expr')
+    def expr(self, p):
+        return BinOp('+', p.expr0, p.expr1)
+
+    @_('expr MINUS expr')
+    def expr(self, p):
+        return BinOp('-', p.expr0, p.expr1)
+
+    @_('expr TIMES expr')
+    def expr(self, p):
+        return BinOp('*', p.expr0, p.expr1)
+
+    @_('expr DIVIDE expr')
+    def expr(self, p):
+        return BinOp('/', p.expr0, p.expr1)
+
+    @_('LPAREN expr RPAREN')
+    def expr(self, p):
+        return p.expr
+
+    @_('NUMBER')
+    def expr(self, p):
+        return Number(p.NUMBER)
+
+    def error(self, token):
+        if token:
+            print(f"Syntax error at token {token.type} (line {self.line_position(token)})")
+        else:
+            print("Syntax error at EOF")
+
+
+# ---- Putting it together ------------------------------------------------
+
+if __name__ == '__main__':
+    lexer = CalcLexer()
+    parser = CalcParser()
+
+    text = "3 + 4 * (2 - 1)"
+    result = parser.parse(lexer.tokenize(text))
+    print(result)
+```
+
+### Using lexer states
+
+```python
+class StringLexer(Lexer):
+    tokens = { STRING }
+    states = { 'string': 'INITIAL' }
+
+    @_(r'"')
+    def start_string(self, t):
+        self.push_state(StringState)
+
+class StringState(Lexer):
+    tokens = { STRING }
+
+    @_(r'"')
+    def end_string(self, t):
+        t.type = 'STRING'
+        t.value = self.string_buffer
+        self.pop_state()
+        return t
+```
+
+### Error recovery in the parser
+
+```python
+class MyParser(Parser):
+    tokens = MyLexer.tokens
+
+    @_('error_recoverable_statement SEMI')
+    def statement(self, p):
+        self.errok()
+        return None
+
+    def error(self, token):
+        print("Syntax error, attempting recovery...")
+        self.errok()
+```
+
+## Error Handling Reference
+
+| Exception | Raised when |
+|---|---|
+| `LexError` | The lexer encounters input it cannot match and no error handler recovers |
+| `PatternError` | A token's regular expression pattern is malformed |
+| `LexerBuildError` | A `Lexer` subclass is defined incorrectly (conflicting rules, bad states, etc.) |
+| `GrammarError` | A grammar rule is invalid (bad symbols, duplicate rules, etc.) |
+| `LALRError` | The LALR table construction fails |
+| `YaccError` | Base class for parser-related errors |
+
+## Summary
+
+sly provides just enough machinery — `Lexer`, `Token`, `Parser`, `Grammar`, `LRTable`, and `AST` — to build small-to-medium hand-written language front ends entirely in Python, without external code generation steps. Define your tokens, define your grammar rules as methods, and call `parse()` on the output of `tokenize()`.

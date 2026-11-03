@@ -1,0 +1,301 @@
+# redpipe-engine
+
+**redpipe-engine** is a Java library for building reactive, RESTEasy-based web
+applications on top of [Vert.x](https://vertx.io). It wires together Vert.x,
+RESTEasy (JAX-RS), RxJava (1 and 2), Swagger, and a small plugin system into a
+cohesive server runtime, providing:
+
+- A `Server` bootstrap class that starts a Vert.x-backed HTTP server with a
+  RESTEasy deployment.
+- `AppGlobals`, a global application context giving access to configuration,
+  the database client, the Vert.x instance, the router, template renderers,
+  and a mailer.
+- RxJava adapters (`Single`, `Completable`, `Maybe`) for JAX-RS async
+  responses and for SQL access via Vert.x's `SQLClient`/`SQLConnection`.
+- A `Plugin` SPI for hooking into the request lifecycle and server startup.
+- A security layer with authentication/authorization exceptions, filters, and
+  annotation-based authorization handlers.
+- A templating abstraction (`Template`, `Mail`) for rendering HTML/text
+  content and sending email.
+- JAX-RS message body providers for `Buffer` and `JsonObject`, and a Swagger
+  model converter aware of RxJava types.
+
+## Core Concepts
+
+### `Server`
+
+The entry point for running an application:
+
+```java
+Server server = new Server();
+server.start(MyResource.class, MyExceptionMapper.class)
+      .subscribe(() -> System.out.println("Server started"),
+                 Throwable::printStackTrace);
+```
+
+`Server` exposes:
+
+- `start()` / `start(Class<?>...)` / `start(JsonObject, Class<?>...)` —
+  boot the server, optionally passing JAX-RS resource/provider classes and a
+  default configuration.
+- `close()` — shut the server down.
+- `getVertx()` / `getAppGlobals()` — access the underlying `Vertx` instance
+  and the global application context after startup.
+- `main(String[])` — allows running the server as a standalone application.
+
+### `AppGlobals`
+
+A process-wide (or context-scoped, via `AppGlobalsContextProvider`) holder of
+application state, retrievable statically:
+
+```java
+AppGlobals globals = AppGlobals.get();
+JsonObject config = globals.getConfig();
+Vertx vertx = globals.getVertx();
+SQLClient db = globals.getDbClient();
+```
+
+Key capabilities:
+
+- `getConfig()`, `getVertx()`, `getRouter()`, `getMainClass()`,
+  `getDeployment()` / `setDeployment(...)` — access to core server
+  infrastructure.
+- `getDbClient()` / `getDbConnection()` — access to the configured SQL
+  client and a reactive `Single<SQLConnection>`.
+- `getTemplateRenderer(String name)` — look up a `TemplateRenderer` capable
+  of rendering a given template.
+- `getMailer()` — access the configured `Mailer` for sending email.
+- `setGlobal(...)` / `getGlobal(...)` — a simple keyed or type-keyed registry
+  for arbitrary application-level singletons.
+- `injectGlobals()` — trigger injection of registered globals.
+- `set(AppGlobals)` / `clear()` — manage the current globals instance,
+  typically used together with `AppGlobalsContextProvider` to propagate
+  `AppGlobals` across asynchronous/RxJava execution contexts.
+
+### Database Access — `SQLUtil`
+
+Helper methods for working with SQL connections reactively, sourced from
+`AppGlobals`:
+
+```java
+SQLUtil.doInConnection(conn ->
+    conn.rxQuery("SELECT * FROM users")
+).subscribe(resultSet -> { /* ... */ });
+
+SQLUtil.doInConnectionCompletable(conn ->
+    conn.rxUpdate("UPDATE users SET active = true")
+).subscribe(() -> {}, Throwable::printStackTrace);
+```
+
+- `getConnection()` — obtain a `Single<SQLConnection>` from the current
+  `AppGlobals`.
+- `doInConnection(Func1)` — run a function against a connection and return
+  its result as a `Single`.
+- `doInConnectionCompletable(Func1)` — same, but for `Completable`-returning
+  work.
+
+There is also a `SQLConnectionInjector` (`ContextInjector`) that allows
+JAX-RS resource methods to receive an injected `Single<SQLConnection>`
+parameter directly.
+
+### RxJava Integration for JAX-RS
+
+Async JAX-RS responses can be returned as RxJava types directly from
+resource methods, thanks to the `AsyncResponseProvider` implementations:
+
+- `net.redpipe.engine.rxjava.CompletableProvider` — RxJava 1 `Completable`.
+- `net.redpipe.engine.rxjava2.CompletableProvider` — RxJava 2 `Completable`.
+- `net.redpipe.engine.rxjava2.MaybeProvider` — RxJava 2 `Maybe<?>`.
+
+```java
+@GET
+@Path("/ping")
+public Single<Response> ping() {
+    return Single.just(Response.ok("pong").build());
+}
+
+@DELETE
+@Path("/users/{id}")
+public Completable delete(@PathParam("id") String id) {
+    return SQLUtil.doInConnectionCompletable(conn ->
+        conn.rxUpdate("DELETE FROM users WHERE id = ?", ...)
+    );
+}
+```
+
+`PermissionInjector` additionally allows injecting a `Single<Boolean>`
+representing a permission check result into resource method parameters.
+
+### Message Body Providers
+
+Out-of-the-box JAX-RS providers for common payload types:
+
+- `BufferBodyWriter` — writes Vert.x `Buffer` bodies.
+- `JsonObjectBodyReader` / `JsonObjectBodyWriter` — reads and writes Vert.x
+  `JsonObject` request/response bodies.
+
+### Templates and Email
+
+`AbstractTemplate` is the base for template-backed content, extended by:
+
+- **`Template`** — renders a named template (with variables) into an HTTP
+  `Response`, with content negotiation via `render(Request)` and
+  `selectVariant(Request)`.
+
+  ```java
+  @GET
+  @Path("/dashboard")
+  public Single<Response> dashboard(@Context Request request) {
+      return new Template("dashboard")
+          .set("user", currentUser())
+          .render(request);
+  }
+  ```
+
+- **`Mail`** — builds and sends an email using a named template for its
+  body:
+
+  ```java
+  new Mail("welcome-email")
+      .set("name", "Ada")
+      .from("noreply@example.com")
+      .to("ada@example.com")
+      .subject("Welcome!")
+      .send()
+      .subscribe(() -> {}, Throwable::printStackTrace);
+  ```
+
+Templates are rendered by a `TemplateRenderer`, obtained via
+`AppGlobals.getTemplateRenderer(String)`, which reports whether it
+`supportsTemplate(name)` and performs `render(name, variables)`.
+
+Emails are dispatched through a `Mailer`:
+
+- `ProdMailer` — sends real email using Vert.x and server configuration.
+- `MockMailer` — captures sent mail in memory for testing, queryable via
+  `getMailsSentTo(String address)`.
+
+### Security
+
+Building blocks for authentication and authorization:
+
+- `AuthenticationException` / `AuthenticationExceptionMapper` and
+  `AuthorizationException` / `AuthorizationExceptionMapper` — exceptions and
+  their corresponding JAX-RS `ExceptionMapper`s, producing appropriate HTTP
+  error responses.
+- `AuthorizationFilter` and `AuthorizationFilterFeature` — a
+  `ContainerRequestFilter`/`DynamicFeature` pair that enforces authorization
+  annotations on JAX-RS resource methods.
+- `AuthorizingAnnotationHandler` — an extension point for interpreting
+  custom authorization annotations; implemented by:
+  - `VertxPermissionAnnotationHandler` — checks Vert.x-based permissions.
+  - `VertxUserAnnotationHandler` — checks user-identity-based constraints.
+- `LoginRedirectFilter` — redirects unauthenticated requests to a login
+  flow.
+- `BaseSecurityResource` — a base JAX-RS resource providing `login`,
+  `loginAuth`, and `logout` operations, integrating with Vert.x's
+  `AuthProvider` and `Session`.
+
+### Plugins
+
+`Plugin` is the extension point for customizing server behavior:
+
+```java
+public class MetricsPlugin extends Plugin {
+    @Override
+    public Completable init() {
+        // register metrics collectors
+        return Completable.complete();
+    }
+
+    @Override
+    public void aroundRequest(HttpRequest req, RunnableWithException<IOException> continuation) throws IOException {
+        long start = System.currentTimeMillis();
+        continuation.run();
+        System.out.println("Request took " + (System.currentTimeMillis() - start) + "ms");
+    }
+}
+```
+
+Plugins can hook into:
+
+- `preInit()` / `init()` / `shutdown()` — server lifecycle.
+- `deployToResteasy(VertxResteasyDeployment)` — customize the RESTEasy
+  deployment.
+- `aroundRequest(HttpRequest, RunnableWithException)` — wrap request
+  handling.
+- `preRoute()` / `postRoute()` — hooks around routing.
+
+Plugins are dispatched through `PluginRequestDispatcher` and
+`VertxPluginRequestHandler`, which integrate a list of `Plugin` instances
+into the Vert.x request-handling pipeline, alongside the RESTEasy
+`SynchronousDispatcher` and a `SecurityDomain`.
+
+### Swagger Support
+
+`RxModelConverter` is a Swagger `ModelConverter` that understands RxJava
+wrapper types (e.g. `Single<T>`), unwrapping them so that generated API
+documentation reflects the actual response type rather than the reactive
+wrapper.
+
+### Miscellaneous Utilities
+
+- `RedpipeUtil.rethrow(Throwable)` — rethrow a checked exception as if it
+  were unchecked, useful inside lambdas.
+- `MyBeanConfig` — a Swagger `BeanConfig` subclass exposing the set of
+  scanned classes via `classes()`.
+- `FileResource` — a JAX-RS resource serving files by path via `getFile`.
+- `RedpipeServletContext` / `ResteasyFilterContext` — Servlet and Vert.x
+  `RoutingContext` adapters used internally to bridge RESTEasy's servlet
+  expectations onto the Vert.x request model.
+- `DefaultExceptionMapper` — a catch-all `ExceptionMapper<Throwable>`
+  producing a generic error response for unhandled exceptions.
+
+## Example: Putting It Together
+
+```java
+public class MyApplication {
+    public static void main(String[] args) {
+        Server server = new Server();
+        JsonObject config = new JsonObject()
+            .put("http.port", 8080);
+
+        server.start(config, UserResource.class, DefaultExceptionMapper.class)
+              .subscribe(
+                  () -> {
+                      AppGlobals globals = server.getAppGlobals();
+                      globals.setGlobal(MyService.class, new MyService(globals));
+                  },
+                  Throwable::printStackTrace
+              );
+    }
+}
+
+@Path("/users")
+public class UserResource {
+
+    @GET
+    @Path("/{id}")
+    public Single<Response> getUser(@PathParam("id") String id, @Context Request request) {
+        return SQLUtil.doInConnection(conn ->
+            conn.rxQueryWithParams("SELECT * FROM users WHERE id = ?", new JsonArray().add(id))
+        ).flatMap(rs -> new Template("user-profile")
+            .set("user", rs.getRows().get(0))
+            .render(request));
+    }
+}
+```
+
+## Installation
+
+Add the dependency to your build:
+
+```xml
+<dependency>
+    <groupId>net.redpipe</groupId>
+    <artifactId>redpipe-engine</artifactId>
+    <version>VERSION</version>
+</dependency>
+```
+
+Replace `VERSION` with the desired release.

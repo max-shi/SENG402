@@ -1,0 +1,439 @@
+# pylxd
+
+`pylxd` is a Python client library for interacting with an LXD service. It provides client-level connection, authentication, event, and capability helpers, along with model classes for working with instances, images, networks, storage, profiles, projects, certificates, clusters, and operations.
+
+The API is organized around a `Client` object and resource models. Resource models expose class methods for listing, retrieving, checking for, and creating resources, while retrieved objects provide methods for updating, deleting, renaming, and performing resource-specific actions.
+
+## Main concepts
+
+### Client
+
+`Client` is the primary entry point for communicating with an LXD server.
+
+```python
+client = Client()
+```
+
+Its helper methods include:
+
+- `trusted()` — determine whether the client is trusted.
+- `server_clustered()` — determine whether the server is part of a cluster.
+- `resources()` — retrieve server resource information.
+- `has_api_extension(name)` — test whether an API extension is available.
+- `assert_has_api_extension(name)` — require an API extension to be available.
+- `authenticate(secret, use_token_auth=True)` — authenticate with a supplied secret.
+- `websocket_url()` — obtain the WebSocket URL associated with the client.
+- `events(websocket_client=None, event_types=None)` — access an event stream.
+
+The library also exposes `get_session_for_url(url, verify=None, cert=None)` for creating a configured `requests.Session`, plus `LXDSSLAdapter` for TLS handling.
+
+### Resource models
+
+Most resources are represented by model classes. Common operations include:
+
+- `all(...)` — list resources.
+- `get(...)` — retrieve one resource.
+- `exists(...)` — check whether a resource exists.
+- `create(...)` — create a new resource.
+- `rename(...)` — rename an existing resource.
+- `save(...)`, `put(...)`, and `patch(...)` — update a resource.
+- `delete(...)` — delete a resource.
+- `api()` — return the resource API representation or endpoint information.
+
+The shared `Model` API also provides:
+
+- `dirty()` — inspect whether a model has unsaved changes.
+- `sync(rollback=False)` — synchronize a model.
+- `rollback()` — discard pending changes.
+- `marshall(skip_readonly=True)` — serialize a model.
+- `post(...)`, `put(...)`, `raw_put(...)`, `patch(...)`, and `raw_patch(...)` — perform model-level update requests.
+
+Many modifying methods accept `wait=False` or `wait=True`, allowing callers to control whether an operation is awaited.
+
+## Supported resources
+
+### Instances
+
+`Instance` represents an LXD instance. `Container` and `VirtualMachine` are specialized instance classes.
+
+```python
+Instance.exists(client, name)
+Instance.get(client, name)
+Instance.all(client, recursion=0)
+Instance.create(client, config, wait=False, target=None)
+```
+
+Instance objects support lifecycle and execution operations:
+
+```python
+instance.start()
+instance.stop()
+instance.restart()
+instance.freeze()
+instance.unfreeze()
+
+instance.rename("new-name")
+instance.execute(["command", "argument"])
+instance.migrate(other_client)
+instance.publish()
+```
+
+Instance state is available through:
+
+```python
+state = instance.state()
+```
+
+### Snapshots
+
+`Snapshot` represents an instance snapshot.
+
+```python
+snapshot = Snapshot.create(
+    client,
+    instance="example-instance",
+    name="before-change",
+    stateful=False,
+    wait=False,
+)
+
+snapshots = Snapshot.all(client, instance="example-instance")
+snapshot.restore()
+snapshot.rename("after-change")
+snapshot.publish(public=False)
+```
+
+An instance can also restore one of its snapshots directly:
+
+```python
+instance.restore_snapshot("before-change", stateful=False)
+```
+
+### Images
+
+`Image` supports image discovery, creation, aliases, export, and copying.
+
+```python
+Image.exists(client, fingerprint)
+Image.get(client, fingerprint)
+Image.get_by_alias(client, alias)
+Image.all(client)
+```
+
+Images may be created from image data, a simplestreams source, or a URL:
+
+```python
+image = Image.create(client, image_data, metadata=None, public=False)
+image = Image.create_from_simplestreams(client, server, alias)
+image = Image.create_from_url(client, url)
+```
+
+Retrieved images can be exported, copied, or given aliases:
+
+```python
+image.add_alias("stable", "A stable image alias")
+image.delete_alias("stable")
+image.export()
+
+copied_image = image.copy(other_client, public=True)
+```
+
+### Profiles and projects
+
+Profiles are reusable configuration resources:
+
+```python
+profile = Profile.create(
+    client,
+    name="development",
+    config=profile_config,
+    devices=profile_devices,
+    description="Development profile",
+)
+
+profile.rename("development-v2")
+profile.save()
+profile.delete()
+```
+
+Projects provide an additional level of resource organization:
+
+```python
+project = Project.create(
+    client,
+    name="team-a",
+    description="Resources for team A",
+    config=project_config,
+)
+
+project.rename("team-a-production")
+```
+
+### Networks and network forwards
+
+`Network` provides network lookup, creation, state inspection, updates, and renaming.
+
+```python
+network = Network.create(
+    client,
+    name="internal-net",
+    description="Internal network",
+    type=network_type,
+    config=network_config,
+)
+
+network.rename("internal-net-v2")
+network.save()
+network_state = network.state()
+```
+
+`NetworkForward` represents a forward on a network:
+
+```python
+forward = NetworkForward.create(
+    client,
+    network="internal-net",
+    config=forward_config,
+)
+
+forward = NetworkForward.get(
+    client,
+    network="internal-net",
+    listen_address="address",
+)
+```
+
+### Storage pools, volumes, and volume snapshots
+
+`StoragePool` manages storage pool definitions:
+
+```python
+pool = StoragePool.create(client, definition=pool_definition, wait=True)
+pool = StoragePool.get(client, name="default")
+pool.save()
+pool.delete()
+```
+
+Storage resources can be retrieved for a pool:
+
+```python
+resources = StorageResources.get(pool)
+```
+
+Volumes are accessed through a storage pool:
+
+```python
+volumes = StorageVolume.all(pool)
+volume = StorageVolume.get(pool, _type="custom", name="data")
+```
+
+A volume supports updates, renaming, deletion, and restoration from a snapshot:
+
+```python
+volume.rename(rename_input)
+volume.save()
+volume.restore_from("backup")
+volume.delete()
+```
+
+Volume snapshots can be created and managed with `StorageVolumeSnapshot`:
+
+```python
+snapshot = StorageVolumeSnapshot.create(
+    volume,
+    name="backup",
+    expires_at=None,
+    wait=True,
+)
+
+snapshot.rename("backup-v2")
+snapshot.restore()
+snapshot.delete()
+```
+
+### Certificates
+
+`Certificate` manages trusted certificates and authentication tokens.
+
+```python
+certificate = Certificate.get(client, fingerprint)
+certificates = Certificate.all(client)
+```
+
+Create a certificate from certificate data:
+
+```python
+certificate = Certificate.create(
+    client,
+    password=password,
+    cert_data=certificate_data,
+    cert_type="client",
+    name="automation",
+    projects=projects,
+    restricted=False,
+)
+```
+
+Create a token-based certificate authorization flow:
+
+```python
+token = Certificate.create_token(
+    client,
+    name="new-client",
+    projects=projects,
+    restricted=False,
+)
+```
+
+Cluster certificates are managed with `ClusterCertificate`:
+
+```python
+ClusterCertificate.put(client, cert=certificate_data, key=private_key_data)
+```
+
+### Clusters
+
+`Cluster` and `ClusterMember` provide cluster-level operations.
+
+```python
+Cluster.enable(client, server_name="node-1")
+
+members = ClusterMember.all(client)
+member = ClusterMember.get(client, server_name="node-1")
+```
+
+### Operations
+
+Long-running server operations can be retrieved and awaited through `Operation`.
+
+```python
+operation = Operation.get(client, operation_id)
+operation.wait()
+```
+
+When an operation identifier is embedded in another value, extract it with:
+
+```python
+operation_id = Operation.extract_operation_id(value)
+```
+
+Or wait for an operation directly:
+
+```python
+Operation.wait_for_operation(client, operation_id)
+```
+
+## Examples
+
+### Create and start an instance
+
+The exact instance configuration is supplied as a dictionary accepted by the server.
+
+```python
+client = Client()
+
+instance_config = {
+    # Instance configuration accepted by the target server.
+}
+
+instance = Instance.create(
+    client,
+    config=instance_config,
+    wait=True,
+)
+
+instance.start(wait=True)
+
+state = instance.state()
+```
+
+### Run a command in an instance
+
+```python
+instance = Instance.get(client, "example-instance")
+
+result = instance.execute(
+    ["echo", "hello from pylxd"],
+    environment={"EXAMPLE": "1"},
+    decode=True,
+)
+```
+
+For interactive command handling, use `raw_interactive_execute`:
+
+```python
+interactive_result = instance.raw_interactive_execute(
+    ["sh"],
+    environment={"TERM": "xterm"},
+)
+```
+
+### Snapshot an instance before a change
+
+```python
+instance = Instance.get(client, "example-instance")
+
+snapshot = Snapshot.create(
+    client,
+    instance="example-instance",
+    name="pre-upgrade",
+    stateful=False,
+    wait=True,
+)
+
+# Perform a change to the instance here.
+
+# Restore the earlier snapshot if needed.
+snapshot.restore(wait=True)
+```
+
+### Copy an image to another client
+
+```python
+source_client = Client()
+destination_client = Client()
+
+image = Image.get_by_alias(source_client, "stable")
+
+copied_image = image.copy(
+    destination_client,
+    public=True,
+    auto_update=False,
+    wait=True,
+)
+```
+
+### Check server capabilities before using an optional feature
+
+```python
+client = Client()
+
+if client.has_api_extension("feature-name"):
+    # Use functionality requiring that extension.
+    pass
+
+# Or raise an exception if it is required.
+client.assert_has_api_extension("feature-name")
+```
+
+### Consume events
+
+```python
+client = Client()
+
+for event in client.events(event_types=None):
+    # Handle each event received from the server.
+    print(event)
+```
+
+`EventType` can be used when selecting event categories supported by the event interface.
+
+## Exceptions
+
+The library defines the following exception classes:
+
+- `LXDAPIException` — base API-related exception.
+- `NotFound` — raised when a requested resource cannot be found.
+- `Conflict` — raised for conflicting resource operations.
+- `LXDAPIExtensionNotAvailable` — raised when a required API extension is unavailable.
+- `ClientConnectionFailed` — raised when a client connection cannot be established.

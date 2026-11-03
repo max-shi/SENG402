@@ -1,0 +1,399 @@
+# MesaKit Map Road Model
+
+`com.telenav.mesakit:mesakit-map-road-model` provides Java model types for describing roads and road-network attributes.
+
+The library includes:
+
+- Road classification and importance (`RoadType`, `RoadFunctionalClass`, `HighwayType`)
+- Traffic direction and road state (`DirectionOfTrafficFlow`, `RoadState`)
+- Structural and geometric-road metadata (`BridgeType`, `OverpassUnderpassType`, `RoadSubType`, `RampType`, `RoadSurface`)
+- Road-related identifiers (`ExitNumber`, `ShieldIcon`)
+- Speed categorization (`SpeedCategory`)
+- Mileage aggregation by road type and name (`RoadTypeMileages`, `NamedRoadTypeMileages`)
+- String converters for selected road-model values
+
+## Core model types
+
+### Road classification
+
+`RoadType` is a broad navigational or functional road classification:
+
+```java
+RoadType.FREEWAY
+RoadType.HIGHWAY
+RoadType.LOCAL_ROAD
+RoadType.WALKWAY
+RoadType.FERRY
+RoadType.NON_NAVIGABLE
+```
+
+Road types can be converted to and from integer identifiers and compared by relative importance:
+
+```java
+RoadType type = RoadType.forIdentifier(3);
+
+boolean isMoreImportant = RoadType.HIGHWAY.isMoreImportantThan(RoadType.LOCAL_ROAD);
+RoadType mostImportant = RoadType.HIGHWAY.maximum(RoadType.LOCAL_ROAD);
+
+RoadType nextLower = RoadType.HIGHWAY.nextLeastImportant();
+RoadType nextHigher = RoadType.HIGHWAY.nextMostImportant();
+```
+
+`RoadType.maximumDoubleDigitizationSeparation()` returns a `Distance` associated with a road type.
+
+### Functional class
+
+`RoadFunctionalClass` represents another hierarchy of road importance:
+
+```java
+RoadFunctionalClass.MAIN
+RoadFunctionalClass.FIRST_CLASS
+RoadFunctionalClass.SECOND_CLASS
+RoadFunctionalClass.THIRD_CLASS
+RoadFunctionalClass.FOURTH_CLASS
+RoadFunctionalClass.UNKNOWN
+```
+
+It supports normal and inverted identifiers, comparisons, hierarchy traversal, and selecting the more important class:
+
+```java
+RoadFunctionalClass functionalClass = RoadFunctionalClass.forIdentifier(1);
+
+boolean majorRoad =
+        functionalClass.isMoreImportantThanOrEqual(RoadFunctionalClass.SECOND_CLASS);
+
+RoadFunctionalClass maximum =
+        functionalClass.maximum(RoadFunctionalClass.THIRD_CLASS);
+
+RoadFunctionalClass next = functionalClass.nextLevel();
+```
+
+### Highway type
+
+`HighwayType` provides a detailed highway or path classification. Its values include major road classes such as `MOTORWAY`, `TRUNK`, `PRIMARY`, and `RESIDENTIAL`, as well as specialized values such as `CYCLEWAY`, `FOOTWAY`, `SERVICE`, `TRACK`, and `CONSTRUCTION`.
+
+```java
+HighwayType highwayType = HighwayType.forName("motorway");
+
+long identifier = highwayType.identifier();
+String value = highwayType.value();
+
+HighwayType fromIdentifier = HighwayType.forIdentifier(identifier);
+```
+
+### Road subtype and ramps
+
+`RoadSubType` describes more specific road topology or road usage:
+
+```java
+RoadSubType.ROUNDABOUT
+RoadSubType.RAMP
+RoadSubType.INTERSECTION_LINK
+RoadSubType.SERVICE_ROAD
+RoadSubType.BRIDGE
+RoadSubType.TUNNEL
+```
+
+`RampType` distinguishes ramp directionality:
+
+```java
+RampType.ONRAMP
+RampType.OFFRAMP
+RampType.BOTH
+RampType.NONE
+```
+
+## Traffic state and direction
+
+### Direction of traffic flow
+
+`DirectionOfTrafficFlow` models whether a road is traversable in a positive direction, negative direction, both directions, or not at all:
+
+```java
+DirectionOfTrafficFlow flow = DirectionOfTrafficFlow.POSITIVE;
+
+boolean oneWay = flow.isOneWay();
+boolean twoWay = flow.isTwoWay();
+boolean closed = flow.isClosed();
+
+DirectionOfTrafficFlow reverseFlow = flow.reversed();
+String symbol = flow.symbol();
+```
+
+Available values are:
+
+- `CLOSED`
+- `POSITIVE`
+- `NEGATIVE`
+- `BOTH`
+- `UNKNOWN`
+
+An enum value can also be retrieved from an ordinal:
+
+```java
+DirectionOfTrafficFlow flow = DirectionOfTrafficFlow.forOrdinal(2);
+```
+
+### Road state
+
+`RoadState` represents the open/closed and one-way/two-way state of a road:
+
+```java
+RoadState state = RoadState.ONE_WAY;
+
+if (state.isOpen() && state.isOneWay())
+{
+    // Handle an open one-way road
+}
+```
+
+Supported states:
+
+- `NULL`
+- `ONE_WAY`
+- `TWO_WAY`
+- `CLOSED`
+
+Road states have integer identifiers and implement `LongValued`:
+
+```java
+RoadState state = RoadState.forIdentifier(1);
+
+int identifier = state.identifier();
+long longValue = state.longValue();
+
+int encoded = RoadState.identifierFor(RoadState.TWO_WAY);
+```
+
+## Structures and road properties
+
+### Bridges, overpasses, and underpasses
+
+`BridgeType` identifies bridge-related road structures:
+
+```java
+BridgeType structure = BridgeType.BRIDGE;
+
+long identifier = structure.identifier();
+BridgeType decoded = BridgeType.forIdentifier((int) identifier);
+```
+
+Available bridge types:
+
+- `NONE`
+- `BRIDGE`
+- `OVERBRIDGE`
+- `TUNNEL`
+- `UNDERPASS`
+
+`OverpassUnderpassType` provides a focused distinction between overpasses and underpasses:
+
+```java
+OverpassUnderpassType crossing = OverpassUnderpassType.OVERPASS;
+
+int identifier = crossing.identifier();
+long value = crossing.longValue();
+
+OverpassUnderpassType decoded =
+        OverpassUnderpassType.forIdentifier(identifier);
+```
+
+### Surface
+
+`RoadSurface` identifies the surface or surface condition of a road:
+
+```java
+RoadSurface surface = RoadSurface.UNPAVED;
+
+int identifier = surface.identifier();
+RoadSurface decoded = RoadSurface.forIdentifier(identifier);
+```
+
+Supported values are:
+
+- `PAVED`
+- `UNPAVED`
+- `POOR_CONDITION`
+- `NOT_APPLICABLE`
+
+## Speed categories
+
+`SpeedCategory` groups `Speed` values into categories. A category can be obtained either by identifier or from a speed value.
+
+```java
+SpeedCategory category = SpeedCategory.forIdentifier(4);
+
+// Assuming a Speed value is available:
+SpeedCategory fromSpeed = SpeedCategory.forSpeed(speed);
+
+boolean applicable = category.includes(speed);
+Speed minimum = category.minimum();
+Speed maximum = category.maximum();
+Speed average = category.average();
+Speed representative = category.speed();
+```
+
+`SpeedCategory` implements `LongValued`, so its category identifier is also available as a `long`:
+
+```java
+int identifier = category.identifier();
+long encoded = category.longValue();
+```
+
+## Road identifiers
+
+`ExitNumber` and `ShieldIcon` are lightweight identifier types for road metadata.
+
+```java
+ExitNumber exit = ExitNumber.forIdentifier("12A");
+String exitIdentifier = exit.identifier();
+
+ShieldIcon shield = ShieldIcon.forIdentifier("I-5");
+String shieldIdentifier = shield.identifier();
+```
+
+## Mileage aggregation
+
+### Mileage by road type
+
+`RoadTypeMileages` accumulates `Distance` values for each `RoadType`.
+
+```java
+RoadTypeMileages mileages = new RoadTypeMileages();
+
+mileages.add(RoadType.FREEWAY, freewayDistance);
+mileages.add(RoadType.HIGHWAY, highwayDistance);
+mileages.add(RoadType.LOCAL_ROAD, localRoadDistance);
+
+Distance total = mileages.mileages();
+Distance freewayMileage = mileages.mileage(RoadType.FREEWAY);
+
+for (RoadType roadType : mileages.roadTypes())
+{
+    Distance mileage = mileages.mileage(roadType);
+    // Process mileage for this road type
+}
+```
+
+The aggregate also provides a percentage for an individual road type and a sorted view of the accumulated entries:
+
+```java
+Percent freewayPercent = mileages.roadTypMileagePercent(RoadType.FREEWAY);
+
+for (var entry : mileages.sortedRoadTypeMileages())
+{
+    RoadType roadType = entry.getKey();
+    Distance distance = entry.getValue();
+    // Process sorted road-type mileage data
+}
+```
+
+### Mileage by name and road type
+
+`NamedRoadTypeMileages` groups `RoadTypeMileages` aggregates by a string name, such as a route, region, or data source.
+
+```java
+NamedRoadTypeMileages byRoute = new NamedRoadTypeMileages();
+
+byRoute.add("Route A", RoadType.FREEWAY, freewayDistance);
+byRoute.add("Route A", RoadType.HIGHWAY, highwayDistance);
+byRoute.add("Route B", RoadType.LOCAL_ROAD, localRoadDistance);
+
+Distance allMileage = byRoute.mileages();
+Distance routeAMileage = byRoute.namedMileages("Route A");
+
+RoadTypeMileages routeA = byRoute.get("Route A");
+```
+
+Names and grouped aggregates can be enumerated:
+
+```java
+for (String name : byRoute.names())
+{
+    Distance mileage = byRoute.namedMileages(name);
+    // Process the total mileage for this name
+}
+
+for (var entry : byRoute.sortedNamedRoadTypeMileages())
+{
+    String name = entry.getKey();
+    RoadTypeMileages roadTypeMileages = entry.getValue();
+    // Process a named mileage group
+}
+```
+
+## DeCarta road types
+
+`DeCartaRoadType` represents a road type using an integer type code.
+
+```java
+DeCartaRoadType type = DeCartaRoadType.forType(5);
+
+int code = type.type();
+boolean leastImportant = type.isLeastImportant();
+
+boolean moreImportant =
+        type.isMoreImportantThan(DeCartaRoadType.forType(7));
+```
+
+Instances support value-based equality through `equals` and `hashCode`.
+
+## String converters
+
+The library provides `BaseStringConverter` implementations for converting string input into selected road-model values:
+
+- `DeCartaRoadTypeConverter`
+- `TrafficDeCartaRoadTypeStringConverter`
+- `DirectionOfTrafficFlowConverter`
+- `RoadNameConverter`
+- `RoadShapeConverter`
+
+Converters are constructed with a `Listener`:
+
+```java
+DirectionOfTrafficFlowConverter converter =
+        new DirectionOfTrafficFlowConverter(listener);
+
+RoadNameConverter roadNameConverter =
+        new RoadNameConverter(listener);
+
+DeCartaRoadTypeConverter deCartaConverter =
+        new DeCartaRoadTypeConverter(listener);
+```
+
+`RoadShapeConverter` converts to `Polyline` and additionally requires a column count. Its parsing type can be configured with `type(Type)`:
+
+```java
+RoadShapeConverter shapeConverter =
+        new RoadShapeConverter(listener, columns);
+
+shapeConverter.type(type);
+```
+
+## Example: classify and summarize a road segment
+
+The following example combines several model types when processing a road segment:
+
+```java
+RoadType roadType = RoadType.HIGHWAY;
+RoadFunctionalClass functionalClass = RoadFunctionalClass.SECOND_CLASS;
+RoadState state = RoadState.TWO_WAY;
+DirectionOfTrafficFlow direction = DirectionOfTrafficFlow.BOTH;
+RoadSurface surface = RoadSurface.PAVED;
+BridgeType bridge = BridgeType.NONE;
+
+boolean drivable =
+        state.isOpen()
+        && !roadType.isLessImportantThan(RoadType.LOW_SPEED_ROAD)
+        && !direction.isClosed();
+
+boolean major =
+        functionalClass.isMoreImportantThanOrEqual(RoadFunctionalClass.SECOND_CLASS);
+
+if (drivable && major && surface == RoadSurface.PAVED && bridge == BridgeType.NONE)
+{
+    // Handle an open, paved, major road segment
+}
+```
+
+This model can be paired with `RoadTypeMileages` to summarize the total distance processed for each road type.

@@ -1,0 +1,879 @@
+# pandapower
+
+`pandapower` is a Python library for building, analyzing, converting, validating, visualizing, and operating electrical power-network models.
+
+The central network object is `pandapowerNet`, a dictionary-like container holding network element tables, configuration, and calculation results. The API provides functions to create buses, lines, transformers, loads, generators, converters, shunts, storage systems, measurements, costs, and groups; then run power flow, optimal power flow, short-circuit calculations, state estimation, time-series studies, contingency studies, protection calculations, and more.
+
+## Highlights
+
+- Build AC and DC power networks programmatically.
+- Model buses, lines, transformers, loads, generators, external grids, shunts, storage, converter systems, and impedance elements.
+- Run AC power flow, DC power flow, three-phase power flow, and optimal power flow.
+- Perform short-circuit calculations and protection studies.
+- Estimate network states from measurements.
+- Execute time-series simulations with controllers and output writers.
+- Run N-1 contingency evaluations, including parallel execution.
+- Import and export several network formats.
+- Create static or interactive visualizations.
+- Analyze connectivity and network topology.
+- Validate, diagnose, compare, modify, serialize, and persist networks.
+
+---
+
+## Core workflow
+
+A typical workflow is:
+
+1. Create an empty network with `create_empty_network`.
+2. Add buses and network elements using functions from the creation API.
+3. Run a calculation such as `runpp`, `rundcpp`, `runopp`, or `calc_sc`.
+4. Inspect result tables stored in the network.
+5. Optionally diagnose, plot, export, or modify the network.
+
+```python
+from pandapower.create.network_create import create_empty_network
+from pandapower.create.bus_create import create_bus
+from pandapower.create.ext_grid_create import create_ext_grid
+from pandapower.create.line_create import create_line_from_parameters
+from pandapower.create.load_create import create_load
+from pandapower.run import runpp
+
+net = create_empty_network(name="simple feeder", f_hz=50.0, sn_mva=1.0)
+
+slack_bus = create_bus(net, vn_kv=20.0, name="Grid connection")
+load_bus = create_bus(net, vn_kv=20.0, name="Load bus")
+
+create_ext_grid(net, bus=slack_bus, vm_pu=1.0, name="Upstream grid")
+
+create_line_from_parameters(
+    net,
+    from_bus=slack_bus,
+    to_bus=load_bus,
+    length_km=2.0,
+    r_ohm_per_km=0.25,
+    x_ohm_per_km=0.10,
+    c_nf_per_km=10.0,
+    max_i_ka=0.30,
+    name="Feeder",
+)
+
+create_load(
+    net,
+    bus=load_bus,
+    p_mw=0.50,
+    q_mvar=0.15,
+    name="Demand",
+)
+
+runpp(net)
+
+# Calculation results are available in the network result tables.
+print(net["res_bus"])
+print(net["res_line"])
+```
+
+---
+
+## Network model
+
+### `pandapowerNet`
+
+`pandapowerNet` is the main network container. It extends `ADict`, which is a mutable dictionary-like type. It is used as the first argument of most creation, calculation, conversion, and utility functions.
+
+Create a new network with:
+
+```python
+from pandapower.create.network_create import create_empty_network
+
+net = create_empty_network(
+    name="My network",
+    f_hz=50.0,
+    sn_mva=1.0,
+    add_stdtypes=True,
+)
+```
+
+### Buses
+
+Buses represent AC and DC electrical nodes.
+
+```python
+from pandapower.create.bus_create import (
+    create_bus,
+    create_buses,
+    create_bus_dc,
+    create_buses_dc,
+)
+
+bus = create_bus(net, vn_kv=110.0, name="HV bus")
+buses = create_buses(net, nr_buses=3, vn_kv=20.0)
+
+dc_bus = create_bus_dc(net, vn_kv=320.0, name="DC bus")
+```
+
+Bus creation supports optional names, indices, zones, coordinates, voltage limits, service status, and custom columns through `**kwargs`.
+
+### Lines and DC lines
+
+Use a standard type or directly supply electrical parameters.
+
+```python
+from pandapower.create.line_create import (
+    create_line,
+    create_line_from_parameters,
+    create_dcline,
+)
+
+# Line based on a standard type available in the network:
+line_a = create_line(
+    net,
+    from_bus=0,
+    to_bus=1,
+    length_km=1.5,
+    std_type="example line type",
+)
+
+# Line with explicit electrical parameters:
+line_b = create_line_from_parameters(
+    net,
+    from_bus=1,
+    to_bus=2,
+    length_km=0.8,
+    r_ohm_per_km=0.20,
+    x_ohm_per_km=0.08,
+    c_nf_per_km=12.0,
+    max_i_ka=0.25,
+)
+
+# HVDC link between AC buses:
+dc_link = create_dcline(
+    net,
+    from_bus=0,
+    to_bus=2,
+    p_mw=10.0,
+    loss_percent=1.0,
+    loss_mw=0.0,
+    vm_from_pu=1.0,
+    vm_to_pu=1.0,
+)
+```
+
+For vectorized model construction, use `create_lines`, `create_lines_from_parameters`, `create_lines_dc`, and `create_lines_dc_from_parameters`.
+
+### Transformers
+
+The transformer API supports two-winding transformers, three-winding transformers, parameter-based construction, tap changers, tap-dependent characteristics, parallel units, zero-sequence values, and more.
+
+```python
+from pandapower.create.trafo_create import create_transformer_from_parameters
+
+trafo = create_transformer_from_parameters(
+    net,
+    hv_bus=0,
+    lv_bus=1,
+    sn_mva=25.0,
+    vn_hv_kv=110.0,
+    vn_lv_kv=20.0,
+    vkr_percent=0.5,
+    vk_percent=12.0,
+    pfe_kw=25.0,
+    i0_percent=0.1,
+    name="HV/MV transformer",
+)
+```
+
+Related functions include:
+
+- `create_transformer`
+- `create_transformers`
+- `create_transformers_from_parameters`
+- `create_transformer3w`
+- `create_transformers3w`
+- `create_transformer3w_from_parameters`
+- `create_transformers3w_from_parameters`
+
+### Loads, generators, and external grids
+
+Supported injection and consumption elements include:
+
+- External grids: `create_ext_grid`
+- Generators: `create_gen`, `create_gens`
+- Static generators: `create_sgen`, `create_sgens`
+- Asymmetric generators: `create_asymmetric_sgen`
+- Loads: `create_load`, `create_loads`
+- Asymmetric loads: `create_asymmetric_load`
+- Motors: `create_motor`
+- Storage: `create_storage`, `create_storages`
+- Ward and extended Ward equivalents: `create_ward`, `create_xward`
+- DC sources and DC loads: `create_source_dc`, `create_load_dc`
+
+```python
+from pandapower.create.gen_create import create_gen
+from pandapower.create.sgen_create import create_sgen
+from pandapower.create.storage_create import create_storage
+
+create_gen(
+    net,
+    bus=1,
+    p_mw=5.0,
+    vm_pu=1.02,
+    min_p_mw=0.0,
+    max_p_mw=10.0,
+    min_q_mvar=-3.0,
+    max_q_mvar=3.0,
+    controllable=True,
+)
+
+create_sgen(
+    net,
+    bus=2,
+    p_mw=1.2,
+    q_mvar=0.1,
+    sn_mva=1.5,
+    controllable=True,
+)
+
+create_storage(
+    net,
+    bus=2,
+    p_mw=0.5,
+    q_mvar=0.0,
+    max_e_mwh=2.0,
+    soc_percent=50.0,
+    max_p_mw=1.0,
+    min_p_mw=-1.0,
+)
+```
+
+### Shunts, impedances, and converter devices
+
+The library provides creation functions for shunt and converter-related elements:
+
+- `create_shunt`, `create_shunts`, `create_shunt_as_capacitor`
+- `create_impedance`, `create_impedances`
+- `create_series_reactor_as_impedance`
+- `create_tcsc`
+- `create_svc`
+- `create_ssc`
+- `create_vsc`
+- `create_vsc_stacked`
+- `create_vsc_bipolar`
+
+```python
+from pandapower.create.shunt_create import create_shunt, create_vsc
+
+create_shunt(net, bus=1, q_mvar=-2.0, p_mw=0.02, name="Capacitor bank")
+
+create_vsc(
+    net,
+    bus=1,
+    bus_dc=0,
+    r_ohm=0.01,
+    x_ohm=0.05,
+    r_dc_ohm=0.02,
+    control_mode_ac="vm_pu",
+    control_value_ac=1.0,
+    control_mode_dc="p_mw",
+    control_value_dc=2.0,
+)
+```
+
+---
+
+## Power-flow and optimization calculations
+
+### AC power flow
+
+Use `runpp` for AC power flow.
+
+```python
+from pandapower.run import runpp
+
+runpp(
+    net,
+    algorithm="nr",
+    calculate_voltage_angles=True,
+    init="auto",
+    max_iteration="auto",
+    tolerance_mva=1e-8,
+    trafo_model="t",
+    trafo_loading="current",
+    enforce_q_lims=False,
+    check_connectivity=True,
+    voltage_depend_loads=True,
+)
+```
+
+`runpp` also supports options for controller execution, distributed slack, temperature-dependent power flow, line temperatures, and additional keyword options.
+
+The following exceptions identify non-convergent or unsupported calculations:
+
+- `LoadflowNotConverged`
+- `OPFNotConverged`
+- `ControllerNotConverged`
+- `NetCalculationNotConverged`
+- `AlgorithmUnknown`
+
+### DC and three-phase power flow
+
+```python
+from pandapower.run import rundcpp
+from pandapower.pf.runpp_3ph import runpp_3ph
+
+rundcpp(net)
+
+runpp_3ph(
+    net,
+    calculate_voltage_angles=True,
+    init="auto",
+    trafo_model="t",
+    trafo_loading="current",
+)
+```
+
+### Optimal power flow
+
+`runopp` performs optimal power flow, while `rundcopp` provides a DC optimal-power-flow entry point.
+
+```python
+from pandapower.create.cost_create import create_poly_cost
+from pandapower.run import runopp
+
+create_poly_cost(
+    net,
+    element=0,
+    et="gen",
+    cp1_eur_per_mw=40.0,
+    cp0_eur=100.0,
+    min_q_mvar=-3.0,
+    max_q_mvar=3.0,
+)
+
+runopp(net, calculate_voltage_angles=True)
+```
+
+Cost functions can be added with:
+
+- `create_poly_cost`, `create_poly_costs`
+- `create_pwl_cost`, `create_pwl_costs`
+
+---
+
+## State estimation
+
+Measurements can be added with `create_measurement`, then passed to the estimation API.
+
+```python
+from pandapower.create.measurement_create import create_measurement
+from pandapower.estimation.state_estimation import estimate
+
+create_measurement(
+    net,
+    meas_type="v",
+    element_type="bus",
+    element=0,
+    value=1.01,
+    std_dev=0.01,
+    name="Voltage measurement at bus 0",
+)
+
+create_measurement(
+    net,
+    meas_type="p",
+    element_type="line",
+    element=0,
+    side="from",
+    value=0.45,
+    std_dev=0.03,
+)
+
+success = estimate(
+    net,
+    algorithm="wls",
+    init="flat",
+    tolerance=1e-6,
+    maximum_iterations=50,
+    zero_injection="aux_bus",
+)
+```
+
+Additional state-estimation tools include:
+
+- `remove_bad_data`
+- `chi2_analysis`
+- `estimate_voltage_vector`
+- `add_virtual_meas_from_loadflow`
+- `add_virtual_pmu_meas_from_loadflow`
+- `add_virtual_meas_error`
+- `set_bb_switch_impedance`
+- `reset_bb_switch_impedance`
+
+The `StateEstimation` class offers an object-oriented interface for estimation, chi-squared testing, and residual-based tests.
+
+---
+
+## Short-circuit analysis and protection
+
+### Short-circuit calculation
+
+Use `calc_sc` to calculate short-circuit conditions.
+
+```python
+from pandapower.shortcircuit.calc_sc import calc_sc
+
+calc_sc(
+    net,
+    bus=None,
+    fault="3ph",
+    case="max",
+    lv_tol_percent=10,
+    ip=True,
+    ith=True,
+    branch_results=True,
+)
+```
+
+Line-specific short-circuit studies are available through `calc_sc_on_line`.
+
+### Protection studies
+
+Protection devices derive from `ProtectionDevice`. Available device classes include `Fuse` and `OCRelay`.
+
+```python
+from pandapower.protection.run_protection import calculate_protection_times
+
+trip_decisions = calculate_protection_times(net, scenario="sc")
+```
+
+Useful protection utilities include:
+
+- `calc_faults_at_full_line`
+- `plot_tripped_grid`
+- `plot_tripped_grid_protection_device`
+- `get_lowest_impedance_line`
+- `get_vi_angle`
+- `time_grading`
+
+---
+
+## Controllers and time series
+
+Controllers are represented by the `BasicCtrl` and `Controller` base classes. The API includes controller types for constant values, characteristics, DER operation, transformer taps, shunts, station controls, and droop controls.
+
+Notable controller classes include:
+
+- `ConstControl`
+- `CharacteristicControl`
+- `DERController`
+- `PQController`
+- `ContinuousTapControl`
+- `DiscreteTapControl`
+- `TapDependentImpedance`
+- `ShuntController`
+- `DiscreteShuntController`
+- `BinarySearchControl`
+- `DroopControl`
+- `VDroopControl_local`
+
+The control loop can be run directly:
+
+```python
+from pandapower.control.run_control import run_control
+
+run_control(net, max_iter=30)
+```
+
+For time-series simulations, provide controllers and optionally an output writer, then call `run_timeseries`.
+
+```python
+from pandapower.timeseries.run_time_series import run_timeseries
+
+run_timeseries(
+    net,
+    time_steps=range(24),
+    continue_on_divergence=False,
+    verbose=True,
+)
+```
+
+Time-series support includes:
+
+- `DataSource` and `DFData` for profile data
+- `OutputWriter` for result logging
+- `init_default_outputwriter`
+- `init_output_writer`
+- `run_time_step`
+- `run_timeseries`
+- `TimeSeriesRunpp`
+
+---
+
+## Contingency analysis
+
+Use `run_contingency` to evaluate a network under N-1 cases. A contingency case definition is passed as `nminus1_cases`.
+
+```python
+from pandapower.contingency.contingency import run_contingency
+
+results = run_contingency(
+    net,
+    nminus1_cases=nminus1_cases,
+    pf_options={"calculate_voltage_angles": True},
+    pf_options_nminus1={"calculate_voltage_angles": True},
+    write_to_net=True,
+)
+```
+
+Additional contingency functions include:
+
+- `run_contingency_ls2g`
+- `run_contingency_parallel`
+- `get_element_limits`
+- `check_elements_within_limits`
+- `report_contingency_results`
+
+---
+
+## Diagnostics and validation
+
+### Network diagnostics
+
+Use the diagnostic API to inspect invalid values, disconnected elements, implausible impedances, missing reference elements, voltage-level mismatches, switch configurations, and related problems.
+
+```python
+from pandapower.diagnostic.diagnostic_helpers import diagnostic
+
+issues = diagnostic(
+    net,
+    report_style="detailed",
+    warnings_only=False,
+    return_result_dict=True,
+)
+```
+
+The `Diagnostic` class provides customizable diagnostic execution and reporting.
+
+### Schema validation
+
+```python
+from pandapower.network_schema.tools.validation.network_validation import validate_network
+
+validate_network(net)
+```
+
+### Comparing networks
+
+```python
+from pandapower.toolbox.comparison import nets_equal
+
+same = nets_equal(net_a, net_b, check_only_results=False)
+```
+
+Related helpers include `dataframes_equal`, `compare_arrays`, and `nets_equal_keys`.
+
+---
+
+## Network topology and modification
+
+### Graph construction and graph searches
+
+Create a graph representation with `create_nxgraph`, then use topology helpers for connectivity analysis.
+
+```python
+from pandapower.topology.create_graph import create_nxgraph
+from pandapower.topology.graph_searches import (
+    calc_distance_to_bus,
+    unsupplied_buses,
+)
+
+graph = create_nxgraph(net, respect_switches=True)
+
+distances = calc_distance_to_bus(net, bus=0, respect_switches=True, g=graph)
+unsupplied = unsupplied_buses(net, mg=graph)
+```
+
+Other topology functions include:
+
+- `connected_component`
+- `connected_components`
+- `determine_stubs`
+- `get_connected_elements`
+- `get_connected_buses`
+- `get_connecting_branches`
+- `lines_on_path`
+- `elements_on_path`
+
+### Model modification
+
+The toolbox includes utilities for reindexing, merging, replacing, dropping, and selecting network components.
+
+```python
+from pandapower.toolbox.grid_modification import (
+    drop_out_of_service_elements,
+    fuse_buses,
+    select_subnet,
+)
+from pandapower.toolbox.data_modification import create_continuous_bus_index
+
+create_continuous_bus_index(net, start=0, store_old_index=True)
+
+subnet = select_subnet(net, buses=[0, 1, 2], include_results=True)
+
+drop_out_of_service_elements(net)
+```
+
+Examples of available modification functions:
+
+- `merge_nets`
+- `fuse_buses`
+- `drop_buses`
+- `drop_lines`
+- `drop_trafos`
+- `drop_elements`
+- `replace_zero_branches_with_switches`
+- `replace_impedance_by_line`
+- `replace_line_by_impedance`
+- `replace_ext_grid_by_gen`
+- `replace_gen_by_ext_grid`
+- `replace_gen_by_sgen`
+- `replace_sgen_by_gen`
+
+---
+
+## Groups
+
+Groups associate multiple network elements under one logical identifier.
+
+```python
+from pandapower.create.group_create import create_group
+from pandapower.groups import (
+    group_name,
+    group_res_p_mw,
+    set_group_out_of_service,
+)
+
+group = create_group(
+    net,
+    element_types=["line", "load"],
+    element_indices=[[0, 1], [0, 1, 2]],
+    name="Feeder A",
+)
+
+print(group_name(net, group))
+print(group_res_p_mw(net, group))
+
+set_group_out_of_service(net, group)
+```
+
+Group utilities support attaching and detaching elements, comparing groups, checking membership, setting values, collecting result powers, and producing a network for a group.
+
+---
+
+## Standard types
+
+Networks can store standard types for lines, transformers, three-winding transformers, DC lines, and fuses.
+
+```python
+from pandapower.std_types import (
+    create_std_type,
+    available_std_types,
+    load_std_type,
+)
+
+create_std_type(
+    net,
+    name="Custom cable",
+    element="line",
+    data={
+        "r_ohm_per_km": 0.15,
+        "x_ohm_per_km": 0.08,
+        "c_nf_per_km": 12.0,
+        "max_i_ka": 0.35,
+    },
+)
+
+types = available_std_types(net, element="line")
+cable_data = load_std_type(net, "Custom cable", element="line")
+```
+
+Other standard-type functions include:
+
+- `create_std_types`
+- `copy_std_types`
+- `std_type_exists`
+- `delete_std_type`
+- `rename_std_type`
+- `parameter_from_std_type`
+- `change_std_type`
+- `find_std_type_by_parameter`
+- `add_basic_std_types`
+
+---
+
+## Import, export, and serialization
+
+### File formats
+
+The API supports serializing and loading networks through pickle, Excel, and JSON.
+
+```python
+from pandapower.file_io import (
+    to_json,
+    from_json,
+    to_excel,
+    from_excel,
+)
+
+to_json(net, "network.json")
+to_excel(net, "network.xlsx", include_results=True)
+
+net_from_json = from_json("network.json")
+net_from_excel = from_excel("network.xlsx")
+```
+
+`to_json` can also return a JSON string when no filename is supplied.
+
+### SQL persistence
+
+```python
+from pandapower.sql_io import to_sqlite, from_sqlite
+
+to_sqlite(net, "network.sqlite", include_results=True)
+loaded_net = from_sqlite("network.sqlite")
+```
+
+PostgreSQL-oriented functions are also available through `to_postgresql`, `from_postgresql`, `to_sql`, and `from_sql`.
+
+### Converters
+
+The converter API includes interfaces for multiple external formats and systems:
+
+- CIM: `from_cim`, `from_cim_dict`
+- MATPOWER-style case data: `from_mpc`, `to_mpc`
+- PYPOWER case data: `from_ppc`, `to_ppc`
+- OpenDSS: `from_opendss`
+- UCTE: `from_ucte`, `from_ucte_dict`
+- JAO input: `from_jao`
+- PowerFactory export/import helpers: `from_pfd`, `from_pf`
+- PowerModels conversion: `convert_pp_to_pm`, `convert_to_pm_structure`
+
+---
+
+## Plotting
+
+### Static plotting
+
+```python
+from pandapower.plotting.simple_plot import simple_plot
+
+simple_plot(
+    net,
+    respect_switches=True,
+    plot_loads=True,
+    plot_gens=True,
+    plot_sgens=True,
+    show_plot=True,
+)
+```
+
+For power-flow result visualization:
+
+```python
+from pandapower.plotting.powerflow_results import (
+    plot_voltage_profile,
+    plot_loading,
+)
+
+plot_voltage_profile(net)
+plot_loading(net, element_type="line")
+```
+
+The collection API supports plotting individual element types, including buses, lines, transformers, generators, loads, storage, switches, VSCs, Wards, and external grids.
+
+### Interactive plotting
+
+```python
+from pandapower.plotting.plotly.simple_plotly import simple_plotly
+from pandapower.plotting.plotly.pf_res_plotly import pf_res_plotly
+
+simple_plotly(net, filename="network.html", auto_open=True)
+
+pf_res_plotly(
+    net,
+    filename="powerflow-results.html",
+    auto_open=True,
+)
+```
+
+---
+
+## Included example and benchmark networks
+
+The `networks` API provides prebuilt models for tests, examples, low-voltage systems, medium-voltage systems, CIGRE networks, IEEE-style systems, PEGASE systems, and other benchmark cases.
+
+```python
+from pandapower.networks.power_system_test_cases import case14
+from pandapower.run import runpp
+
+net = case14()
+runpp(net)
+
+print(net["res_bus"])
+```
+
+Other example constructors include:
+
+- `example_simple`
+- `example_multivoltage`
+- `simple_four_bus_system`
+- `simple_mv_open_ring_net`
+- `create_cigre_network_hv`
+- `create_cigre_network_mv`
+- `create_cigre_network_lv`
+- `mv_oberrhein`
+- `lv_schutterwald`
+- `ieee_european_lv_asymmetric`
+- `create_synthetic_voltage_control_lv_network`
+
+---
+
+## Utility areas
+
+The public API also includes utilities for:
+
+- Positive-, negative-, and zero-sequence transformations.
+- Phase-to-sequence and sequence-to-phase conversion.
+- Voltage, current, power, admittance, and impedance calculations.
+- Power-factor conversions.
+- Electrical result-table initialization and reset.
+- Geodata conversion, coordinate generation, CRS conversion, and GeoJSON export.
+- Grid equivalents and boundary-network reduction.
+- JSON serialization of custom classes and network objects.
+- Parameter deprecation handling and soft dependency checks.
+- Network-element selection and counts.
+- Short-circuit and line-path helper calculations.
+
+---
+
+## Main entry points
+
+For most applications, start with these functions:
+
+| Goal | Entry points |
+|---|---|
+| Create a network | `create_empty_network` |
+| Add AC buses | `create_bus`, `create_buses` |
+| Add lines | `create_line`, `create_line_from_parameters` |
+| Add transformers | `create_transformer`, `create_transformer_from_parameters` |
+| Add loads and generation | `create_load`, `create_gen`, `create_sgen`, `create_ext_grid` |
+| Run AC power flow | `runpp` |
+| Run DC power flow | `rundcpp` |
+| Run three-phase power flow | `runpp_3ph` |
+| Run optimal power flow | `runopp`, `rundcopp` |
+| Estimate state | `estimate` |
+| Calculate short circuits | `calc_sc` |
+| Run time series | `run_timeseries` |
+| Run contingencies | `run_contingency`, `run_contingency_parallel` |
+| Diagnose a network | `diagnostic`, `validate_network` |
+| Plot a network | `simple_plot`, `simple_plotly`, `pf_res_plotly` |
+| Save and load | `to_json`, `from_json`, `to_excel`, `from_excel` |

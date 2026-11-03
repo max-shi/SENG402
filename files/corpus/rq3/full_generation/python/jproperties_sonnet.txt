@@ -1,0 +1,163 @@
+# jproperties
+
+`jproperties` is a Python library for reading, writing, and manipulating Java-style `.properties` files. It provides a dictionary-like `Properties` class modeled after the `java.util.Properties` class, allowing you to load property files, access and modify key/value pairs using familiar Python mapping syntax, attach metadata (such as comments) to individual keys, and serialize everything back out to a `.properties`-formatted stream.
+
+Because `Properties` implements `MutableMapping`, it behaves like a standard Python `dict` for the most part — you can use `in`, iterate over keys, use `len()`, `del`, item assignment, and so on — while adding the extra behavior needed to faithfully round-trip Java properties files (ordering, comments, encodings, escaping).
+
+## Installation
+
+```bash
+pip install jproperties
+```
+
+## Core Concepts
+
+### `Properties`
+
+The `Properties` class is the main entry point of the library. It is a mutable mapping of string keys to string values, with additional support for:
+
+- **Metadata** — Each key can have associated metadata (e.g. leading comments) that is preserved when loading and storing files, retrievable via `getmeta()` and settable via `setmeta()`.
+- **Loading** — `load()` parses `.properties`-formatted text (or bytes) into the mapping.
+- **Storing** — `store()` serializes the current key/value pairs (and, optionally, their metadata/comments) back out to a stream in `.properties` format.
+- **Listing** — `list()` prints a simple, human-readable listing of the properties, similar to `java.util.Properties#list()`.
+- **Resetting/Clearing** — `reset()` and `clear()` let you empty out the properties (and optionally the metadata document) to start fresh.
+
+### `properties`
+
+The `properties` attribute exposes the underlying property data directly, allowing you to inspect or replace the full set of key/value pairs at once, in addition to using standard mapping operations (`obj[key] = value`, `del obj[key]`, etc.) on the `Properties` instance itself.
+
+### Exceptions
+
+- **`PropertyError`** — Base exception class for all errors raised by this library.
+- **`ParseError`** — Raised when the parser encounters malformed or unexpected content while loading a `.properties` source.
+
+### `main()`
+
+A command-line entry point is provided for basic command-line interaction with `.properties` files (such as loading and inspecting a file from the shell).
+
+## Usage
+
+### Loading a properties file
+
+```python
+from jproperties import Properties
+
+p = Properties()
+
+with open('app.properties', 'rb') as f:
+    p.load(f, 'utf-8')
+
+# Access values like a dict
+print(p['app.name'])
+print(p.get('app.version', '0.0.0'))
+```
+
+### Creating and modifying properties
+
+```python
+from jproperties import Properties
+
+p = Properties()
+
+p['db.host'] = 'localhost'
+p['db.port'] = '5432'
+p['db.user'] = 'admin'
+
+# Standard mapping operations work as expected
+print(len(p))
+print('db.host' in p)
+
+del p['db.user']
+```
+
+### Working with metadata (comments)
+
+```python
+from jproperties import Properties
+
+p = Properties()
+p['greeting'] = 'Hello, world!'
+
+# Attach a comment to a specific key
+p.setmeta('greeting', {'comment': 'Displayed on the welcome screen'})
+
+meta = p.getmeta('greeting')
+print(meta)
+```
+
+### Saving properties back to a file
+
+```python
+from jproperties import Properties
+
+p = Properties()
+p['app.name'] = 'MyApplication'
+p['app.debug'] = 'false'
+
+with open('app.properties', 'wb') as f:
+    p.store(f, initial_comments='Application configuration',
+             encoding='utf-8', timestamp=True)
+```
+
+### Listing properties to the console
+
+```python
+from jproperties import Properties
+import sys
+
+p = Properties()
+p['env'] = 'production'
+p['region'] = 'us-east-1'
+
+p.list(sys.stdout)
+```
+
+### Resetting and clearing
+
+```python
+from jproperties import Properties
+
+p = Properties()
+p['key'] = 'value'
+
+# Remove all entries, keeping any associated metadata document
+p.reset(metadoc=True)
+
+# Or clear everything entirely
+p.clear()
+```
+
+### Handling parse errors
+
+```python
+from jproperties import Properties, ParseError
+
+p = Properties()
+
+try:
+    p.load('invalid \\uZZZZ escape', 'utf-8')
+except ParseError as e:
+    print(f'Failed to parse properties: {e}')
+```
+
+## Round-tripping a file
+
+A common workflow is loading an existing `.properties` file, making a small change, and writing it back out while preserving comments and formatting where possible:
+
+```python
+from jproperties import Properties
+
+p = Properties()
+
+with open('config.properties', 'rb') as f:
+    p.load(f, 'utf-8', metadoc=True)
+
+p['feature.enabled'] = 'true'
+
+with open('config.properties', 'wb') as f:
+    p.store(f, encoding='utf-8', strip_meta=False, timestamp=False)
+```
+
+## License
+
+See the `LICENSE` file in this repository for licensing details.

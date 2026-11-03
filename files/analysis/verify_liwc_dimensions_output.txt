@@ -1,0 +1,137 @@
+# Construct-validity audit — verify_liwc_dimensions.py
+# Run timestamp: 2026-06-13T21:45:12
+# Source LIWC CSV: /Users/max/Documents/SENG402/SENG402/files/preprocess/preprocess_output_13-05-26_21-50-10/LIWC-22 Results - libraries - LIWC Analysis.csv
+# TOP_K (libraries inspected per dimension): 5
+# Committed dimensions (15): emotion, emo_neg, emo_anger, emo_sad, Tone, WPS, BigWords, ipron, tentat, certitude, curiosity, achieve, risk, motion, conflict
+# Loaded 136 library rows and 136 texts
+
+## emotion  (claim: python highest; checking top 5)
+  rich                   liwc= 5.590%  keyword_hits=   10 ( 0.05% of tokens)  top: like:9, hopefully:1
+  Celery                 liwc= 2.970%  keyword_hits=   33 ( 0.16% of tokens)  top: like:29, good:2, nice:1, sadly:1
+  Hugging Face Transformers liwc= 2.710%  keyword_hits=  320 ( 0.04% of tokens)  top: like:292, good:13, nice:7, hurt:2, love:2, great:2, cryptic:1, worrying:1
+  attrs                  liwc= 1.990%  keyword_hits=    4 ( 0.07% of tokens)  top: like:4
+  LangChain Core         liwc= 1.740%  keyword_hits=   61 ( 0.10% of tokens)  top: like:31, good:18, nice:11, hopes:1
+  -- aggregate: 428 hits in 906189 tokens (0.05%); curated overlap with LIWC score avg = 3.000%
+  -- most common matching tokens overall: like:365, good:33, nice:19, hurt:2, love:2, great:2, hopefully:1, sadly:1, cryptic:1, worrying:1, hopes:1
+
+## emo_neg  (claim: python highest; checking top 5)
+  rich                   liwc= 5.350%  keyword_hits=   27 ( 0.14% of tokens)  top: error:11, errors:10, failed:1, break:1, issues:1, problems:1, issue:1, fail:1
+  Celery                 liwc= 2.910%  keyword_hits=   57 ( 0.28% of tokens)  top: error:24, failure:7, failed:6, errors:5, fails:4, failover:2, failures:2, breakpoint:1
+  Hugging Face Transformers liwc= 2.690%  keyword_hits=  333 ( 0.04% of tokens)  top: error:122, issues:64, errors:38, issuecomment:35, breaking:17, problem:14, issue:13, break:6
+  attrs                  liwc= 1.960%  keyword_hits=   18 ( 0.34% of tokens)  top: error:9, wrong:2, failed:2, errors:1, issues:1, issue:1, fail:1, fails:1
+  LangChain Core         liwc= 1.700%  keyword_hits=  207 ( 0.35% of tokens)  top: error:133, errors:28, issues:9, failed:8, fails:6, failures:5, fail:5, failure:4
+  -- aggregate: 642 hits in 906189 tokens (0.07%); curated overlap with LIWC score avg = 2.922%
+  -- most common matching tokens overall: error:299, errors:82, issues:76, issuecomment:35, issue:18, failed:17, breaking:17, problem:15, fails:13, failure:12, fail:11, break:8, failures:8, wrong:7, bad:6
+
+## emo_anger  (claim: python highest; checking top 5)
+  APScheduler            liwc= 0.790%  keyword_hits=    0 ( 0.00% of tokens)  top: 
+  marshmallow            liwc= 0.760%  keyword_hits=    0 ( 0.00% of tokens)  top: 
+  Shapely                liwc= 0.750%  keyword_hits=    3 ( 0.02% of tokens)  top: destroy:3
+  click                  liwc= 0.740%  keyword_hits=    0 ( 0.00% of tokens)  top: 
+  attrs                  liwc= 0.650%  keyword_hits=    0 ( 0.00% of tokens)  top: 
+  -- aggregate: 3 hits in 37022 tokens (0.01%); curated overlap with LIWC score avg = 0.738%
+  -- most common matching tokens overall: destroy:3
+
+## emo_sad  (claim: python highest; checking top 5)
+  rich                   liwc= 5.250%  keyword_hits=    1 ( 0.01% of tokens)  top: missingstyle:1
+  Hugging Face Transformers liwc= 2.480%  keyword_hits=   89 ( 0.01% of tokens)  top: missing:54, losing:19, lose:10, alone:3, miss:1, cryptic:1, lost:1
+  Celery                 liwc= 2.330%  keyword_hits=    7 ( 0.03% of tokens)  top: lost:4, missing:2, sadly:1
+  attrs                  liwc= 1.310%  keyword_hits=    1 ( 0.02% of tokens)  top: missing:1
+  LangChain Core         liwc= 1.100%  keyword_hits=   20 ( 0.03% of tokens)  top: missing:15, miss:4, lost:1
+  -- aggregate: 118 hits in 906189 tokens (0.01%); curated overlap with LIWC score avg = 2.494%
+  -- most common matching tokens overall: missing:72, losing:19, lose:10, lost:6, miss:5, alone:3, missingstyle:1, cryptic:1, sadly:1
+
+## Tone  (claim: java highest; checking top 5)
+  Resilience4j Core      liwc=52.930%  keyword_hits=   16 ( 1.02% of tokens)  top: window:15, successful:1
+  Spring Data Commons    liwc=39.200%  keyword_hits=   35 ( 0.12% of tokens)  top: like:13, easily:5, window:5, easy:3, easier:3, please:2, best:2, better:1
+  Apache HttpClient      liwc=36.390%  keyword_hits=   46 ( 0.25% of tokens)  top: please:31, successful:5, windows:4, successfully:3, like:2, success:1
+  Netty                  liwc=34.260%  keyword_hits=   73 ( 0.42% of tokens)  top: please:28, successful:18, easy:6, success:5, best:5, easier:3, good:3, like:2
+  Flyway Core            liwc=32.640%  keyword_hits=   24 ( 0.24% of tokens)  top: like:12, easier:2, easily:2, better:2, success:2, good:1, great:1, successfully:1
+  -- aggregate: 194 hits in 75814 tokens (0.26%); curated overlap with LIWC score avg = 39.084%
+  -- most common matching tokens overall: please:61, like:29, successful:24, window:20, easy:9, easily:8, easier:8, success:8, best:7, successfully:6, windows:5, good:4, better:3, great:1, nice:1
+
+## WPS  (claim: java highest; structural check, top 5)
+  Jackson Databind       liwc_WPS= 18.85  my_avg_words_per_sentence=19.06
+  Project Reactor Core   liwc_WPS= 18.47  my_avg_words_per_sentence=18.39
+  MapStruct              liwc_WPS= 18.36  my_avg_words_per_sentence=17.72
+  RxJava                 liwc_WPS= 17.11  my_avg_words_per_sentence=17.16
+  JUnit 5                liwc_WPS= 16.89  my_avg_words_per_sentence=17.05
+
+## BigWords  (claim: java highest; structural check, top 5)
+  RxJava                 liwc= 34.38%  my_pct_words_ge_7=33.78%  top long words: scheduler, onerror, upstream, disposable, throwable, returns, methods, history
+  Apache HttpClient      liwc= 34.04%  my_pct_words_ge_7=33.32%  top long words: request, connection, execution, response, message, default, protocol, authentication
+  Eclipse Collections    liwc= 33.78%  my_pct_words_ge_7=34.48%  top long words: specified, returns, interval, collection, element, function, collectors, predicate
+  Resilience4j Core      liwc= 33.44%  my_pct_words_ge_7=33.42%  top long words: returns, composed, supplier, applies, executes, optionally, recovers, function
+  JUnit 5                liwc= 33.21%  my_pct_words_ge_7=32.66%  top long words: methods, supplied, annotation, expected, message, failure, default, extension
+
+## ipron  (claim: java highest; checking top 5)
+  Gson                   liwc= 5.480%  keyword_hits=  895 ( 5.10% of tokens)  top: this:435, that:194, it:162, its:48, these:18, such:16, itself:10, those:9
+  Jackson Databind       liwc= 5.400%  keyword_hits= 4974 ( 4.93% of tokens)  top: that:2530, this:1321, it:650, such:136, its:124, itself:75, these:42, something:33
+  OkHttp                 liwc= 5.220%  keyword_hits= 1205 ( 4.97% of tokens)  top: this:608, that:275, it:189, its:45, such:33, these:24, those:14, nothing:7
+  ASM                    liwc= 5.180%  keyword_hits=  888 ( 4.94% of tokens)  top: this:565, that:144, it:56, nothing:45, its:33, these:19, such:16, those:5
+  Protobuf Java          liwc= 5.140%  keyword_hits= 1579 ( 4.59% of tokens)  top: this:683, that:461, it:315, its:64, these:13, itself:10, those:9, such:9
+  -- aggregate: 9541 hits in 195174 tokens (4.89%); curated overlap with LIWC score avg = 5.284%
+  -- most common matching tokens overall: this:3612, that:3604, it:1372, its:314, such:210, these:116, itself:105, nothing:73, those:64, something:35, anything:23, everything:9, somebody:2, anybody:1, someone:1
+
+## tentat  (claim: python highest; checking top 5)
+  tqdm                   liwc= 7.700%  keyword_hits=   15 ( 0.58% of tokens)  top: may:9, possible:5, some:1
+  rich                   liwc= 6.910%  keyword_hits=   78 ( 0.39% of tokens)  top: may:38, sort:13, possibly:6, something:5, some:3, could:3, probably:3, kind:1
+  Hugging Face Transformers liwc= 5.030%  keyword_hits= 1263 ( 0.16% of tokens)  top: possible:234, might:197, some:183, something:150, may:120, depending:118, likely:67, could:41
+  Seaborn                liwc= 4.570%  keyword_hits=  106 ( 0.62% of tokens)  top: may:19, some:17, kind:12, appear:9, possible:7, could:5, depends:5, depend:5
+  Shapely                liwc= 4.530%  keyword_hits=   83 ( 0.44% of tokens)  top: may:49, some:6, possibly:5, depending:5, possible:5, depends:5, appear:2, could:2
+  -- aggregate: 1545 hits in 859280 tokens (0.18%); curated overlap with LIWC score avg = 5.748%
+  -- most common matching tokens overall: possible:252, may:235, some:210, might:201, something:158, depending:124, likely:70, could:51, depends:28, appear:27, kind:25, possibly:25, sort:20, depend:18, dependent:18
+
+## certitude  (claim: java highest; checking top 5)
+  ASM                    liwc= 0.910%  keyword_hits=   24 ( 0.13% of tokens)  top: always:10, actually:8, never:3, sure:2, indeed:1
+  MapStruct              liwc= 0.570%  keyword_hits=    4 ( 0.10% of tokens)  top: always:3, sure:1
+  Mockito                liwc= 0.560%  keyword_hits=  109 ( 0.27% of tokens)  top: sure:22, never:20, certain:19, always:16, really:12, actually:11, completely:5, obvious:2
+  Guava                  liwc= 0.500%  keyword_hits=  216 ( 0.20% of tokens)  top: never:91, always:66, actually:25, certain:20, completely:7, obviously:3, certainly:2, sure:2
+  Apache HttpClient      liwc= 0.490%  keyword_hits=   17 ( 0.09% of tokens)  top: never:6, sure:5, always:4, certain:1, actually:1
+  -- aggregate: 370 hits in 188428 tokens (0.20%); curated overlap with LIWC score avg = 0.606%
+  -- most common matching tokens overall: never:120, always:99, actually:45, certain:40, sure:32, really:12, completely:12, obviously:4, obvious:2, certainly:2, indeed:1, definitely:1
+
+## curiosity  (claim: java highest; checking top 5)
+  Spring Data Commons    liwc= 1.460%  keyword_hits=   36 ( 0.12% of tokens)  top: how:11, discovered:9, discover:6, discovering:2, discovers:2, asking:1, discovery:1, search:1
+  Micrometer Core        liwc= 0.980%  keyword_hits=   17 ( 0.11% of tokens)  top: search:12, how:4, interested:1
+  Netty                  liwc= 0.940%  keyword_hits=   20 ( 0.12% of tokens)  top: how:19, learn:1
+  Gson                   liwc= 0.820%  keyword_hits=   27 ( 0.15% of tokens)  top: how:27
+  Mockito                liwc= 0.700%  keyword_hits=   93 ( 0.23% of tokens)  top: how:51, why:15, interested:7, learn:6, questions:3, interesting:2, learning:2, discovered:2
+  -- aggregate: 193 hits in 120475 tokens (0.16%); curated overlap with LIWC score avg = 0.980%
+  -- most common matching tokens overall: how:112, why:15, search:14, discovered:11, interested:9, discover:7, learn:7, questions:3, discovering:2, discovers:2, searches:2, interesting:2, learning:2, asking:1, discovery:1
+
+## achieve  (claim: java highest; checking top 5)
+  Spring Data Commons    liwc= 2.070%  keyword_hits=  435 ( 1.51% of tokens)  top: creates:162, create:69, obtain:33, created:32, make:14, built:13, try:12, obtained:11
+  Disruptor              liwc= 1.510%  keyword_hits=   62 ( 1.23% of tokens)  top: create:12, producer:7, performance:6, created:6, creates:4, performed:3, trynext:3, finished:2
+  JUnit 5                liwc= 1.490%  keyword_hits=  156 ( 0.54% of tokens)  top: create:34, completes:16, made:11, build:10, perform:9, builds:9, created:9, createa:8
+  Mockito                liwc= 1.490%  keyword_hits=  532 ( 1.30% of tokens)  top: create:56, created:54, creates:54, make:51, maker:51, work:36, makes:29, try:27
+  AssertJ                liwc= 1.350%  keyword_hits= 1426 ( 1.17% of tokens)  top: creates:529, create:114, perform:98, built:86, make:62, makes:45, making:36, made:35
+  -- aggregate: 2611 hits in 225521 tokens (1.16%); curated overlap with LIWC score avg = 1.582%
+  -- most common matching tokens overall: creates:753, create:285, make:132, created:131, perform:120, built:117, makes:78, work:69, try:57, build:53, making:51, maker:51, made:50, tries:49, builder:39
+
+## risk  (claim: java highest; checking top 5)
+  Spring Security Core   liwc= 1.870%  keyword_hits=  356 ( 1.99% of tokens)  top: security:118, secure:46, securitycontext:37, securitycontextholder:30, securitycontextholderstrategy:21, secured:12, failure:11, avoid:9
+  SLF4J                  liwc= 1.230%  keyword_hits=   67 ( 1.32% of tokens)  top: error:21, warn:17, avoids:15, avoid:5, warning:3, protected:2, errors:2, warnings:1
+  Lombok                 liwc= 0.800%  keyword_hits=  273 ( 1.64% of tokens)  top: warning:110, error:109, errors:15, problems:7, avoid:6, warnings:6, warn:4, problematic:2
+  Apache Commons Lang    liwc= 0.690%  keyword_hits=  721 ( 0.83% of tokens)  top: securityexception:197, safe:110, security:86, securerandom:33, error:26, failablestream:26, avoid:25, fails:19
+  Micrometer Core        liwc= 0.690%  keyword_hits=  110 ( 0.69% of tokens)  top: avoids:33, avoid:10, warning:10, error:10, warn:9, safe:8, prevent:6, problems:5
+  -- aggregate: 1527 hits in 142524 tokens (1.07%); curated overlap with LIWC score avg = 1.056%
+  -- most common matching tokens overall: security:204, securityexception:197, error:169, warning:134, safe:121, secure:63, avoid:55, avoids:53, securitycontext:37, securerandom:35, securitycontextholder:30, warn:30, errors:27, failure:26, failablestream:26
+
+## motion  (claim: python highest; checking top 5)
+  APScheduler            liwc= 3.800%  keyword_hits=   87 ( 3.55% of tokens)  top: run:21, returns:18, passed:13, running:10, runs:10, returned:9, return:2, pass:1
+  Arrow                  liwc= 3.590%  keyword_hits=   42 ( 3.38% of tokens)  top: returns:33, returned:5, return:4
+  marshmallow            liwc= 3.440%  keyword_hits=   78 ( 2.48% of tokens)  top: passed:31, return:22, returns:11, passing:4, pass:2, returned:2, returning:2, pulls:1
+  Starlette              liwc= 3.180%  keyword_hits=   19 ( 2.06% of tokens)  top: return:6, returned:3, run:3, returns:3, returning:2, pass:1, send:1
+  Scrapy                 liwc= 2.760%  keyword_hits=  283 ( 2.40% of tokens)  top: return:113, returns:41, returned:24, sent:20, passed:14, send:8, run:7, sending:6
+  -- aggregate: 509 hits in 19533 tokens (2.61%); curated overlap with LIWC score avg = 3.354%
+  -- most common matching tokens overall: return:147, returns:106, passed:58, returned:43, run:31, sent:20, running:11, runs:11, returning:10, passing:9, send:9, sending:6, pass:5, password:5, come:5
+
+## conflict  (claim: python highest; checking top 5)
+  APScheduler            liwc= 0.790%  keyword_hits=   20 ( 0.82% of tokens)  top: arguments:13, argument:6, violated:1
+  marshmallow            liwc= 0.760%  keyword_hits=   26 ( 0.83% of tokens)  top: argument:14, arguments:10, against:2
+  Shapely                liwc= 0.750%  keyword_hits=  149 ( 0.80% of tokens)  top: arguments:120, argument:18, opposite:4, against:4, conflicting:2, broke:1
+  click                  liwc= 0.740%  keyword_hits=   59 ( 0.80% of tokens)  top: arguments:38, argument:16, against:2, broken:2, brokenpipeerrors:1
+  attrs                  liwc= 0.650%  keyword_hits=   39 ( 0.73% of tokens)  top: argument:25, arguments:12, against:2
+  -- aggregate: 293 hits in 37022 tokens (0.79%); curated overlap with LIWC score avg = 0.738%
+  -- most common matching tokens overall: arguments:193, argument:79, against:10, opposite:4, conflicting:2, broken:2, violated:1, broke:1, brokenpipeerrors:1

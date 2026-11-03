@@ -1,0 +1,196 @@
+# jcore-mallet
+
+`jcore-mallet` is a comprehensive machine learning library for Java, providing tools for statistical natural language processing, document classification, clustering, sequence tagging, topic modeling infrastructure, and probabilistic graphical models. It is derived from the MALLET (MAchine Learning for LanguagE Toolkit) codebase and exposes a broad set of packages covering classification, sequence labeling (finite-state transducers), clustering, information extraction, graphical models (factor graphs, belief propagation), and general-purpose numerical optimization.
+
+## Features
+
+- **Classification**: Naive Bayes, Maximum Entropy (MaxEnt), Decision Trees (C4.5), AdaBoost, Bagging, Winnow, Balanced Winnow, and ensemble classifiers, all built around a common `Pipe`/`InstanceList`/`Classifier` architecture.
+- **Sequence Labeling (FST)**: Conditional Random Fields (CRF), Hidden Markov Models (HMM), Maximum Entropy Markov Models (MEMM), with multiple training strategies including label likelihood, generalized expectation (GE), posterior regularization (PR), and entropy regularization.
+- **Clustering**: Greedy agglomerative clustering, K-Means, and pluggable neighbor evaluators for pairwise and medoid-based cluster scoring, along with clustering evaluation metrics (B-Cubed, MUC, Pairwise F1).
+- **Information Extraction**: Extraction of structured records/fields from tokenized documents using CRF-based or ACRF-based extractors, with confidence estimation and tokenization filtering.
+- **Graphical Models (GRMM)**: Factor graphs, junction tree inference, loopy belief propagation, generalized belief propagation, and sampling-based inference for undirected and directed probabilistic models.
+- **Pipes**: A large library of composable `Pipe` transformations for converting raw text, CSV, SVMLight, and other formats into feature vectors, token sequences, and feature sequences suitable for training.
+- **Optimization**: Generic gradient-based optimizers (L-BFGS, Conjugate Gradient, Gradient Ascent, Orthant-Wise L-BFGS, Stochastic Meta-Ascent) used throughout the classification and sequence-labeling trainers.
+- **Regression**: Simple linear regression tools including coordinate descent (L1) and least squares with significance testing.
+- **Command-line Tools (tui)**: Ready-to-use command-line utilities for converting data formats (CSV, SVMLight, text, directories) into MALLET's internal vector/instance representations and for training/evaluating classifiers and taggers.
+
+## Core Concepts
+
+### Pipes and Instances
+
+Nearly everything in this library flows through the `cc.mallet.pipe.Pipe` abstraction. A `Pipe` transforms an `Instance` (a single data point, wrapping data/target/name/source) from one representation to another — e.g., turning raw text into a `TokenSequence`, then into a `FeatureVector`. Pipes can be chained together with `SerialPipes`, and entire collections of instances are held in `InstanceList`.
+
+Typical pipeline for text classification:
+
+```
+Input2CharSequence → CharSequence2TokenSequence → TokenSequenceLowercase
+    → TokenSequenceRemoveStopwords → TokenSequence2FeatureSequence
+    → FeatureSequence2FeatureVector → Target2Label
+```
+
+### Classifiers
+
+The `cc.mallet.classify` package defines the `Classifier` base class and corresponding `ClassifierTrainer<C>` subclasses. Every classifier implementation (e.g., `NaiveBayes`, `MaxEnt`, `DecisionTree`, `C45`, `Winnow`, `BalancedWinnow`, `AdaBoost`) is produced by training a corresponding trainer (`NaiveBayesTrainer`, `MaxEntTrainer`, `C45Trainer`, etc.) on an `InstanceList`. Classifiers produce `Classification` objects, which wrap a `Labeling` (a probability distribution over labels) for a given `Instance`.
+
+Ensemble and meta-learning techniques (`AdaBoost`, `AdaBoostM2`, `BaggingClassifier`, `ClassifierEnsemble`, `ConfidencePredictingClassifier`) wrap underlying classifiers/trainers to combine or calibrate their predictions.
+
+`Trial` and `ConfusionMatrix` support evaluation of trained classifiers against held-out data, offering accuracy, precision, recall, F1, and rank-based metrics.
+
+### Sequence Models (FST)
+
+The `cc.mallet.fst` package implements finite-state sequence models. `CRF`, `HMM`, and `MEMM` extend `Transducer`, and are trained via classes like `CRFTrainerByLabelLikelihood`, `CRFTrainerByStochasticGradient`, `CRFTrainerByThreadedLabelLikelihood`, and semi-supervised variants such as `CRFTrainerByGE` (generalized expectation constraints) and `CRFTrainerByPR` (posterior regularization), found under `cc.mallet.fst.semi_supervised`. Inference over sequences is performed via `SumLattice` (forward-backward) and `MaxLattice` (Viterbi) implementations. `TransducerEvaluator` subclasses (`TokenAccuracyEvaluator`, `SegmentationEvaluator`, `MultiSegmentationEvaluator`) report tagging performance during training.
+
+Confidence estimation for sequence predictions is available in `cc.mallet.fst.confidence`, offering multiple strategies (Viterbi ratio, N-best, QBC, MaxEnt-based) for scoring the reliability of predicted segments or full sequences, plus `TransducerCorrector` implementations for active-learning-style correction workflows.
+
+### Information Extraction
+
+The `cc.mallet.extract` package builds on FST models to extract structured `Record`/`Field` data from `Tokenization`s of documents. `CRFExtractor` and `ACRFExtractor` wrap trained models with feature pipes and tokenization filters (`BIOTokenizationFilter`, `DefaultTokenizationFilter`, `HierarchicalTokenizationFilter`) to produce `Extraction` objects, which can be evaluated with `PerFieldF1Evaluator`, `PerDocumentF1Evaluator`, or `AccuracyCoverageEvaluator`.
+
+### Clustering
+
+`cc.mallet.cluster` provides `Clusterer` implementations (`KMeans`, `GreedyAgglomerative`, `GreedyAgglomerativeByDensity`) operating over `InstanceList`s and producing `Clustering` objects. Clustering quality can be assessed with `AccuracyEvaluator`, `BCubedEvaluator`, `MUCEvaluator`, and `PairF1Evaluator`. `NeighborEvaluator` implementations (`ClassifyingNeighborEvaluator`, `PairwiseEvaluator`, `MedoidEvaluator`) score candidate merges during agglomerative clustering.
+
+### Graphical Models (GRMM)
+
+`cc.mallet.grmm` implements general factor graphs (`FactorGraph`, `Factor`, `TableFactor`, `Variable`, `VarSet`) with a variety of exact and approximate inference algorithms (`JunctionTreeInferencer`, `LoopyBP`, `TreeBP`, `TRP`, `ParentChildGBP`, `VariableElimination`, `BruteForceInferencer`, and sampling-based `GibbsSampler`/`ExactSampler`). The `ACRF` (Arbitrary CRF) class extends this machinery to build structured, template-based conditional random fields for tasks like sequence tagging with richer factor structures, trained via `DefaultAcrfTrainer` and its subclasses (`PiecewiseACRFTrainer`, `PseudolikelihoodACRFTrainer`, `PwplACRFTrainer`).
+
+### Optimization
+
+`cc.mallet.optimize` supplies the numerical optimization backbone used by MaxEnt, CRF, and regression trainers: `LimitedMemoryBFGS`, `ConjugateGradient`, `GradientAscent`, `OrthantWiseLimitedMemoryBFGS` (for L1-regularized problems), and `StochasticMetaAscent`, all operating on `Optimizable.ByGradientValue` or related interfaces.
+
+### Regression
+
+`cc.mallet.regression` offers `LinearRegression` models trained via `LinearRegressionTrainer` (gradient-based) or `CoordinateDescent` (L1-regularized) and evaluated with `LeastSquares`, which also computes parameter p-values for significance testing.
+
+## Usage Examples
+
+### Training and Using a MaxEnt Text Classifier
+
+```java
+import cc.mallet.pipe.*;
+import cc.mallet.pipe.iterator.*;
+import cc.mallet.types.InstanceList;
+import cc.mallet.classify.*;
+
+// Build a processing pipeline from raw text files to feature vectors
+Pipe pipe = new SerialPipes(new Pipe[] {
+    new Target2Label(),
+    new Input2CharSequence("UTF-8"),
+    new CharSequence2TokenSequence(),
+    new TokenSequenceLowercase(),
+    new TokenSequenceRemoveStopwords(),
+    new TokenSequence2FeatureSequence(),
+    new FeatureSequence2FeatureVector()
+});
+
+// Load instances from a directory of labeled subdirectories
+InstanceList instances = new InstanceList(pipe);
+instances.addThruPipe(new FileIterator("train-data"));
+
+// Split into training and test sets
+InstanceList[] split = instances.split(new java.util.Random(1),
+        new double[] {0.8, 0.2});
+InstanceList trainingData = split[0];
+InstanceList testData = split[1];
+
+// Train a MaxEnt classifier
+MaxEntTrainer trainer = new MaxEntTrainer();
+MaxEnt classifier = trainer.train(trainingData);
+
+// Evaluate
+double accuracy = classifier.getAccuracy(testData);
+System.out.println("Test accuracy: " + accuracy);
+
+// Classify a single instance
+Classification result = classifier.classify(testData.get(0));
+result.print();
+```
+
+### Training a CRF for Sequence Tagging
+
+```java
+import cc.mallet.fst.*;
+import cc.mallet.types.InstanceList;
+
+// Assume `trainingData` and `testingData` are InstanceLists of
+// TokenSequence/LabelSequence pairs produced by an appropriate pipe.
+
+CRF crf = new CRF(trainingData.getPipe().getDataAlphabet(),
+                   trainingData.getPipe().getTargetAlphabet());
+crf.addStatesForLabelsConnectedAsIn(trainingData);
+crf.setWeightsDimensionAsIn(trainingData, false);
+
+CRFTrainerByLabelLikelihood crfTrainer = new CRFTrainerByLabelLikelihood(crf);
+crfTrainer.setGaussianPriorVariance(10.0);
+
+TokenAccuracyEvaluator evaluator =
+        new TokenAccuracyEvaluator(testingData, "testing");
+crfTrainer.addEvaluator(evaluator);
+
+crfTrainer.trainOptimized(trainingData, 200);
+
+// Predict labels for new sequences
+cc.mallet.types.Sequence[] predictions = crf.predict(testingData);
+```
+
+### Clustering Instances with K-Means
+
+```java
+import cc.mallet.cluster.*;
+import cc.mallet.types.Metric;
+import cc.mallet.types.InstanceList;
+
+Metric metric = /* an implementation of cc.mallet.types.Metric */ null;
+KMeans kmeans = new KMeans(instances.getPipe(), 5, metric);
+Clustering clustering = kmeans.cluster(instances);
+
+System.out.println("Number of clusters: " + clustering.getNumClusters());
+for (int i = 0; i < clustering.getNumClusters(); i++) {
+    System.out.println("Cluster " + i + " size: " + clustering.size(i));
+}
+```
+
+### Command-line Vector Conversion and Classification
+
+The library also ships with several ready-to-use command-line entry points:
+
+```bash
+# Convert a directory of text files into MALLET vector format
+java cc.mallet.classify.tui.Text2Vectors --input train-data --output train.vectors
+
+# Train and evaluate a classifier from the command line
+java cc.mallet.classify.tui.Vectors2Classify \
+    --input train.vectors \
+    --training-portion 0.8 \
+    --trainer MaxEnt
+```
+
+## Package Summary
+
+| Package | Purpose |
+|---|---|
+| `cc.mallet.classify` | Classifiers, trainers, and evaluation utilities |
+| `cc.mallet.classify.constraints.ge` / `.pr` | Generalized expectation / posterior regularization constraints for MaxEnt |
+| `cc.mallet.classify.evaluate` | Accuracy/coverage graphing and confusion matrices |
+| `cc.mallet.classify.tui` | Command-line tools for classification workflows |
+| `cc.mallet.cluster` | Clustering algorithms and evaluation |
+| `cc.mallet.cluster.iterator` / `.neighbor_evaluator` / `.util` | Supporting utilities for clustering |
+| `cc.mallet.extract` | Structured information extraction from tokenized text |
+| `cc.mallet.fst` | Finite-state transducers (CRF, HMM, MEMM) and training/evaluation |
+| `cc.mallet.fst.confidence` | Confidence estimation for sequence predictions |
+| `cc.mallet.fst.semi_supervised` | GE/PR-based semi-supervised sequence training |
+| `cc.mallet.grmm` | General factor graphs and probabilistic inference |
+| `cc.mallet.grmm.learning` | Arbitrary CRF (ACRF) structured learning |
+| `cc.mallet.optimize` | Gradient-based numerical optimizers |
+| `cc.mallet.pipe` | Data transformation pipeline components |
+| `cc.mallet.pipe.iterator` | Instance iterators for various data sources |
+| `cc.mallet.pipe.tsf` | Token/sequence feature-generation pipes |
+| `cc.mallet.regression` | Linear regression training and evaluation |
+
+## Getting Started
+
+1. Build an `InstanceList` from your raw data using a chain of `Pipe` objects appropriate to your input format (text files, CSV, SVMLight, directories of labeled documents, etc.).
+2. Choose a model type (classifier, sequence tagger, or clusterer) and its corresponding trainer.
+3. Train the model by calling `train(InstanceList)` on the trainer.
+4. Evaluate the resulting model using the provided `Trial`, `TransducerEvaluator`, or `ClusteringEvaluator` implementations.
+5. Use the trained model's `classify`, `transduce`, or `cluster` methods to make predictions on new data.

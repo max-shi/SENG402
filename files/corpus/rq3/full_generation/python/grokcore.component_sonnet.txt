@@ -1,0 +1,217 @@
+# grokcore.component
+
+`grokcore.component` provides a convention-based, declarative way to define and register [Zope Component Architecture](https://zopecomponent.readthedocs.io/) (ZCA) components — adapters, multi-adapters, utilities, and subscribers — without writing verbose ZCML or manual `zope.component` registration calls.
+
+It builds on [`martian`](https://pypi.org/project/martian/) for its grokking/scanning machinery, and on `zope.interface` / `zope.component` for the underlying component architecture. Instead of hand-writing registrations, you write plain Python classes with a small set of base classes and directives, and `grokcore.component` scans your modules and performs the registrations for you.
+
+## Concepts
+
+At the core of `grokcore.component` are two complementary mechanisms:
+
+1. **Base classes** — subclass one of the provided base classes (`Adapter`, `MultiAdapter`, `GlobalUtility`, `Subscription`, `MultiSubscription`, `Context`) to declare the *kind* of component you are writing.
+2. **Directives** — module- or class-level declarations (`context`, `provides`, `name`, `title`, `description`, `order`, `direct`, `implements`, `global_utility`, `global_adapter`) that configure how the component is registered.
+
+A **grokker** (from the `martian` package, subclassed here) inspects modules/classes for these base classes and directives and performs the actual `zope.component` registration when grokking runs.
+
+## Base Classes
+
+### `Adapter`
+A class-based adapter for a single interface/context. Combine with the `context` directive to declare what it adapts, and `provides`/`implements` to declare what interface it provides.
+
+### `MultiAdapter`
+An adapter that adapts multiple objects at once (a multi-adapter). Typically combined with `adapts()`-style declarations and `provides`.
+
+### `GlobalUtility`
+A singleton-style component registered as a global utility, optionally named (`name` directive) and optionally provided under a specific interface (`provides` directive). The `direct` directive controls whether the interface is inferred automatically or must be given explicitly.
+
+### `Subscription`
+A subscription adapter for a single required object — multiple subscribers can be registered for the same context/interface, and all are invoked/looked up together.
+
+### `MultiSubscription`
+Like `Subscription`, but for multiple required objects (a subscription multi-adapter).
+
+### `Context`
+A base class used to mark a class as being usable as the default "context" for grokking — it is picked up by the `context` directive's default-resolution logic when no explicit context is declared.
+
+## Directives
+
+Directives are typically imported from `grokcore.component` and called in the body of a module or class to configure a component:
+
+- `context(class_or_interface)` — declares what a component adapts / is grokked relative to.
+- `name(name)` — assigns a registration name (for named adapters/utilities).
+- `title(title)` / `description(description)` — human-readable metadata.
+- `provides(interface)` — declares the interface a component provides.
+- `implements(*interfaces)` — declares interfaces implemented by a class (module-level convenience directive, distinct from `zope.interface.implementer`).
+- `direct()` — marker directive indicating that `provides` should not be auto-computed.
+- `order(value=0)` — controls relative ordering, e.g. for sorting subscribers.
+- `path(...)` — declares filesystem path information used by some grokkers.
+- `global_utility.factory(factory, provides=None, name='', direct=False)` — imperatively register a global utility from module-level code.
+- `global_adapter.factory(factory, adapts=None, provides=None, name=None)` — imperatively register an adapter from module-level code.
+
+These directives are defined via `martian.Directive`, `martian.MultipleTimesDirective`, and `martian.MarkerDirective`, meaning some (like `global_utility` and `global_adapter`) can be declared multiple times in a single module.
+
+## Decorators
+
+For simpler, function-based components, `grokcore.component` offers decorators:
+
+- `@subscribe(*classes_or_interfaces)` — registers a plain function as a subscriber for the given interfaces/classes.
+- `@adapter(*classes_or_interfaces)` — like `zope.component.adapter`, declares what a factory/function adapts.
+- `@implementer(*interfaces)` — like `zope.interface.implementer`, declares what interfaces a class implements.
+- `@provider(*interfaces)` — declares what interfaces an object (typically a function used as a factory) provides.
+
+## Grokkers (`meta.py`)
+
+Internally, grokking is performed by a set of `martian.ClassGrokker` and `martian.GlobalGrokker` subclasses that scan for and register each kind of component:
+
+- `AdapterGrokker`, `MultiAdapterGrokker` — register `Adapter`/`MultiAdapter` subclasses.
+- `SubscriptionGrokker`, `MultiSubscriptionGrokker` — register `Subscription`/`MultiSubscription` subclasses.
+- `GlobalUtilityGrokker` — registers `GlobalUtility` subclasses.
+- `ImplementerDecoratorGrokker` — handles the `@implementer` decorator usage at module scan time.
+- `GlobalUtilityDirectiveGrokker`, `GlobalAdapterDirectiveGrokker` — handle module-level `global_utility`/`global_adapter` directive calls.
+- `SubscriberDirectiveGrokker` — handles the `@subscribe` decorator.
+- `ClassImplementerGrokker` — applies the `implements` directive to classes.
+
+You normally don't call these directly — they are invoked automatically when grokking a module or package (see "Grokking a module" below).
+
+## Subscription lookup helpers (`subscription.py`)
+
+Helper functions for looking up subscribers, with optional ordering support (respecting the `order` directive):
+
+- `querySubscriptions(component, interface)`
+- `queryOrderedSubscriptions(component, interface)`
+- `queryMultiSubscriptions(components, interface)`
+- `queryOrderedMultiSubscriptions(components, interface)`
+
+## Low-level registration utilities (`util.py`)
+
+For cases where you want to register components imperatively rather than declaratively:
+
+- `provideUtility(component, provides=None, name='')`
+- `provideAdapter(factory, adapts=None, provides=None, name='')`
+- `provideSubscriptionAdapter(factory, adapts=None, provides=None)`
+- `provideHandler(factory, adapts=None)`
+- `provideInterface(id, interface, iface_type=None, info='')`
+- `getSiteManager()` — retrieve the current site manager used for registrations.
+- `sort_components(components, key=None)` — sort a list of components, respecting ordering metadata.
+
+## Testing support (`testing.py`)
+
+- `grok(*module_names)` — grok one or more modules by dotted name, running all applicable grokkers and performing registrations, for use in test setup.
+- `grok_component(name, component, context=None, module_info=None, templates=None, dotted_name=None)` — grok a single component directly, useful for isolated unit tests.
+
+## ZCML integration (`zcml.py`)
+
+- `grokDirective(_context, package, exclude=None)` — implementation of a `<grok:grok package="..." />` ZCML directive that grokking a package as part of ZCML configuration.
+- `do_grok(dotted_name, config, extra_exclude=None)` — perform the actual grokking of a dotted module/package name against a `martian` configuration.
+- `IGrokDirective` — the interface describing the ZCML directive's schema.
+- `resetBootstrap()` — reset any bootstrap grokking state (useful between test runs).
+- `skip_tests(name)` — predicate used to exclude certain modules from test-time grokking.
+
+## Errors and Interfaces
+
+`grokcore.component` raises `GrokError` (and `GrokImportError`) for invalid or inconsistent grok-time configuration (e.g. missing context, conflicting directives). The `interfaces` module defines the formal contracts (`IContext`, `IBaseClasses`, `IDirectives`, `IDecorators`, `IGrokErrors`, `IMartianAPI`) that together compose `IGrokcoreComponentAPI`, describing the full public API surface.
+
+---
+
+## Usage Examples
+
+### A simple adapter
+
+```python
+import grokcore.component as grok
+from zope.interface import Interface, implementer
+
+class IEmailable(Interface):
+    def get_email():
+        """Return an email address."""
+
+class IPerson(Interface):
+    pass
+
+@implementer(IPerson)
+class Person:
+    def __init__(self, email):
+        self.email = email
+
+class PersonEmailAdapter(grok.Adapter):
+    grok.context(IPerson)
+    grok.provides(IEmailable)
+
+    def get_email(self):
+        return self.context.email
+```
+
+Grokking this module (e.g. via `grok.grok('mypackage.adapters')` in tests, or via `<grok:grok package="mypackage" />` in ZCML) registers `PersonEmailAdapter` as an adapter from `IPerson` to `IEmailable`.
+
+### A global utility
+
+```python
+import grokcore.component as grok
+
+class IGreeter(Interface):
+    def greet(name):
+        pass
+
+class Greeter(grok.GlobalUtility):
+    grok.provides(IGreeter)
+    grok.name('default')
+
+    def greet(self, name):
+        return f"Hello, {name}!"
+```
+
+After grokking, this is available via:
+
+```python
+from zope.component import getUtility
+greeter = getUtility(IGreeter, name='default')
+greeter.greet('World')
+```
+
+### Function-based components with decorators
+
+```python
+import grokcore.component as grok
+
+@grok.adapter(IPerson)
+@grok.implementer(IEmailable)
+def person_to_emailable(person):
+    class Emailable:
+        def get_email(self):
+            return person.email
+    return Emailable()
+
+@grok.subscribe(IPerson)
+def notify_person_created(person):
+    print(f"New person created: {person.email}")
+```
+
+### Using low-level utilities directly
+
+```python
+from grokcore.component.util import provideAdapter, provideUtility
+
+provideAdapter(PersonEmailAdapter, adapts=(IPerson,), provides=IEmailable)
+provideUtility(Greeter(), provides=IGreeter, name='default')
+```
+
+### Grokking in tests
+
+```python
+from grokcore.component.testing import grok
+
+def test_registrations():
+    grok('mypackage.adapters')
+    # components are now registered in the current site manager
+```
+
+### ZCML integration
+
+```xml
+<configure xmlns:grok="http://namespaces.zope.org/grok">
+  <include package="grokcore.component" file="meta.zcml" />
+  <grok:grok package="mypackage" />
+</configure>
+```
+
+This scans `mypackage` and all its `Adapter`, `MultiAdapter`, `GlobalUtility`, `Subscription`, and `MultiSubscription` subclasses, along with any decorator- or directive-based declarations, and registers them with the site's component registry.

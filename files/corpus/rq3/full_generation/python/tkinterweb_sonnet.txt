@@ -1,0 +1,219 @@
+# tkinterweb
+
+`tkinterweb` is a pure-Python HTML/CSS rendering widget suite for Tkinter. It lets you embed a fully-functional web-page renderer directly inside a Tkinter application, load remote or local HTML content, manipulate the resulting DOM programmatically, run JavaScript against it, and interact with form elements, images, and stylesheets using an API modeled loosely on standard browser DOM interfaces.
+
+It is built on top of a Tkhtml-based binding layer (`TkinterWeb`), with higher-level, ready-to-use widgets (`HtmlFrame`, `HtmlLabel`, `HtmlText`, `HtmlParse`) that you can drop straight into a Tkinter GUI.
+
+## Features
+
+- Render HTML and CSS inside native Tkinter widgets
+- Load content from URLs, local files, raw HTML strings, or form submissions (GET/POST)
+- A DOM-like API (`HTMLDocument`, `HTMLElement`, `HTMLCollection`, `CSSStyleDeclaration`) for querying and mutating page content
+- Text selection, caret/cursor navigation, and in-page search
+- Form widgets (text entries, checkboxes, radio buttons, sliders, file/colour pickers, comboboxes) that mirror native HTML form controls
+- Image loading, caching, and (optional) dark-mode image inversion
+- Optional JavaScript execution via a lightweight `JSEngine`
+- Page screenshotting, printing, and saving
+- Extensible "manager" architecture for selection, caret, events, widgets, search, scripts, styles, images, objects, forms, and nodes
+
+## Installation
+
+```bash
+pip install tkinterweb
+```
+
+## Core Concepts
+
+### `TkinterWeb` (low-level binding)
+
+`TkinterWeb` (in `tkinterweb.bindings`) is the raw Tk widget binding around the underlying HTML rendering engine. It exposes low-level operations: parsing HTML/CSS, walking and mutating the node tree, resolving/downloading URLs, managing selections and carets, and registering custom node handlers. Most application code should not need to touch this directly — instead, use the higher-level widgets described below, which wrap `TkinterWeb` and expose friendlier methods.
+
+Internally, `TkinterWeb` delegates specialized behavior to a set of "manager" objects, each responsible for one concern:
+
+| Manager | Responsibility |
+|---|---|
+| `SelectionManager` | Text selection and copy behavior |
+| `CaretManager` | Caret placement/movement (caret browsing mode) |
+| `EventManager` | Dispatching and binding JS-like DOM events |
+| `WidgetManager` | Mapping replaced elements (forms, objects) to Tkinter widgets |
+| `SearchManager` | In-page text search and highlighting |
+| `ScriptManager` | Fetching and executing `<script>` content |
+| `StyleManager` | Fetching and applying `<style>`/CSS |
+| `ImageManager` | Fetching, caching, and inverting images |
+| `ObjectManager` | Handling `<object>`/embedded content |
+| `FormManager` | Handling `<form>` and form-control elements |
+| `NodeManager` | General node lifecycle bookkeeping |
+
+These managers all derive from `utilities.BaseManager` and are accessed as properties on `TkinterWeb` (e.g. `widget.selection_manager`, `widget.form_manager`).
+
+### High-level Widgets (`tkinterweb.htmlwidgets`)
+
+- **`HtmlFrame`** — The primary widget. A `Frame` subclass that renders HTML content, exposes navigation methods (`load_url`, `load_html`, `load_file`, `load_website`, `load_form_data`, `reload`, `stop`), page introspection (`title`, `current_url`, `base_url`, `document`, `get_page_text`), DOM access (`document` returns an `HTMLDocument`), JavaScript access (`javascript`), selection/caret control, searching (`find_text`), and output (`screenshot_page`, `print_page`, `save_page`, `snapshot_page`).
+- **`HtmlLabel`** — A lightweight variant of `HtmlFrame` intended for displaying static, non-interactive HTML snippets, similar to a rich-text `Label`.
+- **`HtmlText`** — An `HtmlFrame` variant with text-widget-like `insert`/`delete` methods for editable or programmatically-built HTML content.
+- **`HtmlParse`** — A minimal `HtmlFrame` variant apparently intended purely for parsing/processing HTML without full display concerns.
+
+### DOM API (`tkinterweb.dom`)
+
+- **`HTMLDocument`** — Represents the loaded page. Provides `body`, `documentElement`, `write`, `createElement`, `createTextNode`, and query methods (`getElementById`, `getElementsByClassName`, `getElementsByName`, `getElementsByTagName`, `querySelector`, `querySelectorAll`).
+- **`HTMLElement`** — Represents a single DOM node. Supports attribute access (`getAttribute`/`setAttribute`/`removeAttribute`), content access (`innerHTML`, `innerText`, `textContent`, `outerHTML`), tree navigation (`parentElement`, `children`, `previousSibling`, `nextSibling`), tree mutation (`appendChild`, `insertBefore`, `remove`), styling (`style` → `CSSStyleDeclaration`), form-control values (`value`, `checked`), event binding (`bind`/`unbind`), layout queries (`getBoundingClientRect`, `scrollIntoView`), and scoped queries (`querySelector`, `getElementsByTagName`, etc.).
+- **`HTMLCollection`** — An indexable/named collection of elements (`length`, `item`, `namedItem`), as returned by query methods.
+- **`CSSStyleDeclaration`** — Represents an element's computed/inline style, with `cssText`, `getPropertyValue`, `setProperty`, `removeProperty`, `getPropertyPriority`, and enumeration helpers.
+- **`DOMRect`** — Simple rectangle result type from `getBoundingClientRect`.
+
+### JavaScript (`tkinterweb.js`)
+
+- **`JSEngine`** — Executes JavaScript-like expressions against the page and allows registering Python objects into the JS namespace via `register`, so scripts running in the page can call back into your application. Accessible from `HtmlFrame.javascript`, and Python objects can also be registered directly with `HtmlFrame.register_JS_object`.
+
+### Form & UI Subwidgets (`tkinterweb.subwidgets`)
+
+Native Tkinter widgets used to render HTML form controls and other rich UI pieces:
+
+- `Combobox`, `AutoScrollbar`, `ScrolledTextBox`
+- `FormEntry`, `FormCheckbox`, `FormRadioButton`, `FormRange`, `FormNumber`
+- `FileSelector`, `ColourSelector`
+- `Notebook` (tabbed container)
+- `Tooltip` (hover tooltips, e.g. for form validation or title attributes)
+
+These are generally instantiated automatically by `tkinterweb` when rendering corresponding HTML elements (`<input>`, `<select>`, `<textarea>`, etc.), but are available for direct use as well.
+
+### Extensions (`tkinterweb.extensions`)
+
+- **`BlinkyFrame`** — A `Frame` subclass with custom `place`/`place_forget` behavior, likely used for animated/blinking overlays (e.g. caret or highlight indicators).
+- `SelectionManager`, `CaretManager`, `EventManager`, `WidgetManager`, `SearchManager` — concrete manager implementations used internally by `TkinterWeb` (see table above).
+
+### Handlers (`tkinterweb.handlers`)
+
+- `NodeManager`, `FormManager`, `ScriptManager`, `StyleManager`, `ImageManager`, `ObjectManager` — concrete manager implementations responsible for fetching and processing scripts, stylesheets, images, forms, embedded objects, and general nodes during page load.
+
+### Utilities (`tkinterweb.utilities`)
+
+Supporting infrastructure used throughout the library:
+
+- `download`, `cache_download`, `check_download` — perform (and optionally cache) HTTP(S) requests with support for custom methods, headers, timeouts, and TLS options.
+- `LRUCache` — a simple least-recently-used cache used for downloaded resources.
+- `StoppableThread` / `PlaceholderThread` — background thread helpers for asynchronous fetching.
+- `BaseManager` — base class for all manager objects.
+- `rgb_to_hex`, `invert_color` — colour helpers (used for dark-theme/image inversion support).
+- `deprecate`, `deprecate_param`, `warn` — internal API deprecation warning helpers.
+
+### Image Utilities (`tkinterweb.imageutils`)
+
+Helper functions for image handling: `svg_to_png`, `data_to_image`, `create_RGB_image`, `invert_image` (for dark mode), `blank_image`, and `photoimage_del` for cleanup.
+
+## Quick Start
+
+### Displaying a web page
+
+```python
+import tkinter as tk
+from tkinterweb import HtmlFrame
+
+root = tk.Tk()
+root.title("Simple Browser")
+root.geometry("900x600")
+
+frame = HtmlFrame(root)
+frame.pack(fill="both", expand=True)
+
+frame.load_website("https://example.com")
+
+root.mainloop()
+```
+
+### Loading raw HTML and reading the title
+
+```python
+import tkinter as tk
+from tkinterweb import HtmlFrame
+
+root = tk.Tk()
+frame = HtmlFrame(root)
+frame.pack(fill="both", expand=True)
+
+frame.load_html("<html><head><title>Hello</title></head>"
+                 "<body><h1>Hi there!</h1></body></html>")
+
+print(frame.title)
+root.mainloop()
+```
+
+### Using the DOM API
+
+```python
+import tkinter as tk
+from tkinterweb import HtmlFrame
+
+root = tk.Tk()
+frame = HtmlFrame(root)
+frame.pack(fill="both", expand=True)
+frame.load_html("<body><p id='greeting'>Hello</p></body>")
+
+doc = frame.document
+element = doc.getElementById("greeting")
+print(element.textContent)
+
+element.textContent = "Hello, tkinterweb!"
+element.style.setProperty("color", "blue")
+
+new_para = doc.createElement("p")
+new_para.innerText = "A new paragraph"
+doc.body.appendChild(new_para)
+
+root.mainloop()
+```
+
+### Handling links and errors (mini browser)
+
+```python
+import tkinter as tk
+from tkinterweb import HtmlFrame
+
+def navigate(url):
+    frame.load_url(url)
+
+def on_error(url, error, code):
+    frame.show_error_page(url, error, code)
+
+root = tk.Tk()
+frame = HtmlFrame(root, messages_enabled=False)
+frame.pack(fill="both", expand=True)
+
+frame.bind("<<Navigate>>", lambda e: navigate(frame.current_url))
+frame.load_url("https://example.com")
+
+root.mainloop()
+```
+
+### Registering a Python object for JavaScript to call
+
+```python
+class API:
+    def greet(self, name):
+        return f"Hello, {name}!"
+
+frame.register_JS_object("pyAPI", API())
+frame.javascript.eval("pyAPI.greet('World')")
+```
+
+### Embedding as a static rich-text label
+
+```python
+from tkinterweb import HtmlLabel
+
+label = HtmlLabel(root, messages_enabled=False)
+label.load_html("<b>Bold</b> and <i>italic</i> text with <font color='red'>color</font>.")
+label.pack()
+```
+
+## Additional Capabilities
+
+- **Search**: `frame.find_text("query", select=1, ignore_case=True, highlight_all=True)`
+- **Selection**: `frame.select_all()`, `frame.get_selection()`, `frame.clear_selection()`
+- **Caret navigation**: `frame.set_caret_position(element, index)`, `frame.shift_caret_right()`
+- **Screenshots / printing**: `frame.screenshot_page("page.png")`, `frame.print_page("page.pdf")`
+- **Saving**: `frame.save_page("page.html")`, `frame.snapshot_page("snapshot.html")`
+
+## License
+
+See the repository's `LICENSE` file for licensing details.

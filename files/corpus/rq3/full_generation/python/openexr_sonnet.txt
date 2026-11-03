@@ -1,0 +1,154 @@
+# OpenEXR (Python)
+
+Python support library for working with the [OpenEXR](https://openexr.com) high dynamic-range image file format. This package provides the core data types and value objects used to describe EXR image attributes — geometry (data/display windows), color primaries, channel layouts, compression and pixel-type enumerations, tiling descriptions, timecodes, keycodes, and preview thumbnails — along with the build tooling used to package the project.
+
+This document covers the public Python API exposed by the `Imath` module, plus the packaging integration used when building the project with `scikit-build-core`.
+
+## Installation
+
+```bash
+pip install openexr
+```
+
+## Overview
+
+The `Imath` module mirrors the attribute types defined by the OpenEXR file format's C++ `Imath`/`Imf` libraries, giving Python code a way to construct, inspect, and pass around the same metadata values that live in an EXR file's header. The classes fall into a few natural groups:
+
+### Geometric primitives
+
+- **`point`** — base class for 2D point-like values.
+- **`V2i`**, **`V2f`** — integer and floating-point 2D vectors (subclasses of `point`), used for things like preview image dimensions or chromaticity coordinates.
+- **`Box`** — base class representing an axis-aligned rectangular region.
+- **`Box2i`**, **`Box2f`** — integer and floating-point boxes (subclasses of `Box`), most commonly used to describe an EXR file's *data window* and *display window*.
+
+### Color
+
+- **`chromaticity`** — a single CIE xy chromaticity coordinate.
+- **`Chromaticities`** — the set of red/green/blue/white-point chromaticities that define an image's color primaries.
+
+### Enumerated attribute types
+
+- **`Enumerated`** — base class for C-style enumerated attribute values.
+- **`LineOrder`** — scanline ordering (e.g. increasing/decreasing Y, random access).
+- **`Compression`** — the compression scheme used to store pixel data.
+- **`PixelType`** — the underlying storage type of a channel's samples (e.g. half, float, unsigned int).
+- **`LevelMode`** — mip-map/rip-map level mode for tiled images.
+- **`LevelRoundingMode`** — rounding mode used when computing mip/rip levels.
+
+### Channels and tiling
+
+- **`Channel`** — describes a single image channel: its `PixelType`, sampling rate, and related properties.
+- **`TileDescription`** — describes how a tiled image is organized, including tile size, `LevelMode`, and `LevelRoundingMode`.
+
+### Metadata
+
+- **`Rational`** — a rational number (numerator/denominator pair), used for things like frame rate.
+- **`TimeCode`** — SMPTE timecode metadata (hours/minutes/seconds/frame plus user bits).
+- **`KeyCode`** — motion picture film keycode metadata (identifies a specific piece of film stock and frame).
+- **`PreviewImage`** — a small RGBA thumbnail that can be embedded in an EXR file's header.
+
+Together, these classes let you build up the header metadata for an EXR image — its windows, channel list, compression, color primaries, tiling scheme, and any timecode/keycode/preview information — using Python objects that map directly onto the underlying EXR attribute types.
+
+## Usage
+
+### Describing image geometry
+
+```python
+import Imath
+
+# Data window and display window, as used in an EXR header
+data_window = Imath.Box2i(Imath.V2i(0, 0), Imath.V2i(1919, 1079))
+display_window = Imath.Box2i(Imath.V2i(0, 0), Imath.V2i(1919, 1079))
+```
+
+### Defining channels
+
+```python
+import Imath
+
+red   = Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))
+green = Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))
+blue  = Imath.Channel(Imath.PixelType(Imath.PixelType.HALF))
+alpha = Imath.Channel(Imath.PixelType(Imath.PixelType.FLOAT))
+
+channels = {"R": red, "G": green, "B": blue, "A": alpha}
+```
+
+### Choosing compression and line order
+
+```python
+import Imath
+
+compression = Imath.Compression(Imath.Compression.ZIP_COMPRESSION)
+line_order = Imath.LineOrder(Imath.LineOrder.INCREASING_Y)
+```
+
+### Color primaries
+
+```python
+import Imath
+
+chromaticities = Imath.Chromaticities(
+    red=Imath.chromaticity(0.6400, 0.3300),
+    green=Imath.chromaticity(0.3000, 0.6000),
+    blue=Imath.chromaticity(0.1500, 0.0600),
+    white=Imath.chromaticity(0.3127, 0.3290),
+)
+```
+
+### Timecode and keycode metadata
+
+```python
+import Imath
+
+timecode = Imath.TimeCode(hours=1, minutes=0, seconds=0, frame=12)
+keycode = Imath.KeyCode(
+    filmMfcCode=1,
+    filmType=2,
+    prefix=123456,
+    count=1,
+    perfOffset=0,
+    perfsPerFrame=4,
+    perfsPerCount=64,
+)
+```
+
+### Tiled images and preview thumbnails
+
+```python
+import Imath
+
+tile_desc = Imath.TileDescription(
+    xSize=64,
+    ySize=64,
+    mode=Imath.LevelMode(Imath.LevelMode.MIPMAP_LEVELS),
+    roundingMode=Imath.LevelRoundingMode(Imath.LevelRoundingMode.ROUND_DOWN),
+)
+
+preview = Imath.PreviewImage(width=64, height=64)
+```
+
+## Build integration
+
+The package ships a `scikit-build-core` dynamic metadata plugin used when building the project from source:
+
+```python
+from openexr_skbuild_plugin import dynamic_metadata
+
+metadata = dynamic_metadata(fields=frozenset({"version"}))
+```
+
+This is invoked automatically by `scikit-build-core` during the build process to resolve project metadata fields (such as the package version) at build time; it is not typically called directly by library users.
+
+## Development and release tooling
+
+The repository also includes maintainer-facing scripts that are not part of the runtime API but are used to develop and release the project:
+
+- **Installation validation** — tooling that compares an installed package's file manifest against a reference manifest, and reports the current OpenEXR version and shared-library `SOVERSION`.
+- **Release automation** — a set of utilities for generating release notes, converting them between Markdown, RST, and HTML, updating the project's news file, tagging releases, cherry-picking changes, and drafting GitHub releases (including cross-referencing security advisories and OSS-Fuzz issues addressed by merged pull requests).
+
+These tools are used as part of the project's CI and release process and are documented separately for contributors.
+
+## License
+
+See the project repository for license information.

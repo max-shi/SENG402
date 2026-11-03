@@ -1,0 +1,741 @@
+# ch.epfl.lamp:dotty-library_0.26
+
+A Java-accessible support library for a Scala/Dotty toolchain. Its public API includes:
+
+- compiler-facing file, source-position, diagnostic, reporting, and callback interfaces;
+- runtime interfaces that adapt Java functions and procedures to Scala `FunctionN` types;
+- compilation and documentation entry points designed for sbt integration;
+- JVM bytecode visitor extensions based on ASM;
+- profiling, YAML parsing, and language-server project configuration utilities.
+
+The artifact is intended primarily for tooling, build integration, and generated/runtime interoperability rather than as a standalone general-purpose application library.
+
+## Requirements
+
+Several APIs expose types from their surrounding ecosystems:
+
+- Scala runtime types such as `scala.Function0`, `scala.Function1`, `scala.Function2`, and `scala.runtime.BoxedUnit`;
+- ASM visitor types such as `ClassNode`, `MethodNode`, `LabelNode`, and `MethodVisitor`;
+- sbt/xsbt interfaces such as `CachedCompiler`, `Output`, `Reporter`, `Problem`, `Position`, and `Severity`;
+- JDK management APIs such as `java.lang.management.ThreadMXBean`.
+
+Ensure the corresponding Scala, ASM, sbt/xsbt, and JDK dependencies are available when using those parts of the API.
+
+---
+
+## Compiler-facing interfaces
+
+The `dotty.tools.dotc.interfaces` package supplies small abstractions for integrating with compilation and diagnostics.
+
+### Files and source content
+
+```java
+public interface AbstractFile {
+    String name();
+    String path();
+    Optional<File> jfile();
+}
+```
+
+`AbstractFile` represents a file-like object. It exposes a display name and path, and can optionally provide a backing `java.io.File`.
+
+```java
+public interface SourceFile extends AbstractFile {
+    char[] content();
+}
+```
+
+`SourceFile` extends `AbstractFile` with the source contents.
+
+### Source positions
+
+```java
+public interface SourcePosition {
+    String lineContent();
+
+    int point();
+    int line();
+    int column();
+
+    int start();
+    int startLine();
+    int startColumn();
+
+    int end();
+    int endLine();
+    int endColumn();
+
+    SourceFile source();
+}
+```
+
+A `SourcePosition` identifies a location or range in a `SourceFile`. It provides:
+
+- a point position (`point`, `line`, `column`);
+- a start position (`start`, `startLine`, `startColumn`);
+- an end position (`end`, `endLine`, `endColumn`);
+- the line text via `lineContent()`.
+
+### Diagnostics and reporting
+
+```java
+public interface Diagnostic {
+    String message();
+    int level();
+    Optional<SourcePosition> position();
+}
+```
+
+A diagnostic contains its message, a numeric level, and an optional source position.
+
+```java
+public interface SimpleReporter {
+    void report(Diagnostic diag);
+}
+```
+
+Implement `SimpleReporter` to receive diagnostics.
+
+```java
+public interface ReporterResult {
+    boolean hasErrors();
+    int errorCount();
+    boolean hasWarnings();
+    int warningCount();
+}
+```
+
+`ReporterResult` summarizes the errors and warnings produced by a compilation-related operation.
+
+### Compiler callbacks
+
+```java
+public interface CompilerCallback {
+    default void onClassGenerated(
+        SourceFile source,
+        AbstractFile generatedClass,
+        String className
+    );
+
+    default void onSourceCompiled(SourceFile source);
+}
+```
+
+`CompilerCallback` provides optional lifecycle notifications:
+
+- `onClassGenerated` is called for a generated class associated with a source file.
+- `onSourceCompiled` is called after source compilation.
+
+Both methods are default methods, so implementations can override only the callbacks they need.
+
+### Example: collecting diagnostics and generated classes
+
+```java
+import dotty.tools.dotc.interfaces.AbstractFile;
+import dotty.tools.dotc.interfaces.CompilerCallback;
+import dotty.tools.dotc.interfaces.Diagnostic;
+import dotty.tools.dotc.interfaces.SimpleReporter;
+import dotty.tools.dotc.interfaces.SourceFile;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public final class CompilationEvents {
+    private final List<String> messages = new ArrayList<>();
+    private final List<String> generatedClasses = new ArrayList<>();
+
+    public final SimpleReporter reporter = new SimpleReporter() {
+        @Override
+        public void report(Diagnostic diagnostic) {
+            String location = diagnostic.position()
+                .map(pos -> pos.source().path() + ":" + pos.line() + ":" + pos.column())
+                .orElse("<unknown location>");
+
+            messages.add(location + ": " + diagnostic.message());
+        }
+    };
+
+    public final CompilerCallback callback = new CompilerCallback() {
+        @Override
+        public void onClassGenerated(
+                SourceFile source,
+                AbstractFile generatedClass,
+                String className) {
+            generatedClasses.add(className + " -> " + generatedClass.path());
+        }
+
+        @Override
+        public void onSourceCompiled(SourceFile source) {
+            System.out.println("Compiled " + source.path());
+        }
+    };
+}
+```
+
+---
+
+## Java/Scala function interoperability
+
+The `dotty.runtime.function` package provides Java interfaces compatible with Scala function types. These interfaces are useful where Java code needs to supply callbacks that are also consumable as Scala `FunctionN` values.
+
+All function and procedure interfaces are serializable.
+
+### `JFunction0`
+
+```java
+public interface JFunction0<R>
+    extends scala.Function0<R>, java.io.Serializable
+```
+
+Represents a zero-argument function. It also exposes primitive-specialized default methods such as:
+
+- `apply$mcI$sp()` for `int`;
+- `apply$mcJ$sp()` for `long`;
+- `apply$mcD$sp()` for `double`;
+- `apply$mcZ$sp()` for `boolean`;
+- `apply$mcV$sp()` for `void`.
+
+### `JFunction1`
+
+```java
+public interface JFunction1<T1, R>
+    extends scala.Function1<T1, R>, java.io.Serializable
+```
+
+Represents a one-argument function. In addition to `apply`, it provides the standard Scala-style composition operations:
+
+```java
+<A> scala.Function1<T1, A> andThen(scala.Function1<R, A> g);
+<A> scala.Function1<A, R> compose(scala.Function1<A, T1> g);
+```
+
+Primitive-specialized apply, composition, and chaining methods are also available for `int`, `long`, `float`, and `double` argument forms and for primitive or `void` results.
+
+### `JFunction2`
+
+```java
+public interface JFunction2<T1, T2, R>
+    extends scala.Function2<T1, T2, R>, java.io.Serializable
+```
+
+Represents a two-argument function. It provides primitive-specialized methods for combinations of `int`, `long`, and `double` arguments and primitive or `void` results.
+
+The API also includes primitive-specialized versions of:
+
+- `curried...()` — obtain a one-argument function returning another function;
+- `tupled...()` — obtain a function accepting a tuple-like argument representation.
+
+### Primitive-specialized function interfaces
+
+Specialized interfaces avoid using a generic boxed `apply` call for common primitive signatures.
+
+For example:
+
+```java
+public interface JFunction1$mcII$sp
+    extends JFunction1<Object, Object> {
+    int apply$mcII$sp(int v1);
+    default Object apply(Object t);
+}
+```
+
+The characters in the generated name encode the result type and argument types. Common JVM primitive descriptors include:
+
+| Code | Java type |
+|---|---|
+| `V` | `void` |
+| `Z` | `boolean` |
+| `B` | `byte` |
+| `C` | `char` |
+| `S` | `short` |
+| `I` | `int` |
+| `J` | `long` |
+| `F` | `float` |
+| `D` | `double` |
+
+For example, `JFunction2$mcJII$sp` represents a function returning `long` from two `int` arguments:
+
+```java
+long apply$mcJII$sp(int v1, int v2);
+```
+
+Most applications should use `JFunction0`, `JFunction1`, or `JFunction2` directly and let the runtime select suitable calling conventions.
+
+### Procedures: Java `void` callbacks
+
+`JProcedureN` interfaces model side-effecting callbacks. They adapt an `applyVoid(...)` method to a Scala function whose result is `BoxedUnit`.
+
+Available arities range from `JProcedure0` through `JProcedure22`.
+
+```java
+public interface JProcedure1<T1>
+    extends JFunction1<T1, BoxedUnit>, java.io.Serializable {
+    void applyVoid(T1 t1);
+    default BoxedUnit apply(T1 t1);
+}
+```
+
+```java
+public interface JProcedure2<T1, T2>
+    extends JFunction2<T1, T2, BoxedUnit>, java.io.Serializable {
+    void applyVoid(T1 t1, T2 t2);
+    default BoxedUnit apply(T1 t1, T2 t2);
+}
+```
+
+Higher-arity interfaces follow the same pattern:
+
+```java
+public interface JProcedureN<...>
+    extends scala.FunctionN<..., BoxedUnit>, java.io.Serializable {
+    void applyVoid(...);
+    default BoxedUnit apply(...);
+}
+```
+
+### Example: Java callbacks exposed as Scala functions
+
+```java
+import dotty.runtime.function.JFunction1;
+import dotty.runtime.function.JFunction2;
+import dotty.runtime.function.JProcedure1;
+import scala.Function1;
+import scala.runtime.BoxedUnit;
+
+public final class FunctionExample {
+    public static void main(String[] args) {
+        JFunction1<String, Integer> length = new JFunction1<String, Integer>() {
+            @Override
+            public Integer apply(String value) {
+                return value.length();
+            }
+        };
+
+        JFunction1<Integer, String> render = new JFunction1<Integer, String>() {
+            @Override
+            public String apply(Integer value) {
+                return "length=" + value;
+            }
+        };
+
+        Function1<String, String> describe = length.andThen(render);
+        System.out.println(describe.apply("Dotty"));
+
+        JFunction2<Integer, Integer, Integer> add =
+            new JFunction2<Integer, Integer, Integer>() {
+                @Override
+                public Integer apply(Integer left, Integer right) {
+                    return left + right;
+                }
+            };
+
+        System.out.println(add.apply(20, 22));
+
+        JProcedure1<String> print = new JProcedure1<String>() {
+            @Override
+            public void applyVoid(String value) {
+                System.out.println(value);
+            }
+        };
+
+        BoxedUnit result = print.apply("side effect");
+        System.out.println(result);
+    }
+}
+```
+
+---
+
+## Build and compiler integration
+
+The `xsbt` classes provide entry points for invoking a compiler, console, and documentation generation in an sbt-compatible environment.
+
+### `CompilerInterface`
+
+```java
+public class CompilerInterface {
+    public CachedCompiler newCompiler(
+        String[] options,
+        Output output,
+        Logger initialLog,
+        Reporter initialDelegate
+    );
+
+    public void run(
+        File[] sources,
+        DependencyChanges changes,
+        AnalysisCallback callback,
+        Logger log,
+        Reporter delegate,
+        CompileProgress progress,
+        CachedCompiler cached
+    );
+}
+```
+
+Use `CompilerInterface` to create a `CachedCompiler` and run compilations.
+
+### `CachedCompilerImpl`
+
+```java
+public class CachedCompilerImpl implements CachedCompiler {
+    public CachedCompilerImpl(String[] args, Output output);
+
+    public String[] commandArguments(File[] sources);
+
+    public synchronized void run(
+        File[] sources,
+        DependencyChanges changes,
+        AnalysisCallback callback,
+        Logger log,
+        Reporter delegate,
+        CompileProgress progress
+    );
+}
+```
+
+`CachedCompilerImpl` is a concrete cached compiler implementation. `commandArguments` provides the effective command arguments for a set of source files, and `run` performs compilation.
+
+### `ConsoleInterface`
+
+```java
+public class ConsoleInterface {
+    public String[] commandArguments(
+        String[] args,
+        String bootClasspathString,
+        String classpathString,
+        Logger log
+    );
+
+    public void run(
+        String[] args,
+        String bootClasspathString,
+        String classpathString,
+        String initialCommands,
+        String cleanupCommands,
+        ClassLoader loader,
+        String[] bindNames,
+        Object[] bindValues,
+        Logger log
+    );
+}
+```
+
+`ConsoleInterface` supports invoking an interactive compiler console with classpath settings, setup and cleanup commands, and named bound values.
+
+### Documentation runners
+
+```java
+public class ScaladocInterface {
+    public void run(String[] args, Logger log, xsbti.Reporter delegate);
+}
+```
+
+```java
+public class DottydocRunner {
+    public DottydocRunner(String[] args0, Logger log, xsbti.Reporter delegate);
+    public void run();
+}
+```
+
+These types provide programmatic documentation-generation entry points.
+
+### Reporting failures and problems
+
+```java
+public class Problem implements xsbti.Problem {
+    public Problem(
+        Position position,
+        String message,
+        Severity severity,
+        String rendered
+    );
+
+    public String category();
+    public Position position();
+    public String message();
+    public Severity severity();
+    public Optional<String> rendered();
+    public String toString();
+}
+```
+
+`Problem` is an sbt-compatible diagnostic problem with source position, message, severity, and optional rendered text.
+
+```java
+public class InterfaceCompileFailed extends xsbti.CompileFailed {
+    public InterfaceCompileFailed(String[] arguments, Problem[] problems);
+
+    public String[] arguments();
+    public Problem[] problems();
+    public String toString();
+}
+```
+
+`InterfaceCompileFailed` carries the compiler arguments and associated problems when compilation fails.
+
+### Compiler class loading
+
+```java
+public class CompilerClassLoader extends URLClassLoader {
+    public CompilerClassLoader(URL[] urls, ClassLoader sbtLoader);
+
+    public Class<?> loadClass(String className, boolean resolve)
+        throws ClassNotFoundException;
+
+    public static synchronized ClassLoader fixBridgeLoader(
+        ClassLoader bridgeLoader
+    );
+}
+```
+
+`CompilerClassLoader` is a `URLClassLoader` suitable for compiler integration scenarios. `fixBridgeLoader` returns a class loader derived from a bridge loader.
+
+---
+
+## JVM bytecode visitor extensions
+
+The following classes extend ASM tree nodes:
+
+```java
+public class ClassNode1 extends ClassNode {
+    public ClassNode1();
+    public ClassNode1(int api);
+
+    public MethodVisitor visitMethod(
+        int access,
+        String name,
+        String descriptor,
+        String signature,
+        String[] exceptions
+    );
+}
+```
+
+```java
+public class MethodNode1 extends MethodNode {
+    public MethodNode1(
+        int api,
+        int access,
+        String name,
+        String descriptor,
+        String signature,
+        String[] exceptions
+    );
+
+    public MethodNode1(
+        int access,
+        String name,
+        String descriptor,
+        String signature,
+        String[] exceptions
+    );
+
+    public MethodNode1(int api);
+    public MethodNode1();
+}
+```
+
+```java
+public class LabelNode1 extends LabelNode {
+    public LabelNode1();
+    public LabelNode1(Label label);
+}
+```
+
+These are useful when consuming or constructing class structures through the ASM visitor/tree API.
+
+### Example: creating a class-node visitor
+
+```java
+import dotty.tools.backend.jvm.ClassNode1;
+import org.objectweb.asm.MethodVisitor;
+
+public final class BytecodeExample {
+    public static void main(String[] args) {
+        ClassNode1 node = new ClassNode1();
+
+        MethodVisitor method = node.visitMethod(
+            0,
+            "example",
+            "()V",
+            null,
+            null
+        );
+
+        // Emit instructions through the returned MethodVisitor as needed.
+        method.visitEnd();
+    }
+}
+```
+
+---
+
+## Profiling support
+
+### `ExtendedThreadMxBean`
+
+```java
+public class ExtendedThreadMxBean implements ThreadMXBean
+```
+
+`ExtendedThreadMxBean` implements the standard JDK `ThreadMXBean` API and additionally exposes bulk timing and allocation methods:
+
+```java
+long[] getThreadUserTime(long[] ids) throws Exception;
+long[] getThreadCpuTime(long[] ids) throws Exception;
+
+boolean isThreadAllocatedMemorySupported() throws Exception;
+boolean isThreadAllocatedMemoryEnabled() throws Exception;
+void setThreadAllocatedMemoryEnabled(boolean enabled) throws Exception;
+
+long getThreadAllocatedBytes(long id) throws Exception;
+long[] getThreadAllocatedBytes(long[] ids) throws Exception;
+```
+
+The inherited `ThreadMXBean` operations include thread enumeration, CPU timing configuration, deadlock detection, thread dumps, and thread information lookup.
+
+### Example: requesting allocation data
+
+```java
+import dotty.tools.dotc.profile.ExtendedThreadMxBean;
+
+public final class ProfilingExample {
+    static void printAllocation(ExtendedThreadMxBean threads, long threadId)
+            throws Exception {
+        if (threads.isThreadAllocatedMemorySupported()) {
+            if (!threads.isThreadAllocatedMemoryEnabled()) {
+                threads.setThreadAllocatedMemoryEnabled(true);
+            }
+
+            long bytes = threads.getThreadAllocatedBytes(threadId);
+            System.out.println("Allocated bytes: " + bytes);
+        }
+    }
+}
+```
+
+### `ExternalToolHook`
+
+```java
+public class ExternalToolHook {
+    public static void before();
+    public static void after();
+}
+```
+
+`ExternalToolHook` provides static lifecycle hooks around an external-tool invocation:
+
+```java
+import dotty.tools.dotc.profile.ExternalToolHook;
+
+public final class ToolInvocation {
+    public static void run(Runnable tool) {
+        ExternalToolHook.before();
+        try {
+            tool.run();
+        } finally {
+            ExternalToolHook.after();
+        }
+    }
+}
+```
+
+---
+
+## YAML parsing
+
+```java
+public class Yaml {
+    public static HashMap<String, Object> apply(String input)
+        throws UnsupportedEncodingException, IOException;
+}
+```
+
+`Yaml.apply` parses a YAML input string into a `HashMap<String, Object>`.
+
+### Example
+
+```java
+import dotty.tools.dottydoc.staticsite.Yaml;
+
+import java.util.HashMap;
+
+public final class YamlExample {
+    public static void main(String[] args) throws Exception {
+        String input =
+            "title: Example\n" +
+            "enabled: true\n";
+
+        HashMap<String, Object> values = Yaml.apply(input);
+
+        System.out.println(values.get("title"));
+        System.out.println(values.get("enabled"));
+    }
+}
+```
+
+---
+
+## Project configuration
+
+```java
+public class ProjectConfig {
+    public ProjectConfig(
+        String id,
+        String compilerVersion,
+        String[] compilerArguments,
+        File[] sourceDirectories,
+        File[] dependencyClasspath,
+        File classDirectory,
+        String[] projectDependencies
+    );
+}
+```
+
+`ProjectConfig` constructs a project configuration from:
+
+- a project identifier;
+- a compiler version;
+- compiler arguments;
+- source directories;
+- dependency classpath entries;
+- a class output directory;
+- project dependency identifiers.
+
+### Example
+
+```java
+import dotty.tools.languageserver.config.ProjectConfig;
+
+import java.io.File;
+
+public final class ProjectConfigExample {
+    public static ProjectConfig create() {
+        return new ProjectConfig(
+            "example-project",
+            "0.26",
+            new String[] { "-deprecation" },
+            new File[] { new File("src/main") },
+            new File[] { new File("lib/dependency.jar") },
+            new File("target/classes"),
+            new String[] { "shared-project" }
+        );
+    }
+}
+```
+
+---
+
+## API map
+
+| Area | Main types |
+|---|---|
+| Compiler integration contracts | `AbstractFile`, `SourceFile`, `SourcePosition`, `Diagnostic`, `SimpleReporter`, `ReporterResult`, `CompilerCallback` |
+| Java/Scala function bridge | `JFunction0`, `JFunction1`, `JFunction2`, `JProcedure0`–`JProcedure22` |
+| Primitive function dispatch | `JFunction0$mc…$sp`, `JFunction1$mc…$sp`, `JFunction2$mc…$sp` |
+| sbt integration | `CompilerInterface`, `CachedCompilerImpl`, `ConsoleInterface`, `DelegatingReporter`, `Problem`, `InterfaceCompileFailed` |
+| Documentation invocation | `ScaladocInterface`, `DottydocRunner` |
+| JVM bytecode integration | `ClassNode1`, `MethodNode1`, `LabelNode1` |
+| Profiling | `ExtendedThreadMxBean`, `ExternalToolHook` |
+| Configuration and parsing | `ProjectConfig`, `Yaml` |

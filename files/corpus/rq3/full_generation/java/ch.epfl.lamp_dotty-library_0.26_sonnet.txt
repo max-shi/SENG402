@@ -1,0 +1,154 @@
+# Dotty Compiler Support Library
+
+`ch.epfl.lamp:dotty-library_0.26` provides the public interoperability surface, runtime support classes, and build-tool integration layer for the Dotty (Scala 3) compiler. While the bulk of the Dotty compiler is written in Scala, this artifact exposes a set of Java-friendly interfaces and helper classes that let JVM tools — build tools, IDEs, documentation generators, and other Java-based consumers — embed the compiler, react to its diagnostics, and interoperate efficiently with Scala functions from Java code.
+
+This library is not meant to be used to write Scala/Dotty programs directly; rather it is the "glue" that other tools (such as sbt, language servers, and documentation tools) use to drive and observe the compiler.
+
+## Overview
+
+The public surface can be grouped into a few functional areas:
+
+### 1. Compiler embedding interfaces (`dotty.tools.dotc.interfaces`)
+
+These interfaces let a host application (an IDE, build tool, etc.) supply callbacks to the compiler and receive structured information back, without depending on compiler internals.
+
+- **`AbstractFile`** / **`SourceFile`** — lightweight, read-only views of compiler input/output files. `SourceFile` extends `AbstractFile` and additionally exposes the raw source `content()`.
+- **`SourcePosition`** — precise location information (line, column, start/end offsets) tied back to a `SourceFile`, used to pinpoint where diagnostics occur.
+- **`Diagnostic`** — a single compiler message (error, warning, info) with an optional `SourcePosition`.
+- **`SimpleReporter`** — a callback interface a host implements to receive `Diagnostic`s as they are produced.
+- **`ReporterResult`** — a summary of a compilation run (error/warning counts).
+- **`CompilerCallback`** — a callback interface with default (no-op) methods, letting hosts optionally observe class file generation (`onClassGenerated`) and source compilation completion (`onSourceCompiled`).
+
+### 2. Runtime function interoperability (`dotty.runtime.function`)
+
+A family of `JFunctionN` and `JProcedureN` interfaces (for arities 0 through 22, plus primitive-specialized variants such as `JFunction1$mcII$sp`) that extend Scala's `FunctionN` traits. These exist so that:
+
+- Java code can implement Scala function values directly (e.g. implementing `JFunction1<String, Integer>` from Java to pass into a Scala API expecting `scala.Function1`).
+- Primitive-specialized subinterfaces (the `$mc..$sp` suffixed ones) avoid boxing overhead when working with primitive types such as `int`, `long`, `double`, etc.
+- `JProcedureN` variants model side-effecting (`Unit`-returning) functions via an `applyVoid` method, again to avoid unnecessary boxed `BoxedUnit` allocations at call sites, while still implementing the corresponding `scala.FunctionN` interface so they can be passed anywhere a Scala function of that arity is expected.
+
+These interfaces are largely used implicitly by the Scala compiler when it needs to generate efficient Java-interoperable lambda implementations; application developers writing Java code that needs to supply callbacks to Scala APIs can implement them directly.
+
+### 3. Build tool / sbt bridge (`xsbt`)
+
+Classes used to plug the Dotty compiler into the [sbt](https://www.scala-sbt.org/) incremental compiler protocol (`xsbti`):
+
+- **`CompilerInterface`** — entry point sbt uses to obtain a `CachedCompiler` and invoke a compilation run.
+- **`CachedCompilerImpl`** — a compiler instance cached across incremental compilation runs; exposes `commandArguments` and `run` to actually perform compilation, reporting results via sbt's `AnalysisCallback`, `Logger`, and `Reporter`.
+- **`DelegatingReporter`** — adapts Dotty's internal diagnostic reporting to an `xsbti.Reporter`, converting rich compiler diagnostics into sbt `Problem`s.
+- **`Problem`** — an `xsbti.Problem` implementation carrying a message, severity, source position, and category.
+- **`InterfaceCompileFailed`** — exception thrown to sbt when compilation fails, carrying the compiler arguments and array of `Problem`s.
+- **`ConsoleInterface`** — launches an interactive Dotty REPL session with a given classpath and bindings, for sbt's `console` task.
+- **`ScaladocInterface`** / **`DottydocRunner`** — entry points for invoking documentation generation from a build tool.
+- **`CompilerClassLoader`** — a specialized `URLClassLoader` used to isolate/patch the compiler's classloading when bridging with sbt's own loader (`fixBridgeLoader`).
+
+### 4. Compiler backend helpers
+
+Low-level ASM-based helpers used internally by the JVM backend when emitting bytecode:
+
+- **`ClassNode1`**, **`MethodNode1`**, **`LabelNode1`** — thin subclasses of ASM's `ClassNode`, `MethodNode`, and `LabelNode` that customize method-visiting behavior for the compiler's bytecode emission pipeline.
+
+### 5. Profiling support (`dotty.tools.dotc.profile`)
+
+- **`ExtendedThreadMxBean`** — an extended view of `ThreadMXBean` adding methods for per-thread allocated memory and CPU/user time, used by the compiler's build-profiling infrastructure.
+- **`ExternalToolHook`** — simple static `before()`/`after()` hooks that external profiling tools can instrument around a compilation phase.
+
+### 6. Miscellaneous tooling
+
+- **`Yaml`** (documentation tool) — `Yaml.apply(String input)` parses a YAML document into a `HashMap<String, Object>`, used for front-matter parsing when generating documentation sites.
+- **`ProjectConfig`** (language server) — a simple configuration bean describing a project: its id, compiler version, compiler arguments, source directories, dependency classpath, output directory, and dependent project ids. Used to configure a Dotty-based language server session.
+
+## Usage Examples
+
+### Implementing a diagnostic reporter
+
+A host application embedding the compiler can implement `SimpleReporter` to collect diagnostics as they occur:
+
+```java
+import dotty.tools.dotc.interfaces.SimpleReporter;
+import dotty.tools.dotc.interfaces.Diagnostic;
+
+public class MyReporter implements SimpleReporter {
+    @Override
+    public void report(Diagnostic diag) {
+        diag.position().ifPresentOrElse(
+            pos -> System.out.printf(
+                "[%s:%d:%d] %s%n",
+                pos.source().name(), pos.line(), pos.column(), diag.message()
+            ),
+            () -> System.out.println(diag.message())
+        );
+    }
+}
+```
+
+### Observing generated class files
+
+Implementing `CompilerCallback` lets a build tool react as classes are produced:
+
+```java
+import dotty.tools.dotc.interfaces.CompilerCallback;
+import dotty.tools.dotc.interfaces.SourceFile;
+import dotty.tools.dotc.interfaces.AbstractFile;
+
+public class ClassTrackingCallback implements CompilerCallback {
+    @Override
+    public void onClassGenerated(SourceFile source, AbstractFile generatedClass, String className) {
+        System.out.println("Generated " + className + " from " + source.name());
+    }
+
+    @Override
+    public void onSourceCompiled(SourceFile source) {
+        System.out.println("Finished compiling " + source.path());
+    }
+}
+```
+
+### Passing a Java callback into Scala APIs
+
+Because Scala functions are ordinary traits, Java code can implement the primitive-specialized `JFunction`/`JProcedure` interfaces to interoperate efficiently with Scala APIs expecting `scala.Function1`, `scala.Function2`, etc.:
+
+```java
+import dotty.runtime.function.JFunction1;
+
+// Implements scala.Function1<Integer, Integer> without boxing overhead
+JFunction1<Integer, Integer> square = new JFunction1<Integer, Integer>() {
+    @Override
+    public Integer apply(Integer x) {
+        return x * x;
+    }
+};
+
+// `square` can now be passed anywhere a scala.Function1<Integer, Integer> is expected.
+```
+
+For side-effecting callbacks, use a `JProcedureN`:
+
+```java
+import dotty.runtime.function.JProcedure2;
+
+JProcedure2<String, Integer> logger = new JProcedure2<String, Integer>() {
+    @Override
+    public void applyVoid(String name, Integer count) {
+        System.out.println(name + ": " + count);
+    }
+};
+
+// `logger` implements scala.Function2<String, Integer, BoxedUnit> and can be
+// supplied to any Scala API expecting a two-argument, Unit-returning function.
+```
+
+### Parsing YAML front matter
+
+```java
+import dotty.tools.dottydoc.staticsite.Yaml;
+import java.util.HashMap;
+
+String doc = "title: My Page\nlayout: post\n";
+HashMap<String, Object> metadata = Yaml.apply(doc);
+System.out.println(metadata.get("title")); // "My Page"
+```
+
+## License
+
+See the main project repository for license details.

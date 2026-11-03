@@ -1,0 +1,496 @@
+# sakai-taggable-api
+
+`sakai-taggable-api` is a Java API for working with taggable activities and items.
+
+The library defines extension points for:
+
+- Discovering activities and items that can participate in tagging.
+- Providing tag data for activities and individual items.
+- Associating activities with tag criteria through `Link` objects.
+- Managing visibility, locking, rationale, rubric, and export flags on links.
+- Building tabular tag results using `Tag`, `TagColumn`, and `TagList`.
+- Integrating UI or workflow helpers through `TaggingHelperInfo`.
+
+The API is interface-based. Applications typically obtain implementations from their runtime environment, then use `TaggingManager`, `TaggingProvider`, and `TaggableActivityProducer` to discover and operate on taggable content.
+
+## Dependency
+
+```xml
+<dependency>
+  <groupId>org.sakaiproject.taggable</groupId>
+  <artifactId>sakai-taggable-api</artifactId>
+</dependency>
+```
+
+## Core concepts
+
+### Activities and items
+
+A **taggable activity** is a container or target that can expose taggable items.
+
+```java
+TaggableActivity activity = taggingManager.getActivity(activityRef, provider);
+```
+
+`TaggableActivity` provides activity-level metadata:
+
+- `getReference()` — activity reference.
+- `getTitle()` and `getDescription()` — display metadata.
+- `getContext()` — context associated with the activity.
+- `getProducer()` — the `TaggableActivityProducer` responsible for the activity.
+- `getActivityDetailUrl()` and `getActivityDetailUrlParams()` — activity detail navigation information.
+- `getTypeName()` and `getUseDecoration()` — presentation-related metadata.
+- `getObject()` — the underlying activity object.
+
+A **taggable item** belongs to an activity and represents an individual object that can be listed or tagged.
+
+```java
+List<TaggableItem> items =
+    taggingManager.getItems(activityRef, provider, false, null);
+```
+
+`TaggableItem` exposes metadata including:
+
+- `getReference()`, `getTitle()`, and `getContent()`.
+- `getUserId()` and `getOwner()`.
+- `getActivity()`.
+- Public and private detail URLs.
+- `getIconUrl()`.
+- `getSiteTitle()`.
+- `getLastModifiedDate()`.
+- `getTypeName()` and `getUseDecoration()`.
+- `getObject()` for access to the underlying item.
+
+### Producers
+
+A `TaggableActivityProducer` supplies activities and items for a particular content type.
+
+```java
+TaggableActivityProducer producer =
+    taggingManager.findProducerById(producerId);
+```
+
+A producer is responsible for:
+
+- Recognizing references with `checkReference(String ref)`.
+- Resolving a reference context with `getContext(String ref)`.
+- Listing activities for a context with `getActivities(...)`.
+- Resolving activities and items.
+- Listing items for an activity, optionally restricted to a user.
+- Reporting whether an activity has submissions.
+- Applying producer-specific access checks for item retrieval and tag removal.
+- Providing an optional item permission override via `getItemPermissionOverride()`.
+
+### Providers
+
+A `TaggingProvider` supplies the tagging behavior and tag data.
+
+```java
+TaggingProvider provider = taggingManager.findProviderById(providerId);
+```
+
+Providers support:
+
+- Context-level viewing checks with `allowViewTags(String context)`.
+- Access checks for activities, items, and item collections.
+- Producing tags for an activity with `getTags(TaggableActivity activity)`.
+- Supplying helper metadata for activity- and item-level workflows.
+- Removing tags from an activity or item.
+- Copying tags between activities.
+
+Each provider has identifiers and display metadata:
+
+```java
+String id = provider.getId();
+String name = provider.getName();
+String label = provider.getSimpleTextLabel();
+String helpLabel = provider.getHelpLabel();
+String helpDescription = provider.getHelpDescription();
+```
+
+### Links and criteria associations
+
+A `Link` associates an activity reference with a tag-criteria reference.
+
+```java
+Link link = taggingManager.addLink(
+    activityRef,
+    tagCriteriaRef,
+    rationale,
+    rubric,
+    true
+);
+```
+
+Links include:
+
+- `getActivityRef()` — associated activity reference.
+- `getTagCriteriaRef()` — associated criteria reference.
+- `getRationale()` and `getRubric()`.
+- Visibility and locking state.
+- Exportability state and export flags.
+
+A link can be updated after creation:
+
+```java
+link.setRationale("Reviewed against the selected criteria.");
+link.setRubric("Use the standard evaluation rubric.");
+link.setVisible(true);
+link.setLocked(false);
+link.setExportFlag(reportMask);
+```
+
+`LinkManager` provides lower-level link lookup, persistence, and removal operations.
+
+### Tags and tag lists
+
+A `Tag` represents a tag row or record associated with an activity.
+
+```java
+Tag tag = taggingManager.createTag(link);
+```
+
+Tags expose:
+
+- The originating activity reference through `getActivityRef()`.
+- The underlying object through `getObject()`.
+- Available field names through `getFields()`.
+- A field value through `getField(TagColumn column)`.
+
+A `TagList` is a `List<Tag>` with column metadata and sorting support.
+
+```java
+TagList tags = provider.getTags(activity);
+
+for (TagColumn column : tags.getColumns()) {
+    System.out.println(column.getDisplayName());
+}
+```
+
+`TagColumn` describes a displayable field:
+
+- `getName()`
+- `getDisplayName()`
+- `getDescription()`
+- `isSortable()`
+
+## Main API relationships
+
+```text
+TaggingManager
+ ├── TaggableActivityProducer
+ │    ├── TaggableActivity
+ │    └── TaggableItem
+ ├── TaggingProvider
+ │    ├── TagList
+ │    │    ├── Tag
+ │    │    └── TagColumn
+ │    └── TaggingHelperInfo
+ └── Link
+      └── activity reference + tag-criteria reference
+```
+
+In a typical flow:
+
+1. Locate a `TaggingProvider`.
+2. Resolve or list a `TaggableActivity`.
+3. Check provider and producer permissions as appropriate.
+4. Retrieve the activity’s `TagList` from the provider.
+5. Retrieve `TaggableItem` instances when item-level processing is needed.
+6. Create, update, or remove `Link` associations for activities and criteria.
+
+## Usage examples
+
+### List activities and display their tags
+
+This example finds a provider, obtains activities for a context, checks whether tags may be viewed, and prints each tag field.
+
+```java
+import java.util.List;
+
+import org.sakaiproject.taggable.api.Tag;
+import org.sakaiproject.taggable.api.TagColumn;
+import org.sakaiproject.taggable.api.TagList;
+import org.sakaiproject.taggable.api.TaggableActivity;
+import org.sakaiproject.taggable.api.TaggingManager;
+import org.sakaiproject.taggable.api.TaggingProvider;
+
+public class TagReportService {
+
+    private final TaggingManager taggingManager;
+
+    public TagReportService(TaggingManager taggingManager) {
+        this.taggingManager = taggingManager;
+    }
+
+    public void printTags(String context, String providerId) {
+        TaggingProvider provider = taggingManager.findProviderById(providerId);
+
+        if (provider == null) {
+            throw new IllegalArgumentException("Unknown tagging provider: " + providerId);
+        }
+
+        if (!provider.allowViewTags(context)) {
+            throw new SecurityException("Tags cannot be viewed in context: " + context);
+        }
+
+        List<TaggableActivity> activities =
+            taggingManager.getActivities(context, provider);
+
+        for (TaggableActivity activity : activities) {
+            System.out.println("Activity: " + activity.getTitle());
+
+            TagList tags = provider.getTags(activity);
+
+            for (Tag tag : tags) {
+                for (TagColumn column : tags.getColumns()) {
+                    String value = tag.getField(column);
+                    System.out.println(
+                        "  " + column.getDisplayName() + ": " + value
+                    );
+                }
+            }
+        }
+    }
+}
+```
+
+### Sort a tag list by a column
+
+A `TagList` can sort its tags using a `TagColumn`. Check `isSortable()` before requesting the sort.
+
+```java
+import org.sakaiproject.taggable.api.TagColumn;
+import org.sakaiproject.taggable.api.TagList;
+
+public void sortTagsByColumn(TagList tags, String columnName) {
+    TagColumn column = tags.getColumn(columnName);
+
+    if (column == null) {
+        throw new IllegalArgumentException("Unknown column: " + columnName);
+    }
+
+    if (!column.isSortable()) {
+        throw new IllegalArgumentException(
+            "Column is not sortable: " + column.getDisplayName()
+        );
+    }
+
+    tags.sort(column, true);
+}
+```
+
+### Retrieve items for an activity
+
+This example resolves an activity and obtains its items through `TaggingManager`.
+
+```java
+import java.util.List;
+
+import org.sakaiproject.taggable.api.TaggableActivity;
+import org.sakaiproject.taggable.api.TaggableItem;
+import org.sakaiproject.taggable.api.TaggingManager;
+import org.sakaiproject.taggable.api.TaggingProvider;
+
+public List<TaggableItem> getActivityItems(
+        TaggingManager taggingManager,
+        TaggingProvider provider,
+        String activityRef) {
+
+    TaggableActivity activity =
+        taggingManager.getActivity(activityRef, provider);
+
+    if (activity == null) {
+        throw new IllegalArgumentException("Unknown activity: " + activityRef);
+    }
+
+    return taggingManager.getItems(
+        activity.getReference(),
+        provider,
+        false,
+        null
+    );
+}
+```
+
+The `getMyItemsOnly` argument can be used to request a user-restricted item set when supported by the producer and provider. The `taggedItem` argument can be supplied when a specific tagged item reference is relevant to the request.
+
+### Create and manage an activity-to-criteria link
+
+Use `TaggingManager` to add an activity link. Link creation may fail with `PermissionException`.
+
+```java
+import org.sakaiproject.authz.api.PermissionException;
+import org.sakaiproject.taggable.api.Link;
+import org.sakaiproject.taggable.api.TaggingManager;
+
+public Link linkActivityToCriteria(
+        TaggingManager taggingManager,
+        String activityRef,
+        String criteriaRef) throws PermissionException {
+
+    Link link = taggingManager.addLink(
+        activityRef,
+        criteriaRef,
+        "This activity is associated with the selected criteria.",
+        "Apply the configured rubric during review.",
+        true,
+        false
+    );
+
+    // Optionally update link state after creation.
+    link.setVisible(true);
+    link.setLocked(false);
+
+    return link;
+}
+```
+
+To remove every link associated with an activity:
+
+```java
+import org.sakaiproject.authz.api.PermissionException;
+import org.sakaiproject.taggable.api.TaggableActivity;
+import org.sakaiproject.taggable.api.TaggingManager;
+
+public void removeActivityLinks(
+        TaggingManager taggingManager,
+        TaggableActivity activity) throws PermissionException {
+
+    taggingManager.removeLinks(activity);
+}
+```
+
+### Use helper information for an activity workflow
+
+Providers can expose `TaggingHelperInfo` for activity- or item-level actions.
+
+```java
+import java.util.Map;
+
+import org.sakaiproject.taggable.api.TaggingHelperInfo;
+import org.sakaiproject.taggable.api.TaggingProvider;
+
+public void inspectActivityHelper(
+        TaggingProvider provider,
+        String activityRef) {
+
+    TaggingHelperInfo helperInfo =
+        provider.getActivityHelperInfo(activityRef);
+
+    if (helperInfo == null) {
+        return;
+    }
+
+    System.out.println("Helper ID: " + helperInfo.getHelperId());
+    System.out.println("Name: " + helperInfo.getName());
+    System.out.println("Description: " + helperInfo.getDescription());
+
+    Map<String, ? extends Object> parameters =
+        helperInfo.getParameterMap();
+
+    for (Map.Entry<String, ? extends Object> entry : parameters.entrySet()) {
+        System.out.println(entry.getKey() + " = " + entry.getValue());
+    }
+}
+```
+
+## Registering producers and providers
+
+A `TaggingManager` can register implementations at runtime.
+
+```java
+taggingManager.registerProducer(myActivityProducer);
+taggingManager.registerProvider(myTaggingProvider);
+```
+
+After registration, callers can discover them by identifier:
+
+```java
+TaggableActivityProducer producer =
+    taggingManager.findProducerById(myActivityProducer.getId());
+
+TaggingProvider provider =
+    taggingManager.findProviderById(myTaggingProvider.getId());
+```
+
+Producers may also be located from a reference:
+
+```java
+TaggableActivityProducer producer =
+    taggingManager.findProducerByRef(reference);
+```
+
+## Permissions and error handling
+
+Several operations are explicitly permission-sensitive:
+
+- `TaggingManager.addLink(...)`
+- `TaggingManager.removeLinks(...)`
+- `LinkManager.getLink(...)`
+- `LinkManager.getLinks(...)`
+- `TaggingProvider.removeTags(...)`
+- `TaggingProvider.transferCopyTags(...)`
+
+These methods may throw `PermissionException`. `LinkManager.getLink(String ref)` may also throw `IdUnusedException`.
+
+In addition to handling exceptions, applications can use the available permission checks before requesting data or performing actions:
+
+```java
+boolean canView = provider.allowViewTags(context);
+
+boolean canGetActivity =
+    provider.allowGetActivity(activityRef, userId, taggedItem);
+
+boolean canGetItem =
+    provider.allowGetItem(activityRef, itemRef, userId, taggedItem);
+
+boolean canRemoveActivityTags =
+    activity.getProducer().allowRemoveTags(activity);
+```
+
+## Creating tag structures
+
+`TaggingManager` includes factory methods for creating tag-related API objects.
+
+```java
+import java.util.Arrays;
+
+import org.sakaiproject.taggable.api.TagColumn;
+import org.sakaiproject.taggable.api.TagList;
+
+// Create a column definition.
+TagColumn statusColumn = taggingManager.createTagColumn(
+    "status",
+    "Status",
+    "Current status value",
+    true
+);
+
+// Create an empty list with explicit columns.
+TagList tagList = taggingManager.createTagList(
+    Arrays.asList(statusColumn)
+);
+```
+
+An empty tag list can also be created without predefined columns:
+
+```java
+TagList tagList = taggingManager.createTagList();
+```
+
+## API summary
+
+| Type | Responsibility |
+|---|---|
+| `TaggingManager` | Main coordination API for producers, providers, activities, items, links, and tag object creation. |
+| `TaggableActivityProducer` | Supplies activity and item implementations for a content type. |
+| `TaggingProvider` | Supplies tags, helper information, permission checks, tag removal, and tag-copy behavior. |
+| `TaggableActivity` | Describes a taggable activity. |
+| `TaggableItem` | Describes an item belonging to a taggable activity. |
+| `Link` | Associates an activity reference with a tag-criteria reference. |
+| `LinkManager` | Lower-level lookup, persistence, and removal API for links. |
+| `Tag` | Represents tag data associated with an activity. |
+| `TagList` | A list of tags with columns and sorting support. |
+| `TagColumn` | Defines a named, displayable tag field. |
+| `TaggingHelperInfo` | Describes a helper action and its parameters for a tagging workflow. |

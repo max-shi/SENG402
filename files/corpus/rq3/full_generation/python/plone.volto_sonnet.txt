@@ -1,0 +1,400 @@
+# plone.volto
+
+`plone.volto` is the Plone add-on that adapts a classic Plone backend to work
+seamlessly with [Volto](https://github.com/plone/volto), Plone's React-based
+frontend. It provides the content types, behaviors, REST API services,
+migration tools, and control panel settings needed to run Plone as a
+headless CMS behind a Volto client.
+
+Among other things, this package:
+
+- Adds **folderish variants** of core Plone content types (Document, Event,
+  News Item) so that pages built from Volto blocks can also contain
+  sub-content.
+- Provides **behaviors** for navigation titles, preview images/links, and
+  head/kicker titles used by Volto's UI.
+- Ships **migration utilities** to convert classic Plone sites (richtext,
+  folder structures, collections) into Volto-blocks-based content.
+- Exposes a **control panel** and registry settings (`IVoltoSettings`) for
+  configuring Volto-related behavior.
+- Supplies **REST API services** (e.g. block type listings) and **indexers**
+  used by `plone.restapi` /catalog to support Volto's needs.
+- Includes **testing fixtures/layers** for building tests against a
+  Plone+Volto backend.
+
+This package is normally installed as a dependency of a Volto-enabled Plone
+site and is rarely used standalone; however, its utilities are useful for
+scripting, upgrades, and customizing content types.
+
+## Installation
+
+Add `plone.volto` to your buildout/pip requirements and install the
+`plone.volto:default` profile via the Add-ons control panel, or activate it
+programmatically:
+
+```python
+from plone.volto.setuphandlers import post_install
+
+post_install(context)
+```
+
+## Content Types
+
+### Folderish content
+
+`plone.volto.content` defines folderish counterparts of standard Plone
+content types, allowing Documents, Events, and News Items to behave as
+containers:
+
+```python
+from plone.volto.content import FolderishDocument, FolderishEvent, FolderishNewsItem
+```
+
+These are marked by the corresponding marker interfaces in
+`plone.volto.interfaces`:
+
+```python
+from plone.volto.interfaces import (
+    IFolderishType,
+    IFolderishDocument,
+    IFolderishEvent,
+    IFolderishNewsItem,
+)
+```
+
+Enabling/disabling these types on a site is handled through helpers in
+`plone.volto.setuphandlers`, such as `copy_content_type`,
+`disable_content_type`, and `enable_content_type`.
+
+## Behaviors
+
+`plone.volto.behaviors` provides schema interfaces (via `plone.autoform` /
+`plone.supermodel`'s `model.Schema`) that add Volto-specific fields to
+content types:
+
+- **`IKicker` / `IHeadTitle`** (`kicker.py`) — small "kicker" text and a
+  dedicated head title, often shown above the main title in Volto's UI.
+- **`INavTitle`** (`navtitle.py`) — an alternate title used specifically in
+  navigation menus.
+- **`IPreview`** (`preview.py`) — fields controlling a preview
+  caption/description for a piece of content.
+- **`IPreviewLink`** (`preview_link.py`) — associates a content item with a
+  "preview image" derived from a linked object; includes:
+  - `PreviewImageScalesFieldAdapter` — computes/exposes image scales for the
+    preview image.
+  - `update_preview_image_scales(obj, event)` — an event subscriber that
+    refreshes preview image scale metadata when content changes.
+
+These behaviors are typically enabled per content type through
+`plone.volto.setuphandlers.add_behavior` / `remove_behavior`:
+
+```python
+from plone.volto.setuphandlers import add_behavior, remove_behavior
+
+add_behavior("Document", "plone.volto.navtitle")
+remove_behavior("News Item", "plone.volto.preview")
+```
+
+## Migration Tools
+
+`plone.volto` includes browser views and functions to help migrate legacy
+Plone content into Volto's blocks-based format.
+
+### Richtext to Blocks
+
+`plone.volto.browser.migrate_richtext` converts classic richtext fields into
+Volto's Slate/blocks JSON structure, using an external HTML-to-blocks
+conversion service:
+
+```python
+from plone.volto.browser.migrate_richtext import migrate_richtext_to_blocks
+
+migrate_richtext_to_blocks(
+    portal_types=["Document", "News Item"],
+    service_url="http://localhost:5000/html",
+    fieldname="text",
+    purge_richtext=True,
+    slate=True,
+)
+```
+
+Lower-level helpers:
+
+```python
+from plone.volto.browser.migrate_richtext import (
+    get_blocks_from_richtext,
+    types_with_blocks,
+)
+
+blocks = get_blocks_from_richtext(some_richtext, service_url="http://localhost:5000/html")
+```
+
+The `MigrateRichTextToVoltoBlocks` browser view exposes this as a
+site-manager action (`types_with_blocks()` lists eligible portal types).
+
+### Full Site Migration to Volto
+
+`plone.volto.browser.migrate_to_volto.MigrateToVolto` is a browser view that
+orchestrates a broader migration:
+
+- `install_plone_volto()` — installs the add-on.
+- `migrate_to_folderish()` / `do_migrate_folders()` — converts standard
+  content types to their folderish equivalents.
+- `migrate_collections()` — converts Collections into listing blocks.
+- `do_migrate_default_page(obj)` — migrates default-page settings for a
+  folder.
+- `convert_richtext()` — converts richtext fields to blocks.
+- `installed_addons()` — reports installed add-ons relevant to migration.
+
+Supporting functions:
+
+```python
+from plone.volto.browser.migrate_to_volto import (
+    generate_listing_block,
+    generate_listing_block_from_collection,
+    make_document,
+    export_relations,
+)
+
+# Build a listing block manually from a folder
+block = generate_listing_block(some_folder)
+
+# Convert a Collection into an equivalent listing block
+block = generate_listing_block_from_collection(some_collection, move_relative_path=True)
+
+# Convert an object's richtext body into a Volto "document" (list of blocks)
+doc = make_document(some_object, service_url="http://localhost:5000/html", slate=True)
+
+# Export relation fields for re-linking after migration
+relations = export_relations(some_object)
+```
+
+### Fixing Duplicated Block UUIDs
+
+Content copied/pasted or migrated can end up with duplicate block UUIDs.
+`plone.volto.blocksuuidfixer.DuplicatedBlocksUUIDFixer` is a browser view
+that scans and repairs such duplicates.
+
+## Navigation & Breadcrumbs
+
+- `plone.volto.browser.breadcrumbs.PhysicalNavigationBreadcrumbs` — a
+  browser view exposing a `breadcrumbs()` method that returns the
+  breadcrumb trail for the current context, formatted for Volto/REST
+  consumption.
+- `plone.volto.browser.navigation.CatalogNavigationTabs` — builds the
+  top-level navigation tabs (`topLevelTabs(actions=None,
+  category="portal_tabs")`) using catalog data, with `customize_entry(entry,
+  brain=None)` allowing per-entry customization (e.g. adding extra
+  metadata for Volto's navigation component).
+
+## REST API Services
+
+`plone.volto.services.blocktypes.get.BlockTypesGet` is a `plone.restapi`
+`Service` that exposes available block types over the REST API:
+
+```
+GET /@blocktypes
+GET /@blocktypes/<name>
+```
+
+- `publishTraverse(request, name)` — allows traversal to a specific block
+  type by name.
+- `reply()` — returns the JSON response describing block type(s).
+
+## Serialization / Deserialization
+
+`plone.volto.transforms` contains helpers used when serializing/deserializing
+content with `plone.restapi`, particularly for resolving UIDs referenced
+inside nested Volto blocks (e.g. links or images embedded deep within a
+blocks tree):
+
+- `NestedBlocksVisitor` — walks a blocks data structure to find nested
+  block content.
+- `NestedResolveUIDDeserializerBase` / `NestedResolveUIDSerializerBase` —
+  base classes for resolving/serializing UIDs found in nested blocks.
+- `PreviewImageResolveUIDDeserializer` / `PreviewImageResolveUIDDeserializerRoot`
+  and `PreviewImageResolveUIDSerializer` / `PreviewImageResolveUIDSerializerRoot`
+  — concrete (de)serializers that resolve the preview image UID (from the
+  `IPreviewLink` behavior) to/from full URLs in REST API payloads.
+
+`plone.volto.linkintegrity.NestedBlockLinkRetriever` supports Plone's link
+integrity checks by walking a block's structure (`retrieveLinks(block)`) to
+find embedded links/references, ensuring blocks-based content participates
+correctly in "items referencing this item" checks.
+
+## Indexers
+
+`plone.volto.indexers.indexers` provides catalog indexers tailored to
+blocks-based content:
+
+```python
+from plone.volto.indexers.indexers import (
+    hasPreviewImage,
+    image_field_indexer,
+    block_types_indexer,
+)
+```
+
+- `hasPreviewImage(obj)` — boolean indicating whether the object has a
+  resolvable preview image.
+- `image_field_indexer(obj)` — indexes image field data for search/preview.
+- `block_types_indexer(obj)` — indexes the set of block `@type`s used in an
+  object's blocks, enabling searches/filters like "find all pages containing
+  a video block."
+
+`plone.volto.setuphandlers.add_catalog_indexes(context, wanted=None)` can be
+used to (re)install these indexes into `portal_catalog`.
+
+## Control Panel & Settings
+
+`plone.volto.interfaces.IVoltoSettings` defines the registry schema for
+Volto-related site settings, editable through:
+
+- `VoltoSettingsEditForm` (a `RegistryEditForm` with `updateFields()` /
+  `updateWidgets()` customizations)
+- `VoltoSettingsControlPanel` (the form wrapper)
+- `VoltoControlpanel` (the configlet registered in the Plone control panel)
+
+## Site Setup & Upgrades
+
+`plone.volto.setuphandlers` contains the GenericSetup import handlers and
+utility functions used during installation and upgrades:
+
+```python
+from plone.volto.setuphandlers import (
+    post_install,
+    uninstall,
+    post_install_coresandbox,
+    post_install_multilingual,
+    enable_pam,
+    ensure_pam_consistency,
+    change_content_type_title,
+    disable_content_type,
+    enable_content_type,
+    copy_content_type,
+    add_catalog_indexes,
+    add_behavior,
+    remove_behavior,
+)
+```
+
+Key highlights:
+
+- `enable_pam(portal)` / `ensure_pam_consistency(portal)` — enable and
+  verify configuration for `plone.app.multilingual`.
+- `copy_content_type(portal, name, newid, newname)` — clones a content
+  type's FTI, e.g. to create a folderish variant.
+- `HiddenProfiles.getNonInstallableProfiles()` — hides internal GenericSetup
+  profiles from the Add-ons UI.
+
+`plone.volto.upgrades` provides individual upgrade steps invoked from
+GenericSetup upgrade profiles, e.g.:
+
+```python
+from plone.volto.upgrades import (
+    migrate_content_classes,
+    from12to13_migrate_listings,
+    remove_plone_richtext_behavior,
+    add_control_panel_classic_icon,
+    add_block_types_index,
+    rename_distribution,
+    update_robots_txt,
+    add_large_image_scales,
+    reindex_block_types,
+)
+```
+
+Each function accepts a GenericSetup `context` (or portal setup tool) and
+performs a discrete migration/upgrade task, such as reindexing the
+`block_types` index or migrating listing blocks between schema versions.
+
+## Testing
+
+`plone.volto.testing` supplies reusable ZCA test layers built on
+`plone.app.testing`:
+
+```python
+from plone.volto.testing import (
+    PloneVoltoCoreLayer,
+    PloneVoltoCoreSandboxLayer,
+    PloneVoltoMigrationLayer,
+)
+
+class MyPackageLayer(PloneVoltoCoreLayer):
+    ...
+
+PLONE_VOLTO_INTEGRATION_TESTING = PloneVoltoCoreSandboxLayer()
+```
+
+- `BaseFixture` / `SandboxFixture` — base fixtures wiring in
+  `plone.volto`'s dependencies.
+- `PloneVoltoCoreLayer` — the main sandbox layer used by dependent packages.
+- `PloneVoltoCoreSandboxLayer.setUpPloneSite(portal)` — sets up a demo/sandbox
+  Plone site with `plone.volto` installed.
+- `PloneVoltoMigrationLayer.setUpZope(app, configurationContext)` /
+  `setUpPloneSite(portal)` — a layer specifically configured for testing
+  migration scenarios (e.g. migrating a classic-UI site to Volto).
+
+## Utility Scripts
+
+`plone.volto.scripts` contains standalone maintenance scripts intended to be
+run against a Plone instance (e.g. via `zconsole run` or a debug shell):
+
+- `auditblocks.audit_blocks()` / `where_is_this_block()` — scan the site for
+  blocks data issues and locate where a specific block lives.
+- `listingaddsummary.migrate_listing_block_to_summary(block)` — upgrades a
+  listing block's configuration to use the "summary" template variation.
+- `searchscalesinimageblocks.remove_image_scales(blocks)` — strips stale
+  image scale references from image blocks.
+- `utils` — shared helpers: `save_csv(data, filename)`, `print_error(...)`,
+  `print_info(...)`, `print_ok(...)` for console-friendly script output.
+
+## Locales
+
+`plone.volto.locales.update` supports maintaining translation files:
+
+```python
+from plone.volto.locales.update import get_i18ndude, locale_folder_setup, update_locale
+
+update_locale()
+```
+
+- `get_i18ndude()` — locates the `i18ndude` tool.
+- `locale_folder_setup(domain)` — ensures the locale folder structure exists
+  for a translation domain.
+- `update_locale()` — regenerates `.pot`/`.po` files for the package.
+
+## Miscellaneous
+
+- `plone.volto.bbb.alias_module(name, target)` — aliases a module path for
+  backwards compatibility when internal modules are reorganized.
+- `plone.volto.patches.construct_url(self, randomstring)` — a monkey-patch
+  helper adjusting URL construction behavior for compatibility with Volto.
+- `plone.volto.summary.JSONSummarySerializerMetadata.default_metadata_fields()`
+  — customizes the default metadata fields returned by `@summary`
+  REST endpoint serialization.
+- `plone.volto.coresandbox` — example content type (`IExample`, `Example`)
+  and vocabularies (`DocumentVocabularyFactory`, `HugeVocabularyFactory`)
+  used for demos and internal testing of `plone.volto` features.
+
+## Example: End-to-End Migration Workflow
+
+```python
+from plone.volto.setuphandlers import post_install
+from plone.volto.browser.migrate_to_volto import MigrateToVolto
+
+# 1. Install plone.volto on a classic Plone site
+post_install(context)
+
+# 2. Use the migration view (typically invoked via browser at
+#    ${portal_url}/@@migrate-to-volto), but callable directly for scripting:
+view = MigrateToVolto(context, request)
+view.install_plone_volto()
+view.migrate_to_folderish()
+view.migrate_collections()
+view.convert_richtext()
+```
+
+## License
+
+GPL version 2 (see `LICENSE.rst`), consistent with the wider Plone project.

@@ -1,0 +1,129 @@
+# xsdata
+
+**xsdata** is a Python toolkit for working with XML-centric data models. It provides tools to:
+
+- Generate Python dataclasses from XML Schema (XSD), WSDL, DTD, XML, and JSON resources
+- Parse XML and JSON documents into typed dataclass instances
+- Serialize dataclass instances to XML, JSON, Python code, or an XML tree
+- Convert XML-compatible primitive values such as dates, durations, QNames, decimals, and enums
+- Build SOAP-style client payloads and transport requests
+- Customize naming, output structure, code generation, and serialization behavior
+
+The library is organized around two complementary workflows: **code generation** and **runtime binding**.
+
+## Installation
+
+```bash
+pip install xsdata
+```
+
+## Code generation
+
+The command-line interface exposes configuration, downloading, and generation operations:
+
+```bash
+xsdata init-config
+xsdata generate path/to/schema.xsd
+```
+
+Resources can also be processed programmatically with `ResourceTransformer`. It accepts a collection of resource URIs and classifies and transforms supported input types, including schemas, WSDL definitions, DTDs, XML documents, and JSON documents.
+
+```python
+from xsdata.codegen.transformer import ResourceTransformer
+
+transformer = ResourceTransformer()
+transformer.process([
+    "schemas/customer.xsd",
+    "schemas/orders.xsd",
+])
+```
+
+The generation pipeline maps source documents into internal `Class`, `Attr`, `AttrType`, `Extension`, and `Restrictions` models. A `ClassContainer` coordinates normalization and validation passes, while handlers process details such as extensions, attribute groups, duplicate names, choice fields, circular references, wrappers, and inner classes.
+
+`CodeWriter` renders processed classes using a registered generator. The built-in `DataclassGenerator` produces Python dataclass modules.
+
+```python
+from xsdata.codegen.writer import CodeWriter
+from xsdata.models.config import GeneratorConfig
+
+config = GeneratorConfig.create()
+writer = CodeWriter.from_config(config)
+
+# `classes` is a list of processed xsdata.codegen.models.Class objects.
+writer.write(classes)
+```
+
+## XML dataclass binding
+
+Generated models are ordinary Python dataclasses with XML metadata. At runtime, `XmlParser` reads XML into those models, and `XmlSerializer` writes them back to XML.
+
+```python
+from dataclasses import dataclass, field
+from xsdata.formats.dataclass.parsers import XmlParser
+from xsdata.formats.dataclass.serializers import XmlSerializer
+
+
+@dataclass
+class Customer:
+    id: int = field(metadata={"type": "Attribute"})
+    name: str = field(metadata={"type": "Element"})
+
+
+parser = XmlParser()
+customer = parser.from_string(
+    '<Customer id="42"><name>Ada Lovelace</name></Customer>',
+    Customer,
+)
+
+assert customer.id == 42
+assert customer.name == "Ada Lovelace"
+
+serializer = XmlSerializer()
+xml = serializer.render(customer)
+print(xml)
+```
+
+The metadata system is represented by `XmlContext`, `XmlMeta`, and `XmlVar`. `XmlContext` builds and caches binding metadata for model classes, resolves element names and namespaces, and discovers compatible subclasses.
+
+For XML trees, use `TreeParser` or `TreeSerializer`:
+
+```python
+from xsdata.formats.dataclass.parsers import TreeParser
+from xsdata.formats.dataclass.serializers import TreeSerializer
+
+model = TreeParser().from_string("<Customer id='1'><name>Grace</name></Customer>", Customer)
+tree = TreeSerializer().render(model)
+```
+
+## JSON and dictionaries
+
+`JsonParser` and `JsonSerializer` provide equivalent support for JSON, while `DictDecoder` and `DictEncoder` work with Python dictionaries and lists.
+
+```python
+from xsdata.formats.dataclass.parsers import JsonParser
+from xsdata.formats.dataclass.serializers import JsonSerializer
+
+customer = JsonParser().from_string('{"id": 7, "name": "Lin"}', Customer)
+payload = JsonSerializer().render(customer)
+```
+
+## Value conversion
+
+`ConverterFactory` selects converters for Python and XML-compatible types. Built-in converters support strings, booleans, numbers, bytes, `Decimal`, `QName`, enums, dates, times, and datetimes.
+
+```python
+from decimal import Decimal
+from xsdata.formats.converter import ConverterFactory
+
+factory = ConverterFactory()
+value = factory.deserialize("19.95", [Decimal])
+text = factory.serialize(value)
+```
+
+XML-specific values are also available from `xsdata.models.datatype`, including `XmlDate`, `XmlDateTime`, `XmlTime`, `XmlDuration`, and `XmlPeriod`.
+
+## Extensibility
+
+Customize generated output with `GeneratorConfig`, naming conventions, substitutions, extensions, aliases, and output-format settings. Custom generators can be registered through `CodeWriter.register_generator`, and custom value handling can be added with `ConverterFactory.register_converter`.
+
+For HTTP-backed service calls, `Client`, `Config`, `Transport`, and `DefaultTransport` provide request construction, payload serialization, header preparation, and response transport support.

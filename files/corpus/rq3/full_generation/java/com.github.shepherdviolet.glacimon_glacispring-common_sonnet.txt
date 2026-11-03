@@ -1,0 +1,373 @@
+# glacispring-common
+
+`glacispring-common` is a collection of Spring / Spring Boot utilities that address common infrastructure concerns in enterprise applications: encrypted configuration properties, graceful shutdown, dynamic data sources, interface auto-instantiation, member-level dependency processing, SpEL expression evaluation, servlet request helpers, temp file management, and Spring proxy/AOP introspection.
+
+It is designed to be added as a dependency to a Spring Boot application, with most features activated either through Spring Boot auto-configuration or by explicitly declaring `@Bean`/`@Import` in your configuration classes.
+
+---
+
+## Table of Contents
+
+- [Encrypted Configuration Properties (Crypto Prop)](#encrypted-configuration-properties-crypto-prop)
+- [Graceful Shutdown](#graceful-shutdown)
+- [Dynamic DataSource](#dynamic-datasource)
+- [Interface Auto-Instantiation](#interface-auto-instantiation)
+- [Member Processor (Field/Method Injection Hooks)](#member-processor-fieldmethod-injection-hooks)
+- [SpEL Expression Resolver](#spel-expression-resolver)
+- [Servlet Request Utilities](#servlet-request-utilities)
+- [Temp File Bucket](#temp-file-bucket)
+- [Spring AOP / Proxy Utilities](#spring-aop--proxy-utilities)
+- [YAML Property Source Factories](#yaml-property-source-factories)
+- [Indexed-Map-to-ArrayList Fixer](#indexed-map-to-arraylist-fixer)
+- [Auto-configuration](#auto-configuration)
+
+---
+
+## Encrypted Configuration Properties (Crypto Prop)
+
+Transparently decrypts encrypted values stored in Spring `PropertySource`s (e.g. `application.yml`, environment variables, system properties) so that your application code and `@Value`/`@ConfigurationProperties` bindings see plain-text values.
+
+### Core pieces
+
+- **`CryptoPropBeanFactoryPostProcessor`** — a `BeanFactoryPostProcessor` that wraps the `Environment`'s property sources with decrypting equivalents before other beans are created. Can be constructed with a custom `CryptoPropDecryptor` or a full `ICryptoPropertySourceConverter`.
+- **`CryptoPropDecryptor`** — interface for the actual decryption algorithm. Implementations:
+  - `AbstractCryptoPropDecryptor` — base class handling common flow (`decrypt(name, value)`), extend it to plug in real crypto.
+  - `SimpleCryptoPropDecryptor` — a ready-made AES-based decryptor, configurable via a key string.
+- **`CryptoPropEnv`** — gives a decryptor access to the surrounding `Environment` and any locally-defined properties (e.g. to read a decryption key from configuration itself).
+- **`ICryptoPropertySourceConverter`** / **`DefaultCryptoPropertySourceConverter`** (`...ForBoot2` variant available) — walks `MutablePropertySources` and replaces each source with a crypto-aware wrapper (`CryptoPropertySource`, `CryptoMapPropertySource`, `CryptoEnumerablePropertySource`, `CryptoSystemEnvironmentPropertySource`, and their `...ForBoot2` variants that implement `OriginLookup`). Can also intercept via CGLIB proxy (`CryptoPropertySourceMethodInterceptor`) instead of wrapping, and can skip specific property sources by name.
+- **`CommonCryptoPropUtils`** / **`SimpleCryptoPropUtils`** — helpers to detect/wrap/unwrap cipher text (`ENC(...)`-style markers), hash keys (`sha256`), generate AES keys and RSA key pairs, encrypt/decrypt with `EncryptKey`/`DecryptKey`, and partially hide keys for logging.
+- **`CryptoPropConfiguration`** — a `@Configuration`-style class exposing ready-made `decryptor()`, `cryptoPropertySourceConverter(...)`, and `beanFactoryPostProcessor(...)` beans for quick setup.
+- **Exceptions**: `CryptoPropCommonException`, `CryptoPropDecryptException`, `CryptoPropEncryptException`.
+
+### Example
+
+```java
+@Configuration
+public class CryptoPropConfig {
+
+    @Bean
+    public CryptoPropDecryptor cryptoPropDecryptor() {
+        // Key can also be resolved dynamically via CryptoPropEnv
+        return new SimpleCryptoPropDecryptor("my-aes-key");
+    }
+
+    @Bean
+    public static CryptoPropBeanFactoryPostProcessor cryptoPropBeanFactoryPostProcessor(
+            CryptoPropDecryptor decryptor) {
+        return new CryptoPropBeanFactoryPostProcessor(decryptor);
+    }
+}
+```
+
+In `application.yml`:
+
+```yaml
+datasource:
+  password: ENC(base64-ciphertext-here)
+```
+
+At runtime, `@Value("${datasource.password}")` or `@ConfigurationProperties` will receive the decrypted plain-text value.
+
+Generating a key/wrapping a value for encryption:
+
+```java
+String aesKey = SimpleCryptoPropUtils.generateAesKey();
+String cipher = SimpleCryptoPropUtils.encryptAndWrap("my-secret-password", aesKey);
+// store `ENC(cipher)` in your properties file
+```
+
+---
+
+## Graceful Shutdown
+
+**`GracefulShutdown`** is an abstract `SmartLifecycle` implementation that hooks into Spring's shutdown phase to stop accepting new requests and wait until in-flight requests complete, before the application context is fully closed.
+
+Extend it and implement:
+
+```java
+public class MyGracefulShutdown extends GracefulShutdown {
+
+    public MyGracefulShutdown() {
+        super(30_000L); // max wait 30s
+    }
+
+    @Override
+    public void stopAcceptingRequests() {
+        // e.g. tell load balancer / web server to stop accepting new connections
+    }
+
+    @Override
+    public boolean isAllRequestsCompleted() {
+        // e.g. check an in-flight request counter
+        return activeRequests.get() == 0;
+    }
+}
+```
+
+Register it as a bean; Spring will call `onShutdownPhase()` during context shutdown, polling `isAllRequestsCompleted()` at the configured `checkInterval` until `timeout` elapses.
+
+```java
+@Bean
+public GracefulShutdown gracefulShutdown() {
+    MyGracefulShutdown shutdown = new MyGracefulShutdown();
+    shutdown.setCheckInterval(500L);
+    return shutdown;
+}
+```
+
+---
+
+## Dynamic DataSource
+
+**`DynamicDataSource`** extends Spring's `AbstractRoutingDataSource`, allowing runtime selection of a target `DataSource` by name — useful for multi-tenant or read/write splitting scenarios.
+
+```java
+@Bean
+public DynamicDataSource dataSource(ObjectProvider<Map<String, DataSource>> dataSourceProvider) {
+    DynamicDataSource dataSource = new DynamicDataSource("primary");
+    dataSource.setDataSources(dataSourceProvider);
+    return dataSource;
+}
+```
+
+Switch data source per request/thread:
+
+```java
+DynamicDataSource.selectDataSource("replica");
+try {
+    // queries executed here use the "replica" data source
+} finally {
+    DynamicDataSource.selectDataSource("primary"); // reset to default
+}
+```
+
+---
+
+## Interface Auto-Instantiation
+
+Lets you declare a bean purely by its **interface type**, letting the framework resolve/instantiate the implementation at context load time — handy for API interfaces backed by dynamically-generated or context-resolved implementations.
+
+- **`InterfaceInstantiator`** — strategy interface: `newInstance(Class<?> interfaceType)` and `resolveBeanName(String interfaceType)`.
+  - `DefaultInterfaceInstantiator` — trivial default, resolves bean name from class name.
+  - `ContextAwaredInterfaceInstantiator` — implements `ApplicationContextAware`, resolves/creates instances aware of the surrounding `ApplicationContext`.
+- **`InterfaceInstFactoryBean4`** — a `FactoryBean<T>` that delegates object creation to an `InterfaceInstantiator`.
+- **`InterfaceInstConfig`** — exposes `interfaceInstantiationBeanDefinitionRegistry()`, a `BeanDefinitionRegistryPostProcessor` that scans for annotated interfaces and registers `InterfaceInstFactoryBean4` definitions for them.
+- **`InterfaceInstSelector`** — an `ImportSelector` used to wire the above configuration in via `@Import`/annotation on your `@Configuration` class.
+
+```java
+@Configuration
+@Import(InterfaceInstSelector.class)
+public class AppConfig {
+    // Interfaces annotated per this module's convention will be
+    // automatically registered as beans backed by InterfaceInstFactoryBean4.
+}
+```
+
+---
+
+## Member Processor (Field/Method Injection Hooks)
+
+A generic extension point for post-processing bean fields/methods annotated with custom annotations — similar in spirit to `@Autowired` processing, but pluggable.
+
+- **`MemberProcessor<AnnotationType>`** — implement to handle a specific annotation:
+  - `acceptAnnotationType()` — which annotation this processor handles.
+  - `visitField(...)` / `visitMethod(...)` — called for every matching field/method found on a bean during post-processing.
+- **`MemberVisitBeanPostProcessor`** — a `BeanPostProcessor` that scans every bean's fields/methods and dispatches matches to registered `MemberProcessor`s.
+- **`MemberProcessorConfig`** — exposes `memberProcessorBeanPostProcessor()` to register the above.
+- **`MemberProcessorSelector`** — `ImportSelector` for wiring the configuration.
+
+```java
+public class MyAnnotationProcessor implements MemberProcessor<MyAnnotation> {
+
+    @Override
+    public Class<MyAnnotation> acceptAnnotationType() {
+        return MyAnnotation.class;
+    }
+
+    @Override
+    public void visitField(Object bean, String beanName, Field field,
+                            MyAnnotation annotation, ApplicationContext applicationContext) {
+        // custom injection logic
+    }
+
+    @Override
+    public void visitMethod(Object bean, String beanName, Method method,
+                             MyAnnotation annotation, ApplicationContext applicationContext) {
+        // custom invocation logic
+    }
+}
+```
+
+```java
+@Configuration
+@Import(MemberProcessorSelector.class)
+public class AppConfig {
+    @Bean
+    public MyAnnotationProcessor myAnnotationProcessor() {
+        return new MyAnnotationProcessor();
+    }
+}
+```
+
+---
+
+## SpEL Expression Resolver
+
+**`SpelExpressionResolver`** is a convenience wrapper around Spring's SpEL engine, optionally bound to a root object and/or `BeanFactory` (so expressions can reference beans and root-object properties).
+
+```java
+SpelExpressionResolver resolver = new SpelExpressionResolver(myRootObject, beanFactory);
+
+resolver.checkExpression("#age > 18"); // throws ParseException if invalid
+
+boolean adult = resolver.resolveExpressionToBoolean(
+        "#age > 18",
+        Collections.singletonMap("age", 20));
+
+Object value = resolver.resolveExpression("@myBean.doSomething(#input)",
+        Collections.singletonMap("input", "hello"));
+```
+
+---
+
+## Servlet Request Utilities
+
+**`ServletRequestUtils`** provides static helpers for extracting common information from an `HttpServletRequest`:
+
+```java
+String uri = ServletRequestUtils.getUri(request);
+String method = ServletRequestUtils.getMethod(request);
+HttpHeaders headers = ServletRequestUtils.getHttpHeaders(request);
+Map<String, String> params = ServletRequestUtils.getHttpParams(request);
+byte[] body = ServletRequestUtils.readBody(request);
+```
+
+Useful for logging/auditing filters or interceptors that need to inspect raw request data.
+
+---
+
+## Temp File Bucket
+
+Manages a rolling directory structure for temporary files with automatic retention/expiry.
+
+- **`TempFileBucket`** — organizes temp files into date-based subdirectories under a root directory, retaining them for a configured number of days.
+- **`HourlyTempFileBucket`** — same idea, but with hourly granularity/retention.
+
+```java
+TempFileBucket bucket = new TempFileBucket("/var/tmp/myapp", 7); // keep 7 days
+File file = bucket.get("report.csv");
+// write to `file`; old date directories beyond retention are cleaned up
+```
+
+```java
+HourlyTempFileBucket hourlyBucket = new HourlyTempFileBucket("/var/tmp/myapp-hourly", 48);
+File hourlyFile = hourlyBucket.get("cache.tmp");
+```
+
+---
+
+## Spring AOP / Proxy Utilities
+
+Helpers for inspecting and unwrapping Spring AOP proxies (JDK dynamic proxies and CGLIB proxies).
+
+```java
+if (SpringAopUtils.isAopProxy(myBean)) {
+    if (SpringAopUtils.isCglibProxy(myBean)) {
+        MyService target = SpringAopUtils.getCglibProxyTarget(myBean);
+    } else if (SpringAopUtils.isJdkProxy(myBean)) {
+        MyService target = SpringAopUtils.getJdkProxyTarget(myBean);
+    }
+    // or, generically:
+    MyService target = SpringAopUtils.getProxyTarget(myBean);
+}
+
+MyService currentProxy = SpringAopUtils.getCurrentProxy();
+```
+
+**`SpringCglibUtils.newEmptyInstance(Class<T> clazz)`** creates an "empty" CGLIB-backed instance of a class without invoking its constructor logic — useful for framework-level object creation scenarios.
+
+---
+
+## YAML Property Source Factories
+
+- **`YamlPropertySourceFactory`** — a `PropertySourceFactory` implementation that lets you use `@PropertySource(factory = YamlPropertySourceFactory.class, value = "classpath:my-config.yml")` to load YAML files as Spring property sources (normally only `.properties` files are supported out of the box).
+- **`OptionalYamlPropertySourceFactory`** — same, but silently ignores a missing file instead of throwing, useful for optional overlay configuration files.
+
+```java
+@PropertySource(value = "classpath:extra-config.yml",
+                 factory = OptionalYamlPropertySourceFactory.class)
+@Configuration
+public class AppConfig {
+}
+```
+
+---
+
+## Indexed-Map-to-ArrayList Fixer
+
+**`IndexedMapToArrayListFixer`** repairs a common YAML/properties binding quirk where list-like structures (`foo[0]`, `foo[1]`, ...) end up represented as a `Map` with numeric string keys instead of a proper `List`. It recursively walks the structure and converts such indexed maps into real `List`s.
+
+```java
+Map<String, Object> raw = ... ; // parsed configuration, contains "items" as {"0": "a", "1": "b"}
+Map<String, Object> fixed = IndexedMapToArrayListFixer.processMap(raw);
+// fixed.get("items") is now a proper List: ["a", "b"]
+```
+
+There is also a `processList` overload for fixing collections directly.
+
+---
+
+## Other Utilities
+
+- **`BoxedFactoryBean`** — a simple `FactoryBean` that wraps a pre-existing object/type pair, useful for registering arbitrary objects as beans with an explicit declared type.
+- **`SpringStartupUtils.startNonWebSpringBootApp(Class<?> source, String[] args)`** — starts a Spring Boot application explicitly in non-web mode, bypassing whatever web-application detection would normally occur.
+
+```java
+public static void main(String[] args) {
+    SpringStartupUtils.startNonWebSpringBootApp(MyBatchApp.class, args);
+}
+```
+
+---
+
+## Auto-configuration
+
+The library ships Spring Boot auto-configuration for a couple of the above features:
+
+- **`GlacispringCommonAutoConfiguration`** — registers `GlacispringCommonProperties` (bound from your application configuration) and conditionally activates `GlacispringServletContextListenerConfig`.
+- **`GlacispringCommonProperties`** — exposes `servlet-context-listener-enabled` (default behavior depends on your configuration) to toggle the bundled `GlacispringServletContextListener`.
+- **`GlacispringServletContextListenerConfig`** / **`GlacispringServletContextListener`** — an optional `ServletContextListener` that hooks into web application startup/shutdown, enabled via configuration property.
+
+```yaml
+glacispring:
+  common:
+    servlet-context-listener-enabled: true
+```
+
+No additional wiring is required — auto-configuration is picked up automatically once the library is on the classpath, as long as Spring Boot's auto-configuration mechanism is enabled.
+
+---
+
+## Installation
+
+Add the dependency to your build (Gradle example):
+
+```groovy
+implementation 'com.github.shepherdviolet.glacimon:glacispring-common:<version>'
+```
+
+Or Maven:
+
+```xml
+<dependency>
+    <groupId>com.github.shepherdviolet.glacimon</groupId>
+    <artifactId>glacispring-common</artifactId>
+    <version>${glacispring.version}</version>
+</dependency>
+```
+
+---
+
+## License
+
+See the repository's `LICENSE` file for license information.

@@ -1,0 +1,540 @@
+# pdm
+
+`pdm` is a Python project and package-management toolkit. Its public API covers:
+
+- Project configuration and `pyproject`/lockfile management
+- Dependency requirement parsing, resolution, and lockfile repositories
+- Python interpreter and environment discovery
+- Package building, wheel installation, synchronization, and uninstall support
+- Package index search, repository authentication, caching, and publishing
+- A command-oriented CLI framework with task execution, hooks, templates, and terminal UI helpers
+
+The library can be used as a command-line application through `pdm.core`, or programmatically through its project, dependency, environment, installer, and resolver APIs.
+
+## Core concepts
+
+### Projects and configuration
+
+`Project` is the central object for working with a Python project. It exposes project metadata, dependency groups, configured package sources, the selected interpreter, environments, caches, and lockfiles.
+
+Key methods include:
+
+- `Project.pyproject()` — access the project’s `PyProject` document.
+- `Project.get_dependencies(group=...)` — retrieve requirements for a dependency group.
+- `Project.add_dependencies(...)` — add requirements to a group.
+- `Project.get_repository()` — create a package repository suitable for resolution.
+- `Project.get_provider(...)` and `Project.get_resolver(...)` — obtain dependency-resolution components.
+- `Project.lockfile()` / `Project.write_lockfile(...)` — access and write locking data.
+- `Project.get_environment()` — obtain the active package-installation environment.
+- `Project.python()` and `Project.resolve_interpreter()` — inspect or resolve a Python interpreter.
+
+`PyProject`, `TOMLFile`, and `Lockfile` provide lower-level document access:
+
+- `PyProject.metadata()`, `dependency_groups()`, `build_system()`, and `settings()` expose project data.
+- `PyProject.content_hash()` produces a content hash.
+- `Lockfile.hash()`, `groups()`, `strategy()`, and `compatibility()` inspect locking metadata.
+- `Lockfile.format_lockfile(...)` writes resolved repository information into lockfile form.
+
+Configuration is represented by `Config`, `ConfigItem`, and `RepositoryConfig`.
+
+```python
+from pdm.project.config import load_config
+
+config_data = load_config(project_config_path)
+```
+
+`RepositoryConfig` supports credential-aware repository URLs:
+
+```python
+repository_config.populate_keyring_auth()
+authenticated_url = repository_config.url_with_credentials()
+```
+
+## Dependency requirements and candidates
+
+The requirement API models named packages, local files, URLs, and version-control requirements.
+
+- `Requirement` is the base type.
+- `NamedRequirement` represents an index-based package requirement.
+- `FileRequirement` represents a filesystem path or URL.
+- `VcsRequirement` represents a version-control requirement.
+
+Useful functions include:
+
+- `parse_requirement(line, editable=False)`
+- `parse_line(line)`
+- `parse_as_pkg_requirement(line)`
+- `filter_requirements_with_extras(...)`
+- `strip_extras(line)`
+
+A requirement can be rendered, compared, pinned, and inspected:
+
+```python
+from pdm.models.requirements import parse_requirement
+
+requirement = parse_requirement("requests>=2.31")
+
+print(requirement.project_name())
+print(requirement.key())
+print(requirement.is_pinned())
+print(requirement.as_line())
+```
+
+Candidates are installable versions selected during resolution.
+
+- `Candidate` represents a package candidate.
+- `PreparedCandidate` handles candidate metadata, builds, and direct URL information.
+- `Candidate.prepare(environment)` prepares a candidate for inspection or installation.
+- `Candidate.as_lockfile_entry(project_root)` produces lockfile-compatible data.
+
+```python
+candidate_id = candidate.identify()
+display_name = candidate.format()
+
+prepared = candidate.prepare(environment)
+metadata = prepared.metadata()
+dependencies = prepared.get_dependencies_from_metadata()
+```
+
+## Resolution and repositories
+
+Resolution components select compatible candidates for requirements.
+
+- `BaseRepository` provides candidate lookup, dependency metadata, hashes, and search.
+- `PyPIRepository` is a repository with search support.
+- `LockedRepository` serves candidates stored in lock data.
+- `BaseProvider` and its subclasses define candidate-selection strategies.
+- `Resolver` defines the resolution interface.
+- `RLResolver` and `UvResolver` are concrete resolver implementations.
+- `Resolution` contains the resolved candidate mapping.
+
+Repositories expose a shared interface:
+
+```python
+repository = project.get_repository()
+
+requirements = project.get_dependencies()
+for requirement in requirements:
+    candidates = repository.find_candidates(requirement)
+    for candidate in candidates:
+        print(candidate.format())
+        break
+```
+
+For lockfile-backed resolution:
+
+```python
+locked_repository = project.get_locked_repository()
+
+for package in locked_repository.evaluate_candidates(["default"]):
+    print(package)
+```
+
+The provider/resolver flow is:
+
+1. Obtain requirements from a `Project`.
+2. Create a repository with `Project.get_repository()`.
+3. Obtain a provider with `Project.get_provider(...)`.
+4. Obtain a resolver type with `Project.get_resolver()`.
+5. Resolve requirements into a `Resolution`.
+6. Write result data through `Project.write_lockfile(...)` or a `Lockfile`.
+
+## Python interpreters and environments
+
+`PythonInfo` describes an interpreter and exposes version and environment information.
+
+```python
+from pdm.models.python import PythonInfo
+
+python = PythonInfo.from_path("/usr/bin/python3")
+
+if python.valid():
+    print("Executable:", python.executable())
+    print("Version:", python.version())
+    print("Implementation:", python.implementation())
+    print("Identifier:", python.identifier())
+```
+
+`VirtualEnv` represents a virtual environment:
+
+```python
+from pathlib import Path
+from pdm.models.venv import VirtualEnv
+
+venv = VirtualEnv.get(Path(".venv"))
+if venv is not None:
+    print(venv.env_vars())
+    print(venv.include_system_site_packages())
+```
+
+Environment types derive from `BaseEnvironment`:
+
+- `BareEnvironment`
+- `PythonEnvironment`
+- `PythonLocalEnvironment`
+
+A `BaseEnvironment` provides installation paths, process environment variables, a package finder, a working set, and command lookup.
+
+```python
+environment = project.get_environment()
+
+paths = environment.get_paths()
+working_set = environment.get_working_set()
+python_command = environment.pip_command()
+git_path = environment.which("git")
+```
+
+## Installation and synchronization
+
+Installation APIs operate on candidates, wheels, distributions, and environments.
+
+- `install_requirements(...)` installs an iterable of requirements.
+- `install_wheel(...)` installs a wheel archive into an environment.
+- `InstallManager` installs, uninstalls, overwrites, and calculates removal paths.
+- `BaseSynchronizer`, `Synchronizer`, and `UvSynchronizer` compare resolved candidates with the installed working set and synchronize them.
+- `BaseRemovePaths` and `StashedRemovePaths` support reversible removals.
+
+Install parsed requirements directly:
+
+```python
+from pdm.installers.core import install_requirements
+from pdm.models.requirements import parse_requirement
+
+environment = project.get_environment()
+requirements = [
+    parse_requirement("urllib3>=2"),
+    parse_requirement("idna>=3"),
+]
+
+install_requirements(requirements, environment, clean=False)
+```
+
+Install a wheel file:
+
+```python
+from pathlib import Path
+from pdm.installers.installers import install_wheel
+
+distribution_name = install_wheel(
+    Path("dist/example_package-1.0.0-py3-none-any.whl"),
+    environment,
+    requested=True,
+)
+
+print("Installed:", distribution_name)
+```
+
+Synchronize a project’s resolved dependencies:
+
+```python
+synchronizer_type = project.get_synchronizer()
+synchronizer = synchronizer_type()
+synchronizer.synchronize()
+```
+
+## Building distributions
+
+Build support is based on `EnvBuilder`.
+
+- `EnvBuilder` initializes isolated build systems, verifies requirements, installs build dependencies, prepares metadata, and builds artifacts.
+- `WheelBuilder` builds wheel artifacts.
+- `SdistBuilder` builds source distributions.
+- `EditableBuilder` builds editable-install artifacts.
+
+Builders provide `build(out_dir, metadata_directory=None)` and, where applicable, `prepare_metadata(out_dir)`.
+
+```python
+builder = wheel_builder
+
+metadata_directory = builder.prepare_metadata("build/metadata")
+wheel_filename = builder.build(
+    "dist",
+    metadata_directory=metadata_directory,
+)
+
+print("Built wheel:", wheel_filename)
+```
+
+The `pdm.cli.commands.build.Command.do_build()` helper can perform a project-level build operation:
+
+```python
+from pdm.cli.commands.build import Command
+
+Command.do_build(
+    project,
+    sdist=True,
+    wheel=True,
+    dest="dist",
+    clean=True,
+)
+```
+
+## Caches
+
+Cache support includes candidate metadata, file hashes, built wheels, and unpacked packages.
+
+- `CandidateInfoCache`
+- `HashCache`
+- `WheelCache`
+- `PackageCache`
+- `CachedPackage`
+
+Projects expose cache factories:
+
+```python
+wheel_cache = project.make_wheel_cache()
+package_cache = project.package_cache()
+hash_cache = project.make_hash_cache()
+candidate_info_cache = project.make_candidate_info_cache()
+```
+
+Use `PackageCache` to cache wheel files and inspect cached packages:
+
+```python
+cached_package = package_cache.cache_wheel(wheel_path)
+
+print("Checksum:", cached_package.checksum())
+print("Dist-info directory:", cached_package.dist_info())
+
+for package in package_cache.iter_packages():
+    print(package.checksum())
+```
+
+## Package searching and publishing
+
+`BaseRepository.search(query)` returns package search results. `PyPIRepository` provides a concrete search implementation.
+
+```python
+results = repository.search("http client")
+
+for result in results:
+    print(result)
+```
+
+Publishing support is provided by `PackageFile` and `Repository`.
+
+- `PackageFile.from_filename(...)` creates package metadata from a distribution file.
+- `PackageFile.get_hashes()` computes file hashes.
+- `PackageFile.sign(...)` creates a signature.
+- `Repository.upload(package)` uploads a package.
+- `Repository.get_release_urls(packages)` retrieves release URLs.
+
+```python
+from pdm.cli.commands.publish.package import PackageFile
+
+package = PackageFile.from_filename(
+    "dist/example_package-1.0.0-py3-none-any.whl",
+    comment="Release 1.0.0",
+)
+
+print(package.metadata_dict())
+print(package.get_hashes())
+```
+
+## Task execution
+
+The task API supports configured scripts and commands.
+
+- `Task` represents a named task.
+- `TaskRunner` discovers, displays, runs, and serializes tasks.
+- `merge_options(...)` combines task options.
+- `interpolate(script, args)` interpolates arguments into command text.
+- `read_script_metadata(script, section)` reads script metadata.
+
+```python
+from pdm.cli.commands.run import interpolate
+
+command, uses_arguments = interpolate(
+    "python -m pytest {args}",
+    ["tests/unit", "-q"],
+)
+
+print(command)
+print("Uses argument interpolation:", uses_arguments)
+```
+
+A `TaskRunner` can run a task by name:
+
+```python
+task = runner.get_task("test")
+
+if task is not None:
+    exit_code = runner.run_task(task, args=["tests"])
+    print("Task finished with:", exit_code)
+```
+
+## CLI integration
+
+`Core` is the command-line application entry point.
+
+- `Core.main(...)` runs the command-line interface.
+- `Core.create_project(...)` creates a project object.
+- `Core.register_command(...)` registers a command implementation.
+- `Core.load_plugins()` loads plugins.
+- `pdm.core.main(...)` is a module-level convenience entry point.
+
+```python
+from pdm.core import Core
+
+core = Core()
+core.main(["--help"])
+```
+
+Commands derive from `BaseCommand` and implement:
+
+- `add_arguments(parser)`
+- `handle(project, options)`
+
+Selected commands also provide programmatic helpers:
+
+- `pdm.cli.commands.add.Command.do_add(...)`
+- `pdm.cli.commands.remove.Command.do_remove(...)`
+- `pdm.cli.commands.update.Command.do_update(...)`
+- `pdm.cli.commands.use.Command.do_use(...)`
+- `pdm.cli.commands.import_cmd.Command.do_import(...)`
+- `pdm.cli.commands.build.Command.do_build(...)`
+
+For example, add dependencies to a project through the command helper:
+
+```python
+from pdm.cli.commands.add import Command as AddCommand
+
+AddCommand.do_add(
+    project,
+    selection=selection,
+    packages=["requests>=2.31", "rich>=13"],
+    sync=True,
+)
+```
+
+## Dependency groups and hooks
+
+`GroupSelection` represents dependency-group selections obtained from CLI options.
+
+```python
+selection = group_selection
+
+selection.validate()
+
+if not selection.is_unset():
+    print(selection.all())
+```
+
+`HookManager` controls lifecycle hooks and can emit named hook events.
+
+```python
+if hooks.should_run("post_install"):
+    hooks.try_emit("post_install", project=project)
+```
+
+Use `HookManager.skipping(...)` to temporarily suppress selected hooks:
+
+```python
+with hooks.skipping("pre_install", "post_install"):
+    install_requirements(requirements, environment)
+```
+
+## Formatting, metadata conversion, and import/export
+
+The `pdm.formats` APIs convert metadata from several project formats and export project data.
+
+Available converter modules include support for:
+
+- Flit metadata
+- Pipfiles
+- Poetry metadata
+- `setup.py`
+- Pylock data
+- UV-related lockfile generation
+
+Each converter exposes `convert(...)`, `export(...)`, or both, depending on the format.
+
+`MetaConverter` provides the base conversion interface:
+
+```python
+metadata, settings = converter.convert()
+```
+
+`ProjectTemplate` can generate a project directory from template content:
+
+```python
+template.generate(
+    target_path=target_directory,
+    metadata={
+        "name": "example-package",
+        "version": "0.1.0",
+    },
+    overwrite=False,
+)
+```
+
+## Version and specifier utilities
+
+`Version` and `PySpecSet` provide Python-version and compatibility operations.
+
+```python
+from pdm.models.specifiers import PySpecSet, get_specifier
+from pdm.models.versions import Version
+
+spec = get_specifier(">=3.10")
+python_spec = PySpecSet(">=3.10,<3.13")
+
+version = Version("3.11")
+print(version.is_prerelease())
+print(version.bump())
+print(python_spec.as_marker_string())
+```
+
+Useful helpers from `pdm.utils` include:
+
+```python
+from pdm.utils import (
+    get_file_hash,
+    normalize_name,
+    sanitize_project_name,
+    validate_project_name,
+)
+
+print(normalize_name("My_Package.Name"))
+print(sanitize_project_name("Example package!"))
+print(validate_project_name("example-package"))
+print(get_file_hash("dist/example.whl"))
+```
+
+## Terminal UI and errors
+
+`UI` provides structured command-line output, logging, progress, spinners, and verbosity control.
+
+```python
+from pdm.termui import UI, Verbosity
+
+ui = UI()
+ui.info("Resolving dependencies")
+ui.warn("A newer version may be available")
+ui.echo("Detailed output", verbosity=Verbosity.DETAIL)
+```
+
+The exception hierarchy includes:
+
+- `PdmException`
+- `PdmUsageError`
+- `ProjectError`
+- `RequirementError`
+- `ResolutionError`
+- `InstallationError`
+- `UninstallError`
+- `BuildError`
+- `PublishError`
+- `NoPythonVersion`
+
+Use these exception types to distinguish expected operational failures from unrelated runtime errors:
+
+```python
+from pdm.exceptions import RequirementError
+from pdm.models.requirements import parse_requirement
+
+try:
+    requirement = parse_requirement("not a valid requirement ???")
+except RequirementError as exc:
+    print(f"Invalid dependency specification: {exc}")
+```

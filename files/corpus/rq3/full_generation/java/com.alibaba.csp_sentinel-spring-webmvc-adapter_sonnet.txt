@@ -1,0 +1,167 @@
+# Sentinel Spring WebMVC Adapter
+
+`com.alibaba.csp:sentinel-spring-webmvc-adapter` integrates [Sentinel](https://github.com/alibaba/Sentinel) flow control, circuit breaking, and system protection capabilities into Spring MVC applications. It provides a `HandlerInterceptor` implementation that wraps incoming HTTP requests as Sentinel resources, allowing you to apply Sentinel rules (flow control, degrade, system protection, etc.) directly to your web endpoints without modifying controller code.
+
+## Features
+
+- Automatically wraps each incoming HTTP request as a Sentinel resource entry, enabling rule-based protection at the web layer.
+- Supports two resource aggregation strategies:
+  - **Per-URL resource tracking** via `SentinelWebInterceptor`, where each distinct URL (optionally combined with HTTP method) becomes its own resource.
+  - **Total/aggregate resource tracking** via `SentinelWebTotalInterceptor`, where all requests are counted against a single configurable resource name.
+- Pluggable customization points for URL cleaning/normalization, request origin parsing (for origin-based rules), and block exception handling.
+- Optional integration with Spring's `HandlerExceptionResolver` mechanism for exception-based flow tracing.
+
+## Core Concepts
+
+### AbstractSentinelInterceptor
+
+The base class implementing `AsyncHandlerInterceptor`. It performs Sentinel entry/exit logic around the request lifecycle:
+
+- `preHandle` — enters the Sentinel resource, evaluating configured rules; throws/handles `BlockException` if the request is blocked.
+- `postHandle` — invoked after the handler completes successfully.
+- `afterConcurrentHandlingStarted` — supports Spring's async request processing.
+- `afterCompletion` — exits the Sentinel entry and records exceptions, if any.
+
+All interceptors used in this library extend `AbstractSentinelInterceptor` and are configured via a `BaseWebMvcConfig` (or one of its subclasses).
+
+### Configuration Classes
+
+- **`BaseWebMvcConfig`** — the base configuration shared by all interceptors. Lets you configure:
+  - `requestAttributeName` — the servlet request attribute key used internally to store the Sentinel entry/context.
+  - `blockExceptionHandler` — a `BlockExceptionHandler` invoked when a request is blocked by Sentinel rules.
+  - `originParser` — a `RequestOriginParser` used to extract the "origin" of a request (e.g., for origin-based flow control).
+
+- **`SentinelWebMvcConfig`** — extends `BaseWebMvcConfig` for per-URL resource tracking. Additional options:
+  - `urlCleaner` — a `UrlCleaner` to normalize/clean URLs before they're used as resource names (useful for collapsing path variables, e.g. `/user/{id}`).
+  - `httpMethodSpecify` — when `true`, the HTTP method is included as part of the resource name (e.g. `GET:/api/foo`).
+  - `webContextUnify` — controls whether the Sentinel context is unified across all web requests or kept separate per-resource.
+
+- **`SentinelWebMvcTotalConfig`** — extends `BaseWebMvcConfig` for total/aggregate resource tracking. Additional option:
+  - `totalResourceName` — the single resource name under which all requests are aggregated.
+
+### Interceptors
+
+- **`SentinelWebInterceptor`** — uses `SentinelWebMvcConfig`. Tracks each distinct URL (and optionally HTTP method) as a separate Sentinel resource. This is the typical choice for fine-grained, per-endpoint flow control.
+
+- **`SentinelWebTotalInterceptor`** — uses `SentinelWebMvcTotalConfig`. Tracks all incoming requests as a single aggregated resource, useful for coarse-grained, application-wide protection.
+
+### Callback Interfaces
+
+- **`BlockExceptionHandler`** — invoked when a Sentinel `BlockException` is thrown (e.g., due to flow control or degrade rules). Implement this to customize the HTTP response sent back to the client when a request is blocked.
+  - **`DefaultBlockExceptionHandler`** — the default implementation, used when no custom handler is configured.
+
+- **`RequestOriginParser`** — extracts an "origin" identifier from the incoming request (such as a caller ID, IP address, or header value), enabling origin-specific Sentinel rules.
+
+- **`UrlCleaner`** — normalizes/cleans a raw URL string before it is used as (part of) a resource name, useful for merging parameterized paths.
+
+### Exception Awareness
+
+- **`SentinelExceptionAware`** — implements Spring's `HandlerExceptionResolver`. Can be registered alongside the interceptor to ensure exceptions thrown by controllers are properly tracked/traced by Sentinel.
+
+## Usage
+
+### 1. Register a per-URL interceptor (recommended for most applications)
+
+```java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        SentinelWebMvcConfig config = new SentinelWebMvcConfig();
+        config.setHttpMethodSpecify(true);
+        config.setWebContextUnify(false);
+        config.setBlockExceptionHandler(new DefaultBlockExceptionHandler());
+        config.setUrlCleaner(originUrl -> originUrl.replaceAll("/\\d+", "/{id}"));
+
+        registry.addInterceptor(new SentinelWebInterceptor(config))
+                .addPathPatterns("/**");
+    }
+}
+```
+
+With this setup, each unique combination of HTTP method and (cleaned) URL becomes a distinct Sentinel resource, e.g. `GET:/api/user/{id}`.
+
+### 2. Register a total-aggregate interceptor
+
+```java
+@Configuration
+public class WebConfig implements WebMvcConfigurer {
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        SentinelWebMvcTotalConfig config = new SentinelWebMvcTotalConfig();
+        config.setTotalResourceName("web-total-flow");
+
+        registry.addInterceptor(new SentinelWebTotalInterceptor(config))
+                .addPathPatterns("/**");
+    }
+}
+```
+
+All incoming requests will be counted against the single resource `web-total-flow`, letting you apply a global rate limit or system protection rule for the entire application.
+
+### 3. Custom block exception handling
+
+```java
+public class MyBlockExceptionHandler implements BlockExceptionHandler {
+    @Override
+    public void handle(HttpServletRequest request, HttpServletResponse response, BlockException e) throws Exception {
+        response.setStatus(429);
+        response.setContentType("application/json");
+        response.getWriter().write("{\"error\":\"Too many requests\"}");
+    }
+}
+```
+
+```java
+SentinelWebMvcConfig config = new SentinelWebMvcConfig();
+config.setBlockExceptionHandler(new MyBlockExceptionHandler());
+```
+
+### 4. Custom request origin parsing
+
+```java
+public class HeaderOriginParser implements RequestOriginParser {
+    @Override
+    public String parseOrigin(HttpServletRequest request) {
+        String origin = request.getHeader("X-Client-Id");
+        return origin != null ? origin : "unknown";
+    }
+}
+```
+
+```java
+config.setOriginParser(new HeaderOriginParser());
+```
+
+This enables Sentinel flow rules that limit or block traffic based on the parsed origin value.
+
+### 5. Registering the exception resolver (optional)
+
+```java
+@Configuration
+public class ExceptionConfig implements WebMvcConfigurer {
+
+    @Override
+    public void extendHandlerExceptionResolvers(List<HandlerExceptionResolver> resolvers) {
+        resolvers.add(new SentinelExceptionAware());
+    }
+}
+```
+
+Registering `SentinelExceptionAware` ensures that exceptions thrown during controller execution are properly recorded as part of the Sentinel entry's exit statistics.
+
+## Summary
+
+| Component | Purpose |
+|---|---|
+| `AbstractSentinelInterceptor` | Base interceptor implementing Sentinel entry/exit lifecycle |
+| `SentinelWebInterceptor` + `SentinelWebMvcConfig` | Per-URL/per-method resource tracking |
+| `SentinelWebTotalInterceptor` + `SentinelWebMvcTotalConfig` | Aggregate/global resource tracking |
+| `BlockExceptionHandler` / `DefaultBlockExceptionHandler` | Customize response when requests are blocked |
+| `RequestOriginParser` | Extract caller origin for origin-based rules |
+| `UrlCleaner` | Normalize URLs into resource names |
+| `SentinelExceptionAware` | Hook into Spring's exception resolution for Sentinel tracing |
+
+By combining these components, you can apply fine-grained or coarse-grained Sentinel protection to any Spring MVC application with minimal code changes — simply register the appropriate interceptor and configure it to match your resource-naming and blocking strategy.

@@ -1,0 +1,188 @@
+# ASReview
+
+ASReview is a Python library for AI-assisted systematic reviewing and screening of large document collections (e.g. literature review datasets). It provides the building blocks for active learning workflows over text records: loading and cleaning tabular/RIS datasets, storing records and labeling decisions in a project database, training classifiers and query strategies to rank unlabeled records, running full simulations of a review process, and serving a web application (with authentication, project management, and a task queue) that wraps all of this in a browser-based UI.
+
+## What it does
+
+At a high level, ASReview is organized around a few core concepts:
+
+- **Datasets & Records** — reading, cleaning, and standardizing bibliographic/text datasets (CSV, Excel, RIS, TSV) into a common `Record` representation, including deduplication and grouping of similar records.
+- **Projects** — a persistent unit of work (`Project`) that bundles an input dataset, a SQLite-backed `Database`/`DataStore`, feature matrices, and one or more active learning cycles.
+- **Models** — pluggable machine learning components (classifiers, feature extractors, balancers, query strategies, and stopping criteria) that together define an active learning cycle.
+- **Learner** — the orchestration layer (`ActiveLearningCycle`) that ties together feature extraction, classification, balancing, querying, and stopping into a single reusable configuration.
+- **Simulation** — replaying a fully-labeled dataset through the active learning loop to evaluate model performance (`Simulate`, plus `metrics.loss` and `metrics.ndcg`).
+- **Webapp** — a Flask-based application (`asreview.webapp`) exposing REST APIs for project management, review screening, team collaboration, authentication (including OAuth and remote-user auth), and a background task manager for running models/simulations asynchronously.
+
+## Main components
+
+### Data layer
+
+- `asreview.data.base.BaseReader` — abstract base for dataset readers; subclasses implement `read_data`, `clean_data`, and expose `read_records` / `to_records` to convert raw tabular data into `Record` objects.
+- Format-specific readers/writers:
+  - `asreview.data.tabular.CSVReader` / `CSVWriter`, `TSVWriter`
+  - `asreview.data.tabular.ExcelReader` / `ExcelWriter`
+  - `asreview.data.ris.RISReader` / `RISWriter`
+- `asreview.data.loader.load_records` / `load_dataset` — high-level helpers to load a named dataset (local file or bundled dataset) into `Record` objects or directly into a database.
+- `asreview.data.record.Record` — the SQLAlchemy ORM model representing a single record (title, abstract, labels, duplicate/group information, etc.).
+- `asreview.data.utils` — helper functions for deduplication (`duplicated`), value coercion, and record grouping (`identify_groups`, `identify_record_groups`).
+- `asreview.data.search.fuzzy_find` — fuzzy text search over a dataset for locating specific records (e.g. known priors).
+
+### Datasets registry
+
+- `asreview.datasets.BaseDataSet` / `BaseDataGroup` — abstractions for named, reusable datasets grouped into collections.
+- `asreview.datasets.DatasetManager` — discovers and lists available dataset groups/datasets (e.g. for use in the UI or CLI).
+- `asreview.datasets.SynergyDataSet` / `SynergyDataGroup` — a built-in dataset group (the SYNERGY systematic review dataset collection).
+
+### Database & storage
+
+- `asreview.database.database.open_db` / `Database` — manages the SQLite-backed project database: labeling results, ranking history, priors, pending/pool records, and decision history.
+- `asreview.database.store.DataStore` — a higher-level record store on top of the database, handling record insertion, deduplication normalization, and grouping.
+
+### Models
+
+All model components follow scikit-learn-style conventions (`fit`/`transform`/estimator-like APIs) so they can be composed into an active learning cycle:
+
+- `asreview.models.classifiers` — `SVM`, `RandomForest`, `NaiveBayes`, `Logistic`.
+- `asreview.models.feature_extractors` — `Tfidf`, `OneHot`, `TextMerger`.
+- `asreview.models.balancers` — `Balanced`.
+- `asreview.models.queriers` — `Random`, `TopDown`, `Uncertainty`, `Max`, `HybridMaxUncertainty`, `HybridMaxRandom` (all implement `QueryMixin.query`).
+- `asreview.models.stoppers` — `LastRelevant`, `NLabeled`, `QuantileLabeled`, `IsFittable`, `NConsecutiveIrrelevant`, each implementing a `stop(results, data)` decision.
+- `asreview.models.models.get_ai_config` — retrieve a named, ready-to-use model configuration.
+- `asreview.models.cli.cli_algorithms` — command-line entry point for listing/inspecting available algorithms.
+
+### Learner
+
+- `asreview.learner.ActiveLearningCycle` — combines a feature extractor, classifier, balancer, querier, and stopper into a single object with `fit`, `transform`, `rank`, `stop`, and serialization (`to_file`/`from_file`, `to_meta`/`from_meta`) support.
+- `asreview.learner.ActiveLearningCycleData` — configuration/metadata container for a cycle.
+
+### Projects
+
+- `asreview.project.api.Project` — the central object tying together a dataset, database, feature matrices, and review cycles for a single systematic review project. Supports creation (`Project.create`), configuration, dataset management, review lifecycle (`add_review`, `update_review`), export/import, and error tracking.
+- `asreview.project.exceptions` — `ProjectError`, `ProjectNotFoundError`.
+- `asreview.project.migration.migrate` — detect and migrate legacy project formats/versions.
+
+### Simulation
+
+- `asreview.simulation.simulate.Simulate` — runs an active learning cycle over a fully-labeled dataset (`review`, `label`) and can export results (`to_sql`).
+- `asreview.metrics.loss` / `asreview.metrics.ndcg` — ranking-quality metrics computed from a sequence of relevance labels.
+
+### Web application
+
+- `asreview.webapp.app.create_app` — Flask application factory serving the ASReview web UI and REST API.
+- `asreview.webapp._api.projects`, `admin`, `auth`, `team` — route handlers for project CRUD, screening, review status, model configuration, team collaboration/invitations, user administration, and authentication (including OAuth and remote-user login).
+- `asreview.webapp._authentication.models` — `User`, `Project`, `Collaboration` ORM models and `create_database_and_tables`.
+- `asreview.webapp._task_manager.task_manager.TaskManager` / `run_task_manager` — manages a queue of background model-training/simulation processes.
+- `asreview.webapp._entry_points` — CLI entry points: `lab_entry_point` (start the web app), `AuthTool` (manage users/projects for auth), `MigrationTool` (migrate the auth database), and the task manager's `main`.
+- `asreview.extensions` — plugin discovery utilities (`extensions`, `get_extension`, `load_extension`) used to find installed models, data readers/writers, and other extensions.
+
+## Installation
+
+```bash
+pip install asreview
+```
+
+## Usage examples
+
+### Loading a dataset and creating a project
+
+```python
+from asreview.project.api import Project
+from asreview.data.loader import load_records
+
+# Create a new project
+project = Project.create(
+    project_path="./my_review_project",
+    project_id="my-review",
+    project_mode="oracle",
+    project_name="My Systematic Review",
+)
+
+# Add a dataset (CSV, Excel, or RIS) to the project
+project.add_dataset("./data/records.csv", dataset_id="records")
+
+# Inspect the input data
+df = project.read_input_data()
+print(df.head())
+
+project.close()
+```
+
+### Building and running an active learning cycle
+
+```python
+from asreview.learner import ActiveLearningCycle
+from asreview.models.classifiers import NaiveBayes
+from asreview.models.feature_extractors import Tfidf
+from asreview.models.balancers import Balanced
+from asreview.models.queriers import Max
+from asreview.models.stoppers import NLabeled
+
+cycle = ActiveLearningCycle(
+    classifier=NaiveBayes(),
+    feature_extractor=Tfidf(),
+    balancer=Balanced(),
+    querier=Max(),
+    stopper=NLabeled(n=50),
+)
+
+# X: feature matrix built from record text, y: known labels for labeled records
+X_transformed = cycle.transform(X)
+cycle.fit(X_transformed, y)
+ranking = cycle.rank(X_transformed)
+
+# Save the configured cycle for reuse
+cycle.to_file("my_cycle.json")
+```
+
+### Running a simulation over a fully labeled dataset
+
+```python
+from asreview.simulation.simulate import Simulate
+from asreview.metrics import loss, ndcg
+
+sim = Simulate(
+    # a Project or database-backed setup with a fully labeled dataset,
+    # plus the active learning cycle(s) to use
+)
+
+sim.review()
+sim.to_sql("simulation_results.sqlite")
+
+# Evaluate ranking quality from the resulting label sequence
+labels = [1, 0, 1, 1, 0, 0, 1]
+print("Loss:", loss(labels))
+print("NDCG:", ndcg(labels))
+```
+
+### Searching for known records (priors)
+
+```python
+from asreview.data.search import fuzzy_find
+
+matches = fuzzy_find(
+    df,
+    keywords="deep learning systematic review",
+    threshold=70,
+    max_return=5,
+)
+print(matches)
+```
+
+### Starting the web application
+
+```python
+from asreview.webapp.app import create_app
+
+app = create_app()
+app.run(host="0.0.0.0", port=5000)
+```
+
+Or from the command line:
+
+```bash
+asreview lab
+```
+
+## License
+
+See the `LICENSE` file in the repository for licensing details.

@@ -1,0 +1,147 @@
+# bijection-avro_2.10
+
+Part of the [Bijection](https://github.com/twitter/bijection) family of libraries, this module provides Base-N encoding and decoding utilities for converting binary data into text-safe representations and back. It centers around a flexible `BaseNCodec` abstraction with a concrete `Base64` implementation supporting standard, URL-safe, and chunked (line-wrapped) encoding schemes.
+
+## Overview
+
+### `BaseNCodec`
+
+`BaseNCodec` is the base class defining the common contract for Base-N style codecs (encoders/decoders that map binary data to a restricted character alphabet and back). It exposes:
+
+- **`encode(byte[] pArray)`** — encode raw bytes into an encoded byte array.
+- **`encodeToString(byte[] pArray)`** / **`encodeAsString(byte[] pArray)`** — encode raw bytes directly into a `String`.
+- **`decode(byte[] pArray)`** / **`decode(String pArray)`** — decode encoded data (as bytes or a `String`) back into the original binary form.
+- **`isInAlphabet(byte[] arrayOctet, boolean allowWSPad)`** / **`isInAlphabet(String basen)`** — check whether given data consists solely of valid characters for this codec's alphabet (optionally allowing whitespace/padding characters).
+- **`getEncodedLength(byte[] pArray)`** — compute the length of the encoded output for a given input, without performing the encoding.
+
+This class is meant to be extended by specific codec implementations; `Base64` is the concrete implementation shipped with this library.
+
+### `Base64`
+
+`Base64` extends `BaseNCodec` to implement the Base64 encoding scheme, with support for:
+
+- **Standard Base64** encoding/decoding.
+- **URL-safe Base64** variants (using `-` and `_` instead of `+` and `/`, and omitting padding), configurable via the `urlSafe` constructor flag or the dedicated `encodeBase64URLSafe*` static methods.
+- **Chunked (line-wrapped) output**, configurable via `lineLength` and `lineSeparator` constructor parameters, or the `encodeBase64Chunked` / `isChunked` static method variants — useful for producing output compliant with line-length-limited formats (e.g., MIME).
+- **BigInteger encoding**, via `encodeInteger` / `decodeInteger`, for encoding arbitrary-precision integers as Base64-safe byte sequences.
+
+#### Constructors
+
+| Constructor | Description |
+|---|---|
+| `Base64()` | Standard Base64, no line wrapping. |
+| `Base64(boolean urlSafe)` | Standard or URL-safe Base64, no line wrapping. |
+| `Base64(int lineLength)` | Base64 with chunked output at the given line length. |
+| `Base64(int lineLength, byte[] lineSeparator)` | Chunked output with a custom line separator. |
+| `Base64(int lineLength, byte[] lineSeparator, boolean urlSafe)` | Full control over chunking and URL-safety. |
+
+#### Static Utility Methods
+
+For convenience, `Base64` also exposes a full suite of static methods so that callers don't need to instantiate the class for common operations:
+
+- `encodeBase64(byte[])`, `encodeBase64String(byte[])`
+- `encodeBase64URLSafe(byte[])`, `encodeBase64URLSafeString(byte[])`
+- `encodeBase64Chunked(byte[])`
+- `encodeBase64(byte[], boolean isChunked)`, `encodeBase64(byte[], boolean isChunked, boolean urlSafe)`, `encodeBase64(byte[], boolean isChunked, boolean urlSafe, int maxResultSize)`
+- `decodeBase64(String)`, `decodeBase64(byte[])`
+- `isBase64(byte)`, `isBase64(String)`, `isBase64(byte[])`, `isArrayByteBase64(byte[])`
+- `encodeInteger(BigInteger)`, `decodeInteger(byte[])`
+
+## Usage Examples
+
+### Basic encode/decode with an instance
+
+```java
+import com.twitter.bijection.codec.Base64;
+
+byte[] data = "Hello, Bijection!".getBytes("UTF-8");
+
+Base64 codec = new Base64();
+
+// Encode to a Base64 string
+String encoded = codec.encodeToString(data);
+System.out.println(encoded);
+
+// Decode back to original bytes
+byte[] decoded = codec.decode(encoded);
+System.out.println(new String(decoded, "UTF-8"));
+```
+
+### URL-safe Base64
+
+```java
+Base64 urlSafeCodec = new Base64(true);
+
+byte[] data = "some binary payload".getBytes("UTF-8");
+String urlSafeEncoded = urlSafeCodec.encodeToString(data);
+
+byte[] roundTripped = urlSafeCodec.decode(urlSafeEncoded);
+```
+
+### Chunked (line-wrapped) output
+
+```java
+// Wrap encoded output every 76 characters using CRLF
+Base64 chunkedCodec = new Base64(76, new byte[] {'\r', '\n'});
+
+byte[] largePayload = loadLargeFile();
+byte[] chunkedOutput = chunkedCodec.encode(largePayload);
+```
+
+### Using static convenience methods
+
+```java
+import com.twitter.bijection.codec.Base64;
+
+byte[] data = "quick static usage".getBytes("UTF-8");
+
+// Standard encode/decode
+String encoded = Base64.encodeBase64String(data);
+byte[] decoded = Base64.decodeBase64(encoded);
+
+// URL-safe encode
+String urlSafe = Base64.encodeBase64URLSafeString(data);
+
+// Validate input before decoding
+if (Base64.isBase64(encoded)) {
+    byte[] result = Base64.decodeBase64(encoded);
+}
+```
+
+### Encoding a BigInteger
+
+```java
+import java.math.BigInteger;
+import com.twitter.bijection.codec.Base64;
+
+BigInteger value = new BigInteger("123456789012345678901234567890");
+
+byte[] encodedInt = Base64.encodeInteger(value);
+BigInteger decodedInt = Base64.decodeInteger(encodedInt);
+
+assert value.equals(decodedInt);
+```
+
+### Checking alphabet membership and computing lengths
+
+```java
+Base64 codec = new Base64();
+
+byte[] data = "check this".getBytes("UTF-8");
+String encoded = codec.encodeToString(data);
+
+// Confirm the encoded string only contains valid Base64 characters
+boolean valid = codec.isInAlphabet(encoded);
+
+// Predict the size of the encoded output without doing the encoding
+long expectedLength = codec.getEncodedLength(data);
+```
+
+## When to Use This Library
+
+Use `bijection-avro_2.10`'s codec utilities whenever you need to:
+
+- Safely represent binary data (e.g., serialized objects, file contents, cryptographic hashes) as text — for embedding in JSON, XML, URLs, HTTP headers, or logs.
+- Interoperate with systems expecting MIME-style chunked Base64 output.
+- Validate whether arbitrary strings or byte arrays are well-formed Base64 before attempting to decode them.
+- Encode/decode `BigInteger` values in a compact, text-safe form.

@@ -1,0 +1,211 @@
+# graphene-sqlalchemy
+
+**graphene-sqlalchemy** is a library that bridges [SQLAlchemy](https://www.sqlalchemy.org/) ORM models and [Graphene](https://graphene-python.org/) GraphQL types. It automatically converts SQLAlchemy models, columns, relationships, hybrid properties, and composite types into their corresponding GraphQL types and fields, so you can expose your existing SQLAlchemy-backed data model through a GraphQL API with minimal boilerplate.
+
+## Features
+
+- Automatic conversion of SQLAlchemy columns to Graphene scalar types (`String`, `Int`, `Boolean`, `Float`, `DateTime`, enums, JSON, arrays, etc.)
+- Automatic generation of GraphQL `Connection` fields for SQLAlchemy relationships, with optional batched loading to avoid N+1 query problems
+- Support for sorting via auto-generated sort enums/arguments
+- A registry system to keep track of the mapping between SQLAlchemy models and Graphene types
+- Extensible field/resolver customization through `ORMField`
+- Helpers for working with SQLAlchemy sessions and queries inside GraphQL resolvers
+
+## Installation
+
+```bash
+pip install graphene-sqlalchemy
+```
+
+## Core Concepts
+
+### `SQLAlchemyObjectType`
+
+The main entry point for defining a GraphQL type from a SQLAlchemy model. Subclass it and set `model` in the `Meta` class:
+
+```python
+from graphene_sqlalchemy import SQLAlchemyObjectType
+from graphene import Schema
+from your_app.models import User, Post
+
+class UserType(SQLAlchemyObjectType):
+    class Meta:
+        model = User
+
+class PostType(SQLAlchemyObjectType):
+    class Meta:
+        model = Post
+```
+
+Behind the scenes, `construct_fields` inspects the model's columns, relationships, composites, and hybrid properties, and converts each one into an appropriate Graphene field using the converter functions in `converter.py`.
+
+`SQLAlchemyObjectType` provides several useful class/instance methods:
+
+- `is_type_of(root, info)` – used by Graphene to determine whether a given object corresponds to this type.
+- `get_query(info)` – returns a base SQLAlchemy query for the model, pulling the session from the GraphQL context.
+- `get_node(info, id)` – fetches a single instance by primary key, used to support the Relay `Node` interface.
+- `resolve_id(info)` – default resolver for the `id` field.
+- `enum_for_field(field_name)` – returns the auto-generated sort enum value for a given field.
+
+### The Registry
+
+Every `SQLAlchemyObjectType` registers itself with a `Registry` (by default, the global registry returned by `get_global_registry()`). The registry keeps track of:
+
+- Which Graphene type corresponds to which SQLAlchemy model (`get_type_for_model`)
+- Custom ORM field overrides (`register_orm_field` / `get_orm_field_for_graphene_field`)
+- Composite type converters (`register_composite_converter` / `get_converter_for_composite`)
+- SQLAlchemy `Enum` to Graphene `Enum` mappings (`register_enum` / `get_graphene_enum_for_sa_enum`)
+- Sort enums for each object type (`register_sort_enum` / `get_sort_enum_for_object_type`)
+
+You can pass a custom `Registry` instance if you want isolated type registration (e.g., for testing), or call `reset_global_registry()` to clear the default registry.
+
+### Fields and Connections
+
+Relationships on your SQLAlchemy models are converted into Graphene `Connection` fields (Relay-style pagination) automatically. Two implementations are provided:
+
+- `SQLAlchemyConnectionField` — a connection field that supports sorting via a `sort` argument.
+- `BatchSQLAlchemyConnectionField` — a connection field that batches relationship loading to reduce database round-trips.
+- `UnsortedSQLAlchemyConnectionField` — the base connection field without sorting support.
+
+The `default_connection_field_factory` function decides which connection field implementation to use for a given relationship. You can override this behavior globally with `registerConnectionFieldFactory` / `unregisterConnectionFieldFactory`, or pass your own `connection_field_factory` when defining a type.
+
+`createConnectionField` is a lower-level helper for manually constructing a connection field for a given type.
+
+### Customizing Fields with `ORMField`
+
+Use `ORMField` inside your `SQLAlchemyObjectType` to override how a specific model attribute is exposed — e.g., renaming it, changing its description, providing a custom resolver, or marking it deprecated:
+
+```python
+from graphene_sqlalchemy import SQLAlchemyObjectType, ORMField
+
+class UserType(SQLAlchemyObjectType):
+    class Meta:
+        model = User
+
+    username = ORMField(model_attr='name', description="The user's login name")
+```
+
+### Converters
+
+The `converter.py` module contains the low-level conversion functions that translate SQLAlchemy constructs into Graphene fields:
+
+- `convert_sqlalchemy_column` — converts a plain column into a Graphene field.
+- `convert_sqlalchemy_relationship` — converts a relationship into a connection field.
+- `convert_sqlalchemy_composite` — converts a SQLAlchemy composite type.
+- `convert_sqlalchemy_hybrid_method` — converts a `hybrid_property`/`hybrid_method`.
+- `convert_sqlalchemy_type` and its type-specific variants (`convert_column_to_string`, `convert_column_to_int_or_id`, `convert_column_to_boolean`, `convert_column_to_float`, `convert_column_to_datetime`, `convert_enum_to_enum`, `convert_choice_to_enum`, `convert_scalar_list_to_list`, `convert_array_to_list`, `convert_json_to_string`, `convert_json_type_to_string`) — handle conversion of specific SQLAlchemy column types.
+
+These are used internally by `construct_fields`, but are exposed publicly in case you need to register custom conversions or reuse them for your own type-building logic.
+
+### Enums and Sorting
+
+The `enums.py` module provides utilities for generating GraphQL enums from your models:
+
+- `enum_for_sa_enum` — wraps a SQLAlchemy `Enum` column type as a Graphene enum, cached in the registry.
+- `enum_for_field` — retrieves/generates the enum for a specific field of an object type (used for sorting).
+- `sort_enum_for_object_type` — generates a full sort enum (ascending/descending per field) for an object type.
+- `sort_argument_for_object_type` — generates a GraphQL argument (with the sort enum as its type) suitable for use on a connection field.
+
+Similar helper functions `sort_enum_for_model` and `sort_argument_for_model` exist in `utils.py` for generating sort enums directly from a model without needing to first construct the object type manually.
+
+### Batched Relationship Resolution
+
+`get_batch_resolver(relationship_prop)` returns a resolver function that batches loading of related objects for a SQLAlchemy relationship, used internally by `BatchSQLAlchemyConnectionField` to avoid the N+1 query problem when resolving nested relationships across many parent objects.
+
+### Utilities
+
+`utils.py` and `resolvers.py` provide supporting helpers:
+
+- `get_session(context)` / `get_query(model, context)` — retrieve the SQLAlchemy session/query from the GraphQL request context.
+- `is_mapped_class(cls)` / `is_mapped_instance(cls)` — check whether a class/instance is a SQLAlchemy mapped class/instance.
+- `to_type_name(name)` / `to_enum_value_name(name)` — naming convention helpers used when generating GraphQL type and enum names from Python identifiers.
+- `EnumValue` — a `str` subclass used to represent enum values with an associated underlying value.
+- `get_custom_resolver(obj_type, orm_field_name)` — looks up a resolver method explicitly defined on an object type for a given field.
+- `get_attr_resolver(obj_type, model_attr)` — builds a default resolver that reads an attribute off the underlying SQLAlchemy model instance.
+
+## Usage Example
+
+```python
+import graphene
+from graphene import relay
+from graphene_sqlalchemy import (
+    SQLAlchemyObjectType,
+    SQLAlchemyConnectionField,
+)
+
+from your_app.models import User, Post
+from your_app.database import db_session
+
+
+class UserType(SQLAlchemyObjectType):
+    class Meta:
+        model = User
+        interfaces = (relay.Node,)
+
+class PostType(SQLAlchemyObjectType):
+    class Meta:
+        model = Post
+        interfaces = (relay.Node,)
+
+
+class Query(graphene.ObjectType):
+    node = relay.Node.Field()
+    all_users = SQLAlchemyConnectionField(UserType.connection)
+    all_posts = SQLAlchemyConnectionField(PostType.connection)
+
+
+schema = graphene.Schema(query=Query)
+
+result = schema.execute(
+    """
+    query {
+        allUsers(sort: NAME_ASC) {
+            edges {
+                node {
+                    id
+                    name
+                    posts {
+                        edges {
+                            node {
+                                title
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    """,
+    context={"session": db_session},
+)
+```
+
+### Enabling Batched Relationship Loading
+
+```python
+from graphene_sqlalchemy.fields import BatchSQLAlchemyConnectionField
+
+class UserType(SQLAlchemyObjectType):
+    class Meta:
+        model = User
+        interfaces = (relay.Node,)
+        batching = True
+        connection_field_factory = BatchSQLAlchemyConnectionField.from_relationship
+```
+
+### Using a Custom Registry
+
+```python
+from graphene_sqlalchemy.registry import Registry
+
+my_registry = Registry()
+
+class UserType(SQLAlchemyObjectType):
+    class Meta:
+        model = User
+        registry = my_registry
+```
+
+## License
+
+This project is open source — see the repository's LICENSE file for details.

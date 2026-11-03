@@ -1,0 +1,168 @@
+# statannotations
+
+**statannotations** is a Python library for adding statistical test annotations (p-values, significance stars, and custom text) directly onto categorical plots produced by plotting libraries such as seaborn. It handles running statistical tests between groups of data, formatting the resulting p-values, applying multiple-comparisons corrections, and drawing annotations (brackets, text, stars) on top of an existing `matplotlib` `Axes`.
+
+## Key features
+
+- Works with existing seaborn-style categorical plots (boxplot, violinplot, barplot, stripplot, etc.) via a plotting wrapper layer.
+- Runs standard statistical tests (e.g. Mann-Whitney, t-test, Wilcoxon) between pairs of groups/hues, or accepts pre-computed p-values / custom text.
+- Supports multiple-comparisons correction (e.g. Bonferroni, Holm) out of the box.
+- Flexible p-value formatting: raw values, star notation, custom thresholds, scientific notation, superscripts for corrections, etc.
+- Configurable annotation placement (line offsets, orientation-aware positioning) that works whether groups are stacked vertically or horizontally.
+
+## Main components
+
+### `Annotator`
+The central class of the library. It ties together a plot (axes + data description), a set of pairs to compare, a statistical test configuration, and a p-value formatter, then draws the annotations on the plot.
+
+Typical lifecycle:
+1. Instantiate/configure via `Annotator.new_plot(...)` (or use `Annotator.get_empty_annotator()` and call `new_plot` later).
+2. Configure test/formatting options with `configure(...)`.
+3. Either:
+   - Call `apply_test(...)` then `annotate(...)`, or
+   - Call `apply_and_annotate()` to do both in one step, or
+   - Provide your own p-values via `set_pvalues(...)` / `set_pvalues_and_annotate(...)`, or
+   - Provide fully custom annotation text via `set_custom_annotations(...)` / `annotate_custom_annotations(...)`.
+4. Inspect results with `get_annotations_text()`, `get_configuration()`, or print the significance legend with `print_pvalue_legend()`.
+
+Important configurable properties (settable via `configure(**parameters)` or directly as attributes/properties): `test`, `pvalue_format`, `loc`, `alpha`, `comparisons_correction`, `verbose`.
+
+Additional helpers: `orient` / `is_vertical` describe the plot orientation; `reset_configuration` clears prior settings; `plot_and_annotate` / `plot_and_annotate_facets` support building and annotating a plot (including faceted grids) from data in a single call.
+
+### `PValueFormat` / `Formatter`
+Controls how p-values are rendered as text: choice of star thresholds vs. simple numeric format, separators, correction-suffix formatting, and custom pvalue thresholds. `PValueFormat.config(...)` accepts keyword configuration; `format_data(...)` converts a `StatResult` (or list thereof) into display text. Helper functions `sort_pvalue_thresholds` and `get_corrected_star` support threshold ordering and correction-annotated star strings.
+
+### Statistical testing (`statannotations.stats`)
+- `StatTest`: represents a statistical test, either built from a name recognized by the library (`StatTest.from_library("Mann-Whitney")`) or constructed directly; exposes a `short_name`.
+- `apply_test(group_data1, group_data2, test=..., comparisons_correction=..., num_comparisons=..., alpha=..., **stats_params)`: runs a test between two groups of data and returns a result.
+- `wilcoxon(...)`: a specific test implementation usable as/with a `StatTest`.
+- `StatResult`: holds the outcome of a statistical test (statistic, p-value, corrected significance, formatted output) and supports correction adjustment via `adjust(...)`.
+- `ComparisonsCorrection` and helpers (`get_validated_comparisons_correction`, `get_correction_parameters`, `check_valid_correction_name`): wrap multiple-comparisons correction procedures (e.g. from `statsmodels`) for use by `Annotator`/`StatResult`.
+- `stats/utils.py` provides low-level validation and helper routines (`check_pvalues`, `check_num_comparisons`, `check_alpha`, `get_num_comparisons`, `return_results`) used internally when applying tests and corrections.
+
+### Annotation rendering (`Annotation`, `format_annotations`)
+- `Annotation`: represents a single rendered annotation (the text/content associated with a comparison), with helpers to get its `text()`, `formatted_output()`, and to print/check the underlying `StatResult`.
+- `pval_annotation_text(result, pvalue_thresholds)`: converts one or more `StatResult`s into star-notation text using given thresholds.
+- `simple_text(result, pvalue_format, pvalue_thresholds, ...)`: renders a single result as descriptive text (e.g. `"p = 0.0123"` or `"Mann-Whitney, p = 0.0123"`).
+
+### Plot compatibility layer (`compat.py`)
+Provides an abstraction (`Wrapper` and version-specific implementations `CategoricalPlotterWrapper_v11/v12/v13`) over different seaborn categorical-plot internals, exposing a consistent interface for group/hue names, per-group data extraction, and pair parsing regardless of the underlying seaborn version. `get_plotter(plot_type, **kwargs)` returns the appropriate wrapper for a given plot type, and `fix_and_warn(dodge, hue, plot)` normalizes/validates plotting parameters (e.g. dodge behavior with hues). This layer is used internally by `Annotator.new_plot` but is exposed for advanced/custom integrations.
+
+### Group/pair utilities
+- `get_group_names_and_labels(group_names, hue_names)`: builds the full set of group identifiers (accounting for hue) and their display labels.
+- `statannotations/utils.py` contains a range of validation and convenience functions used throughout the library: input validation (`check_is_in`, `check_not_none`, `check_order_in_data`, `check_redundant_hue`, `check_pairs_in_data`, `check_valid_text_format`), data cleanup (`remove_null`, `get_x_values`), formatting helpers (`render_collection`, `get_closest`, `empty_dict_if_none`), and the `InvalidParametersError` exception plus `raise_expected_got` for descriptive error messages.
+
+## Installation
+
+```bash
+pip install statannotations
+```
+
+## Usage examples
+
+### Basic usage with seaborn
+
+```python
+import seaborn as sns
+import matplotlib.pyplot as plt
+from statannotations.Annotator import Annotator
+
+df = sns.load_dataset("tips")
+
+ax = sns.boxplot(data=df, x="day", y="total_bill")
+
+pairs = [
+    ("Thur", "Fri"),
+    ("Thur", "Sat"),
+    ("Fri", "Sun"),
+]
+
+annotator = Annotator()
+annotator.new_plot(
+    ax,
+    pairs=pairs,
+    plot="boxplot",
+    data=df,
+    x="day",
+    y="total_bill",
+)
+annotator.configure(test="Mann-Whitney", text_format="star", loc="inside", verbose=2)
+annotator.apply_and_annotate()
+
+plt.show()
+```
+
+### Using hue groups and a comparisons correction
+
+```python
+import seaborn as sns
+import matplotlib.pyplot as plt
+from statannotations.Annotator import Annotator
+
+df = sns.load_dataset("tips")
+
+ax = sns.boxplot(data=df, x="day", y="total_bill", hue="smoker")
+
+pairs = [
+    (("Thur", "Yes"), ("Thur", "No")),
+    (("Fri", "Yes"), ("Fri", "No")),
+    (("Sat", "Yes"), ("Sat", "No")),
+]
+
+annotator = Annotator()
+annotator.new_plot(
+    ax, pairs=pairs, plot="boxplot",
+    data=df, x="day", y="total_bill", hue="smoker",
+)
+annotator.configure(
+    test="t-test_ind",
+    comparisons_correction="Bonferroni",
+    text_format="star",
+)
+annotator.apply_and_annotate()
+
+plt.show()
+```
+
+### Supplying pre-computed p-values
+
+```python
+from statannotations.Annotator import Annotator
+
+annotator = Annotator()
+annotator.new_plot(
+    ax, pairs=[("A", "B"), ("A", "C")],
+    plot="boxplot", data=df, x="group", y="value",
+)
+annotator.configure(text_format="simple")
+annotator.set_pvalues_and_annotate([0.01, 0.03])
+```
+
+### Fully custom annotation text
+
+```python
+annotator = Annotator()
+annotator.new_plot(
+    ax, pairs=[("A", "B"), ("A", "C")],
+    plot="boxplot", data=df, x="group", y="value",
+)
+annotator.annotate_custom_annotations(["n.s.", "*"])
+```
+
+### Running a test standalone
+
+```python
+from statannotations.stats.test import apply_test
+
+result = apply_test(
+    group_data1, group_data2,
+    test="Mann-Whitney",
+    comparisons_correction="Bonferroni",
+    num_comparisons=3,
+    alpha=0.05,
+)
+```
+
+## License
+
+See the `LICENSE` file in this repository for details.

@@ -1,0 +1,258 @@
+# org.wso2.carbon.commons:org.wso2.carbon.event.ws
+
+`org.wso2.carbon.event.ws` provides Java components for handling eventing operations over SOAP and WS-Addressing-style message structures.
+
+The API centers on converting SOAP request envelopes into `Subscription` objects, producing SOAP responses from subscriptions, dispatching event messages to subscriptions, and integrating with an `EventBroker`. It also includes message-receiver classes for Axis2-based SOAP processing and utility methods for creating message contexts, extracting topics, and producing SOAP faults.
+
+## Main concepts
+
+### Subscription command builders
+
+The command builders translate between SOAP envelopes and `Subscription` instances:
+
+| Class | Purpose |
+|---|---|
+| `SubscribeCommandBuilder` | Reads a subscription request from a `SOAPEnvelope` and creates a response envelope from a `Subscription`. |
+| `RenewCommandBuilder` | Reads a renewal request and handles subscription expiration validation. |
+| `UnSubscribeCommandBuilder` | Reads an unsubscribe request and creates a corresponding response envelope. |
+| `GetStatusCommandBuilder` | Reads a status request and creates a response envelope for a subscription. |
+| `GetSubscriptionsCommandBuilder` | Creates a response envelope containing a list of subscriptions. |
+
+Most command builders are constructed with an Axis2 `MessageContext`, then use `toSubscription(...)` and `fromSubscription(...)`:
+
+```java
+SubscribeCommandBuilder builder = new SubscribeCommandBuilder(messageContext);
+
+Subscription subscription = builder.toSubscription(requestEnvelope);
+SOAPEnvelope responseEnvelope = builder.fromSubscription(subscription);
+```
+
+### Subscription construction and SOAP helpers
+
+`BuilderUtils` provides lower-level helpers used when working with SOAP eventing messages:
+
+- `getEndpointFromWSAAddress(OMElement address)` extracts an endpoint string from a WS-Addressing-style address element.
+- `createSubscription(String endpoint, String filterDialect, String topic)` creates a `Subscription`.
+- `genFaultResponse(...)` creates a SOAP fault envelope for SOAP 1.1 or SOAP 1.2 style processing.
+
+### Event broker integration
+
+`WSEventBrokerHolder` is a singleton registry for broker-related services:
+
+- Registers and exposes an `EventBroker`.
+- Registers and exposes a `ConfigurationContextService`.
+- Registers the WS event dispatcher.
+
+`WSEventDispatcher` implements `EventDispatcher` and exposes:
+
+```java
+void notify(Message message, Subscription subscription)
+```
+
+This is the dispatch entry point for delivering an event `Message` to a specific subscription.
+
+### Message receivers
+
+The library includes Axis2 message receivers:
+
+| Class | Purpose |
+|---|---|
+| `CarbonEventingMessageReceiver` | Processes eventing-related SOAP messages and can sort subscription results. |
+| `PublishOnlyMessageReceiver` | Processes publish-only SOAP messages. |
+
+Both extend `AbstractMessageReceiver` and expose Axis2’s `invokeBusinessLogic(MessageContext)` callback.
+
+### Event and topic utilities
+
+`EventBrokerUtils` contains utility operations for message and topic handling:
+
+- Create a `MessageContext` from a payload, topic, and tenant ID.
+- Extract a topic from an incoming `MessageContext`.
+- Obtain secure registry paths for topics.
+- Inspect the currently logged-in user.
+- Check whether a user or role is system-defined or allowed.
+
+## Dependency
+
+Add the artifact to your Maven project:
+
+```xml
+<dependency>
+    <groupId>org.wso2.carbon.commons</groupId>
+    <artifactId>org.wso2.carbon.event.ws</artifactId>
+    <version>${carbon.event.ws.version}</version>
+</dependency>
+```
+
+The API integrates with Axis2/Axiom types such as `MessageContext`, `SOAPEnvelope`, and `OMElement`, as well as event-broker types including `EventBroker`, `EventDispatcher`, `Message`, and `Subscription`.
+
+## Usage examples
+
+### Parse a subscription request and build a response
+
+A SOAP endpoint or message receiver can use `SubscribeCommandBuilder` to parse an incoming envelope.
+
+```java
+MessageContext messageContext = /* incoming Axis2 message context */;
+SOAPEnvelope requestEnvelope = messageContext.getEnvelope();
+
+SubscribeCommandBuilder builder =
+        new SubscribeCommandBuilder(messageContext);
+
+try {
+    Subscription subscription = builder.toSubscription(requestEnvelope);
+
+    // The subscription can now be stored, registered, or passed to a broker.
+    SOAPEnvelope response = builder.fromSubscription(subscription);
+
+    messageContext.setEnvelope(response);
+} catch (InvalidExpirationTimeException e) {
+    SOAPEnvelope fault = BuilderUtils.genFaultResponse(
+            "Sender",
+            "InvalidExpirationTime",
+            e.getMessage(),
+            null,
+            true
+    );
+
+    messageContext.setEnvelope(fault);
+} catch (InvalidMessageException e) {
+    SOAPEnvelope fault = BuilderUtils.genFaultResponse(
+            "Sender",
+            "InvalidMessage",
+            e.getMessage(),
+            null,
+            true
+    );
+
+    messageContext.setEnvelope(fault);
+}
+```
+
+`SubscribeCommandBuilder.toSubscription(...)` may reject malformed requests with `InvalidMessageException` or invalid expiration values with `InvalidExpirationTimeException`.
+
+### Create a subscription from endpoint and topic values
+
+When endpoint, filter dialect, and topic values are already available, create a `Subscription` directly:
+
+```java
+String endpoint = "https://example.org/event-consumer";
+String filterDialect = "http://example.org/filter";
+String topic = "orders/created";
+
+try {
+    Subscription subscription =
+            BuilderUtils.createSubscription(endpoint, filterDialect, topic);
+
+    // Use the subscription with the surrounding event-broker integration.
+} catch (InvalidMessageException e) {
+    // Handle invalid endpoint, filter, topic, or subscription input.
+}
+```
+
+### Build a paginated subscription-list response
+
+Use `GetSubscriptionsCommandBuilder` to serialize a collection of subscriptions into a SOAP response:
+
+```java
+List<Subscription> subscriptions = /* subscriptions selected by the application */;
+
+int maxResultCount = 25;
+int startIndex = 0;
+
+SOAPEnvelope response =
+        GetSubscriptionsCommandBuilder.buildResponseforGetSubscriptions(
+                subscriptions,
+                maxResultCount,
+                startIndex
+        );
+```
+
+If result ordering is required before creating the response, `CarbonEventingMessageReceiver` exposes a sorting method:
+
+```java
+CarbonEventingMessageReceiver receiver =
+        new CarbonEventingMessageReceiver();
+
+List<Subscription> sorted = receiver.sortResults(
+        "endpoint",
+        true,
+        subscriptions
+);
+
+SOAPEnvelope response =
+        GetSubscriptionsCommandBuilder.buildResponseforGetSubscriptions(
+                sorted,
+                25,
+                0
+        );
+```
+
+### Extract a topic and create an event message context
+
+`EventBrokerUtils` can extract a topic from an incoming message and create a new message context for an event payload.
+
+```java
+MessageContext incoming = /* incoming message context */;
+
+try {
+    String topicName = EventBrokerUtils.extractTopicFromMessage(incoming);
+
+    OMElement payload = /* event payload */;
+    OMElement topicElement = /* topic element representing topicName */;
+    int tenantId = 1;
+
+    MessageContext eventContext =
+            EventBrokerUtils.createMessageContext(
+                    payload,
+                    topicElement,
+                    tenantId
+            );
+
+    // Submit or process eventContext through the surrounding broker flow.
+} catch (WSEventException e) {
+    // The incoming message did not provide a usable event topic.
+} catch (EventBrokerException e) {
+    // The event message context could not be created.
+}
+```
+
+### Register event-broker services
+
+Applications embedding the library can register shared broker and configuration services through `WSEventBrokerHolder`.
+
+```java
+EventBroker eventBroker = /* application event broker */;
+ConfigurationContextService configurationContextService =
+        /* Axis2 configuration-context service */;
+
+WSEventBrokerHolder holder = WSEventBrokerHolder.getInstance();
+
+holder.registerEventBroker(eventBroker);
+holder.registerConfigurationContextService(configurationContextService);
+holder.registerWSEventDispatcher();
+```
+
+The registered services can later be obtained from the same holder:
+
+```java
+EventBroker broker = WSEventBrokerHolder.getInstance().getEventBroker();
+
+ConfigurationContextService configurationService =
+        WSEventBrokerHolder.getInstance().getConfigurationContextService();
+```
+
+## Exceptions
+
+The API defines the following exception types:
+
+| Exception | Meaning in the API |
+|---|---|
+| `InvalidMessageException` | A SOAP message or subscription-related input is invalid. |
+| `InvalidExpirationTimeException` | A subscription expiration value is invalid. |
+| `FilteringRequestedUnavailableException` | Filtering was requested but is unavailable. |
+| `BuilderException` | An unchecked exception raised while building or converting eventing structures. |
+| `EventBrokerException` | An event-broker operation failed. |
+| `WSEventException` | A WS eventing operation failed. |
+
+Callers should explicitly handle the checked exceptions declared by command builders and utility methods, especially when processing untrusted SOAP input.

@@ -1,0 +1,448 @@
+# sly
+
+`sly` provides building blocks for language-processing tools in Python. Its public API is organized around:
+
+- **Lexing**: converting input text into a stream of tokens.
+- **Parsing**: consuming tokens and producing parsed results.
+- **Grammar and parser-table support**: defining, validating, and analyzing grammar productions.
+- **AST support**: a base `AST` type for syntax-tree objects.
+- **Diagnostics and errors**: exception types and logging helpers for lexer and parser construction.
+
+The central workflow is:
+
+1. Create a `Lexer` capable of tokenizing source text.
+2. Pass the token stream returned by `Lexer.tokenize()` to a `Parser`.
+3. Use the parser result as an AST, value, or other application-specific representation.
+
+## Main API
+
+## Lexing
+
+Lexing-related types are available from `sly.lex`.
+
+### `Lexer`
+
+```python
+class Lexer:
+    def begin(self, cls):
+    def push_state(self, cls):
+    def pop_state(self):
+    def tokenize(self, text, lineno=1, index=0):
+    def error(self, t):
+```
+
+`Lexer` is responsible for turning text into tokens.
+
+- `tokenize(text, lineno=1, index=0)` creates a token stream from `text`.
+  - `lineno` provides the starting line number.
+  - `index` provides the starting source index.
+- `begin(cls)` switches to a lexer state.
+- `push_state(cls)` switches states while preserving the current state for later restoration.
+- `pop_state()` restores a previously pushed lexer state.
+- `error(t)` is an error-handling hook for lexer failures.
+
+`LexerMeta` and `LexerMetaDict` are metaclass support types associated with lexer class construction.
+
+### Tokens
+
+```python
+class Token(object):
+class TokenStr(str):
+```
+
+`Token` represents a token produced during lexing. `TokenStr` is a string-derived token-related type.
+
+Applications normally obtain tokens from `Lexer.tokenize()` and pass them directly to `Parser.parse()`.
+
+### Lexer errors
+
+```python
+class LexError(Exception):
+class PatternError(Exception):
+class LexerBuildError(Exception):
+class LexerStateChange(Exception):
+```
+
+These exception types distinguish tokenization, pattern, lexer-construction, and lexer-state-change failures.
+
+---
+
+## Parsing
+
+Parsing-related types are available from `sly.yacc`.
+
+### `Parser`
+
+```python
+class Parser:
+    def error(self, token):
+    def errok(self):
+    def restart(self):
+    def parse(self, tokens):
+    def line_position(self, value):
+    def index_position(self, value):
+```
+
+`Parser` consumes a token stream and returns a parsed result.
+
+- `parse(tokens)` parses an iterable of tokens, typically the value returned by `Lexer.tokenize()`.
+- `error(token)` is an error-handling hook invoked for parser errors.
+- `errok()` clears the parser’s current error-recovery state.
+- `restart()` restarts parsing state.
+- `line_position(value)` obtains line-position information associated with a parsed value.
+- `index_position(value)` obtains source-index information associated with a parsed value.
+
+`ParserMeta` and `ParserMetaDict` provide metaclass support for parser class construction.
+
+### Parser errors and logging
+
+```python
+class YaccError(Exception):
+class GrammarError(YaccError):
+class LALRError(YaccError):
+```
+
+These exceptions represent parser, grammar, and LALR table-construction errors.
+
+```python
+class SlyLogger(object):
+    def debug(self, msg, *args, **kwargs):
+    def warning(self, msg, *args, **kwargs):
+    def error(self, msg, *args, **kwargs):
+```
+
+`SlyLogger` provides debug, warning, and error reporting methods for parser- and grammar-related diagnostics.
+
+---
+
+## ASTs
+
+```python
+class AST(object):
+```
+
+`AST` is a base class for abstract syntax tree objects. Applications can derive their own syntax-tree node types from it.
+
+```python
+from sly.ast import AST
+
+
+class Number(AST):
+    def __init__(self, value):
+        self.value = value
+
+
+class BinaryOperation(AST):
+    def __init__(self, operator, left, right):
+        self.operator = operator
+        self.left = left
+        self.right = right
+```
+
+A parser can return instances of these classes, though the structure of parser productions is application-defined.
+
+---
+
+## Basic lexer-to-parser flow
+
+The following example demonstrates the main runtime interaction between a configured lexer and parser.
+
+```python
+from sly.lex import Lexer
+from sly.yacc import Parser
+
+
+class ExpressionLexer(Lexer):
+    # Lexer configuration belongs here.
+    pass
+
+
+class ExpressionParser(Parser):
+    # Parser configuration belongs here.
+    pass
+
+
+lexer = ExpressionLexer()
+parser = ExpressionParser()
+
+source = "1 + 2"
+
+tokens = lexer.tokenize(source, lineno=1, index=0)
+result = parser.parse(tokens)
+```
+
+`tokens` is passed directly from the lexer to the parser. The value of `result` depends on the parser’s configured grammar and actions; it may be an `AST`, a primitive value, or another application-specific object.
+
+---
+
+## Handling lexer errors
+
+Override `Lexer.error()` to customize how lexer failures are handled.
+
+```python
+from sly.lex import Lexer
+
+
+class SourceLexer(Lexer):
+    def error(self, t):
+        # Application-specific reporting or recovery.
+        # `t` is the value supplied to the lexer error hook.
+        raise RuntimeError("Unable to tokenize input")
+```
+
+A caller can handle lexer-specific failures separately:
+
+```python
+from sly.lex import LexError
+
+lexer = SourceLexer()
+
+try:
+    tokens = lexer.tokenize("input text")
+    tokens = list(tokens)
+except LexError as exc:
+    print(f"Lexing failed: {exc}")
+```
+
+---
+
+## Handling parser errors
+
+Override `Parser.error()` to define application-specific parser error behavior.
+
+```python
+from sly.yacc import Parser
+
+
+class SourceParser(Parser):
+    def error(self, token):
+        # Report the unexpected token, recover, or stop parsing.
+        self.restart()
+```
+
+A parser may also use `errok()` when its recovery strategy has handled an error and parsing can continue.
+
+```python
+class RecoveringParser(Parser):
+    def error(self, token):
+        # Application-specific recovery work would go here.
+        self.errok()
+```
+
+---
+
+## Lexer states
+
+`Lexer` supports changing states through `begin()`, `push_state()`, and `pop_state()`.
+
+```python
+from sly.lex import Lexer
+
+
+class InitialState(Lexer):
+    pass
+
+
+class StringState(Lexer):
+    pass
+
+
+lexer = InitialState()
+
+# Replace the active lexer state.
+lexer.begin(StringState)
+
+# Enter a temporary state.
+lexer.push_state(StringState)
+
+# Restore the previous state.
+lexer.pop_state()
+```
+
+State classes are supplied as the `cls` argument. This is useful when tokenization behavior depends on context, such as when processing quoted text, comments, or embedded sublanguages.
+
+---
+
+## Grammar support
+
+The parser subsystem exposes grammar and parser-table types for grammar construction, validation, and analysis.
+
+### `Grammar`
+
+```python
+class Grammar(object):
+    def set_precedence(self, term, assoc, level):
+    def add_production(self, prodname, syms, func=None, file='', line=0):
+    def set_start(self, start=None):
+    def find_unreachable(self):
+    def infinite_cycles(self):
+    def undefined_symbols(self):
+    def unused_terminals(self):
+    def unused_rules(self):
+    def unused_precedence(self):
+    def compute_first(self):
+    def compute_follow(self, start=None):
+    def build_lritems(self):
+```
+
+`Grammar` represents a collection of productions and supports common grammar analysis operations.
+
+- `set_precedence(term, assoc, level)` records precedence information for a terminal.
+- `add_production(prodname, syms, func=None, file='', line=0)` adds a production.
+- `set_start(start=None)` selects the grammar’s start symbol.
+- `find_unreachable()` identifies unreachable grammar symbols or productions.
+- `infinite_cycles()` detects non-terminating grammar cycles.
+- `undefined_symbols()` identifies symbols referenced but not defined.
+- `unused_terminals()`, `unused_rules()`, and `unused_precedence()` report unused grammar declarations.
+- `compute_first()` computes first sets.
+- `compute_follow(start=None)` computes follow sets.
+- `build_lritems()` constructs LR item information.
+
+### Grammar example
+
+```python
+from sly.yacc import Grammar
+
+grammar = Grammar()
+
+grammar.set_precedence("PLUS", "left", 1)
+
+grammar.add_production(
+    "expression",
+    ["expression", "PLUS", "expression"],
+)
+
+grammar.add_production(
+    "expression",
+    ["NUMBER"],
+)
+
+grammar.set_start("expression")
+
+unreachable = grammar.find_unreachable()
+undefined = grammar.undefined_symbols()
+unused_terms = grammar.unused_terminals()
+```
+
+The return values of these analysis operations can be used to validate a grammar before parser-table construction.
+
+### Productions and LR items
+
+```python
+class Production(object):
+    def lr_item(self, n):
+
+class LRItem(object):
+```
+
+A `Production` can produce an LR item at position `n` using `lr_item(n)`.
+
+```python
+production = Production()
+item = production.lr_item(0)
+```
+
+`YaccSymbol` and `YaccProduction` represent parser symbols and productions during parser operation.
+
+```python
+class YaccSymbol:
+class YaccProduction:
+    def lineno(self):
+    def index(self):
+    def end(self):
+```
+
+`YaccProduction` exposes source-location helpers:
+
+- `lineno()`
+- `index()`
+- `end()`
+
+These methods can be used by parser actions or diagnostics that need to associate parsed values with input positions.
+
+---
+
+## Parser-table support
+
+```python
+class LRTable(object):
+    def lr0_closure(self, I):
+    def lr0_goto(self, I, x):
+    def lr0_items(self):
+    def compute_nullable_nonterminals(self):
+    def find_nonterminal_transitions(self, C):
+    def dr_relation(self, C, trans, nullable):
+    def reads_relation(self, C, trans, empty):
+    def compute_lookback_includes(self, C, trans, nullable):
+    def compute_read_sets(self, C, ntrans, nullable):
+    def compute_follow_sets(self, ntrans, readsets, inclsets):
+    def add_lookaheads(self, lookbacks, followset):
+    def add_lalr_lookaheads(self, C):
+    def lr_parse_table(self):
+```
+
+`LRTable` provides operations used to build LR and LALR parsing tables, including:
+
+- LR(0) closure and goto operations.
+- LR item collection generation.
+- Nullable nonterminal computation.
+- Read, follow, lookback, and include relation computation.
+- LALR lookahead generation.
+- Parse-table construction.
+
+For most application code, `Lexer` and `Parser` are the primary interfaces. `Grammar`, `Production`, and `LRTable` are useful when building tooling around grammar inspection, parser generation, or parser diagnostics.
+
+---
+
+## Utility functions
+
+```python
+def rightmost_terminal(symbols, terminals):
+def digraph(X, R, FP):
+def traverse(x, N, stack, F, X, R, FP):
+```
+
+These functions support grammar and parser-table analysis.
+
+- `rightmost_terminal(symbols, terminals)` finds the rightmost terminal in a sequence of symbols.
+- `digraph(X, R, FP)` performs a graph-based computation.
+- `traverse(x, N, stack, F, X, R, FP)` supports traversal used by graph-based grammar analysis.
+
+They are primarily relevant to advanced grammar and parser-table tooling.
+
+---
+
+## Typical application structure
+
+A language-processing application built with `sly` will commonly have:
+
+```python
+from sly.ast import AST
+from sly.lex import Lexer
+from sly.yacc import Parser
+
+
+class Program(AST):
+    def __init__(self, statements):
+        self.statements = statements
+
+
+class ProgramLexer(Lexer):
+    # Define lexer behavior.
+    pass
+
+
+class ProgramParser(Parser):
+    # Define parser behavior and produce Program instances.
+    pass
+
+
+def parse_source(text):
+    lexer = ProgramLexer()
+    parser = ProgramParser()
+
+    tokens = lexer.tokenize(text)
+    return parser.parse(tokens)
+```
+
+This keeps source tokenization, parsing, and syntax-tree representation separate while allowing them to work together through the token stream returned by `Lexer.tokenize()`.

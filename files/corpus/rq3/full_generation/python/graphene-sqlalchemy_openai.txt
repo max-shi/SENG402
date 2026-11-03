@@ -1,0 +1,289 @@
+# graphene-sqlalchemy
+
+`graphene-sqlalchemy` provides integration utilities for exposing SQLAlchemy-backed models through Graphene-style object types, fields, connections, enums, and resolvers.
+
+The library centers on `SQLAlchemyObjectType`, a Graphene object type with helpers for querying mapped models and resolving nodes. It also includes:
+
+- Field construction and SQLAlchemy-to-Graphene type conversion
+- Relationship connection fields, including optional batching support
+- Registry support for model types, ORM fields, composite converters, and enums
+- Enum and sorting-argument generation
+- Query, session, mapping, and naming utilities
+
+## Core concepts
+
+### SQLAlchemy object types
+
+`SQLAlchemyObjectType` is the primary base class for Graphene object types backed by an ORM model.
+
+```python
+from graphene_sqlalchemy.types import SQLAlchemyObjectType
+
+class UserType(SQLAlchemyObjectType):
+    # Define the type according to your Graphene application configuration.
+    pass
+```
+
+Its class-level helpers support common model operations:
+
+- `UserType.get_query(info)` obtains a query for the type’s model.
+- `UserType.get_node(info, id)` retrieves a node by identifier.
+- `UserType.resolve_id(info)` resolves an object identifier.
+- `UserType.enum_for_field(field_name)` obtains an enum associated with a field.
+- `UserType.is_type_of(root, info)` checks whether a value belongs to the type.
+
+### Registries
+
+A `Registry` coordinates the relationship between ORM models and generated or application-defined Graphene types.
+
+```python
+from graphene_sqlalchemy.registry import Registry
+
+registry = Registry()
+
+registry.register(UserType)
+
+user_graphene_type = registry.get_type_for_model(User)
+```
+
+A registry can also store mappings for individual fields, composite converters, SQLAlchemy enums, and sort enums:
+
+```python
+registry.register_orm_field(UserType, "email", User.email)
+orm_field = registry.get_orm_field_for_graphene_field(UserType, "email")
+
+registry.register_enum(UserStatusEnum, UserStatusGrapheneEnum)
+graphene_enum = registry.get_graphene_enum_for_sa_enum(UserStatusEnum)
+```
+
+For shared application-wide configuration, use the global registry:
+
+```python
+from graphene_sqlalchemy.registry import (
+    get_global_registry,
+    reset_global_registry,
+)
+
+registry = get_global_registry()
+
+# Useful when rebuilding schema configuration in tests or setup code.
+reset_global_registry()
+```
+
+## Query and session helpers
+
+The utility functions work with a context object, which commonly comes from GraphQL request information.
+
+```python
+from graphene_sqlalchemy.utils import get_query, get_session
+
+def resolve_users(root, info):
+    session = get_session(info.context)
+    query = get_query(User, info.context)
+
+    return query.all()
+```
+
+When working through an object type, use its query helper instead:
+
+```python
+def resolve_users(root, info):
+    return UserType.get_query(info).all()
+```
+
+The utilities also provide SQLAlchemy mapping checks:
+
+```python
+from graphene_sqlalchemy.utils import is_mapped_class, is_mapped_instance
+
+assert is_mapped_class(User)
+
+user = User()
+assert is_mapped_instance(user)
+```
+
+## Field construction and conversion
+
+`construct_fields` builds fields for an object type from a model and registry.
+
+```python
+from graphene_sqlalchemy.fields import default_connection_field_factory
+from graphene_sqlalchemy.types import construct_fields
+
+fields = construct_fields(
+    obj_type=UserType,
+    model=User,
+    registry=registry,
+    only_fields=None,
+    exclude_fields=None,
+    batching=False,
+    connection_field_factory=default_connection_field_factory,
+)
+```
+
+The converter functions provide lower-level conversion support for SQLAlchemy columns, relationships, composites, hybrid methods, and SQLAlchemy-specific value types.
+
+Examples include:
+
+- `convert_sqlalchemy_column(...)`
+- `convert_sqlalchemy_relationship(...)`
+- `convert_sqlalchemy_composite(...)`
+- `convert_sqlalchemy_hybrid_method(...)`
+- `convert_sqlalchemy_type(...)`
+
+Specialized conversions are available for strings, integers and IDs, booleans, floats, datetimes, arrays, scalar lists, JSON values, choices, and enums.
+
+```python
+from graphene_sqlalchemy.converter import convert_sqlalchemy_type
+
+graphene_type = convert_sqlalchemy_type(
+    type=User.__table__.c.email.type,
+    column=User.__table__.c.email,
+    registry=registry,
+)
+```
+
+Column metadata helpers are also available:
+
+```python
+from graphene_sqlalchemy.converter import get_column_doc, is_column_nullable
+
+email_column = User.__table__.c.email
+
+description = get_column_doc(email_column)
+nullable = is_column_nullable(email_column)
+```
+
+## Relationships and connection fields
+
+The library supplies connection field classes for model collections and relationships:
+
+- `UnsortedSQLAlchemyConnectionField`
+- `SQLAlchemyConnectionField`
+- `BatchSQLAlchemyConnectionField`
+
+`SQLAlchemyConnectionField` accepts a `sort` argument when building a query. `BatchSQLAlchemyConnectionField` provides relationship-oriented resolver support.
+
+Connection field factories can be customized globally:
+
+```python
+from graphene_sqlalchemy.fields import (
+    default_connection_field_factory,
+    registerConnectionFieldFactory,
+    unregisterConnectionFieldFactory,
+)
+
+registerConnectionFieldFactory(default_connection_field_factory)
+
+# Restore the library default behavior when custom configuration is no longer needed.
+unregisterConnectionFieldFactory()
+```
+
+You can create a connection field directly when you have a type to expose:
+
+```python
+from graphene_sqlalchemy.fields import createConnectionField
+
+users_connection = createConnectionField(UserType)
+```
+
+For relationship batching, obtain a resolver from a SQLAlchemy relationship property:
+
+```python
+from graphene_sqlalchemy.batching import get_batch_resolver
+
+posts_relationship = User.posts.property
+posts_resolver = get_batch_resolver(posts_relationship)
+```
+
+## Enums and sorting
+
+SQLAlchemy enum definitions can be converted and registered for use by Graphene object types.
+
+```python
+from graphene_sqlalchemy.enums import enum_for_sa_enum
+
+status_enum = enum_for_sa_enum(UserStatusEnum, registry)
+```
+
+For a field-specific enum:
+
+```python
+from graphene_sqlalchemy.enums import enum_for_field
+
+status_enum = enum_for_field(UserType, "status")
+```
+
+The library can also produce sort enums and sort arguments for object types or mapped model classes.
+
+```python
+from graphene_sqlalchemy.enums import (
+    sort_argument_for_object_type,
+    sort_enum_for_object_type,
+)
+
+user_sort_enum = sort_enum_for_object_type(
+    UserType,
+    only_fields=["id", "email", "created_at"],
+)
+
+user_sort_argument = sort_argument_for_object_type(
+    UserType,
+    only_fields=["id", "email", "created_at"],
+    has_default=True,
+)
+```
+
+Equivalent model-oriented helpers are available:
+
+```python
+from graphene_sqlalchemy.utils import (
+    sort_argument_for_model,
+    sort_enum_for_model,
+)
+
+user_sort_enum = sort_enum_for_model(
+    User,
+    name="UserSort",
+)
+
+user_sort_argument = sort_argument_for_model(
+    User,
+    has_default=False,
+)
+```
+
+## Custom resolvers
+
+Use resolver helpers when a field needs custom ORM-backed resolution behavior.
+
+```python
+from graphene_sqlalchemy.resolvers import (
+    get_attr_resolver,
+    get_custom_resolver,
+)
+
+email_resolver = get_attr_resolver(UserType, User.email)
+custom_resolver = get_custom_resolver(UserType, "email")
+```
+
+`get_attr_resolver` is suited to resolving a model attribute directly. `get_custom_resolver` retrieves a resolver associated with an object type and ORM field name.
+
+## Naming helpers
+
+Utilities are available for producing Graphene-friendly type and enum value names.
+
+```python
+from graphene_sqlalchemy.utils import to_enum_value_name, to_type_name
+
+type_name = to_type_name("user_profile")
+enum_value_name = to_enum_value_name("created_at")
+```
+
+`EnumValue` is a string-based value type that can be used when working with enum values:
+
+```python
+from graphene_sqlalchemy.utils import EnumValue
+
+value = EnumValue("CREATED_AT_ASC")
+```

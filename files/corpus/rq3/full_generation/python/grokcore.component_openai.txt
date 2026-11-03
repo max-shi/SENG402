@@ -1,0 +1,353 @@
+# grokcore.component
+
+`grokcore.component` provides building blocks for declaring and registering component-based application objects in Python. Its API is centered on adapters, utilities, subscriptions, interfaces, and declarative metadata.
+
+The library works alongside `zope.interface`, `zope.component`, and Martian-style grokking/configuration. It supports both:
+
+- **Imperative registration**, using functions such as `provideUtility()` and `provideAdapter()`.
+- **Declarative component definitions**, using component base classes, decorators, and directives.
+
+## Core concepts
+
+### Component base classes
+
+The following classes identify common component roles:
+
+| Class | Intended role |
+| --- | --- |
+| `Adapter` | A single-object adapter component. |
+| `MultiAdapter` | An adapter accepting multiple adapted objects. |
+| `GlobalUtility` | A globally registered utility component. |
+| `Subscription` | A subscription adapter for a single component. |
+| `MultiSubscription` | A subscription adapter for multiple components. |
+| `Context` | A context-oriented component base class. |
+
+These classes are used with the library’s configuration and grokking support to describe what kind of component a class represents.
+
+## Registration helpers
+
+The `grokcore.component.util` module provides direct registration helpers.
+
+```python
+from grokcore.component.util import (
+    getSiteManager,
+    provideAdapter,
+    provideHandler,
+    provideInterface,
+    provideSubscriptionAdapter,
+    provideUtility,
+)
+```
+
+| Function | Purpose |
+| --- | --- |
+| `getSiteManager()` | Return the current site manager. |
+| `provideUtility(component, provides=None, name='')` | Register a utility component. |
+| `provideAdapter(factory, adapts=None, provides=None, name='')` | Register an adapter factory. |
+| `provideSubscriptionAdapter(factory, adapts=None, provides=None)` | Register a subscription adapter factory. |
+| `provideHandler(factory, adapts=None)` | Register a handler. |
+| `provideInterface(id, interface, iface_type=None, info='')` | Register interface metadata. |
+
+### Example: registering a named utility
+
+```python
+from zope.interface import Interface
+
+from grokcore.component.util import provideUtility
+
+
+class IClock(Interface):
+    """A component that can report the current time."""
+
+
+class SystemClock:
+    def now(self):
+        return "2025-01-01T00:00:00Z"
+
+
+clock = SystemClock()
+
+provideUtility(
+    clock,
+    provides=IClock,
+    name="system",
+)
+```
+
+The `name` argument allows more than one utility to be registered for the same provided interface.
+
+### Example: registering an adapter
+
+```python
+from zope.interface import Interface, implementer
+
+from grokcore.component.util import provideAdapter
+
+
+class ITextValue(Interface):
+    """A component that provides a text representation."""
+
+
+@implementer(ITextValue)
+class IntegerTextAdapter:
+    def __init__(self, value):
+        self.value = value
+
+    def text(self):
+        return str(self.value)
+
+
+provideAdapter(
+    IntegerTextAdapter,
+    adapts=(int,),
+    provides=ITextValue,
+    name="text",
+)
+```
+
+An adapter registration connects a factory with the types or interfaces it adapts and the interface it provides.
+
+## Decorators
+
+The `grokcore.component.decorators` module provides decorators for expressing component metadata directly on classes or other declarations.
+
+```python
+from grokcore.component.decorators import (
+    adapter,
+    implementer,
+    provider,
+    subscribe,
+)
+```
+
+| Decorator | Purpose |
+| --- | --- |
+| `@adapter(*classes_or_interfaces)` | Declare the objects or interfaces adapted by a component. |
+| `@subscribe(*classes_or_interfaces)` | Declare subscription targets. |
+| `@implementer(*interfaces)` | Declare implemented interfaces. |
+| `@provider(*interfaces)` | Declare interfaces provided by an object or declaration. |
+
+### Example: declarative adapter metadata
+
+```python
+from zope.interface import Interface
+
+from grokcore.component.components import Adapter
+from grokcore.component.decorators import adapter, implementer
+
+
+class IRequest(Interface):
+    """A request-like object."""
+
+
+class IClientAddress(Interface):
+    """Provides a client address."""
+
+
+@adapter(IRequest)
+@implementer(IClientAddress)
+class RequestClientAddress(Adapter):
+    def __init__(self, request):
+        self.request = request
+
+    def address(self):
+        return self.request.client_address
+```
+
+Here, `RequestClientAddress` is declared as an `Adapter`, adapts `IRequest`, and implements `IClientAddress`. Registration may be performed through the library’s grokking/configuration facilities or through `provideAdapter()`.
+
+### Example: a subscription declaration
+
+```python
+from zope.interface import Interface
+
+from grokcore.component.components import Subscription
+from grokcore.component.decorators import subscribe
+
+
+class IOrderCreated(Interface):
+    """An order-created event."""
+
+
+@subscribe(IOrderCreated)
+class OrderCreatedLogger(Subscription):
+    def __init__(self, event):
+        self.event = event
+
+    def __call__(self):
+        print("Order created:", self.event)
+```
+
+## Directives
+
+The `grokcore.component.directive` module exposes directives used to attach configuration metadata to components.
+
+Available directives include:
+
+- `global_utility`
+- `global_adapter`
+- `name`
+- `context`
+- `title`
+- `description`
+- `direct`
+- `order`
+- `path`
+- `provides`
+- `implements`
+
+The two registration-oriented directives expose the following factory methods:
+
+```python
+global_utility.factory(factory, provides=None, name='', direct=False)
+global_adapter.factory(factory, adapts=None, provides=None, name=None)
+```
+
+Other directives describe component metadata such as its context, title, description, provided interface, implemented interfaces, ordering, and path.
+
+The `direct` directive is a marker directive, while `order` accepts an optional ordering value:
+
+```python
+order.factory(value=0)
+```
+
+## Subscription queries
+
+Subscription helpers are available from `grokcore.component.subscription`.
+
+```python
+from grokcore.component.subscription import (
+    queryMultiSubscriptions,
+    queryOrderedMultiSubscriptions,
+    queryOrderedSubscriptions,
+    querySubscriptions,
+)
+```
+
+| Function | Query shape |
+| --- | --- |
+| `querySubscriptions(component, interface)` | Query subscriptions for one component. |
+| `queryOrderedSubscriptions(component, interface)` | Query ordered subscriptions for one component. |
+| `queryMultiSubscriptions(components, interface)` | Query subscriptions for multiple components. |
+| `queryOrderedMultiSubscriptions(components, interface)` | Query ordered subscriptions for multiple components. |
+
+Use the ordered variants when subscription ordering matters.
+
+## Component ordering
+
+```python
+from grokcore.component.util import sort_components
+```
+
+`sort_components(components, key=None)` sorts a collection of components. A custom `key` may be supplied when the default ordering is not appropriate.
+
+```python
+from grokcore.component.util import sort_components
+
+components = [third, first, second]
+ordered = sort_components(components, key=lambda component: component.priority)
+```
+
+## Grokking and testing support
+
+The `grokcore.component.testing` module includes helpers for grokking components during tests or setup code:
+
+```python
+from grokcore.component.testing import grok, grok_component
+```
+
+```python
+grok(*module_names)
+
+grok_component(
+    name,
+    component,
+    context=None,
+    module_info=None,
+    templates=None,
+    dotted_name=None,
+)
+```
+
+`grok()` accepts one or more module names. `grok_component()` provides more direct control over grokking an individual named component.
+
+## ZCML-related helpers
+
+The `grokcore.component.zcml` module exposes integration helpers:
+
+```python
+from grokcore.component.zcml import (
+    do_grok,
+    grokDirective,
+    resetBootstrap,
+    skip_tests,
+)
+```
+
+| Function | Purpose |
+| --- | --- |
+| `resetBootstrap()` | Reset bootstrap state. |
+| `skip_tests(name)` | Decide whether a named item should be skipped for tests. |
+| `grokDirective(_context, package, exclude=None)` | Apply grokking through a directive. |
+| `do_grok(dotted_name, config, extra_exclude=None)` | Grok a dotted name using a configuration object. |
+
+`IGrokDirective` is the corresponding public interface for the grok directive.
+
+## Public interfaces
+
+The `grokcore.component.interfaces` module defines interface contracts for the library’s main API areas:
+
+- `IContext`
+- `IBaseClasses`
+- `IDirectives`
+- `IDecorators`
+- `IGrokErrors`
+- `IMartianAPI`
+- `IGrokcoreComponentAPI`
+
+`IGrokcoreComponentAPI` combines the base-class, decorator, directive, error, and Martian-related API contracts.
+
+The `IDirectives` interface documents the directive-oriented API, including declarations for:
+
+- Base classes
+- Ignored names
+- Implemented interfaces
+- Adapted classes or interfaces
+- Context
+- Name, title, and description
+- Provided interfaces
+- Global utilities and adapters
+- Direct registration markers
+- Component order
+
+## Error contracts
+
+`IGrokErrors` describes the public error API:
+
+- `GrokError(message, component)`
+- `GrokImportError(*args)`
+
+These represent errors associated with grokking and imports during component configuration.
+
+## Advanced integration
+
+The `grokcore.component.meta` module exposes grokker classes responsible for processing component declarations:
+
+- `AdapterGrokker`
+- `MultiAdapterGrokker`
+- `SubscriptionGrokker`
+- `MultiSubscriptionGrokker`
+- `GlobalUtilityGrokker`
+- `ImplementerDecoratorGrokker`
+- `GlobalUtilityDirectiveGrokker`
+- `GlobalAdapterDirectiveGrokker`
+- `SubscriberDirectiveGrokker`
+- `ClassImplementerGrokker`
+
+It also provides:
+
+```python
+default_global_utility_provides(component, module, direct, **data)
+```
+
+These APIs support advanced integration with Martian-based configuration and class/module grokking.

@@ -1,0 +1,159 @@
+# Reactor Kafka
+
+Reactor Kafka is a reactive API for Apache Kafka based on [Project Reactor](https://projectreactor.io). It provides non-blocking, backpressure-aware producer and consumer APIs built on top of the standard Kafka client, allowing you to compose Kafka reads and writes with the rest of your reactive pipelines using `Flux` and `Mono`.
+
+## Features
+
+- Reactive publishing of records to Kafka with per-record and transactional send support
+- Reactive consumption of records from Kafka with fine-grained control over acknowledgement and offset commits
+- At-most-once, at-least-once, and exactly-once (transactional) consumption models
+- Manual partition assignment listeners, seek control, and rebalance hooks
+- Integration with Micrometer for consumer/producer metrics and with Micrometer Observation for distributed tracing
+- Direct access to the underlying Kafka `Consumer`/`Producer` when needed
+
+## Core Concepts
+
+### Sending records: `KafkaSender`
+
+`KafkaSender<K, V>` is the entry point for producing records reactively.
+
+- Create a sender with `KafkaSender.create(SenderOptions<K, V> options)`, or supply a custom `ProducerFactory` for advanced producer instantiation.
+- `send(Publisher<? extends SenderRecord<K, V, T>> records)` sends a stream of records, emitting a `SenderResult<T>` for each acknowledgement (or error).
+- `SenderRecord<K, V, T>` wraps a standard `ProducerRecord` with arbitrary correlation metadata `T`, so you can match results back to the record that produced them.
+- `sendTransactionally(...)` sends nested publishers of records as separate Kafka transactions, coordinated via a `TransactionManager`.
+- `createOutbound()` returns a `KafkaOutbound<K, V>`, a fluent, `Publisher<Void>`-based API for chaining multiple send operations (including transactional sends) as a single pipeline.
+- `doOnProducer(Function<Producer<K, V>, ? extends T>)` gives escape-hatch access to the underlying Kafka `Producer`.
+- `close()` releases the underlying producer.
+
+`SenderOptions<K, V>` configures the sender: producer properties, serializers, concurrency (`maxInFlight`), error handling (`stopOnError`, `fatalException`), close timeout, a `ProducerListener` for lifecycle callbacks, and observation/tracing integration via `withObservation`.
+
+`TransactionManager` exposes `begin()`, `commit()`, `abort()`, and `sendOffsets(...)` for coordinating consumer offsets with producer transactions (typical in exactly-once processing pipelines).
+
+### Consuming records: `KafkaReceiver`
+
+`KafkaReceiver<K, V>` is the entry point for consuming records reactively.
+
+- Create a receiver with `KafkaReceiver.create(ReceiverOptions<K, V> options)`, or supply a custom `ConsumerFactory`.
+- `receive()` / `receive(Integer prefetch)` returns a `Flux<ReceiverRecord<K, V>>`. Each `ReceiverRecord` carries a `ReceiverOffset` that must be acknowledged (`acknowledge()`) or committed (`commit()`) explicitly — this is the primary at-least-once consumption model.
+- `receiveAutoAck()` returns batches of records (`Flux<Flux<ConsumerRecord<K, V>>>`) that are automatically acknowledged after each inner `Flux` completes.
+- `receiveAtmostOnce()` commits offsets before delivering records downstream, trading delivery guarantees for simplicity (at-most-once).
+- `receiveBatch()` exposes records grouped by poll batch as `Flux<Flux<ReceiverRecord<K, V>>>`, useful for manual batch-oriented commit strategies.
+- `receiveExactlyOnce(TransactionManager transactionManager)` integrates consumption with a `KafkaSender`'s transactions for exactly-once semantics.
+- `doOnConsumer(Function<Consumer<K, V>, ? extends T>)` gives escape-hatch access to the underlying Kafka `Consumer` (e.g., for querying partition metadata).
+
+`ReceiverOptions<K, V>` configures the receiver: consumer properties, deserializers, subscription (topics, pattern, or manual `assignment`), poll/close timeouts, commit strategy (`commitInterval`, `commitBatchSize`, retry/backoff settings, `maxDeferredCommits`), rebalance listeners (`addAssignListener`/`addRevokeListener`), a `ConsumerListener` for lifecycle callbacks, a custom `Scheduler` supplier, and observation/tracing integration via `withObservation`.
+
+`ReceiverPartition` represents a partition assigned to the consumer, with methods to seek (`seekToBeginning`, `seekToEnd`, `seek`, `seekToTimestamp`) and inspect offsets (`position`, `beginningOffset`, `endOffset`) — typically used inside assign/revoke listeners.
+
+`ReceiverOffset` represents the commit handle for a received record: `topicPartition()`, `offset()`, `acknowledge()`, and `commit()`.
+
+### Observability
+
+- `MicrometerConsumerListener` and `MicrometerProducerListener` bind consumer/producer metrics to a Micrometer `MeterRegistry` when registered via `ReceiverOptions.consumerListener(...)` / `SenderOptions.producerListener(...)`.
+- `withObservation(ObservationRegistry, ...)` on both `SenderOptions` and `ReceiverOptions` enables distributed tracing spans around sends and receives, using `KafkaRecordSenderContext` / `KafkaRecordReceiverContext` and optional custom `KafkaSenderObservationConvention` / `KafkaReceiverObservationConvention` implementations.
+
+## Usage Examples
+
+### Producing records
+
+```java
+Map<String, Object> producerProps = new HashMap<>();
+producerProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+producerProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+producerProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+
+SenderOptions<String, String> senderOptions = SenderOptions.<String, String>create(producerProps)
+        .maxInFlight(256);
+
+KafkaSender<String, String> sender = KafkaSender.create(senderOptions);
+
+Flux<SenderRecord<String, String, Integer>> outboundRecords = Flux.range(0, 10)
+        .map(i -> SenderRecord.create(
+                new ProducerRecord<>("my-topic", "key-" + i, "value-" + i),
+                i));
+
+sender.send(outboundRecords)
+        .doOnNext(result -> System.out.println(
+                "Sent offset=" + result.recordMetadata().offset() +
+                " correlation=" + result.correlationMetadata()))
+        .doOnError(e -> System.err.println("Send failed: " + e))
+        .doFinally(signal -> sender.close())
+        .subscribe();
+```
+
+### Consuming records with manual acknowledgement
+
+```java
+Map<String, Object> consumerProps = new HashMap<>();
+consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, "my-group");
+consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+
+ReceiverOptions<String, String> receiverOptions = ReceiverOptions.<String, String>create(consumerProps)
+        .subscription(Collections.singleton("my-topic"))
+        .commitInterval(Duration.ofSeconds(5));
+
+KafkaReceiver<String, String> receiver = KafkaReceiver.create(receiverOptions);
+
+receiver.receive()
+        .doOnNext(record -> {
+            System.out.println("Received: " + record.key() + " -> " + record.value());
+            record.receiverOffset().acknowledge();
+        })
+        .subscribe();
+```
+
+### Exactly-once processing (consume, transform, produce)
+
+```java
+SenderOptions<String, String> txSenderOptions = SenderOptions.<String, String>create(producerProps)
+        .producerProperty(ProducerConfig.TRANSACTIONAL_ID_CONFIG, "tx-1");
+
+KafkaSender<String, String> sender = KafkaSender.create(txSenderOptions);
+TransactionManager transactionManager = sender.transactionManager();
+
+KafkaReceiver<String, String> receiver = KafkaReceiver.create(receiverOptions);
+
+receiver.receiveExactlyOnce(transactionManager)
+        .concatMap(inner -> sender.send(
+                inner.map(record -> SenderRecord.create(
+                        new ProducerRecord<>("output-topic", record.key(), record.value()),
+                        null))
+        ))
+        .subscribe();
+```
+
+### Using rebalance listeners and manual seek
+
+```java
+ReceiverOptions<String, String> options = ReceiverOptions.<String, String>create(consumerProps)
+        .subscription(Collections.singleton("my-topic"))
+        .addAssignListener(partitions -> partitions.forEach(ReceiverPartition::seekToBeginning))
+        .addRevokeListener(partitions -> System.out.println("Revoked: " + partitions));
+```
+
+### Enabling metrics and tracing
+
+```java
+MeterRegistry meterRegistry = new SimpleMeterRegistry();
+
+SenderOptions<String, String> options = SenderOptions.<String, String>create(producerProps)
+        .producerListener(new MicrometerProducerListener(meterRegistry))
+        .withObservation(observationRegistry);
+
+ReceiverOptions<String, String> rOptions = ReceiverOptions.<String, String>create(consumerProps)
+        .consumerListener(new MicrometerConsumerListener(meterRegistry))
+        .withObservation(observationRegistry);
+```
+
+## Tooling
+
+The `reactor-kafka-tools` module ships standalone performance-testing utilities:
+
+- `ConsumerPerformance` — benchmark consumer throughput
+- `ProducerPerformance` — benchmark producer throughput
+- `EndToEndLatency` — measure end-to-end produce/consume latency
+- `ThroughputThrottler` — used internally by the above tools to pace throughput during benchmarks
+
+Each of these exposes a `main(String[] args)` entry point intended to be run directly from the command line.

@@ -1,0 +1,578 @@
+# xclim
+
+`xclim` is a Python library for climate-data analysis built around `xarray`. It provides:
+
+- Climate indices for temperature, precipitation, snow, wind, hydrology, agriculture, sea ice, and fire weather.
+- Unit-aware physical-variable conversions.
+- Calendar, climatology, resampling, run-length, and threshold-processing utilities.
+- Indicator classes for defining, validating, documenting, and computing reusable climate indicators.
+- Ensemble statistics, uncertainty partitioning, robustness analysis, and ensemble reduction.
+- Spatial analogue and distribution-distance metrics.
+- Data-quality flags and missing-data handling.
+- Statistical fitting, frequency analysis, and standardized indices.
+
+Most computational functions accept and return `xarray.DataArray` or `xarray.Dataset`, making them suitable for gridded, station-based, and multi-dimensional climate datasets.
+
+## Main components
+
+### Climate indices
+
+The `xclim.indices` API contains individual calculation functions organized around common climate-analysis tasks.
+
+#### Temperature and precipitation summaries
+
+Simple indices include period-based minima, maxima, and means:
+
+```python
+from xclim.indices._simple import tg_mean, tx_max, max_n_day_precipitation_amount
+
+annual_mean_temperature = tg_mean(tas, freq="YS")
+annual_max_temperature = tx_max(tasmax, freq="YS")
+annual_max_5day_precip = max_n_day_precipitation_amount(pr, window=5, freq="YS")
+```
+
+Threshold-based indices cover counts, degree days, spells, seasons, snow, wind, and related measures:
+
+```python
+from xclim.indices._threshold import (
+    frost_days,
+    growing_degree_days,
+    maximum_consecutive_dry_days,
+    wetdays,
+)
+
+frost = frost_days(tasmin, thresh="0 degC", freq="YS")
+gdd = growing_degree_days(tas, thresh="4 degC", freq="YS")
+cdd = maximum_consecutive_dry_days(pr, thresh="1 mm/day", freq="YS")
+wet_day_count = wetdays(pr, thresh="1 mm/day", freq="YS")
+```
+
+Many threshold and spell functions support configurable comparison operators, rolling windows, and annual, seasonal, or monthly resampling frequencies.
+
+#### Percentile and multivariate indices
+
+Functions in the multivariate collection combine variables or compare them with percentile climatologies:
+
+```python
+from xclim.indices._multivariate import (
+    heat_wave_frequency,
+    tg90p,
+    warm_and_dry_days,
+)
+
+heat_waves = heat_wave_frequency(
+    tasmin,
+    tasmax,
+    thresh_tasmin="22 degC",
+    thresh_tasmax="30 degC",
+    window=3,
+    freq="YS",
+)
+
+warm_days = tg90p(tas, tas_per, freq="YS", bootstrap=False)
+
+warm_dry = warm_and_dry_days(
+    tas,
+    pr,
+    tas_per,
+    pr_per,
+    freq="YS",
+)
+```
+
+Percentile-based functions generally take a data variable and a corresponding percentile array, such as `tas_per`, `tasmin_per`, `tasmax_per`, or `pr_per`.
+
+#### Agriculture, hydrology, and fire weather
+
+Agricultural indices include heat units, growing-degree-day variants, growing-season metrics, and standardized precipitation indices:
+
+```python
+from xclim.indices._agro import (
+    corn_heat_units,
+    standardized_precipitation_index,
+)
+
+chu = corn_heat_units(tasmin, tasmax)
+spi_3 = standardized_precipitation_index(pr, freq="MS", window=3)
+```
+
+Hydrological functions include flow indices, snow metrics, runoff ratios, aridity indices, and standardized streamflow or groundwater indices:
+
+```python
+from xclim.indices._hydrology import (
+    aridity_index,
+    base_flow_index,
+    standardized_streamflow_index,
+)
+
+bfi = base_flow_index(q, freq="YS")
+ai = aridity_index(pr, pet, freq="YS")
+ssi = standardized_streamflow_index(q, freq="MS", window=3)
+```
+
+Fire-weather functionality includes daily fire-weather calculations, fire-season masks, and drought-related indices:
+
+```python
+from xclim.indices.fire._cffwis import cffwis_indices, fire_season
+
+season = fire_season(tas, snd=snd, method="WF93")
+
+dc, dmc, ffmc, isi, bui, fwi = cffwis_indices(
+    tas=tas,
+    pr=pr,
+    sfcWind=sfcWind,
+    hurs=hurs,
+    lat=lat,
+    snd=snd,
+    season_method="WF93",
+)
+```
+
+### Variable conversion utilities
+
+`xclim.indices.converters` provides transformations between common atmospheric, hydrological, snow, wind, humidity, and radiation variables.
+
+```python
+from xclim.indices.converters import (
+    heat_index,
+    relative_humidity,
+    snowfall_approximation,
+    uas_vas_to_sfcwind,
+)
+
+hi = heat_index(tas, hurs)
+
+hurs = relative_humidity(
+    tas,
+    tdps=tdps,
+    method="sonntag90",
+)
+
+prsn = snowfall_approximation(
+    pr,
+    tas,
+    thresh="0 degC",
+    method="binary",
+)
+
+sfcWind, sfcWindfromdir = uas_vas_to_sfcwind(uas, vas)
+```
+
+Additional converters include:
+
+- Snow depth and snow-water equivalent: `snd_to_snw`, `snw_to_snd`.
+- Snowfall rate and snowfall-depth rate: `prsn_to_prsnd`, `prsnd_to_prsn`.
+- Vapor pressure, vapor-pressure deficit, specific humidity, and dew point.
+- Potential evapotranspiration and water budget.
+- Wind chill, humidex, universal thermal climate index, and mean radiant temperature.
+- Radiation transformations and clearness index calculations.
+- Wind-profile and wind-power-potential calculations.
+
+### Generic index-building tools
+
+`xclim.indices.generic` offers reusable primitives for constructing custom climate metrics. These utilities support thresholding, resampling, rolling windows, events, seasons, spells, cumulative quantities, and reductions.
+
+```python
+from xclim.indices.generic import (
+    compare,
+    select_rolling_resample_op,
+    threshold_count,
+)
+
+hot = compare(tasmax, ">", 30)
+
+hot_day_count = threshold_count(
+    tasmax,
+    op=">",
+    threshold=30,
+    freq="YS",
+)
+
+annual_7day_precip = select_rolling_resample_op(
+    pr,
+    op="max",
+    window=7,
+    window_op="sum",
+    freq="YS",
+)
+```
+
+For more complex event definitions, use `spell_mask`, `spell_length_statistics`, `thresholded_events`, or `find_events`.
+
+### Run-length analysis
+
+`xclim.indices.run_length` provides operations for contiguous runs of boolean or event-like data. It supports longest runs, counts of windowed events, first or last runs, seasonal boundaries, and event detection.
+
+```python
+from xclim.indices.generic import compare
+from xclim.indices.run_length import longest_run, windowed_run_count
+
+freezing = compare(tasmin, "<", 0)
+
+longest_freezing_run = longest_run(freezing, freq="YS")
+
+cold_spell_events = windowed_run_count(
+    freezing,
+    window=5,
+    freq="YS",
+)
+```
+
+This functionality underpins many spell, season, and consecutive-day indices.
+
+## Indicators
+
+The indicator framework provides classes for reusable, validated climate indicators.
+
+Core classes include:
+
+- `Indicator`: Base indicator with methods such as `compute`, `cfcheck`, `datacheck`, `parameters`, `json`, and `translate_attrs`.
+- `Daily` and `Hourly`: Resampling-oriented indicator types.
+- `ReducingIndicator`, `ResamplingIndicator`, and `IndexingIndicator`: Specialized indicator behavior.
+- `StandardizedIndexes`: Indicator support for standardized index workflows.
+- Domain-oriented classes including `Precip`, `Temp`, `Snow`, `Wind`, `Streamflow`, `FireWeather`, and `JetStream`.
+
+Indicators can be created from dictionaries or YAML-based definitions:
+
+```python
+from xclim.core.indicator import build_indicator_module_from_yaml
+
+custom_indicators = build_indicator_module_from_yaml(
+    "indicators.yml",
+    name="my_indicators",
+)
+```
+
+The resulting module can expose configured indicator objects that encapsulate inputs, validation, computation, metadata, and localization behavior.
+
+## Units and physical consistency
+
+`xclim.core.units` contains utilities for unit parsing, conversion, validation, and transformations between rates, amounts, fluxes, and thicknesses.
+
+```python
+from xclim.core.units import (
+    amount2rate,
+    convert_units_to,
+    rate2amount,
+)
+
+tas_c = convert_units_to(tas, "degC")
+
+pr_amount = rate2amount(pr)
+pr_rate = amount2rate(pr_amount)
+
+pr_mm_day = convert_units_to(pr, "mm d-1")
+```
+
+Useful unit helpers include:
+
+- `str2pint`, `units2pint`, `pint2cfunits`, and `pint2cfattrs`.
+- `check_units` and `declare_units` for validation and declaration.
+- `rate2amount` and `amount2rate`.
+- `rate2flux` and `flux2rate`.
+- `amount2lwethickness` and `lwethickness2amount`.
+- `to_agg_units` for adapting units after aggregations.
+
+Threshold parameters throughout the library commonly accept quantified strings such as `"0 degC"`, `"1 mm/day"`, `"10 m s-1"`, or `"25 K days"`.
+
+## Calendar and time utilities
+
+`xclim.core.calendar` provides tools for non-standard calendars, day-of-year transformations, climatological bounds, time selection, and stacking fixed-length periods.
+
+```python
+from xclim.core.calendar import (
+    percentile_doy,
+    select_time,
+    stack_periods,
+)
+
+summer = select_time(tas, season="JJA")
+
+tas_p90 = percentile_doy(tas, window=5, per=90)
+
+periods = stack_periods(
+    tas,
+    window=30,
+    stride=30,
+    freq="YS",
+)
+```
+
+Other calendar tools include:
+
+- `get_calendar` and `common_calendar`.
+- `convert_doy`, `adjust_doy_calendar`, and `resample_doy`.
+- `doy_to_days_since` and `days_since_to_doy`.
+- `mask_between_doys` and `select_time`.
+- `time_bnds` and `build_climatology_bounds`.
+- `unstack_periods` for restoring stacked period data.
+
+## Missing-data handling and data quality
+
+### Missing-data masks
+
+The missing-data API produces masks based on expected sample counts and configurable validity rules.
+
+```python
+from xclim.core.missing import missing_any, missing_pct, missing_wmo
+
+has_missing = missing_any(tas, freq="YS")
+
+too_incomplete = missing_pct(
+    tas,
+    freq="MS",
+    tolerance=0.1,
+)
+
+wmo_missing = missing_wmo(
+    tas,
+    freq="MS",
+    nm=11,
+    nc=5,
+)
+```
+
+Available strategies include:
+
+- `missing_any`
+- `missing_some_but_not_all`
+- `missing_wmo`
+- `missing_pct`
+- `at_least_n_valid`
+- `missing_from_context`
+
+Corresponding classes include `MissingAny`, `MissingSomeButNotAll`, `MissingWMO`, `MissingPct`, and `AtLeastNValid`.
+
+### Data-quality flags
+
+Data flags identify potentially invalid, suspicious, or physically inconsistent values.
+
+```python
+from xclim.core.dataflags import (
+    data_flags,
+    tasmax_below_tasmin,
+    very_large_precipitation_events,
+)
+
+temperature_issue = tasmax_below_tasmin(tasmax, tasmin)
+
+extreme_precip = very_large_precipitation_events(
+    pr,
+    thresh="300 mm d-1",
+)
+
+flags = data_flags(
+    tas,
+    ds=dataset,
+    dims="all",
+    freq="YS",
+)
+```
+
+Built-in checks cover temperature consistency, implausibly high or low temperatures, negative accumulations, large precipitation events, repeated values, wind bounds, and climatological outliers.
+
+`ecad_compliant` provides a higher-level quality-check interface for datasets.
+
+## Ensembles
+
+`xclim.ensembles` supports construction, summarization, reduction, uncertainty partitioning, and robustness assessment for climate-model ensembles.
+
+### Create and summarize an ensemble
+
+```python
+from xclim.ensembles._base import (
+    create_ensemble,
+    ensemble_mean_std_max_min,
+    ensemble_percentiles,
+)
+
+ens = create_ensemble(
+    datasets=[model_a, model_b, model_c],
+    realizations=["model_a", "model_b", "model_c"],
+)
+
+summary = ensemble_mean_std_max_min(ens)
+
+p10_p50_p90 = ensemble_percentiles(
+    ens,
+    values=[10, 50, 90],
+)
+```
+
+### Robustness and uncertainty
+
+```python
+from xclim.ensembles._robustness import (
+    robustness_categories,
+    robustness_fractions,
+)
+
+fractions = robustness_fractions(
+    fut=future_change,
+    ref=reference_period,
+    test="threshold",
+)
+
+categories = robustness_categories(fractions)
+```
+
+Uncertainty-partitioning utilities include `hawkins_sutton`, `lafferty_sriver`, `general_partition`, and `fractional_uncertainty`.
+
+Ensemble-reduction methods include:
+
+- `kkz_reduce_ensemble`
+- `kmeans_reduce_ensemble`
+- `make_criteria`
+- `plot_rsqprofile`
+
+## Spatial analogues
+
+`xclim.analog` compares target data with candidate datasets using multivariate distances and analogue metrics.
+
+```python
+from xclim.analog import spatial_analogs
+
+analogs = spatial_analogs(
+    target=target,
+    candidates=candidates,
+    dist_dim="time",
+    method="kldiv",
+)
+```
+
+Available metrics include:
+
+- `seuclidean`
+- `nearest_neighbor`
+- `zech_aslan`
+- `szekely_rizzo`
+- `friedman_rafsky`
+- `kolmogorov_smirnov`
+- `kldiv`
+- `mahalanobis`
+
+Use `standardize` to standardize paired NumPy arrays before applying distance calculations directly.
+
+## Statistical analysis
+
+`xclim.indices.stats` contains distribution fitting, parametric distribution methods, frequency analysis, and standardized-index support.
+
+```python
+from xclim.indices.stats import (
+    fit,
+    frequency_analysis,
+    parametric_quantile,
+)
+
+params = fit(tasmax, dist="norm", method="ML")
+
+q95 = parametric_quantile(params, q=0.95)
+
+return_levels = frequency_analysis(
+    tasmax,
+    mode="max",
+    t=[10, 20, 50],
+    dist="genextreme",
+    window=1,
+    freq="YS",
+)
+```
+
+For standardized drought or hydrological indices, the API also includes:
+
+- `preprocess_standardized_index`
+- `standardized_index_fit_params`
+- `standardized_index`
+
+High-level climate-index functions such as `standardized_precipitation_index`, `standardized_precipitation_evapotranspiration_index`, `standardized_streamflow_index`, and `standardized_groundwater_index` expose these workflows for common variables.
+
+## Example workflow
+
+The following example computes annual temperature and precipitation indicators from daily `xarray.DataArray` inputs, derives snowfall from precipitation and temperature, and combines the outputs in a dataset.
+
+```python
+import xarray as xr
+
+from xclim.indices._simple import (
+    max_n_day_precipitation_amount,
+    tg_mean,
+    tx_max,
+)
+from xclim.indices._threshold import (
+    frost_days,
+    maximum_consecutive_dry_days,
+    wetdays,
+)
+from xclim.indices.converters import snowfall_approximation
+
+# Inputs are xarray.DataArray objects with a time coordinate.
+# Typical variables:
+# - tas: mean air temperature
+# - tasmin: daily minimum air temperature
+# - tasmax: daily maximum air temperature
+# - pr: precipitation flux or rate
+
+annual_mean_tas = tg_mean(tas, freq="YS")
+annual_max_tasmax = tx_max(tasmax, freq="YS")
+
+annual_frost_days = frost_days(
+    tasmin,
+    thresh="0 degC",
+    freq="YS",
+)
+
+annual_wet_days = wetdays(
+    pr,
+    thresh="1 mm/day",
+    freq="YS",
+)
+
+annual_max_5day_pr = max_n_day_precipitation_amount(
+    pr,
+    window=5,
+    freq="YS",
+)
+
+annual_max_dry_spell = maximum_consecutive_dry_days(
+    pr,
+    thresh="1 mm/day",
+    freq="YS",
+)
+
+prsn = snowfall_approximation(
+    pr,
+    tas,
+    thresh="0 degC",
+    method="binary",
+)
+
+results = xr.Dataset(
+    {
+        "tg_mean": annual_mean_tas,
+        "tx_max": annual_max_tasmax,
+        "frost_days": annual_frost_days,
+        "wetdays": annual_wet_days,
+        "max_5day_precip": annual_max_5day_pr,
+        "max_dry_spell": annual_max_dry_spell,
+        "snowfall": prsn,
+    }
+)
+```
+
+## Testing helpers
+
+The `xclim.testing` API offers helpers for generating small time series, opening registered datasets, and preparing testing data.
+
+```python
+from xclim.testing.helpers import test_timeseries
+
+tas = test_timeseries(
+    values=[273.15, 274.15, 275.15],
+    variable="tas",
+    start="2000-01-01",
+    units="K",
+    freq="D",
+)
+```
+
+Additional utilities include `open_dataset`, `populate_testing_data`, `load_registry`, `show_versions`, and `run_doctests`.

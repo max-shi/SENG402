@@ -1,0 +1,591 @@
+# jackson-databind
+
+`com.jwebmp.jackson.core:jackson-databind` is a Java data-binding library for connecting token-stream based JSON processing with Java objects, Java types, and a mutable JSON tree model.
+
+The API provides facilities for:
+
+- Configuring JSON serialization and deserialization.
+- Building mapper instances through `JsonMapper` and `MapperBuilder`.
+- Representing JSON values as `JsonNode` trees.
+- Customizing property names, annotations, visibility, inclusion, coercion, and null handling.
+- Extending serialization and deserialization through modules, serializers, deserializers, key handlers, and value instantiators.
+- Handling polymorphic types through type resolvers and subtype validation.
+- Supporting common JDK types, including collections, dates, optionals, streams, atomics, SQL types, XML types, and Java time types.
+- Producing and consuming sequences of values.
+
+## Core concepts
+
+### Mapper configuration
+
+`JsonMapper` is a JSON-focused mapper implementation. Create it directly or configure it with a builder:
+
+```java
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .build();
+```
+
+The builder exposes feature flags and component-level customization before producing the mapper:
+
+```java
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.MapperFeature;
+import tools.jackson.databind.SerializationFeature;
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .enable(SerializationFeature.INDENT_OUTPUT)
+        .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .build();
+```
+
+`JsonMapper` also provides JSON-specific feature checks:
+
+```java
+import tools.jackson.core.json.JsonReadFeature;
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder().build();
+
+boolean allowsFeature = mapper.isEnabled(JsonReadFeature.ALLOW_JAVA_COMMENTS);
+```
+
+### Configuration categories
+
+The library separates configuration into reusable types:
+
+| Type | Purpose |
+|---|---|
+| `MapperFeature` | General mapping behavior, annotation handling, access rules, property detection, naming, and ordering. |
+| `SerializationFeature` | Output behavior such as root wrapping, indentation, empty-bean failures, map ordering, and single-element array handling. |
+| `DeserializationFeature` | Input behavior such as unknown-property handling, primitive nulls, root unwrapping, scalar coercion, and trailing-token validation. |
+| `DatatypeFeature` | Type-family-specific options. Implementations include `DateTimeFeature`, `EnumFeature`, and `JsonNodeFeature`. |
+| `CoercionConfigs` | Rules for converting input shapes such as strings, numbers, arrays, objects, and empty values into target types. |
+| `ConfigOverrides` | Per-type formatting, inclusion, visibility, null-handling, and merge overrides. |
+
+For example, configure enum and date/time behavior:
+
+```java
+import tools.jackson.databind.cfg.DateTimeFeature;
+import tools.jackson.databind.cfg.EnumFeature;
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .enable(EnumFeature.WRITE_ENUMS_TO_LOWERCASE)
+        .enable(DateTimeFeature.WRITE_DATES_WITH_ZONE_ID)
+        .disable(DateTimeFeature.WRITE_DATES_AS_TIMESTAMPS)
+        .build();
+```
+
+## JSON tree model
+
+`JsonNode` is the base type for the JSON tree model. It supports:
+
+- Navigation by index or property name.
+- JSON Pointer navigation using `at(...)`.
+- Type inspection such as `isObject()`, `isArray()`, `isTextual()`, `isNumber()`, and `isNull()`.
+- Conversion methods such as `asString()`, `asInt()`, `asLong()`, `asBoolean()`, and `asDecimal()`.
+- Optional conversion methods such as `intValueOpt()`, `asStringOpt()`, and `asObjectOpt()`.
+- Required-value access with `require()`, `requireNonNull()`, and `required(...)`.
+- Recursive lookup using `findValue`, `findPath`, `findValues`, and `findParents`.
+
+`JsonNodeFactory` creates node instances:
+
+```java
+import java.math.BigDecimal;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+
+JsonNodeFactory nodes = new JsonNodeFactory();
+
+JsonNode enabled = nodes.booleanNode(true);
+JsonNode retries = nodes.numberNode(3);
+JsonNode price = nodes.numberNode(new BigDecimal("19.95"));
+JsonNode label = nodes.stringNode("standard");
+JsonNode absent = nodes.missingNode();
+JsonNode nil = nodes.nullNode();
+
+boolean isEnabled = enabled.asBoolean(false);
+int retryCount = retries.asInt(0);
+BigDecimal amount = price.asDecimal(BigDecimal.ZERO);
+String plan = label.asString("unknown");
+```
+
+Use optional accessors when an absent or incompatible value should not be treated as a normal value:
+
+```java
+import java.util.OptionalInt;
+
+import tools.jackson.databind.JsonNode;
+
+OptionalInt value = someNode.intValueOpt();
+value.ifPresent(System.out::println);
+```
+
+### Missing versus null nodes
+
+The tree API distinguishes between:
+
+- `NullNode`: an explicit JSON `null`.
+- `MissingNode`: the result of a missing path or unavailable value.
+
+```java
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.JsonNodeFactory;
+
+JsonNodeFactory nodes = new JsonNodeFactory();
+
+JsonNode explicitNull = nodes.nullNode();
+JsonNode missing = nodes.missingNode();
+
+System.out.println(explicitNull.isNull());        // true
+System.out.println(missing.isMissingNode());      // true
+```
+
+## Type model
+
+`JavaType` represents a resolved Java type, including generic bindings and container content types. It is used throughout serialization, deserialization, type resolution, and custom extensions.
+
+Useful `JavaType` operations include:
+
+- Inspect raw and generic structure with `getRawClass()`, `getBindings()`, `getContentType()`, and `getKeyType()`.
+- Determine classification with `isContainerType()`, `isCollectionLikeType()`, `isMapLikeType()`, `isArrayType()`, `isEnumType()`, and `isRecordType()`.
+- Resolve supertypes using `findSuperType(...)`.
+- Add type/value handlers with `withTypeHandler(...)`, `withValueHandler(...)`, and their content variants.
+
+`MapperConfig` and `DatabindContext` can construct and specialize types:
+
+```java
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.cfg.MapperConfig;
+
+// `config` is supplied by a mapper operation or extension point.
+JavaType stringType = config.constructType(String.class);
+
+boolean isString = stringType.hasRawClass(String.class);
+boolean concrete = stringType.isConcrete();
+```
+
+## Modules and extensions
+
+### Registering a module
+
+`JacksonModule` is the extension point for mapper setup. `SimpleModule` provides a convenient implementation for common registrations.
+
+A `SimpleModule` can register:
+
+- Value serializers and deserializers.
+- Key serializers and deserializers.
+- Abstract-type mappings.
+- Value instantiators.
+- Serializer and deserializer modifiers.
+- Subtypes.
+- Mix-in annotations.
+- Default serializers for null map keys and null values.
+
+```java
+import tools.jackson.databind.Version;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.module.SimpleModule;
+
+SimpleModule module = new SimpleModule("application-types", new Version(
+        1, 0, 0, null, "example", "application-types"
+));
+
+JsonMapper mapper = JsonMapper.builder()
+        .addModule(module)
+        .build();
+```
+
+Multiple modules may be registered at once:
+
+```java
+import tools.jackson.databind.JacksonModule;
+import tools.jackson.databind.json.JsonMapper;
+
+JacksonModule[] modules = {
+        new SimpleModule("first"),
+        new SimpleModule("second")
+};
+
+JsonMapper mapper = JsonMapper.builder()
+        .addModules(modules)
+        .build();
+```
+
+The builder can also discover available modules:
+
+```java
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .findAndAddModules()
+        .build();
+```
+
+### Custom serializers
+
+Custom serializers extend `ValueSerializer<T>` or one of the standard serializer base classes such as `StdSerializer<T>`.
+
+```java
+import tools.jackson.core.JsonGenerator;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.SerializationContext;
+import tools.jackson.databind.module.SimpleModule;
+import tools.jackson.databind.ser.std.StdSerializer;
+
+final class VersionLabel {
+    final int major;
+    final int minor;
+
+    VersionLabel(int major, int minor) {
+        this.major = major;
+        this.minor = minor;
+    }
+}
+
+final class VersionLabelSerializer extends StdSerializer<VersionLabel> {
+    VersionLabelSerializer() {
+        super();
+    }
+
+    @Override
+    public void serialize(
+            VersionLabel value,
+            JsonGenerator generator,
+            SerializationContext context
+    ) throws JacksonException {
+        generator.writeString(value.major + "." + value.minor);
+    }
+}
+
+SimpleModule module = new SimpleModule("version-labels");
+module.addSerializer(VersionLabel.class, new VersionLabelSerializer());
+```
+
+Register the module during mapper construction:
+
+```java
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .addModule(module)
+        .build();
+```
+
+### Custom deserializers and key deserializers
+
+Deserialization extensions use:
+
+- `ValueDeserializer<T>` for value content.
+- `KeyDeserializer` for map keys.
+- `Deserializers` and `KeyDeserializers` for lookup-based registration.
+- `ValueDeserializerModifier` for post-processing deserializers created by the mapper.
+- `ValueInstantiator` for custom object construction.
+
+`SimpleModule` supplies direct registration methods:
+
+```java
+module.addDeserializer(VersionLabel.class, versionLabelDeserializer);
+module.addKeyDeserializer(VersionLabel.class, versionLabelKeyDeserializer);
+```
+
+For larger integrations, use `SimpleDeserializers`, `SimpleKeyDeserializers`, and `SimpleValueInstantiators`.
+
+## Property naming and introspection
+
+The library models discovered properties through `BeanDescription`, `BeanPropertyDefinition`, `BeanProperty`, and annotated member wrappers such as:
+
+- `AnnotatedClass`
+- `AnnotatedField`
+- `AnnotatedMethod`
+- `AnnotatedConstructor`
+- `AnnotatedParameter`
+
+`PropertyNamingStrategy` can customize names derived from Java members:
+
+```java
+import tools.jackson.databind.PropertyNamingStrategy;
+import tools.jackson.databind.cfg.MapperConfig;
+import tools.jackson.databind.introspect.AnnotatedField;
+import tools.jackson.databind.introspect.AnnotatedMethod;
+
+final class UpperCaseNames extends PropertyNamingStrategy {
+    @Override
+    public String nameForField(
+            MapperConfig<?> config,
+            AnnotatedField field,
+            String defaultName
+    ) {
+        return defaultName.toUpperCase();
+    }
+
+    @Override
+    public String nameForGetterMethod(
+            MapperConfig<?> config,
+            AnnotatedMethod method,
+            String defaultName
+    ) {
+        return defaultName.toUpperCase();
+    }
+}
+```
+
+Apply the strategy through the mapper builder:
+
+```java
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .propertyNamingStrategy(new UpperCaseNames())
+        .build();
+```
+
+`AccessorNamingStrategy` provides lower-level control over getter, setter, and field-name detection.
+
+## Per-type configuration overrides
+
+Use `withConfigOverride(...)` to apply default behavior to a particular Java type:
+
+```java
+import tools.jackson.annotation.JsonInclude;
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .withConfigOverride(MyDto.class, override ->
+                override.setInclude(JsonInclude.Value.construct(
+                        JsonInclude.Include.NON_NULL,
+                        JsonInclude.Include.ALWAYS
+                ))
+        )
+        .build();
+```
+
+Available override settings include:
+
+- `setFormat(...)`
+- `setInclude(...)`
+- `setIncludeAsProperty(...)`
+- `setIgnorals(...)`
+- `setIsIgnoredType(...)`
+- `setNullHandling(...)`
+- `setVisibility(...)`
+- `setMergeable(...)`
+
+## Coercion configuration
+
+`CoercionConfigs` controls how different input shapes are handled during deserialization. Input categories are represented by `CoercionInputShape`, including `String`, `Integer`, `Float`, `Boolean`, `Array`, `Object`, `EmptyString`, and `EmptyArray`.
+
+Possible actions are:
+
+- `CoercionAction.Fail`
+- `CoercionAction.TryConvert`
+- `CoercionAction.AsNull`
+- `CoercionAction.AsEmpty`
+
+Example: configure how empty strings are handled for a target type:
+
+```java
+import tools.jackson.databind.cfg.CoercionAction;
+import tools.jackson.databind.cfg.CoercionInputShape;
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .withCoercionConfig(MyDto.class, coercion ->
+                coercion.setCoercion(
+                        CoercionInputShape.EmptyString,
+                        CoercionAction.AsNull
+                )
+        )
+        .build();
+```
+
+Configure a logical type instead when the rule should apply to an entire type category:
+
+```java
+import tools.jackson.databind.cfg.CoercionAction;
+import tools.jackson.databind.cfg.CoercionInputShape;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.type.LogicalType;
+
+JsonMapper mapper = JsonMapper.builder()
+        .withCoercionConfig(LogicalType.Integer, coercion ->
+                coercion.setCoercion(
+                        CoercionInputShape.String,
+                        CoercionAction.TryConvert
+                )
+        )
+        .build();
+```
+
+## Polymorphic types
+
+The polymorphic type API consists of:
+
+- `TypeResolverBuilder`
+- `TypeSerializer`
+- `TypeDeserializer`
+- `TypeIdResolver`
+- `SubtypeResolver`
+- `NamedType`
+- `PolymorphicTypeValidator`
+
+Use a `PolymorphicTypeValidator` to control which base and subtype combinations are accepted:
+
+```java
+import tools.jackson.databind.DatabindContext;
+import tools.jackson.databind.JavaType;
+import tools.jackson.databind.jsontype.PolymorphicTypeValidator;
+
+final class ApplicationTypeValidator extends PolymorphicTypeValidator {
+    @Override
+    public Validity validateBaseType(DatabindContext context, JavaType baseType) {
+        return Validity.INDETERMINATE;
+    }
+
+    @Override
+    public Validity validateSubClassName(
+            DatabindContext context,
+            JavaType baseType,
+            String subclassName
+    ) {
+        return subclassName.startsWith("com.example.model.")
+                ? Validity.ALLOWED
+                : Validity.DENIED;
+    }
+
+    @Override
+    public Validity validateSubType(
+            DatabindContext context,
+            JavaType baseType,
+            JavaType subtype
+    ) {
+        Package packageInfo = subtype.getRawClass().getPackage();
+        String packageName = packageInfo == null ? "" : packageInfo.getName();
+
+        return packageName.startsWith("com.example.model.")
+                ? Validity.ALLOWED
+                : Validity.DENIED;
+    }
+}
+```
+
+Apply it when enabling default typing:
+
+```java
+import tools.jackson.databind.DefaultTyping;
+import tools.jackson.databind.json.JsonMapper;
+
+JsonMapper mapper = JsonMapper.builder()
+        .activateDefaultTyping(
+                new ApplicationTypeValidator(),
+                DefaultTyping.NON_FINAL
+        )
+        .build();
+```
+
+Subtypes can also be registered explicitly:
+
+```java
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.jsontype.NamedType;
+
+JsonMapper mapper = JsonMapper.builder()
+        .registerSubtypes(
+                new NamedType(TextEvent.class, "text"),
+                new NamedType(ImageEvent.class, "image")
+        )
+        .build();
+```
+
+## Filters and virtual properties
+
+Serialization filters are represented by `FilterProvider` and `PropertyFilter`. `SimpleFilterProvider` maps filter identifiers to filters and can define behavior for unknown identifiers.
+
+```java
+import tools.jackson.databind.ser.std.SimpleFilterProvider;
+
+SimpleFilterProvider filters = new SimpleFilterProvider()
+        .setFailOnUnknownId(false);
+```
+
+Virtual properties can be implemented with `VirtualBeanPropertyWriter`. `AttributePropertyWriter` is provided for serializing values from serialization-context attributes.
+
+## Value sequences
+
+`SequenceWriter` writes multiple values to a single generator-backed output sequence. It supports individual writes, arrays, collections, and iterables.
+
+```java
+import java.util.List;
+
+import tools.jackson.databind.SequenceWriter;
+
+// Obtain a SequenceWriter from the surrounding serialization workflow.
+SequenceWriter writer = obtainSequenceWriter();
+
+writer.write("first");
+writer.writeAll(List.of("second", "third"));
+writer.flush();
+writer.close();
+```
+
+## Error handling
+
+The library exposes specialized exceptions for common data-binding failures:
+
+| Exception | Typical use |
+|---|---|
+| `MismatchedInputException` | Input token or structure does not match the expected target type. |
+| `InvalidFormatException` | A value cannot be converted into the required target format. |
+| `InvalidNullException` | `null` is invalid for a target property or type. |
+| `InvalidTypeIdException` | A polymorphic type identifier is invalid or cannot be resolved. |
+| `InvalidDefinitionException` | A Java type or property definition is not valid for mapping. |
+| `ValueInstantiationException` | A value could not be instantiated. |
+| `MissingInjectableValueException` | An injectable value could not be found. |
+| `UnresolvedForwardReference` | An object identity reference could not be resolved. |
+| `DeferredBindingException` | Deferred binding accumulated one or more problems. |
+
+`DeserializationProblemHandler` provides hooks for custom recovery or diagnostics, including unknown properties, malformed keys, unexpected tokens, instantiation errors, and unknown type ids.
+
+For collecting rather than immediately failing on selected problems, use `CollectingProblemHandler`:
+
+```java
+import tools.jackson.databind.deser.CollectingProblemHandler;
+import tools.jackson.databind.json.JsonMapper;
+
+CollectingProblemHandler problems = new CollectingProblemHandler(100);
+
+JsonMapper mapper = JsonMapper.builder()
+        .addHandler(problems)
+        .build();
+```
+
+## Supported type families
+
+The public API includes serializers and deserializers for many Java platform types, including:
+
+- Primitive values, boxed numbers, strings, booleans, arrays, collections, maps, and enums.
+- `Optional`, `OptionalInt`, `OptionalLong`, and `OptionalDouble`.
+- `Stream`, `IntStream`, `LongStream`, and `DoubleStream`.
+- `AtomicBoolean`, `AtomicInteger`, `AtomicLong`, and `AtomicReference`.
+- `Date`, `Calendar`, time zones, UUIDs, networking addresses, buffers, and common string-convertible JDK types.
+- `java.time` values such as `Duration`, `LocalDate`, `LocalDateTime`, `LocalTime`, `Month`, `MonthDay`, `OffsetTime`, `Year`, `YearMonth`, and `ZonedDateTime`.
+- SQL date/time/blob types.
+- XML, DOM, `QName`, and `XMLGregorianCalendar` values.
+
+## API organization
+
+The API is organized around these areas:
+
+- **Core binding:** `JsonMapper`, `MapperBuilder`, `JavaType`, `BeanDescription`, `PropertyName`.
+- **Configuration:** `MapperConfig`, `SerializationConfig`, `DeserializationConfig`, `ConfigOverrides`, `CoercionConfigs`.
+- **Serialization:** `ValueSerializer`, `SerializerFactory`, `SerializationContext`, `SequenceWriter`, serializers under `ser`.
+- **Deserialization:** `ValueDeserializer`, `DeserializerFactory`, `DeserializationContext`, `ValueInstantiator`, deserializers under `deser`.
+- **Tree model:** `JsonNode`, `JsonNodeFactory`, `JsonNodeCreator`, node-type classes.
+- **Extensions:** `JacksonModule`, `SimpleModule`, serializer/deserializer registries and modifiers.
+- **Introspection:** annotated member abstractions, bean descriptions, mix-ins, and naming strategies.
+- **Polymorphism:** type serializers/deserializers, subtype resolution, validators, and type-id resolvers.
+- **Schema/format visitation:** `JsonFormatVisitorWrapper` and specialized object, array, map, number, string, and scalar format visitors.

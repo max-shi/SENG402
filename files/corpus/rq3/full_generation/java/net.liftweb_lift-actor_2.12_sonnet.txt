@@ -1,0 +1,165 @@
+# lift-actor
+
+Java interoperability helpers for the [Lift Web Framework](https://liftweb.net). This library provides a thin, idiomatic Java-facing layer on top of Lift's Scala APIs, making it practical to build Lift applications — or Java modules that plug into a Lift application — without having to write Scala.
+
+Because Lift's core APIs (`LiftRules`, `S`, `SHtml`, `SiteMap`, `Menu`, `Vendor`, CSS selector transforms, session variables, etc.) are expressed in idiomatic Scala (singleton `object`s, `Function1`/`Function2` traits, `Vendor[T]`, and so on), calling them directly from Java is awkward. This library bridges that gap with:
+
+- **Functional interface adapters** that let you write plain Java lambdas/anonymous classes and have them "lifted" into the Scala function types Lift expects.
+- **`...J` accessor classes** that expose Lift's Scala singleton objects (which aren't directly Java-friendly) through simple static methods.
+- **Small utility helpers** (password hashing, array construction, CSS selectors) for common tasks in Lift applications.
+
+---
+
+## Main Components
+
+### Functional interfaces (`Func0`–`Func4`) and `Func`
+
+Java doesn't have a direct equivalent of Scala's `Function0`, `Function1`, etc. The `Func0` through `Func4` interfaces give you plain Java SAM types:
+
+```java
+public interface Func0<Z> { Z apply(); }
+public interface Func1<A, Z> { Z apply(A a); }
+public interface Func2<A, B, Z> { Z apply(A a, B b); }
+public interface Func3<A, B, C, Z> { Z apply(A a, B b, C c); }
+public interface Func4<A, B, C, D, Z> { Z apply(A a, B b, C c, D d); }
+```
+
+`Func` provides static `lift` methods that convert instances of these interfaces (or a `java.util.concurrent.Callable`) into the corresponding Scala `Function0`–`Function4` that Lift APIs actually consume:
+
+```java
+Function0<String> greeting = Func.lift(() -> "Hello from Java!");
+Function1<Integer, Integer> square = Func.lift(x -> x * x);
+```
+
+This is the foundational mechanism used throughout the rest of the library (and throughout any Java code that needs to hand a callback to Lift).
+
+### `A`
+
+A small varargs convenience for building arrays, useful anywhere a Scala-style array argument is expected from Java:
+
+```java
+String[] names = A.a("alice", "bob", "carol");
+```
+
+### `BCrypt`
+
+A standalone password hashing utility:
+
+```java
+String salt = BCrypt.gensalt(); // or BCrypt.gensalt(12, secureRandom)
+String hashed = BCrypt.hashpw("s3cr3t", salt);
+
+boolean ok = BCrypt.checkpw("s3cr3t", hashed);
+```
+
+### `Css`
+
+Java-friendly construction of Lift CSS selector transforms (`CssSel`), which are normally built with Scala operators. `Css.sel` gives you an equivalent factory method for each of the value types Lift's CSS selectors accept — a `String`, a `NodeSeq`, a transform function, or a `Bindable`:
+
+```java
+CssSel sel1 = Css.sel("#title", "Welcome!");
+CssSel sel2 = Css.sel(".error", errorNodeSeq);
+CssSel sel3 = Css.sel(".row", nodeSeq -> transformedNodeSeq);
+```
+
+### `VendorJ`
+
+Wraps values or Java callables into a Lift `Vendor<T>` — Lift's abstraction for pluggable, lazily-produced dependencies:
+
+```java
+Vendor<Connection> connectionVendor = VendorJ.vendor(() -> dataSource.getConnection());
+Vendor<String> staticVendor = VendorJ.vendor("constant-value");
+```
+
+### `VarsJ`
+
+Creates `SessionVar<T>` instances (Lift's per-session state container) from a default value or a `Callable` that computes one:
+
+```java
+SessionVar<Integer> counter = VarsJ.vendSessionVar(0);
+SessionVar<User> currentUser = VarsJ.vendSessionVar(() -> User.anonymous());
+```
+
+### `LiftRulesJ`, `SHtmlJ`, `SJ`
+
+These expose Lift's core Scala singleton objects — `LiftRules`, `SHtml`, and `S` — via a static `j()` accessor, since Java cannot reference Scala `object`s as naturally as Scala can:
+
+```java
+// Access LiftRules configuration
+LiftRulesJ.j().setSiteMap(mySiteMap);
+
+// Build an SHtml element (ajax text field, button, etc.)
+Elem field = SHtmlJ.j().text("default", value -> System.out.println(value));
+
+// Access request/response scoped S functionality
+String param = SJ.j().param("id").openOr("none");
+```
+
+### `MenuJ`, `SiteMapJ`
+
+Java-facing access to Lift's sitemap construction API:
+
+```java
+Menu home = MenuJ.j().apply("Home", A.a("index"));
+
+SiteMap siteMap = SiteMapJ.build(home, aboutMenu, contactMenu);
+
+LiftRulesJ.j().setSiteMap(siteMap);
+```
+
+---
+
+## Putting It Together
+
+A typical bootstrap snippet for a Lift application configured from Java:
+
+```java
+import net.liftweb.common.Func;
+import net.liftweb.http.LiftRulesJ;
+import net.liftweb.http.VarsJ;
+import net.liftweb.sitemap.MenuJ;
+import net.liftweb.sitemap.SiteMapJ;
+import net.liftweb.http.SessionVar;
+import net.liftweb.sitemap.Menu;
+import net.liftweb.sitemap.SiteMap;
+
+public class Boot {
+
+    public static SessionVar<Integer> visitCount = VarsJ.vendSessionVar(0);
+
+    public static void boot() {
+        Menu home = MenuJ.j().apply("Home", A.a("index"));
+        Menu about = MenuJ.j().apply("About", A.a("about"));
+
+        SiteMap siteMap = SiteMapJ.build(home, about);
+
+        LiftRulesJ.j().setSiteMap(siteMap);
+
+        LiftRulesJ.j().addToPackages("com.example.snippet");
+    }
+}
+```
+
+A snippet using `SHtmlJ` and `Css` together to render dynamic content:
+
+```java
+public class UserSnippet {
+
+    public CssSel render() {
+        String username = SJ.j().param("user").openOr("guest");
+
+        return Css.sel("#greeting", "Hello, " + username + "!")
+                  .andThen(Css.sel("#logout-link",
+                      SHtmlJ.j().ajaxButton("Log out", () -> {
+                          SJ.j().session().destroySession();
+                          return null;
+                      })));
+    }
+}
+```
+
+---
+
+## Why This Library Exists
+
+Lift is written in idiomatic Scala and leans heavily on features that don't map cleanly to Java: singleton objects, `Function0`–`Function22`, implicit conversions, and rich pattern-matching-driven APIs like `CssSel`. `lift-actor` supplies the missing glue — functional-interface adapters and static accessor facades — so that Java code (whether a legacy codebase, a Java-only team, or Java-based tooling) can drive a Lift application's configuration, session state, sitemap, snippet rendering, and CSS-based templating without needing to write any Scala.

@@ -1,0 +1,163 @@
+# nteract-scrapbook
+
+**nteract-scrapbook** is a library for recording, storing, and retrieving data from Jupyter notebooks. It lets you "glue" named pieces of data (numbers, strings, JSON, dataframes, or rich display output) into a notebook's cell outputs as you run it, and then later read those values back — either from a single notebook or aggregated across many notebooks.
+
+This makes scrapbook useful for pipelines where notebooks are executed programmatically (for example, with [papermill](https://github.com/nteract/papermill)) and you need to collect results, metrics, or artifacts produced during execution for later inspection, reporting, or comparison across runs.
+
+## Core Concepts
+
+- **Gluing**: Inside a running notebook, you call `glue()` to save a named value ("scrap") into the notebook's output. The value is encoded using a pluggable encoder so that it can later be recovered in its original form.
+- **Scraps**: A scrap is a named, encoded piece of data recorded in a notebook. Scraps are stored in notebook cell outputs and can be re-extracted after the notebook has finished executing.
+- **Encoders**: Scrapbook uses a registry of encoders to serialize/deserialize different data types (JSON-serializable data, plain text, display objects, and pandas dataframes via Arrow). The registry can be extended with custom encoders.
+- **Notebook / Scrapbook models**: Once a notebook has been executed, `read_notebook()` / `read_notebooks()` parse it (or a collection of notebooks) into `Notebook` and `Scrapbook` objects, which expose scraps, parameters, metadata, execution timing, and papermill-style metrics as convenient Python objects and dataframes.
+
+## Main API
+
+### `scrapbook.api`
+
+- **`glue(name, data, encoder=None, display=None)`** — Records a named value (`data`) as a scrap in the currently executing notebook's output. The encoder used to serialize the data can be selected automatically or specified explicitly via `encoder`. If `display=True`, the value is also rendered as a display output in the notebook.
+- **`read_notebook(path)`** — Reads a single executed notebook from `path` and returns a `Notebook` object, giving access to its scraps, parameters, metadata, and metrics.
+- **`read_notebooks(path)`** — Reads a directory (or collection) of executed notebooks and returns a `Scrapbook` object, which aggregates scraps and metrics across all of them.
+
+### `scrapbook.models`
+
+- **`Notebook`** — Represents a single parsed notebook. Key properties:
+  - `metadata`, `nbformat`, `nbformat_minor`, `cells` — Raw notebook structure.
+  - `filename`, `directory` — Location info.
+  - `parameters` — Papermill-style input parameters detected in the notebook.
+  - `scraps` — All scraps (glued values) recorded in the notebook, as a `Scraps` collection.
+  - `cell_timing`, `execution_counts` — Execution metadata per cell.
+  - `papermill_metrics`, `metrics` — Timing/metric summaries.
+  - `parameter_dataframe`, `scrap_dataframe`, `papermill_record_dataframe`, `papermill_dataframe` — Convenience `pandas.DataFrame` views of the above.
+  - `reglue(name, new_name=None, raise_on_missing=True, unattached=False)` — Re-glues an existing scrap under a new (or the same) name, useful for republishing a scrap into a different notebook context.
+  - `copy()` — Returns a copy of the notebook object.
+
+- **`Scrapbook`** — A dict-like collection (`MutableMapping`) of multiple `Notebook`s, keyed by notebook name/path. Key properties/methods:
+  - `notebooks` — The underlying collection of `Notebook` objects.
+  - `notebook_scraps` — Scraps grouped by notebook.
+  - `scraps` — All scraps flattened across notebooks.
+  - `papermill_metrics`, `metrics`, `papermill_dataframe` — Aggregated metrics/dataframes across all notebooks.
+  - `scraps_report(scrap_names=None, notebook_names=None, include_data=False, headers=True)` — Produces a human-readable report of scraps, optionally filtered by scrap or notebook name.
+
+- **`merge_dicts(dicts)`** — Utility for merging a sequence of dictionaries into one.
+
+### `scrapbook.scraps`
+
+- **`Scraps`** — An `OrderedDict` subclass holding scrap objects for a notebook. Provides:
+  - `data_scraps` / `data_dict` — Scraps holding plain data, and their values as a dict.
+  - `display_scraps` / `display_dict` — Scraps holding display-type output, and their values as a dict.
+  - `dataframe` — A `pandas.DataFrame` view of all scraps.
+- **`scrap_to_payload(scrap)` / `payload_to_scrap(payload)`** — Convert between a `Scrap` object and its serialized notebook-output payload form.
+
+### `scrapbook.encoders`
+
+- **`DataEncoderRegistry`** — A `MutableMapping` of encoder name → encoder instance, used by `glue`/`read_notebook` to encode and decode scrap data.
+  - `register(encoder)` / `deregister(encoder)` — Add or remove an encoder from the registry.
+  - `reset()` — Restore the registry to its default set of encoders.
+  - `determine_encoder_name(data)` — Inspects a piece of data and determines which registered encoder can handle it.
+  - `encode(scrap, **kwargs)` / `decode(scrap, **kwargs)` — Encode/decode a scrap using the appropriate registered encoder.
+- Built-in encoders, each implementing `name()`, `encodable(data)`, `encode(scrap, **kwargs)`, and `decode(scrap, **kwargs)`:
+  - **`JsonEncoder`** — Handles JSON-serializable Python data.
+  - **`TextEncoder`** — Handles plain text/string data.
+  - **`DisplayEncoder`** — Handles rich display objects (e.g., IPython display data).
+  - **`PandasArrowDataframeEncoder`** — Handles pandas DataFrames using Apache Arrow serialization.
+
+### `scrapbook.exceptions`
+
+- **`ScrapbookException`** — Base exception class for the library.
+- **`ScrapbookMissingEncoder`** — Raised when no suitable encoder is found for a piece of data.
+- **`ScrapbookInvalidEncoder`** — Raised when an encoder is malformed or misconfigured.
+- **`ScrapbookDataException`** — Raised for problems related to scrap data itself (e.g., encoding/decoding failures).
+
+### `scrapbook.schemas`
+
+- **`scrap_schema(version=LATEST_SCRAP_VERSION)`** — Returns the JSON schema describing the structure of a scrap payload for a given schema version.
+
+### `scrapbook.utils`
+
+- **`is_kernel()`** — Returns whether the code is currently running inside a live Jupyter kernel.
+- **`kernel_required(f)`** — Decorator that restricts a function (such as `glue`) to only run when inside a live kernel.
+- **`deprecated(version, replacement=None)`** — Decorator for marking functions as deprecated as of a given version, optionally pointing to a replacement.
+
+## Installation
+
+```bash
+pip install nteract-scrapbook
+```
+
+## Usage
+
+### Gluing data inside a notebook
+
+Inside a notebook cell that is executed (e.g., via papermill or Jupyter itself):
+
+```python
+import scrapbook as sb
+import pandas as pd
+
+# Glue a simple scalar value
+sb.glue("accuracy", 0.973)
+
+# Glue a JSON-serializable structure
+sb.glue("config", {"epochs": 10, "batch_size": 32})
+
+# Glue a dataframe (uses the Arrow-backed encoder automatically)
+df = pd.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]})
+sb.glue("results_df", df)
+
+# Force a particular encoder, or render as a display output
+sb.glue("summary_text", "Training complete", encoder="text")
+sb.glue("plot_preview", df.plot().get_figure(), display=True)
+```
+
+### Reading scraps back from a single executed notebook
+
+```python
+import scrapbook as sb
+
+nb = sb.read_notebook("output/train-run-01.ipynb")
+
+print(nb.parameters)          # papermill input parameters, if any
+print(nb.scraps)               # all glued scraps
+print(nb.scraps["accuracy"])   # a specific scrap
+
+# Convenient dataframe views
+scrap_df = nb.scrap_dataframe
+metrics_df = nb.papermill_dataframe
+```
+
+### Aggregating scraps across many notebooks
+
+```python
+import scrapbook as sb
+
+book = sb.read_notebooks("output/")
+
+# All notebooks, keyed by name
+for name, notebook in book.notebooks.items():
+    print(name, notebook.scraps.data_dict)
+
+# Flattened scraps and metrics across the whole collection
+all_scraps = book.scraps
+metrics_df = book.papermill_dataframe
+
+# Print a report of a specific scrap across all notebooks
+print(book.scraps_report(scrap_names=["accuracy"], include_data=True))
+```
+
+### Working with encoders directly
+
+```python
+from scrapbook.encoders import registry, JsonEncoder
+
+# Inspect available encoders or add a custom one
+class MyEncoder(JsonEncoder):
+    def name(self):
+        return "my-custom-encoder"
+
+registry.register(MyEncoder())
+```
+
+## License
+
+BSD-3-Clause (see `LICENSE` file for details).

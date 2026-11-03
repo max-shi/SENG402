@@ -1,0 +1,609 @@
+# org.jboss.forge.addon:projects
+
+A Java API for discovering, creating, inspecting, and operating on projects through a facet-based model.
+
+The library represents a project as a `Project` with a root `Resource<?>` and a set of `ProjectFacet` capabilities. Facets provide focused project services such as metadata management, dependency management, packaging/build execution, resource handling, class loading, modules, web resources, and stack constraints.
+
+The API also includes project-provider discovery, project caching, project-creation workflows, build result reporting, dependency installation, and UI command integration.
+
+## Core concepts
+
+### `Project`
+
+`Project` is the central abstraction:
+
+```java
+public interface Project extends Faceted<ProjectFacet> {
+    Object getAttribute(Object key);
+    void setAttribute(Object key, Object value);
+    void removeAttribute(Object key);
+
+    DirectoryResource getRootDirectory();
+    Resource<?> getRoot();
+    Optional<Stack> getStack();
+}
+```
+
+A project:
+
+- Has a root resource, available through `getRoot()`.
+- May expose a directory root through `getRootDirectory()`.
+- Supports arbitrary application attributes via `getAttribute`, `setAttribute`, and `removeAttribute`.
+- Is faceted: project behavior is supplied by `ProjectFacet` implementations.
+- May be associated with a `Stack`, which can constrain supported facets.
+
+`AbstractProject` provides a base implementation with attribute storage and equality support.
+
+## Finding and creating projects
+
+Use `ProjectFactory` to locate existing projects or create new ones.
+
+```java
+public interface ProjectFactory {
+    Project findProject(Resource<?> target);
+    Project findProject(Resource<?> target, Predicate<Project> filter);
+    Project findProject(Resource<?> target, ProjectProvider projectProvider);
+    Project findProject(Resource<?> target, ProjectProvider projectProvider, Predicate<Project> filter);
+
+    Project createProject(Resource<?> projectDir, ProjectProvider buildSystem);
+    Project createProject(
+        Resource<?> targetDir,
+        ProjectProvider projectProvider,
+        Iterable<Class<? extends ProjectFacet>> facetTypes
+    );
+
+    boolean containsProject(Resource<?> target);
+    boolean containsProject(Resource<?> target, ProjectProvider projectProvider);
+
+    void invalidateCaches();
+    // ...
+}
+```
+
+A `ProjectProvider` identifies and creates projects for a particular project type or build system.
+
+```java
+public interface ProjectProvider {
+    String getType();
+    Iterable<Class<? extends ProvidedProjectFacet>> getProvidedFacetTypes();
+    Project createProject(Resource<?> target);
+    boolean containsProject(Resource<?> resource);
+    int priority();
+    Class<? extends ProjectFacet> resolveProjectFacet(
+        Class<? extends ProjectFacet> facet
+    );
+}
+```
+
+Providers can expose provider-specific implementations of common facets. `AbstractProjectProvider` supplies a base implementation for facet resolution.
+
+### Example: locate or create a project
+
+```java
+import org.jboss.forge.addon.projects.Project;
+import org.jboss.forge.addon.projects.ProjectFactory;
+import org.jboss.forge.addon.projects.ProjectProvider;
+import org.jboss.forge.addon.resource.Resource;
+
+public Project openOrCreateProject(
+        ProjectFactory projectFactory,
+        ProjectProvider projectProvider,
+        Resource<?> targetDirectory) {
+
+    if (projectFactory.containsProject(targetDirectory, projectProvider)) {
+        return projectFactory.findProject(targetDirectory, projectProvider);
+    }
+
+    return projectFactory.createProject(targetDirectory, projectProvider);
+}
+```
+
+### Temporary projects
+
+`ProjectFactory` can also create temporary projects:
+
+```java
+Project temporary = projectFactory.createTempProject();
+
+Project providerSpecificTemporary =
+    projectFactory.createTempProject(projectProvider);
+```
+
+Overloads are available for specifying required facet types when creating temporary projects.
+
+## Facets
+
+A facet is a focused capability associated with a project. `Project` extends `Faceted<ProjectFacet>`, allowing applications to work with facets appropriate to the current project provider.
+
+### Metadata: `MetadataFacet`
+
+`MetadataFacet` manages project identity and properties.
+
+```java
+public interface MetadataFacet extends ProvidedProjectFacet {
+    String getProjectName();
+    MetadataFacet setProjectName(String name);
+
+    String getTopLevelPackage();
+    String getProjectGroupName();
+    MetadataFacet setTopLevelPackage(String groupId);
+    MetadataFacet setProjectGroupName(String groupId);
+
+    String getProjectVersion();
+    MetadataFacet setProjectVersion(String version);
+
+    Dependency getOutputDependency();
+
+    Map<String, String> getEffectiveProperties();
+    Map<String, String> getDirectProperties();
+    String getEffectiveProperty(String name);
+    String getDirectProperty(String name);
+    MetadataFacet setDirectProperty(String name, String value);
+    String removeDirectProperty(String name);
+
+    ProjectProvider getProjectProvider();
+    boolean isValid();
+}
+```
+
+The API distinguishes between:
+
+- **Direct** metadata and properties declared by the current project.
+- **Effective** metadata and properties after provider-specific resolution.
+
+### Example: update project metadata
+
+```java
+import org.jboss.forge.addon.projects.facets.MetadataFacet;
+
+public void configureMetadata(MetadataFacet metadata) {
+    metadata
+        .setProjectName("inventory-service")
+        .setProjectGroupName("com.example.inventory")
+        .setTopLevelPackage("com.example.inventory")
+        .setProjectVersion("1.0.0");
+
+    metadata.setDirectProperty("java.version", "17");
+
+    String effectiveJavaVersion =
+        metadata.getEffectiveProperty("java.version");
+}
+```
+
+### Dependencies: `DependencyFacet`
+
+`DependencyFacet` manages direct dependencies, managed dependencies, and repositories.
+
+```java
+public interface DependencyFacet extends ProvidedProjectFacet {
+    void addDirectDependency(Dependency dep);
+    void addManagedDependency(Dependency managedDependency);
+    void addDirectManagedDependency(Dependency dep);
+
+    List<Dependency> getDependencies();
+    List<Dependency> getEffectiveDependencies();
+    List<Dependency> getManagedDependencies();
+
+    Dependency getDirectDependency(Dependency dependency);
+    Dependency getEffectiveDependency(Dependency dependency);
+    Dependency getEffectiveManagedDependency(Dependency dependency);
+    Dependency getDirectManagedDependency(Dependency dependency);
+
+    boolean hasDirectDependency(Dependency dependency);
+    boolean hasEffectiveDependency(Dependency dependency);
+    boolean hasEffectiveManagedDependency(Dependency dependency);
+    boolean hasDirectManagedDependency(Dependency dependency);
+
+    void removeDependency(Dependency dependency);
+    void removeManagedDependency(Dependency managedDependency);
+
+    void addRepository(String name, String url);
+    List<DependencyRepository> getRepositories();
+    boolean hasRepository(String url);
+    DependencyRepository removeRepository(String url);
+
+    List<Coordinate> resolveAvailableVersions(Dependency dependency);
+    List<Coordinate> resolveAvailableVersions(String gavs);
+    List<Coordinate> resolveAvailableVersions(DependencyQuery query);
+
+    Dependency resolveProperties(Dependency dependency);
+}
+```
+
+The distinction between direct and effective dependencies allows callers to determine whether a dependency is explicitly declared by the project or available through the project’s resolved dependency model.
+
+### Example: add a dependency and repository
+
+```java
+import org.jboss.forge.addon.projects.facets.DependencyFacet;
+import org.jboss.forge.addon.dependencies.Dependency;
+
+public void addDependency(
+        DependencyFacet dependencies,
+        Dependency dependency) {
+
+    if (!dependencies.hasDirectDependency(dependency)) {
+        dependencies.addDirectDependency(dependency);
+    }
+
+    if (!dependencies.hasRepository("https://repo.example.org/releases")) {
+        dependencies.addRepository(
+            "example-releases",
+            "https://repo.example.org/releases"
+        );
+    }
+}
+```
+
+### `DependencyInstaller`
+
+`DependencyInstaller` provides a higher-level dependency installation API.
+
+```java
+public interface DependencyInstaller {
+    Dependency install(Project project, Dependency dependency);
+    Dependency installManaged(Project project, Dependency dependency);
+    boolean isInstalled(Project project, Dependency dependency);
+    boolean isManaged(Project project, Dependency dependency);
+}
+```
+
+Example:
+
+```java
+public Dependency ensureInstalled(
+        DependencyInstaller installer,
+        Project project,
+        Dependency dependency) {
+
+    if (!installer.isInstalled(project, dependency)) {
+        return installer.install(project, dependency);
+    }
+
+    return dependency;
+}
+```
+
+### Packaging and builds: `PackagingFacet`
+
+`PackagingFacet` manages a project’s package type and build operations.
+
+```java
+public interface PackagingFacet extends ProvidedProjectFacet {
+    void setPackagingType(String type);
+    String getPackagingType();
+
+    Resource<?> getFinalArtifact();
+    String getFinalName();
+    void setFinalName(String finalName);
+
+    ProjectBuilder createBuilder();
+    Resource<?> executeBuild(String... args);
+    BuildResult getBuildResult();
+}
+```
+
+Use `ProjectBuilder` when a build requires options such as arguments, profiles, test selection, or output streams.
+
+```java
+public interface ProjectBuilder {
+    ProjectBuilder addArguments(String... args);
+    ProjectBuilder runTests(boolean test);
+    ProjectBuilder profiles(String... profiles);
+    ProjectBuilder quiet(boolean quiet);
+
+    Resource<?> build() throws BuildException;
+    Resource<?> build(PrintStream out, PrintStream err)
+        throws BuildException;
+}
+```
+
+### Example: build a project
+
+```java
+import java.io.PrintStream;
+
+import org.jboss.forge.addon.projects.building.BuildResult;
+import org.jboss.forge.addon.projects.building.ProjectBuilder;
+import org.jboss.forge.addon.projects.facets.PackagingFacet;
+import org.jboss.forge.addon.resource.Resource;
+
+public Resource<?> buildProject(
+        PackagingFacet packaging,
+        PrintStream out,
+        PrintStream err) {
+
+    ProjectBuilder builder = packaging.createBuilder()
+        .runTests(true)
+        .profiles("production")
+        .addArguments("clean", "package");
+
+    Resource<?> artifact = builder.build(out, err);
+
+    BuildResult result = packaging.getBuildResult();
+    if (result != null && !result.isSuccess()) {
+        for (var message : result.getMessages()) {
+            err.println(message.getSeverity() + ": " + message.getMessage());
+        }
+    }
+
+    return artifact;
+}
+```
+
+`BuildException` is a runtime exception used for build failures.
+
+### Build results
+
+`BuildResult` describes whether a build succeeded and provides messages generated during the build.
+
+```java
+public interface BuildResult {
+    boolean isSuccess();
+    Iterable<BuildMessage> getMessages();
+}
+```
+
+`BuildResultBuilder` can be used to construct a result:
+
+```java
+BuildResult result = BuildResultBuilder.create()
+    .succeeded()
+    .addMessage(Severity.INFO, "Build completed")
+    .build();
+```
+
+### Resources: `ResourcesFacet`
+
+`ResourcesFacet` manages regular and test resource files.
+
+```java
+public interface ResourcesFacet extends ProjectFacet {
+    List<DirectoryResource> getResourceDirectories();
+    DirectoryResource getResourceDirectory();
+    DirectoryResource getTestResourceDirectory();
+
+    FileResource<?> createResource(char[] bytes, String relativeFilename);
+    FileResource<?> createTestResource(char[] bytes, String relativeFilename);
+
+    FileResource<?> getResource(String relativePath);
+    FileResource<?> getTestResource(String relativePath);
+
+    void visitResources(ResourceVisitor visitor);
+    void visitTestResources(ResourceVisitor visitor);
+}
+```
+
+Example:
+
+```java
+import org.jboss.forge.addon.projects.facets.ResourcesFacet;
+import org.jboss.forge.addon.resource.FileResource;
+
+public FileResource<?> createApplicationProperties(
+        ResourcesFacet resources) {
+
+    char[] contents = (
+        "app.name=inventory-service\n" +
+        "app.mode=production\n"
+    ).toCharArray();
+
+    return resources.createResource(
+        contents,
+        "application.properties"
+    );
+}
+```
+
+### Web resources: `WebResourcesFacet`
+
+`WebResourcesFacet` provides equivalent operations for web-root resources.
+
+```java
+public interface WebResourcesFacet extends ProjectFacet {
+    DirectoryResource getWebRootDirectory();
+    List<DirectoryResource> getWebRootDirectories();
+
+    FileResource<?> createWebResource(
+        char[] bytes,
+        String relativeFilename
+    );
+
+    FileResource<?> createWebResource(
+        String render,
+        String relativeFilename
+    );
+
+    FileResource<?> getWebResource(String relativePath);
+    void visitWebResources(ResourceVisitor visitor);
+}
+```
+
+### Other project facets
+
+| Facet | Purpose |
+|---|---|
+| `ClassLoaderFacet` | Creates a `URLClassLoader` for the project, optionally using compiled resources. |
+| `ModuleFacet` | Lists project modules through `getModules()`. |
+| `StackFacet` | Exposes the project’s active `Stack`. |
+| `ProvidedProjectFacet` | Base type for facets supplied by a `ProjectProvider`. |
+
+## Project stacks
+
+A `Stack` defines facet constraints for a project type or environment.
+
+```java
+public interface Stack {
+    String getName();
+
+    boolean supports(Class<? extends ProjectFacet> facet);
+    boolean matches(Class<? extends ProjectFacet> facet);
+
+    <T extends ProjectFacet> Set<T> filter(
+        Class<T> type,
+        Iterable<T> facets
+    );
+
+    Set<Class<? extends ProjectFacet>> getIncludedFacets();
+    Set<Class<? extends ProjectFacet>> getExcludedFacets();
+}
+```
+
+Create stacks with `StackBuilder`:
+
+```java
+import org.jboss.forge.addon.projects.stacks.Stack;
+import org.jboss.forge.addon.projects.stacks.StackBuilder;
+import org.jboss.forge.addon.projects.facets.DependencyFacet;
+import org.jboss.forge.addon.projects.facets.WebResourcesFacet;
+
+Stack stack = StackBuilder.stack("web-application")
+    .includes(DependencyFacet.class)
+    .includes(WebResourcesFacet.class);
+```
+
+`StackInspector` provides utilities for checking project constraints and discovering related facet types:
+
+```java
+boolean valid = StackInspector.isConstraintSatisfied(
+    project,
+    requiredFacets
+);
+```
+
+A `NoStack` implementation is also available for projects without stack-specific constraints.
+
+## Project types
+
+`ProjectType` represents a selectable type of project, including its required facets, setup flow, priority, and stack compatibility.
+
+```java
+public interface ProjectType extends StackSupport {
+    String getType();
+    Class<? extends UIWizardStep> getSetupFlow();
+    NavigationResult next(UINavigationContext context);
+    Iterable<Class<? extends ProjectFacet>> getRequiredFacets();
+    int priority();
+    boolean isEnabled(UIContext context);
+    boolean supports(Stack stack);
+}
+```
+
+Available project-type implementations include:
+
+- `GenericProjectType`
+- `ParentProjectType`
+- `ResourcesProjectType`
+
+`AbstractProjectType` supplies default behavior for enabling and display-related behavior, while `AbstractGenericProjectType` provides common generic-project type behavior.
+
+## Generic projects
+
+The library includes a generic project implementation:
+
+- `GenericProject`
+- `GenericProjectProvider`
+- `GenericProjectType`
+- `GenericMetadataFacet`
+- `GenericProjectFacet`
+
+A generic project is rooted at a `Resource<?>` and can be created through the generic provider:
+
+```java
+Project generic = projectFactory.createProject(
+    targetDirectory,
+    genericProjectProvider
+);
+```
+
+## Project caching
+
+`ProjectCache` supports caching resolved projects:
+
+```java
+public interface ProjectCache {
+    Project get(Resource<?> target);
+    void invalidate();
+    void evict(Project project);
+    void store(Project project);
+}
+```
+
+`InMemoryProjectCache` is a provided implementation.
+
+At the utility level, `Projects` exposes cache controls:
+
+```java
+Projects.enableCache();
+Projects.disableCache();
+
+boolean disabled = Projects.isCacheDisabled();
+```
+
+Use `ProjectFactory.invalidateCaches()` when project state has changed outside the normal project APIs and cached project information must be refreshed.
+
+## Project selection helpers
+
+`Projects` contains convenience methods for resolving the currently selected project from UI state:
+
+```java
+Project selected = Projects.getSelectedProject(
+    projectFactory,
+    uiContext
+);
+
+boolean hasProject = Projects.containsProject(
+    projectFactory,
+    uiContext
+);
+```
+
+`RequiresProjectPredicate` can be used where a `Predicate<UIContext>` is required and an operation should only be available when a project is selected.
+
+## Lifecycle events
+
+Applications can observe project creation through `ProjectListener`:
+
+```java
+public interface ProjectListener {
+    void projectCreated(Project project);
+}
+```
+
+Register a listener with `ProjectFactory`:
+
+```java
+ListenerRegistration<ProjectListener> registration =
+    projectFactory.addProjectListener(project -> {
+        System.out.println(
+            "Created project at " + project.getRoot()
+        );
+    });
+```
+
+The registration can be retained and managed using the returned `ListenerRegistration`.
+
+## UI integration
+
+The API includes UI-oriented command and wizard types for common project operations, including:
+
+- `BuildCommand`
+- `NewProjectWizard`
+- `ProjectListFacetsCommand`
+- `ProjectListStackCommand`
+- Dependency commands for adding, removing, and checking dependencies
+- Repository commands for adding and removing repositories
+
+`AbstractProjectCommand` is a base command type that determines whether a project-oriented command is enabled in the current `UIContext`.
+
+## Typical workflow
+
+A typical integration follows this sequence:
+
+1. Obtain a `ProjectFactory` and one or more `ProjectProvider` instances.
+2. Find an existing project or create a new one at a target resource.
+3. Access the facets supported by that project.
+4. Configure metadata, dependencies, packaging, and resources through those facets.
+5. Build through `PackagingFacet` and inspect `BuildResult`.
+6. Invalidate caches when external changes require project rediscovery.
+7. Optionally use stacks and project types to constrain available facets and setup flows.

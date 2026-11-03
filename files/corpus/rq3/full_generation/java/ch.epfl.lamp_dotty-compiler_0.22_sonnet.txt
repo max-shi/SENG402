@@ -1,0 +1,172 @@
+# dotty-compiler
+
+`dotty-compiler` is the core compiler distribution for the Dotty (Scala 3) language. This artifact bundles the compiler itself, its build-tool integration bridges, runtime support classes used by compiled code, and a small set of public interfaces that allow external tools (build tools, IDEs, documentation generators) to drive compilation and inspect its results.
+
+This document describes the public API surface exposed by the library: the interfaces used to embed and control the compiler, the runtime function/procedure types emitted by compiled Scala code, and the sbt build-tool bridge that wires Dotty into sbt's incremental compilation pipeline.
+
+## Overview
+
+The public surface can be grouped into four broad areas:
+
+### 1. Compiler interfaces (`dotty.tools.dotc.interfaces`)
+
+These interfaces form a stable, host-language-agnostic contract for embedding the Dotty compiler in other tools (IDEs, build tools, etc.). They let a caller observe compilation output and diagnostics without depending on internal compiler classes.
+
+- **`AbstractFile`** — represents a file known to the compiler, exposing its `name()`, `path()`, and an optional underlying `java.io.File` via `jfile()`.
+- **`SourceFile`** — an `AbstractFile` that additionally exposes its textual `content()` as a `char[]`.
+- **`SourcePosition`** — describes a position or range within a `SourceFile`: line/column/offset information for the start, end, and "point" of a range, plus the raw `lineContent()`.
+- **`Diagnostic`** — a single compiler message (`message()`, `level()`, and an optional `position()`), as produced by the compiler during a run.
+- **`SimpleReporter`** — a callback interface for consuming `Diagnostic`s as they are produced.
+- **`ReporterResult`** — a summary of a compilation run's diagnostics: whether there were errors/warnings and their counts.
+- **`CompilerCallback`** — an optional hook implemented by a host to be notified when a class file is generated (`onClassGenerated`) or when a source file finishes compiling (`onSourceCompiled`).
+
+Together, these interfaces let a tool run the compiler and receive fine-grained feedback about generated artifacts and diagnostics, without directly manipulating compiler internals.
+
+### 2. Language Server configuration
+
+- **`ProjectConfig`** — a plain configuration object describing a single project for the Dotty language server: its id, compiler version, compiler arguments, source directories, dependency classpath, output class directory, and dependencies on other projects. This is the unit of configuration used to set up multi-project workspaces for language tooling.
+
+### 3. Runtime support (`dotty.runtime.function`)
+
+The `library` portion of this artifact ships a family of `JFunctionN` / `JProcedureN` interfaces (for arities 0 through 22, including many specialized primitive variants such as `JFunction2$mcIII$sp`). These are implemented by compiled Scala lambdas and closures:
+
+- **`JFunctionN<...>`** interfaces extend the corresponding `scala.FunctionN` trait and add `java.io.Serializable`, along with specialized `apply$mcXYZ$sp` methods used to avoid boxing of primitive arguments and return values.
+- **Specialized subinterfaces** (e.g. `JFunction1$mcII$sp`, `JFunction2$mcDDD$sp`) pin down specific primitive type combinations so the JVM can dispatch to unboxed method bodies directly.
+- **`JProcedureN<...>`** interfaces are `void`-returning counterparts of `JFunctionN`, used for Scala functions with `Unit` result types; they define an `applyVoid(...)` method and a default `apply(...)` that returns `BoxedUnit`.
+
+These types are not typically constructed directly by application developers — they are the target types that the Dotty compiler generates lambda bodies against. However, Java interop code that needs to implement a Scala function value from Java can implement these interfaces directly.
+
+### 4. sbt build bridge (`xsbt`)
+
+The `xsbt` package implements the "compiler bridge" contract expected by sbt's incremental compiler, translating sbt's compilation requests into Dotty compiler runs and reporting results back through sbt's `xsbti` reporter/analysis APIs.
+
+- **`CompilerInterface`** — entry point used by sbt to obtain a `CachedCompiler` (`newCompiler`) and to run compilation (`run`).
+- **`CachedCompilerImpl`** — a reusable, cached compiler instance bound to a fixed set of command-line arguments and `Output` location; exposes `commandArguments(...)` and a synchronized `run(...)` method that performs the actual compilation, reporting dependency changes to an `AnalysisCallback`.
+- **`CompilerClassLoader`** — a `URLClassLoader` used to isolate/load compiler classes, with a static `fixBridgeLoader` helper for adjusting sbt's bridge classloader setup.
+- **`DelegatingReporter`** — adapts Dotty's internal reporting (`AbstractReporter`) to sbt's `xsbti.Reporter`, forwarding diagnostics (`doReport`) and printing a final summary (`printSummary`).
+- **`Problem`** — an `xsbti.Problem` implementation carrying a message, `Position`, `Severity`, category, and optional rendered form, used to report individual compiler diagnostics to sbt.
+- **`InterfaceCompileFailed`** — a `xsbti.CompileFailed` exception thrown when compilation fails, carrying the original compiler arguments and the list of `Problem`s encountered.
+- **`ConsoleInterface`** — supports launching a Dotty REPL/console session from sbt, including computing console command-line arguments (`commandArguments`) and running the console (`run`) with pre-bound values.
+- **`ScaladocInterface`** / **`DottydocRunner`** — entry points for invoking Dotty's documentation generator from sbt, given command-line arguments and a logger/reporter.
+
+## Usage Examples
+
+### Implementing a `SimpleReporter` to collect diagnostics
+
+```java
+import dotty.tools.dotc.interfaces.*;
+import java.util.ArrayList;
+import java.util.List;
+
+public class CollectingReporter implements SimpleReporter {
+    private final List<Diagnostic> diagnostics = new ArrayList<>();
+
+    @Override
+    public void report(Diagnostic diag) {
+        diagnostics.add(diag);
+        diag.position().ifPresent(pos -> {
+            System.out.printf(
+                "%s:%d:%d: %s%n",
+                pos.source().name(),
+                pos.line(),
+                pos.column(),
+                diag.message()
+            );
+        });
+    }
+
+    public List<Diagnostic> getDiagnostics() {
+        return diagnostics;
+    }
+}
+```
+
+A `SimpleReporter` implementation like this can be handed to a compiler-embedding host so that diagnostics produced during compilation are surfaced to your own tooling (e.g., an editor plugin) rather than printed directly to the console.
+
+### Reacting to generated class files
+
+```java
+import dotty.tools.dotc.interfaces.*;
+
+public class BuildNotifier implements CompilerCallback {
+    @Override
+    public void onClassGenerated(SourceFile source, AbstractFile generatedClass, String className) {
+        System.out.println("Generated " + className + " -> " + generatedClass.path()
+            + " (from " + source.name() + ")");
+    }
+
+    @Override
+    public void onSourceCompiled(SourceFile source) {
+        System.out.println("Finished compiling: " + source.name());
+    }
+}
+```
+
+### Configuring a project for the language server
+
+```java
+import dotty.tools.languageserver.config.ProjectConfig;
+import java.io.File;
+
+ProjectConfig config = new ProjectConfig(
+    "my-project",
+    "0.22.0",
+    new String[] { "-language:strictEquality" },
+    new File[] { new File("src/main/scala") },
+    new File[] { new File("libs/dependency.jar") },
+    new File("target/classes"),
+    new String[] { "my-shared-project" }
+);
+```
+
+### Implementing a Scala function value from Java
+
+```java
+import dotty.runtime.function.JFunction2;
+
+// Implements a Scala Function2<Integer, Integer, Integer> from Java code.
+JFunction2<Integer, Integer, Integer> add = (a, b) -> a + b;
+
+int result = add.apply(2, 3); // 5
+```
+
+### Driving the sbt compiler bridge
+
+```java
+import xsbt.CompilerInterface;
+import xsbti.compile.CompileProgress;
+import xsbti.compile.DependencyChanges;
+import xsbti.AnalysisCallback;
+import xsbti.Logger;
+import xsbti.Reporter;
+import xsbti.compile.Output;
+import java.io.File;
+
+CompilerInterface bridge = new CompilerInterface();
+
+// obtain a cached compiler bound to a set of compiler options and output
+var cachedCompiler = bridge.newCompiler(
+    new String[] { "-classpath", "lib/scala-library.jar" },
+    output,
+    logger,
+    initialReporter
+);
+
+bridge.run(
+    new File[] { new File("src/main/scala/Main.scala") },
+    dependencyChanges,
+    analysisCallback,
+    logger,
+    reporter,
+    compileProgress,
+    cachedCompiler
+);
+```
+
+This mirrors how sbt itself invokes the Dotty compiler bridge during an incremental build: it requests a cached compiler instance for a fixed set of arguments, then repeatedly calls `run` with the sources to compile, receiving dependency and diagnostic information back through the `AnalysisCallback` and `Reporter` callbacks.
+
+## Notes
+
+- The `interfaces` package is intentionally minimal and stable, designed for long-term binary compatibility with external tools.
+- The `dotty.runtime.function` types are primarily compiler-generated targets; most application code will interact with them only indirectly through Scala lambda syntax, except when writing Java interop code that must implement a Scala function type explicitly.
+- The `xsbt` package is specific to sbt integration and expects the corresponding `xsbti` API to be present on the classpath.

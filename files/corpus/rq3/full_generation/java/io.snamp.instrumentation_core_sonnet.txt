@@ -1,0 +1,246 @@
+# io.snamp.instrumentation:core
+
+Lightweight Java instrumentation library for collecting and reporting application metrics, distributed tracing spans, and health checks. It provides a small, dependency-friendly API for emitting measurements from your code and routing them to one or more pluggable `Reporter` backends (in-memory, print stream, or custom implementations), as well as exposing them as JMX notifications.
+
+## Introduction
+
+`io.snamp.instrumentation:core` gives you:
+
+- **Metric reporting** — integer, floating-point, boolean, and string value metrics, plus timers/durations.
+- **Distributed tracing** — spans with correlation IDs, parent/child relationships, and propagation across thread and process boundaries.
+- **Health checks** — simple up/down/out-of-service status reporting, including scheduled/periodic checks.
+- **Pluggable reporters** — measurements can be sent to in-memory queues, standard output, or any custom `Reporter` implementation (e.g. a network sink).
+- **JMX notification model** — measurements can be represented as JMX `Notification` objects for integration with JMX-based monitoring tools.
+- **OSGi support** — a specialized registry that discovers reporters registered in an OSGi bundle context.
+
+At the center of the library is `MetricRegistry`, a factory and container for typed *reporters* — small helper objects bound to a metric name that know how to build a `Measurement` and dispatch it to all registered `Reporter`s.
+
+## Core Concepts
+
+### `MetricRegistry`
+
+The main entry point. Create one per application (or component), optionally supplying `Reporter` instances or a `ClassLoader` used to discover reporters via service loading. It exposes factory methods for each metric type:
+
+```java
+MetricRegistry registry = new MetricRegistry(PrintStreamReporter.toStandardOutput());
+
+IntegerMeasurementReporter requests = registry.integer("requests.count");
+FloatingPointMeasurementReporter cpu = registry.floatingPoint("cpu.load");
+BooleanMeasurementReporter flag = registry.bool("feature.enabled");
+StringMeasurementReporter status = registry.string("status.message");
+TimeMeasurementReporter timer = registry.timer("request.duration");
+SpanReporter tracer = registry.tracer("my-service");
+HealthCheckReporter health = registry.health("service.health");
+```
+
+`MetricRegistry` also implements `Iterable<Reporter>` (to inspect registered reporters) and `Closeable` (to shut everything down cleanly, including via `closeOnShutdown()`).
+
+`OSGiMetricRegistry` is a drop-in subclass that discovers `Reporter` services from an OSGi `BundleContext`.
+
+### Reporters
+
+`Reporter` is the abstraction that receives finished `Measurement` objects:
+
+```java
+public interface Reporter extends Closeable {
+    boolean isAsynchronous();
+    boolean isConnected();
+    void flush() throws IOException;
+    void report(Measurement... measurements) throws IOException;
+}
+```
+
+Built-in implementations:
+
+- **`InMemoryReporter`** — a `LinkedBlockingQueue<Measurement>` you can drain/inspect, useful for testing.
+- **`PrintStreamReporter`** — writes measurements to a `PrintStream` (e.g. `PrintStreamReporter.toStandardOutput()`).
+- **`LazyReporter<R>`** — defers creation/connection of an underlying reporter until first use.
+
+Supporting utility buffers (`MeasurementBuffer`, `BoundedMeasurementBuffer`, `SoftMeasurementBuffer`, `EmptyMeasurementBuffer`) let custom reporters manage backpressure or best-effort buffering of measurements awaiting delivery.
+
+### Measurement Reporters (typed helpers)
+
+Each metric type has a dedicated reporter class bound to a name, obtained from `MetricRegistry`:
+
+| Reporter class | Reports | Metric type |
+|---|---|---|
+| `IntegerMeasurementReporter` | `long` values with optional `ChangeType` (sum/sub/max/min/new value) | `IntegerMeasurement` |
+| `FloatingPointMeasurementReporter` | `double` values with optional `ChangeType` | `FloatingPointMeasurement` |
+| `BooleanMeasurementReporter` | `boolean` values | `BooleanMeasurement` |
+| `StringMeasurementReporter` | `String` values with optional `ChangeType` | `StringMeasurement` |
+| `TimeMeasurementReporter` | durations (manual or via `start()`/`call()`/`run()`) | `TimeMeasurement` |
+| `SpanReporter` | trace spans | `Span` |
+| `HealthCheckReporter` | service health status | `Health` |
+
+All of these extend `MeasurementReporter<M>`, which itself is backed by the registry's collection of `Reporter`s and knows how to fan out a `Measurement` to all of them via the static `MeasurementReporter.report(Iterable<Reporter>, Measurement)` helper.
+
+The value-based reporters (`IntegerMeasurementReporter`, `FloatingPointMeasurementReporter`, `BooleanMeasurementReporter`, `StringMeasurementReporter`) extend a common `ValueMeasurementReporter<M>` base and support `scheduleReporting(...)` to periodically invoke a `ReportingTask` and report its result on a schedule.
+
+### Measurements
+
+`Measurement` is the base class for all reported data, carrying:
+
+- `name`, `componentName`, `instanceName`
+- `timeStamp`
+- `annotations` (arbitrary string key/value metadata)
+- `description`
+- JSON serialization (`toJsonString`) and `Externalizable` support for binary serialization
+
+Specific measurement types:
+
+- **`ValueMeasurement`** (abstract) — base for typed scalar values, with a `ChangeType` (`SUM`, `SUB`, `MAX`, `MIN`, `NEW_VALUE`) describing how the value should be combined with prior values.
+  - `IntegerMeasurement`, `FloatingPointMeasurement`, `BooleanMeasurement`, `StringMeasurement`
+- **`TimeMeasurement`** — represents a duration; convertible to other representations via `convertTo(Class<T>)`.
+- **`Span`** — a `TimeMeasurement` extended with tracing metadata: `spanID`, `parentSpanID`, `correlationID`, and `moduleName`. Implements `ModuleScoped`.
+- **`Health`** — carries a `Status` (up/down/out-of-service).
+
+`StandardMeasurements` provides convenience factories for common system metrics: `freeRam`, `usedRAM`, `cpuLoad`, `freeDiskSpace`, `usedDiskSpace`, `responseTime`, `rps`.
+
+### Identifiers
+
+`Identifier` is an immutable value type used for span IDs, correlation IDs, and parent span IDs. It can be constructed from strings, UUIDs, bytes, chars, longs, doubles, or `BigInteger`, and serialized to/from `ObjectOutput`/`ObjectInput`, JSON (`JsonGenerator`/`JsonParser`), `Writer`/`Reader`, or `StringBuilder`.
+
+```java
+Identifier traceId = Identifier.randomID();
+Identifier customId = Identifier.ofString("order-42");
+```
+
+### Tracing
+
+`SpanReporter.beginTrace(...)` starts a new trace and returns a `TraceScope` (an `AutoCloseable` `RuntimeScope`). Closing the scope finalizes and reports the span.
+
+```java
+try (TraceScope scope = tracer.beginTrace()) {
+    scope.addAnnotation("http.method", "GET");
+    // do work
+}
+```
+
+`TraceScope.current()` retrieves the scope active on the current thread, useful for nested operations. `exportHttpHeaders(ProtocolHeaderImporter)` allows propagating trace context across process boundaries (e.g. via HTTP headers).
+
+`SpanReporter` also offers convenience wrappers to trace arbitrary work:
+
+```java
+Runnable tracedTask = tracer.wrap(someRunnable);
+Callable<String> tracedCall = tracer.wrap(someCallable);
+```
+
+### Health Checks
+
+`HealthCheckReporter` reports simple health status:
+
+```java
+HealthCheckReporter health = registry.health("db.connection");
+health.up();
+health.down(new SQLException("connection refused"));
+health.outOfService();
+```
+
+`MetricRegistry` also supports scheduling periodic health checks:
+
+```java
+registry.health("db.connection", () -> {
+    Health h = new Health();
+    h.setStatus(checkDatabase() ? Status.UP : Status.DOWN);
+    return h;
+}, 30, TimeUnit.SECONDS);
+```
+
+### JMX Notifications
+
+Measurements can be represented as JMX `Notification`s for consumption by JMX monitoring infrastructure:
+
+- `MeasurementNotification<M>` — base notification carrying a measurement.
+- `ValueMeasurementNotification<V>` — notification for scalar value measurements, with static factories `ofBool`, `ofInt`, `ofFP`, `ofString`.
+- `TimeMeasurementNotification` / `SpanNotification` — notifications for durations and spans, including `getSpanID()`, `getParentSpanID()`, `getCorrelationID()`.
+- `HealthNotification` — notification for health status changes.
+
+### Application Metadata
+
+`ApplicationInfo` exposes the current application's identity, useful for tagging measurements:
+
+```java
+String app = ApplicationInfo.getName();
+String instance = ApplicationInfo.getInstance();
+```
+
+## Usage Example
+
+```java
+import com.bytex.snamp.instrumentation.MetricRegistry;
+import com.bytex.snamp.instrumentation.TimeMeasurementReporter;
+import com.bytex.snamp.instrumentation.SpanReporter;
+import com.bytex.snamp.instrumentation.HealthCheckReporter;
+import com.bytex.snamp.instrumentation.RuntimeScope;
+import com.bytex.snamp.instrumentation.TraceScope;
+import com.bytex.snamp.instrumentation.reporters.PrintStreamReporter;
+
+import java.util.concurrent.TimeUnit;
+
+public class OrderService {
+
+    // Registry configured to print all measurements to stdout.
+    private static final MetricRegistry METRICS =
+            new MetricRegistry(PrintStreamReporter.toStandardOutput());
+
+    private static final TimeMeasurementReporter PROCESS_ORDER_TIMER =
+            METRICS.timer("order.processing.time");
+
+    private static final SpanReporter TRACER =
+            METRICS.tracer("order-service");
+
+    private static final HealthCheckReporter HEALTH =
+            METRICS.health("order-service.health");
+
+    static {
+        METRICS.closeOnShutdown();
+    }
+
+    public void processOrder(String orderId) {
+        try (TraceScope trace = TRACER.beginTrace()) {
+            trace.addAnnotation("order.id", orderId);
+
+            try (RuntimeScope timing = PROCESS_ORDER_TIMER.start()) {
+                doProcess(orderId);
+                HEALTH.up();
+            } catch (Exception e) {
+                HEALTH.down(e);
+                throw e;
+            }
+        }
+    }
+
+    private void doProcess(String orderId) {
+        // business logic here
+    }
+}
+```
+
+### Reporting simple metrics
+
+```java
+MetricRegistry registry = new MetricRegistry(PrintStreamReporter.toStandardOutput());
+
+registry.integer("active.sessions").report(42);
+registry.floatingPoint("cpu.load").report(0.73);
+registry.bool("cache.hit").report(true);
+registry.string("last.error").report("timeout");
+```
+
+### Inspecting reported measurements in tests
+
+```java
+import com.bytex.snamp.instrumentation.reporters.InMemoryReporter;
+
+InMemoryReporter buffer = new InMemoryReporter();
+MetricRegistry registry = new MetricRegistry(buffer);
+
+registry.integer("test.metric").report(1);
+
+Measurement m = buffer.poll();
+assert m.getName().equals("test.metric");
+```
+
+## License
+
+See the repository's license file for details.

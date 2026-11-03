@@ -1,0 +1,441 @@
+# pdocs
+
+`pdocs` is a Python documentation-generation library. It can extract documentation information from Python module specifications, represent that information as a documentation object model, and render it as HTML or text/Markdown output.
+
+The library supports several workflows:
+
+- Generate HTML documentation for one or more modules.
+- Generate Markdown documentation for one or more modules.
+- Run a documentation server for interactive viewing.
+- Extract and inspect module, class, function, and variable documentation programmatically.
+- Render extracted documentation directly or write it through static-output helpers.
+
+## Installation
+
+Install `pdocs` using your preferred Python package-management workflow.
+
+```bash
+pip install pdocs
+```
+
+## Quick start
+
+Generate HTML documentation for a list of module specifications:
+
+```python
+from pdocs.api import as_html
+
+result = as_html(
+    modules=["my_package"],
+    output_dir="docs/html",
+    overwrite=True,
+)
+
+print(result)
+```
+
+Generate Markdown documentation instead:
+
+```python
+from pdocs.api import as_markdown
+
+result = as_markdown(
+    modules=["my_package"],
+    output_dir="docs/markdown",
+    overwrite=True,
+    exclude_source=True,
+)
+
+print(result)
+```
+
+Run a documentation server:
+
+```python
+from pdocs.api import server
+
+server(
+    modules=["my_package"],
+    open_browser=True,
+    port=8000,
+    host="127.0.0.1",
+)
+```
+
+## High-level API
+
+The functions in `pdocs.api` provide the primary entry points.
+
+### `as_html`
+
+```python
+as_html(
+    modules,
+    output_dir=...,
+    overwrite=False,
+    external_links=False,
+    exclude_source=False,
+    link_prefix="",
+    template_dir="",
+) -> str
+```
+
+Generate HTML documentation for `modules`.
+
+Useful options include:
+
+- `output_dir`: destination directory for generated HTML.
+- `overwrite`: allow writing when output may already exist.
+- `external_links`: enable external documentation links where available.
+- `exclude_source`: omit source content from generated documentation.
+- `link_prefix`: prefix used when producing links.
+- `template_dir`: directory containing templates to use for rendering.
+
+### `as_markdown`
+
+```python
+as_markdown(
+    modules,
+    output_dir=...,
+    overwrite=False,
+    exclude_source=False,
+    template_dir="",
+) -> str
+```
+
+Generate Markdown documentation for `modules`.
+
+Like `as_html`, this function accepts an output directory, overwrite control, source exclusion, and a template directory.
+
+### `server`
+
+```python
+server(
+    modules,
+    external_links=False,
+    exclude_source=False,
+    link_prefix="",
+    template_dir="",
+    open_browser=False,
+    port=...,
+    host=...,
+) -> None
+```
+
+Serve documentation for `modules`.
+
+Use `open_browser=True` to request opening a browser, and configure the network endpoint with `host` and `port`.
+
+## Documentation object model
+
+`pdocs.doc` defines objects used to describe documented Python code.
+
+All documentation objects derive from `Doc`:
+
+- `Doc`
+- `Module`
+- `Class`
+- `Function`
+- `Variable`
+- `External`
+
+These objects expose common metadata methods:
+
+```python
+doc.source()
+doc.refname()
+doc.is_empty()
+```
+
+### `Module`
+
+A `Module` represents a documented module and provides access to its contents and related modules.
+
+```python
+module.source()
+module.refname()
+module.is_namespace()
+
+module.variables()
+module.classes()
+module.functions()
+module.allmodules()
+```
+
+It also provides lookup and inheritance-related helpers:
+
+```python
+module.mro(cls)
+module.descendents(cls)
+module.is_public(name)
+module.find_class(cls)
+module.find_ident(name)
+module.toroot()
+```
+
+### `Class`
+
+A `Class` represents a documented class.
+
+```python
+cls.class_variables()
+cls.instance_variables()
+cls.methods()
+cls.functions()
+cls.params()
+cls.mro()
+cls.subclasses()
+```
+
+### `Function`
+
+A `Function` represents a documented function or callable.
+
+```python
+func.funcdef()
+func.spec()
+func.return_annotation()
+func.params()
+```
+
+As with all documentation objects, functions also provide `source()` and `refname()`.
+
+### `Variable` and `External`
+
+`Variable` represents a documented variable. `External` represents an external documentation reference.
+
+Both provide:
+
+```python
+item.source()
+item.refname()
+```
+
+## Extracting modules
+
+The `pdocs.extract` module provides helpers for resolving and extracting module specifications.
+
+### Split a module specification
+
+```python
+from pdocs.extract import split_module_spec
+
+basedir, module_name = split_module_spec("my_package")
+```
+
+`split_module_spec()` returns a pair containing a base directory component and a module component.
+
+### Load a module
+
+```python
+from pdocs.extract import load_module
+
+loaded_module, is_package = load_module(
+    basedir=".",
+    module="my_package",
+)
+```
+
+### List submodules
+
+```python
+from pdocs.extract import submodules
+
+names = submodules(
+    dname=".",
+    mname="my_package",
+)
+```
+
+### Extract documentation
+
+```python
+from pdocs.extract import extract_module
+
+module_doc = extract_module("my_package")
+```
+
+Extraction failures may raise `ExtractError`:
+
+```python
+from pdocs.extract import ExtractError, extract_module
+
+try:
+    module_doc = extract_module("my_package")
+except ExtractError as exc:
+    print(f"Could not extract documentation: {exc}")
+```
+
+## Rendering documentation
+
+The `pdocs.render` module renders extracted `Module` objects.
+
+```python
+from pdocs.extract import extract_module
+from pdocs.render import html_module, text
+
+module_doc = extract_module("my_package")
+
+html = html_module(
+    module_doc,
+    external_links=True,
+    link_prefix="/docs/",
+    source=True,
+)
+
+markdown_or_text = text(
+    module_doc,
+    source=False,
+)
+```
+
+Available renderers include:
+
+```python
+from pdocs.render import html_index, html_module, text
+
+index_html = html_index(roots=[module_doc], link_prefix="/")
+module_html = html_module(module_doc)
+module_text = text(module_doc)
+```
+
+## Writing static output
+
+The `pdocs.static` module contains helpers for mapping documentation modules to paths and writing rendered output.
+
+```python
+from pathlib import Path
+
+from pdocs.extract import extract_module
+from pdocs.static import html_out, module_to_path
+
+module_doc = extract_module("my_package")
+
+relative_path = module_to_path(module_doc, extension="html")
+print(relative_path)
+
+html_out(
+    dst=Path("docs/html"),
+    roots=[module_doc],
+    external_links=True,
+    link_prefix="",
+    source=False,
+)
+```
+
+Additional helpers include:
+
+```python
+from pdocs.static import path_to_module, would_overwrite
+
+existing_target = Path("docs/html/index.html")
+
+should_replace = would_overwrite(
+    destination=existing_target,
+    roots=[module_doc],
+)
+
+resolved_module = path_to_module(
+    roots=[module_doc],
+    path=existing_target,
+)
+```
+
+Static-output operations may raise `StaticError`.
+
+```python
+from pdocs.static import StaticError
+
+try:
+    html_out(
+        dst=Path("docs/html"),
+        roots=[module_doc],
+    )
+except StaticError as exc:
+    print(f"Could not write documentation: {exc}")
+```
+
+## HTML helper utilities
+
+`pdocs.html_helpers` provides utilities used when producing HTML, links, identifiers, and source snippets.
+
+Notable helpers include:
+
+```python
+from pdocs.html_helpers import (
+    clean_source_lines,
+    external_url,
+    glimpse,
+    ident,
+    link,
+    linkify,
+    lookup,
+    mark,
+    module_url,
+    sourceid,
+)
+
+safe_identifier = ident("my name")
+preview = glimpse("A longer piece of text", length=40)
+formatted = mark("Some documentation text")
+```
+
+For link generation and lookup:
+
+```python
+url = module_url(parent, module, link_prefix="/docs/")
+target = lookup(module, "some.reference", link_prefix="/docs/")
+html_link = link(parent, "some.reference", link_prefix="/docs/")
+```
+
+## Example: build HTML documentation with custom options
+
+```python
+from pdocs.api import as_html
+
+as_html(
+    modules=[
+        "my_package",
+        "my_package.utilities",
+    ],
+    output_dir="site/docs",
+    overwrite=True,
+    external_links=True,
+    exclude_source=False,
+    link_prefix="/docs/",
+    template_dir="templates",
+)
+```
+
+## Example: inspect extracted documentation
+
+```python
+from pdocs.extract import extract_module
+
+module = extract_module("my_package")
+
+print("Module:", module.refname())
+
+for cls in module.classes():
+    print("Class:", cls.refname())
+
+    for method in cls.methods():
+        print("  Method:", method.refname())
+
+for func in module.functions():
+    print("Function:", func.refname())
+
+for variable in module.variables():
+    print("Variable:", variable.refname())
+```
+
+## API modules
+
+| Module | Purpose |
+| --- | --- |
+| `pdocs.api` | High-level HTML, Markdown, and server entry points. |
+| `pdocs.doc` | Documentation object model for modules, classes, functions, variables, and external references. |
+| `pdocs.extract` | Module-specification parsing, loading, discovery, and extraction. |
+| `pdocs.render` | HTML index, HTML module, and text rendering. |
+| `pdocs.static` | Static-output path handling and output writing. |
+| `pdocs.html_helpers` | HTML, source, identifier, lookup, and link helper functions. |

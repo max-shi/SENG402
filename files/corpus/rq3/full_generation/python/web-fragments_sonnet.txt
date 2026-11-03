@@ -1,0 +1,112 @@
+# web-fragments
+
+**web-fragments** is a small Django utility library for building reusable, composable pieces of HTML — "fragments" — that carry their own markup, CSS, and JavaScript resources. It's designed for applications that need to render the same view either as a fully standalone HTML page, or as a self-contained chunk of HTML (with its associated styles/scripts) that can be embedded into another page — for example when serving content over AJAX, injecting widgets into a larger page, or building micro-frontend-style architectures.
+
+The library provides two main building blocks:
+
+- **`Fragment`** — a container that holds a piece of HTML content along with any CSS and JavaScript resources it depends on, plus helpers for initializing client-side JavaScript with server-provided data.
+- **`FragmentView`** — a Django class-based view that knows how to render a `Fragment` either as a standalone page or as an embeddable fragment, depending on how it's requested.
+
+Because fragments serialize cleanly to and from plain dictionaries, they're also easy to pass across processes, cache, or transmit as JSON (e.g., in an API response consumed by client-side rendering code).
+
+## Installation
+
+Add `web_fragments` to your Django project's `INSTALLED_APPS`:
+
+```python
+INSTALLED_APPS = [
+    ...
+    "web_fragments.apps.WebFragmentsConfig",
+]
+```
+
+## Core concepts
+
+### `Fragment`
+
+A `Fragment` represents a piece of renderable content plus the resources it needs to display correctly on a page:
+
+- `add_content(content)` — sets/appends the fragment's body HTML.
+- `add_resource(text, mimetype, placement=None)` / `add_resource_url(url, mimetype, placement=None)` — attach an inline or externally-linked resource (CSS, JS, etc.) to the fragment, optionally specifying where it should be placed (e.g. head vs. foot).
+- `add_css(text)` / `add_css_url(url)` — convenience helpers for attaching stylesheets, inline or by URL.
+- `add_javascript(text)` / `add_javascript_url(url)` — convenience helpers for attaching scripts, inline or by URL.
+- `add_fragment_resources(fragment)` / `add_resources(fragments)` — merge in the resources from one or more other fragments, useful when composing a page out of several fragments.
+- `initialize_js(js_func, json_args=None)` — emits a script that calls a client-side JavaScript initialization function, optionally passing it JSON-serialized arguments from the server.
+- `resources()` — returns the full list of resources attached to the fragment.
+- `body_html()`, `head_html()`, `foot_html()` — render the appropriate portions of the fragment's HTML for embedding into a page's `<head>`, page body, or before `</body>`.
+- `resources_to_html(placement)` / `resource_to_html(resource)` — render resources (or a single resource) as HTML tags for a given placement.
+- `to_dict()` / `from_dict(cls, pods)` — serialize a fragment to a plain dictionary and reconstruct it, useful for caching, passing between processes, or returning fragment data from an API.
+
+### `FragmentView`
+
+`FragmentView` is a Django `View` subclass that standardizes the pattern of rendering the same content in two modes:
+
+- `render_to_fragment(request, **kwargs)` — build and return a `Fragment` representing just the embeddable content (implemented by subclasses).
+- `render_to_standalone_html(request, fragment, **kwargs)` — wrap a `Fragment` in a full HTML document (with `<head>`, `<body>`, etc.) for standalone rendering.
+- `render_standalone_response(request, fragment, **kwargs)` — produce an `HttpResponse` from the standalone HTML rendering of a fragment.
+- `get(request, *args, **kwargs)` — the view's entry point; typically calls `render_to_fragment` to build the fragment, and then either returns it directly (e.g. as fragment data) or renders it as a standalone response, depending on the request.
+
+Subclasses override `render_to_fragment` to define what content the view produces, and can override `render_to_standalone_html` to customize how that content is wrapped into a full page.
+
+## Usage example
+
+### Defining a fragment-producing view
+
+```python
+from web_fragments.fragment import Fragment
+from web_fragments.views import FragmentView
+
+
+class GreetingFragmentView(FragmentView):
+    def render_to_fragment(self, request, **kwargs):
+        name = kwargs.get("name", "world")
+
+        fragment = Fragment()
+        fragment.add_content(f"<div class='greeting'>Hello, {name}!</div>")
+        fragment.add_css(".greeting { font-weight: bold; color: teal; }")
+        fragment.add_javascript_url("/static/js/greeting.js")
+        fragment.initialize_js("initGreeting", json_args={"name": name})
+
+        return fragment
+```
+
+Hooked up to a URL, this view can now be requested either:
+
+- **as a standalone page** — `FragmentView` wraps the fragment's `body_html()`, `head_html()`, and `foot_html()` into a complete HTML document and returns it via `render_standalone_response`.
+- **as an embeddable fragment** — the raw `Fragment` (or its `to_dict()` representation) can be returned for consumption by client-side code that inserts it into an existing page.
+
+### Composing fragments
+
+```python
+from web_fragments.fragment import Fragment
+
+header = Fragment()
+header.add_content("<header>My Site</header>")
+header.add_css_url("/static/css/header.css")
+
+body = Fragment()
+body.add_content("<main>Welcome!</main>")
+body.add_javascript("console.log('page loaded');")
+
+page = Fragment()
+page.add_resources([header, body])
+page.add_content(header.body_html() + body.body_html())
+```
+
+### Serializing a fragment for transport
+
+```python
+fragment = Fragment()
+fragment.add_content("<p>Fetched via API</p>")
+fragment.add_css(".note { color: gray; }")
+
+data = fragment.to_dict()
+# data can now be JSON-encoded, cached, or sent across a service boundary
+
+restored_fragment = Fragment.from_dict(data)
+html = restored_fragment.body_html()
+```
+
+## Documentation build integration
+
+The `docs/conf.py` module exposes `on_init(app)` and `setup(app)` hooks intended for integration with a Sphinx-based documentation build, allowing this project's documentation to be generated alongside the rest of your Django app's docs.

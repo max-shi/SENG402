@@ -1,0 +1,385 @@
+# statannotations
+
+`statannotations` provides tools for adding statistical-comparison annotations to categorical plots. It connects plot groups, statistical test results, p-values, multiple-comparison correction, and annotation formatting so that comparisons can be displayed directly on a plot.
+
+Typical workflows include:
+
+1. Create or attach an `Annotator` to a categorical plot.
+2. Define pairs of groups to compare.
+3. Either run statistical tests or provide precomputed p-values.
+4. Configure formatting, correction, and placement options.
+5. Draw annotations on the plot.
+
+The library also exposes lower-level utilities for statistical testing, p-value validation and formatting, comparison correction, and categorical group parsing.
+
+## Main API
+
+### `Annotator`
+
+`Annotator` is the central plotting and annotation interface.
+
+It can be associated with an existing plot through `new_plot`, then used to:
+
+- configure annotation behavior with `configure`
+- run tests with `apply_test`
+- supply p-values with `set_pvalues`
+- add custom labels with `set_custom_annotations`
+- render annotations with `annotate`
+- combine testing and rendering with `apply_and_annotate`
+
+Useful methods include:
+
+| Method | Purpose |
+| --- | --- |
+| `get_empty_annotator()` | Create an empty annotator instance. |
+| `new_plot(...)` | Attach the annotator to a plot, data source, plot type, and comparison pairs. |
+| `configure(**parameters)` | Apply annotation configuration parameters. |
+| `apply_test(...)` | Run the configured statistical test for all comparisons. |
+| `apply_and_annotate()` | Run tests and annotate the plot in one step. |
+| `set_pvalues(pvalues, ...)` | Supply p-values computed elsewhere. |
+| `set_pvalues_and_annotate(pvalues, ...)` | Supply p-values and immediately annotate. |
+| `set_custom_annotations(text_annot_custom)` | Set custom text for comparisons. |
+| `annotate_custom_annotations(text_annot_custom)` | Add custom text annotations immediately. |
+| `annotate(...)` | Render the prepared annotations. |
+| `get_annotations_text()` | Retrieve annotation text. |
+| `get_configuration()` | Retrieve the current configuration. |
+| `print_pvalue_legend()` | Print the active p-value legend when applicable. |
+
+The annotator also provides getter/setter-style methods for common settings:
+
+- `alpha(...)`
+- `comparisons_correction(...)`
+- `loc(...)`
+- `test(...)`
+- `pvalue_format(...)`
+- `verbose(...)`
+
+`orient()` and `is_vertical()` expose the plot orientation, while `fig()` returns the plot figure associated with the annotator.
+
+---
+
+### `Annotation`
+
+An `Annotation` represents an individual comparison annotation.
+
+Available operations include:
+
+- `text()` — retrieve annotation text
+- `formatted_output()` — obtain a formatted representation
+- `print_labels_and_content()` — print group labels and annotation content
+- `check_data_stat_result()` — validate the associated statistical result
+
+---
+
+### `StatResult`
+
+`StatResult` represents the result of a statistical comparison.
+
+It supports:
+
+- recording a correction method with `correction_method(...)`
+- recording corrected significance with `corrected_significance(...)`
+- checking whether the result is significant with `is_significant()`
+- generating a correction suffix with `significance_suffix()`
+- formatting a result with `formatted_output()`
+- adjusting a result from a statistical summary with `adjust(...)`
+
+---
+
+### `StatTest` and statistical testing
+
+`StatTest` represents a supported statistical test. A test can be selected from the library using:
+
+```python
+test = StatTest.from_library("test_name")
+```
+
+A built-in `wilcoxon` function is also available for paired group data:
+
+```python
+result = wilcoxon(group_data1, group_data2)
+```
+
+For direct statistical comparison outside the plotting workflow, use `apply_test`:
+
+```python
+result = apply_test(
+    group_data1,
+    group_data2,
+    test=None,
+    comparisons_correction=None,
+    num_comparisons=1,
+    alpha=0.05,
+)
+```
+
+The returned result can be inspected through `StatResult` methods such as `formatted_output()` and `is_significant()`.
+
+---
+
+### P-value formatting
+
+`PValueFormat` controls how p-values and significance annotations are represented.
+
+It supports configuration of:
+
+- `text_format`
+- `p_separators`
+- `pvalue_format_string`
+- `simple_format_string`
+- `correction_format`
+- `pvalue_thresholds`
+
+Example:
+
+```python
+pvalue_format = PValueFormat()
+
+pvalue_format.text_format("star")
+pvalue_format.pvalue_thresholds([
+    [0.001, "***"],
+    [0.01, "**"],
+    [0.05, "*"],
+    [1, "ns"],
+])
+
+configuration = pvalue_format.get_configuration()
+```
+
+Related helpers include:
+
+- `sort_pvalue_thresholds(pvalue_thresholds)`
+- `get_corrected_star(star, res, correction_format=...)`
+- `pval_annotation_text(result, pvalue_thresholds)`
+- `simple_text(result, pvalue_format, pvalue_thresholds, ...)`
+
+---
+
+### Multiple-comparison correction
+
+`ComparisonsCorrection` applies correction procedures to a collection of statistical results.
+
+Supporting functions include:
+
+- `get_validated_comparisons_correction(comparisons_correction)`
+- `get_correction_parameters(name)`
+- `check_valid_correction_name(name)`
+
+A correction object can be applied directly:
+
+```python
+correction = get_validated_comparisons_correction("correction_name")
+corrected_results = correction.apply(test_result_list)
+```
+
+The correction can also be configured on an annotator:
+
+```python
+annotator.comparisons_correction("correction_name")
+```
+
+---
+
+## Usage
+
+### Annotate a plot with precomputed p-values
+
+Use this workflow when p-values were calculated elsewhere and you only need to display them on an existing categorical plot.
+
+```python
+from statannotations import Annotator
+
+pairs = [
+    ("control", "treatment_a"),
+    ("control", "treatment_b"),
+]
+
+annotator = Annotator.get_empty_annotator()
+
+annotator.new_plot(
+    ax=ax,
+    pairs=pairs,
+    plot="boxplot",
+    data=data,
+    x="group",
+    y="value",
+    order=["control", "treatment_a", "treatment_b"],
+)
+
+annotator.set_pvalues(
+    pvalues=[0.032, 0.004],
+    num_comparisons="auto",
+)
+
+annotator.annotate()
+```
+
+After annotation, retrieve the generated text if needed:
+
+```python
+labels = annotator.get_annotations_text()
+print(labels)
+```
+
+---
+
+### Run tests and annotate comparisons
+
+When group data are available through the plot data source, configure a test and let the annotator apply it to each requested pair.
+
+```python
+from statannotations import Annotator, StatTest
+
+pairs = [
+    ("baseline", "variant_1"),
+    ("baseline", "variant_2"),
+]
+
+annotator = Annotator.get_empty_annotator()
+
+annotator.new_plot(
+    ax=ax,
+    pairs=pairs,
+    plot="boxplot",
+    data=data,
+    x="condition",
+    y="measurement",
+)
+
+annotator.test(StatTest.from_library("test_name"))
+annotator.alpha(0.05)
+annotator.comparisons_correction(None)
+
+annotator.apply_and_annotate()
+```
+
+For more control, run the test and annotation steps separately:
+
+```python
+annotator.apply_test(num_comparisons="auto")
+annotator.annotate()
+```
+
+---
+
+### Add custom comparison labels
+
+Custom annotations are useful for labels that do not come directly from p-values, such as domain-specific notes or manually reviewed results.
+
+```python
+custom_labels = [
+    "Important difference",
+    "No practical difference",
+]
+
+annotator.set_custom_annotations(custom_labels)
+annotator.annotate()
+```
+
+Or annotate custom labels in one call:
+
+```python
+annotator.annotate_custom_annotations([
+    "A vs. B",
+    "A vs. C",
+])
+```
+
+---
+
+### Directly test two groups
+
+For workflows that do not require plot annotations, statistical tests can be applied directly.
+
+```python
+from statannotations import apply_test
+
+group_a = [1.2, 0.9, 1.5, 1.1]
+group_b = [1.7, 1.4, 1.8, 1.6]
+
+result = apply_test(
+    group_a,
+    group_b,
+    num_comparisons=1,
+    alpha=0.05,
+)
+
+print(result.formatted_output())
+
+if result.is_significant():
+    print("The comparison is significant.")
+```
+
+---
+
+## Plot-oriented helpers
+
+For workflows that create plots and annotations together, `Annotator` provides:
+
+- `plot_and_annotate(...)`
+- `plot_and_annotate_facets(...)`
+
+These methods accept a plot name, comparison pairs, plot parameters, configuration, an annotation function, and optional operations to apply before or after plotting.
+
+This is useful when applying a shared annotation configuration across multiple facets or plot axes.
+
+---
+
+## Validation and utility functions
+
+The library includes utilities for validating common inputs:
+
+| Function | Purpose |
+| --- | --- |
+| `check_pvalues(p_values)` | Validate p-values. |
+| `check_num_comparisons(num_comparisons)` | Validate the number of comparisons. |
+| `check_alpha(alpha)` | Validate significance level input. |
+| `get_num_comparisons(p_values, num_comparisons)` | Resolve comparison count. |
+| `check_pairs_in_data(...)` | Validate comparison pairs against available data. |
+| `check_order_in_data(data, x, order)` | Validate category order against data. |
+| `check_redundant_hue(...)` | Check whether hue information is redundant. |
+| `check_valid_text_format(text_format)` | Validate annotation text format. |
+| `check_is_in(x, valid_values, ...)` | Validate membership in an allowed set. |
+| `check_not_none(name, value)` | Require a non-`None` value. |
+
+`InvalidParametersError` is available for invalid parameter combinations or values.
+
+---
+
+## Categorical group support
+
+The plotting compatibility layer exposes wrappers for categorical plotters and group parsing.
+
+Key capabilities include:
+
+- retrieving group names with `group_names()`
+- retrieving hue names with `hue_names()`
+- checking hue support with `has_hue()`
+- retrieving data for a group with `get_group_data(...)`
+- parsing comparison pairs with `parse_pairs(...)`
+- obtaining an appropriate plotter wrapper through `get_plotter(...)`
+
+`get_group_names_and_labels(...)` can be used to derive group tuples and display labels from group and hue names.
+
+---
+
+## Typical workflow summary
+
+```python
+annotator = Annotator.get_empty_annotator()
+
+annotator.new_plot(
+    ax=ax,
+    pairs=[("group_1", "group_2")],
+    plot="boxplot",
+    data=data,
+    x="group",
+    y="value",
+)
+
+annotator.alpha(0.05)
+annotator.set_pvalues([0.03])
+annotator.annotate()
+```
+
+Use `apply_and_annotate()` instead of `set_pvalues(...)` and `annotate()` when the annotator should calculate the statistical results itself.

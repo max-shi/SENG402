@@ -1,0 +1,314 @@
+# Jargon2 API
+
+`com.kosprov.jargon2:jargon2-api` is a Java API for producing and verifying password hashes using configurable Argon2-style parameters.
+
+The library exposes:
+
+- A fluent high-level API for hashing and verification.
+- A low-level API for supplying every hashing parameter directly.
+- Pluggable backend support through `Jargon2Backend`.
+- Support for salts, secrets, associated data, parallelism, memory/time costs, and backend-specific options.
+- Byte-source helpers for working with strings, byte arrays, streams, and readers.
+
+## Entry points
+
+The `Jargon2` class is the primary entry point.
+
+```java
+import com.kosprov.jargon2.api.Jargon2;
+```
+
+| Method | Purpose |
+|---|---|
+| `Jargon2.jargon2Hasher()` | Creates a configurable `Hasher`. |
+| `Jargon2.jargon2Verifier()` | Creates a configurable `Verifier`. |
+| `Jargon2.jargon2LowLevelApi()` | Obtains a low-level hashing and verification API using a discovered backend. |
+| `Jargon2.jargon2LowLevelApi(...)` | Obtains a low-level API with an explicitly selected backend. |
+| `Jargon2.toByteArray(...)` | Wraps strings, arrays, streams, or readers as API byte sources. |
+
+The API also provides `Jargon2Exception` for general failures and `Jargon2BackendException` for backend-related failures.
+
+## High-level hashing
+
+Use `jargon2Hasher()` to configure a hash operation fluently. The hasher supports:
+
+- Hash type and version
+- Time cost
+- Memory cost
+- Parallelism, lanes, and threads
+- Output hash length
+- Salt length, explicit salts, or custom salt generators
+- Passwords
+- Optional secret data
+- Optional associated data
+- Backend-specific options
+
+A hasher can return either raw hash bytes or an encoded hash string.
+
+### Create an encoded hash
+
+```java
+import com.kosprov.jargon2.api.Jargon2;
+
+import java.nio.charset.StandardCharsets;
+
+public final class PasswordHasher {
+    public static String hashPassword(char[] password) {
+        byte[] passwordBytes = new String(password)
+                .getBytes(StandardCharsets.UTF_8);
+
+        try {
+            return Jargon2.jargon2Hasher()
+                    .timeCost(3)
+                    .memoryCost(65_536)
+                    .parallelism(1)
+                    .hashLength(32)
+                    .password(passwordBytes)
+                    .encodedHash();
+        } finally {
+            java.util.Arrays.fill(passwordBytes, (byte) 0);
+        }
+    }
+}
+```
+
+An explicit salt may be provided when required:
+
+```java
+byte[] password = "correct horse battery staple"
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+byte[] salt = new byte[] {
+        1, 2, 3, 4, 5, 6, 7, 8,
+        9, 10, 11, 12, 13, 14, 15, 16
+};
+
+String encodedHash = Jargon2.jargon2Hasher()
+        .timeCost(3)
+        .memoryCost(65_536)
+        .parallelism(1)
+        .salt(salt)
+        .password(password)
+        .encodedHash();
+```
+
+### Create a raw hash
+
+```java
+byte[] rawHash = Jargon2.jargon2Hasher()
+        .timeCost(3)
+        .memoryCost(65_536)
+        .parallelism(1)
+        .hashLength(32)
+        .salt(salt)
+        .password(password)
+        .rawHash();
+```
+
+## Verifying hashes
+
+Use `jargon2Verifier()` to configure verification. A verifier accepts the password and, where applicable, the hash parameters, salt, secret, associated data, and thread count.
+
+### Verify an encoded hash
+
+```java
+import com.kosprov.jargon2.api.Jargon2;
+
+import java.nio.charset.StandardCharsets;
+
+public final class PasswordVerifier {
+    public static boolean verifyPassword(String encodedHash, char[] password) {
+        byte[] passwordBytes = new String(password)
+                .getBytes(StandardCharsets.UTF_8);
+
+        try {
+            return Jargon2.jargon2Verifier()
+                    .password(passwordBytes)
+                    .hash(encodedHash)
+                    .verifyEncoded();
+        } finally {
+            java.util.Arrays.fill(passwordBytes, (byte) 0);
+        }
+    }
+}
+```
+
+### Verify a raw hash
+
+When verifying a raw hash, supply the parameters used to generate it:
+
+```java
+boolean matches = Jargon2.jargon2Verifier()
+        .timeCost(3)
+        .memoryCost(65_536)
+        .parallelism(1)
+        .salt(salt)
+        .password(password)
+        .hash(rawHash)
+        .verifyRaw();
+```
+
+## Checking encoded-hash properties
+
+A hasher can compare its configured properties with an encoded hash:
+
+```java
+boolean matchesCurrentPolicy = Jargon2.jargon2Hasher()
+        .timeCost(3)
+        .memoryCost(65_536)
+        .parallelism(1)
+        .hashLength(32)
+        .propertiesMatch(encodedHash);
+```
+
+This is useful when an application wants to determine whether a stored hash matches its current hashing configuration.
+
+## Secrets and associated data
+
+Both hashing and verification accept optional `secret` and associated data (`ad`) values.
+
+```java
+byte[] password = "password".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+byte[] secret = loadApplicationSecret();
+byte[] associatedData = "account:12345".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+String encodedHash = Jargon2.jargon2Hasher()
+        .password(password)
+        .secret(secret)
+        .ad(associatedData)
+        .encodedHash();
+
+boolean valid = Jargon2.jargon2Verifier()
+        .password(password)
+        .secret(secret)
+        .ad(associatedData)
+        .hash(encodedHash)
+        .verifyEncoded();
+```
+
+The same secret and associated data should be supplied during verification when they were used during hashing.
+
+## Byte sources
+
+The API accepts byte arrays directly and also provides `ByteArray` wrappers through `Jargon2.toByteArray(...)`.
+
+Available conversions include:
+
+```java
+Jargon2.toByteArray("text value");
+Jargon2.toByteArray(charArray);
+Jargon2.toByteArray(byteArray);
+Jargon2.toByteArray(inputStream);
+Jargon2.toByteArray(inputStream, bufferSize);
+Jargon2.toByteArray(reader);
+Jargon2.toByteArray(reader, bufferSize);
+```
+
+For example:
+
+```java
+Jargon2.ByteArray password = Jargon2.toByteArray(passwordInputStream);
+
+String encodedHash = Jargon2.jargon2Hasher()
+        .password(password)
+        .encodedHash();
+```
+
+The overloads accepting `char[]` and `byte[]` return clearable source types, which are suitable when application code needs explicit handling of sensitive input data.
+
+## Low-level API
+
+`LowLevelApi` exposes all hash and verification inputs explicitly. Obtain it from `Jargon2`:
+
+```java
+Jargon2.LowLevelApi api = Jargon2.jargon2LowLevelApi();
+```
+
+The low-level API supports:
+
+- `rawHash(...)`
+- `encodedHash(...)`
+- `verifyRaw(...)`
+- `verifyEncoded(...)`
+
+For example, an application that already manages all parameters can invoke `encodedHash(...)` directly:
+
+```java
+Jargon2.LowLevelApi api = Jargon2.jargon2LowLevelApi();
+
+String encodedHash = api.encodedHash(
+        type,
+        version,
+        65_536,       // memoryCost
+        3,            // timeCost
+        1,            // parallelism
+        32,           // hashLength
+        salt,
+        password
+);
+```
+
+The extended overloads additionally accept lanes, threads, secret data, associated data, and an options map:
+
+```java
+String encodedHash = api.encodedHash(
+        type,
+        version,
+        65_536,       // memoryCost
+        3,            // timeCost
+        1,            // lanes
+        1,            // threads
+        32,           // hashLength
+        secret,
+        associatedData,
+        salt,
+        password,
+        options
+);
+```
+
+## Backend selection
+
+Hashing is performed by a `Jargon2Backend`. By default, the library can obtain a backend through its discovery mechanism.
+
+A specific backend can also be selected when obtaining a low-level API:
+
+```java
+Jargon2.LowLevelApi api = Jargon2.jargon2LowLevelApi(myBackend);
+```
+
+Or by backend class:
+
+```java
+Jargon2.LowLevelApi api = Jargon2.jargon2LowLevelApi(MyBackend.class);
+```
+
+The fluent hasher and verifier also provide `backend(...)` overloads for selecting a backend per operation:
+
+```java
+String encodedHash = Jargon2.jargon2Hasher()
+        .backend(myBackend)
+        .password(password)
+        .encodedHash();
+```
+
+Backend implementations implement `Jargon2Backend` and provide methods for raw hashing, encoded hashing, raw verification, and encoded verification.
+
+## Error handling
+
+The API uses unchecked exceptions:
+
+- `Jargon2Exception` — general API failures.
+- `Jargon2BackendException` — failures originating from a selected backend.
+
+```java
+try {
+    String hash = Jargon2.jargon2Hasher()
+            .password(password)
+            .encodedHash();
+} catch (Jargon2BackendException e) {
+    // Handle a backend-specific failure.
+} catch (Jargon2Exception e) {
+    // Handle another Jargon2 API failure.
+}
+```

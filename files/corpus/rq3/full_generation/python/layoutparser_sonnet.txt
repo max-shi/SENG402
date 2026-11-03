@@ -1,0 +1,261 @@
+# LayoutParser
+
+**LayoutParser** is a Python library for detecting, representing, and manipulating document layout structures. It provides a unified toolkit for:
+
+- Running deep-learning-based layout detection models (Detectron2, EfficientDet, PaddleDetection) behind a single, consistent interface.
+- Representing detected regions as geometric primitives (`Interval`, `Rectangle`, `Quadrilateral`) and higher-level `TextBlock` objects that carry both geometry and text/metadata.
+- Grouping and manipulating collections of layout elements via the `Layout` container.
+- Running OCR (Tesseract or Google Cloud Vision) on document images or regions.
+- Loading and saving layouts to/from JSON, CSV, dataframes, and PDFs.
+- Visualizing detected layouts by drawing boxes and text on document images.
+
+This makes it well suited for document image analysis pipelines: detect regions on a scanned page or PDF, crop/filter/sort them, run OCR, and export or visualize the results.
+
+---
+
+## Installation
+
+```bash
+pip install layoutparser
+```
+
+Optional backends (install as needed):
+
+```bash
+pip install "layoutparser[detectron2]"
+pip install "layoutparser[effdet]"
+pip install "layoutparser[paddledetection]"
+pip install "layoutparser[ocr]"       # pytesseract
+pip install "layoutparser[gcv]"       # Google Cloud Vision
+```
+
+You can check backend availability at runtime with helpers such as
+`is_torch_available()`, `is_detectron2_available()`, `is_paddle_available()`,
+`is_effdet_available()`, `is_pytesseract_available()`, and `is_gcv_available()`
+from `layoutparser.file_utils`.
+
+---
+
+## Core Concepts
+
+### Geometric primitives
+
+All layout elements ultimately derive from `BaseCoordElement` (itself built
+on `BaseLayoutElement`), which defines a common API shared by every shape:
+
+- `width`, `height`, `coordinates`, `points`, `area`
+- `pad`, `shift`, `scale`, `crop_image`
+- `is_in`, `intersect`, `union`, `relative_to`, `condition_on`
+- `to_dict` / `from_dict` for serialization
+
+Three concrete shape types implement this interface:
+
+- **`Interval`** — a 1D range along an axis (e.g., a horizontal band of text), convertible `to_rectangle()` / `to_quadrilateral()`.
+- **`Rectangle`** — an axis-aligned box, convertible `to_interval()` / `to_quadrilateral()`.
+- **`Quadrilateral`** — a 4-point polygon (supports perspective transforms via `perspective_matrix`, `map_to_points_ordering`), convertible `to_interval()` / `to_rectangle()`.
+
+### TextBlock
+
+`TextBlock` wraps any of the above shapes together with recognized text and
+metadata (score, block type, etc.), and mirrors the same geometric API
+(`pad`, `shift`, `scale`, `crop_image`, `is_in`, `intersect`, `union`, `to_rectangle`,
+`to_quadrilateral`, `to_interval`, `to_dict`/`from_dict`). This is the object
+you typically get back from layout detection models.
+
+### Layout
+
+`Layout` is a `MutableSequence` of layout elements (typically `TextBlock`s).
+It exposes batch operations mirroring the single-element API, plus utilities
+for working with collections:
+
+- Geometric batch ops: `shift`, `pad`, `scale`, `crop_image`, `relative_to`, `condition_on`, `is_in`, `filter_by`
+- Ordering: `sort`
+- Extraction: `get_texts`, `get_info`, `get_homogeneous_blocks`
+- Export: `to_dict`, `to_dataframe`
+- Standard sequence ops: `insert`, `copy` (via `MutableSequence`)
+
+### Errors
+
+`NotSupportedShapeError` and `InvalidShapeError` are raised when geometric
+operations receive incompatible or malformed shape data.
+
+---
+
+## Layout Detection Models
+
+All detection models implement the `BaseLayoutModel` interface:
+
+- `detect(image)` → returns a `Layout` of detected `TextBlock`s
+- `image_loader(image)` — normalizes input images (NumPy array or PIL `Image`)
+- `config_parser(config_path, model_path, allow_empty_path=False)` — resolves model/config paths
+- Class properties `DEPENDENCIES`, `DETECTOR_NAME`, `MODEL_CATALOG`
+
+Concrete implementations:
+
+- **`Detectron2LayoutModel`** — Detectron2-based detector
+- **`EfficientDetLayoutModel`** — EfficientDet-based detector (uses `InputTransform` for preprocessing)
+- **`PaddleDetectionLayoutModel`** — PaddleDetection-based detector (`load_predictor`, `preprocess`, `gather_output`)
+
+Rather than instantiating these directly, the recommended entry point is:
+
+```python
+AutoLayoutModel(config_path, model_path=None, label_map=None, device=None, extra_config=None) -> BaseLayoutModel
+```
+
+which selects and configures the appropriate backend based on `config_path`.
+
+Model configuration strings/paths are parsed and validated with helpers in
+`model_config.py`: `LayoutModelConfig`, `layout_model_config_parser`,
+`is_lp_layout_model_config_any_format`, and `add_identifier_for_config`.
+
+Model weights/configs may be fetched from remote catalogs; `DropboxHandler`,
+`LayoutParserDetectron2ModelHandler`, `LayoutParserEfficientDetModelHandler`,
+and `LayoutParserPaddleModelHandler` manage retrieval and caching of
+pretrained assets (including validity checks via
+`is_cached_folder_exists_and_valid`).
+
+---
+
+## OCR
+
+OCR agents implement `BaseOCRAgent`, exposing a `detect(image)` method that
+returns recognized text (and optionally structured results as a `Layout`
+of `TextBlock`s).
+
+- **`TesseractAgent`** — wraps `pytesseract`. Construct with
+  `TesseractAgent.with_tesseract_executable(tesseract_cmd_path, **kwargs)`.
+  `detect(image, return_response=False, return_only_text=True, agg_output_level=None)`
+  aggregates results according to `TesseractFeatureType` levels
+  (`group_levels`, `attr_name`). Responses can be persisted with
+  `save_response` / loaded with `load_response`.
+- **`GCVAgent`** — wraps Google Cloud Vision. Construct with
+  `GCVAgent.with_credential(credential_path, **kwargs)`.
+  `detect(image, return_response=False, return_only_text=False, agg_output_level=None)`
+  aggregates results according to `GCVFeatureType` levels (`attr_name`,
+  `child_level`). Includes `gather_text_annotations` and
+  `gather_full_text_annotation` static/class helpers, plus
+  `save_response` / `load_response`.
+
+Both feature-type enums extend `BaseOCRElementType`, an `IntEnum` describing
+the hierarchy of OCR-detected regions (page, block, paragraph, word, etc.).
+
+---
+
+## I/O
+
+**Basic serialization** (`layoutparser.io`):
+
+- `load_json(filename)` / `load_dict(data)` — reconstruct a `Layout` or
+  single element from JSON/dict representations produced by `to_dict()`.
+- `load_csv(filename, block_type=None)` / `load_dataframe(df, block_type=None)`
+  — build a `Layout` from tabular data.
+
+**PDF support**:
+
+- `extract_words_for_page(page, ...)` — extract word-level `Layout` from a
+  `pdfplumber` page.
+- `load_pdf(filename, load_images=False, ..., dpi=DEFAULT_PDF_DPI)` — extract
+  a list of per-page `Layout` objects (and optionally rendered page images).
+
+---
+
+## Shape / Grouping Utilities
+
+`layoutparser.tools` offers helpers for post-processing detected regions:
+
+- `generalized_connected_component_analysis_1d(sequence, scoring_func, aggregation_func=None, default_score_value=0)` — generic clustering over a 1D sequence based on a pairwise scoring function.
+- `simple_line_detection(layout, x_tolerance=10, y_tolerance=10)` — group `TextBlock`s into text lines.
+- `group_textblocks_based_on_category(layout, union_group=True)` — group blocks by category label, optionally merging each group into a single unioned block.
+
+---
+
+## Visualization
+
+- `draw_box(canvas, layout, box_width=None, box_alpha=None, box_color=None, color_map=None, show_element_id=False, show_element_type=False, ...)` — draw bounding boxes for a `Layout` over an image.
+- `draw_transparent_box(canvas, blocks, color_map=None, alpha=0.25)` — draw semi-transparent filled boxes.
+- `draw_text(canvas, layout, arrangement='lr', font_size=None, ..., with_layout=False, **kwargs)` — render recognized text next to/inside detected regions, optionally overlaying the layout boxes.
+
+The `image_loader` decorator in this module standardizes image input handling for these drawing functions.
+
+---
+
+## Usage Examples
+
+### 1. Detect layout on an image and visualize it
+
+```python
+import layoutparser as lp
+from PIL import Image
+
+image = Image.open("page.png")
+
+model = lp.AutoLayoutModel("lp://PubLayNet/faster_rcnn_R_50_FPN_3x/config")
+
+layout = model.detect(image)
+
+# Keep only "Text" and "Title" blocks, sorted top-to-bottom
+text_blocks = layout.filter_by(layout, soft_margin={}, center=True)
+sorted_layout = layout.sort(key=lambda b: b.coordinates[1])
+
+viz = lp.draw_box(
+    image, sorted_layout,
+    box_width=2, show_element_type=True, show_element_id=True
+)
+viz.save("layout_visualized.png")
+```
+
+### 2. Crop detected regions and run OCR
+
+```python
+import layoutparser as lp
+
+ocr_agent = lp.TesseractAgent.with_tesseract_executable("/usr/bin/tesseract")
+
+for block in layout:
+    segment_image = block.crop_image(image)
+    text = ocr_agent.detect(segment_image)
+    block = block.set(text=text, inplace=False)
+
+for block in layout:
+    print(block.text)
+```
+
+### 3. Export and reload a layout
+
+```python
+data = layout.to_dict()
+
+import json
+with open("layout.json", "w") as f:
+    json.dump(data, f)
+
+reloaded_layout = lp.load_json("layout.json")
+
+df = layout.to_dataframe()
+df.to_csv("layout.csv", index=False)
+```
+
+### 4. Extract text and layout from a PDF
+
+```python
+pages = lp.load_pdf("document.pdf", load_images=True, dpi=200)
+page_layouts, page_images = pages
+
+first_page_layout = page_layouts[0]
+words = first_page_layout.get_texts()
+print(" ".join(words))
+```
+
+### 5. Group scattered text blocks into lines
+
+```python
+from layoutparser.tools import simple_line_detection
+
+lines = simple_line_detection(layout, x_tolerance=10, y_tolerance=10)
+```
+
+---
+
+## License
+
+See `LICENSE` for details.

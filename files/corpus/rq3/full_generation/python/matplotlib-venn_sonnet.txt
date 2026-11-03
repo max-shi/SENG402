@@ -1,0 +1,220 @@
+# matplotlib-venn
+
+**matplotlib-venn** is a Python library for drawing area-weighted two- and
+three-circle Venn diagrams using `matplotlib`. It computes circle layouts
+(centers and radii) so that the overlaps between circles reflect the sizes
+of the corresponding sets or subsets, draws the circles and their
+overlapping regions as patches, and places size labels and set labels for
+each region.
+
+The library supports:
+
+- Venn diagrams for 2 sets (`venn2`) and 3 sets (`venn3`), built from either
+  Python `set` objects or explicit subset-size dictionaries.
+- Drawing just the circles without shading/labels (`venn2_circles`,
+  `venn3_circles`).
+- Unweighted variants (`venn2_unweighted`, `venn3_unweighted`) that draw
+  circles of equal/fixed size regardless of subset sizes, useful when exact
+  proportional areas aren't needed or aren't achievable.
+- Pluggable layout algorithms that decide how circles are positioned and
+  sized, including exact geometric solutions and cost-based optimization
+  strategies.
+- Low-level geometric primitives (arcs, circle intersections, region
+  algebra) used internally to compute the shapes of overlapping regions.
+
+## Installation
+
+```bash
+pip install matplotlib-venn
+```
+
+## Main Concepts
+
+### High-level drawing functions
+
+- **`venn2(subsets, set_labels=('A', 'B'), set_colors=('r', 'g'), alpha=0.4, normalize_to=None, ax=None, subset_label_formatter=None, layout_algorithm=None)`**
+  Draws a full 2-set Venn diagram: colored/shaded regions, subset size
+  labels, and set labels. Returns a `VennDiagram` object.
+
+- **`venn3(subsets, set_labels=('A', 'B', 'C'), set_colors=('r', 'g', 'b'), alpha=0.4, normalize_to=None, ax=None, subset_label_formatter=None, layout_algorithm=None)`**
+  Same as `venn2`, but for three sets. Returns a `VennDiagram` object.
+
+- **`venn2_circles(subsets, ...)` / `venn3_circles(subsets, ...)`**
+  Draw only the circle outlines (no fill or subset labels), returning the
+  underlying `matplotlib.patches.Circle` objects. Useful when you want to
+  overlay your own annotations or styling on top of a plain circle layout.
+
+- **`venn2_unweighted(subsets, ...)` / `venn3_unweighted(subsets, ...)`**
+  Convenience wrappers that draw diagrams with fixed, non-proportional
+  circle sizes (controlled via a `subset_areas` parameter), regardless of
+  actual subset sizes. Useful for schematic diagrams where the true
+  proportions don't matter.
+
+The `subsets` argument to all of these can be:
+- A tuple of Python `set` objects (e.g. `(set_a, set_b)` for `venn2`, or
+  `(set_a, set_b, set_c)` for `venn3`) — the library computes intersection
+  sizes automatically, or
+- A dictionary mapping subset codes (e.g. `'01'`, `'11'`, `'010'`, `'111'`)
+  to sizes, or
+- A `Venn2SubsetSizes` / `Venn3SubsetSizes` sequence of numbers giving the
+  sizes of each subset directly, in a fixed conventional order.
+
+### `VennDiagram`
+
+The object returned by `venn2`/`venn3`. It gives access to the drawn
+elements after the fact:
+
+- `get_patch_by_id(id)` — the `matplotlib.patches.Patch` for a given subset
+  (e.g. `'10'`, `'11'`, `'01'` for two sets).
+- `get_label_by_id(id)` — the `matplotlib.text.Text` label for a subset or
+  set label.
+- `get_circle_center(id)` / `get_circle_radius(id)` — geometry of the
+  underlying circles, indexed by set number (0, 1, 2, ...).
+- `hide_zeroes()` — hides labels for subsets whose size is zero, to reduce
+  clutter.
+
+### Layout algorithms
+
+Circle placement (deciding centers and radii so that overlaps match target
+areas) is delegated to a pluggable `VennLayoutAlgorithm`. You can pass a
+custom instance via the `layout_algorithm` parameter of `venn2`, `venn3`,
+`venn2_circles`, and `venn3_circles`.
+
+Built-in implementations include:
+
+- **`layout.venn2.exact.LayoutAlgorithm`** — computes an exact 2-circle
+  layout matching the requested subset areas as closely as geometry allows.
+- **`layout.venn3.pairwise.LayoutAlgorithm`** — positions three circles
+  based on pairwise overlap constraints.
+- **`layout.venn3.cost_based.LayoutAlgorithm`** — searches for a 3-circle
+  layout that minimizes a configurable cost function comparing target and
+  actual subset areas (see `WeightedAggregateCost` and `pairwise_cost`),
+  useful when an exact solution doesn't exist and a "best effort"
+  approximation is desired.
+
+Layout algorithms operate in terms of shared types (`LabelLayout`,
+`VennLayout`) that describe circle geometry and label placement, decoupling
+the layout computation from the drawing/rendering code.
+
+### Geometric building blocks
+
+Lower-level modules provide the geometry used to render venn regions and are
+generally not needed for everyday use, but are available for advanced
+customization:
+
+- **`Arc`** — represents a circular arc segment, with utilities for length,
+  area, intersection with circles/other arcs, point queries, and
+  splitting/reversing arcs.
+- **`VennRegion` and subclasses** (`VennEmptyRegion`, `VennCircleRegion`,
+  `VennArcgonRegion`, `VennMultipieceRegion`) — represent the shapes of
+  individual venn diagram regions (unions/intersections/differences of
+  circles) and know how to compute their area, label position, and
+  matplotlib patch representation.
+- **Math helpers** (`point_in_circle`, `circle_intersection_area`,
+  `circle_circle_intersection`, `circle_line_intersection`,
+  `find_distance_by_area`, `vector_angle_in_degrees`,
+  `normalize_by_center_of_mass`, `box_product`) — general-purpose
+  computational geometry functions used to derive circle layouts and region
+  boundaries.
+- **`mix_colors`** — blends two or three RGBA colors, used to color
+  overlapping regions as a mix of their parent set colors.
+- **`prepare_venn_axes`** — configures a matplotlib `Axes` (limits, aspect
+  ratio, ticks) to properly display a venn diagram given circle centers and
+  radii.
+
+## Usage Examples
+
+### Basic 2-set Venn diagram from Python sets
+
+```python
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn2
+
+set_a = {1, 2, 3, 4, 5}
+set_b = {4, 5, 6, 7}
+
+venn2([set_a, set_b], set_labels=('Group A', 'Group B'))
+plt.title("Overlap between Group A and Group B")
+plt.show()
+```
+
+### 3-set Venn diagram from explicit subset sizes
+
+Subset keys for `venn3` follow the pattern `'Abc'` where each character
+position indicates membership in set A, B, C (`1`) or not (`0`):
+
+```python
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn3
+
+subset_sizes = {
+    '100': 10,   # only in A
+    '010': 8,    # only in B
+    '001': 6,    # only in C
+    '110': 4,    # in A and B only
+    '101': 3,    # in A and C only
+    '011': 2,    # in B and C only
+    '111': 1,    # in all three
+}
+
+diagram = venn3(subset_sizes, set_labels=('A', 'B', 'C'), set_colors=('r', 'g', 'b'))
+plt.show()
+```
+
+### Customizing labels and colors after drawing
+
+```python
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn2
+
+diagram = venn2([{1, 2, 3}, {3, 4, 5}], set_labels=('Left', 'Right'))
+
+# Hide labels for empty subsets
+diagram.hide_zeroes()
+
+# Recolor a specific region
+patch = diagram.get_patch_by_id('11')
+if patch:
+    patch.set_color('purple')
+    patch.set_alpha(0.6)
+
+# Change a subset label's text
+label = diagram.get_label_by_id('10')
+if label:
+    label.set_text("Left only")
+
+plt.show()
+```
+
+### Drawing plain circles with a custom layout algorithm
+
+```python
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn3_circles
+from matplotlib_venn.layout.venn3.cost_based import LayoutAlgorithm
+
+circles = venn3_circles(
+    subsets={'100': 5, '010': 5, '001': 5, '110': 2, '101': 2, '011': 2, '111': 1},
+    layout_algorithm=LayoutAlgorithm(),
+    linewidth=1.5,
+    linestyle='dashed',
+)
+plt.show()
+```
+
+### Unweighted (schematic) diagrams
+
+```python
+import matplotlib.pyplot as plt
+from matplotlib_venn import venn2_unweighted
+
+venn2_unweighted(
+    subsets=(1, 1, 1),   # sizes ignored for shape, used only for labels
+    set_labels=('X', 'Y'),
+)
+plt.show()
+```
+
+## License
+
+See the `LICENSE` file in this repository for licensing details.

@@ -1,0 +1,197 @@
+# Snakemake
+
+Snakemake is a workflow management system for building reproducible, scalable data analysis pipelines. Workflows are defined in terms of rules that describe how to produce output files from input files, and Snakemake determines the necessary execution order by building a directed acyclic graph (DAG) of jobs, then executes them—locally, in containers, in Conda environments, on clusters, or in the cloud—while tracking provenance, caching, and reproducibility metadata.
+
+This document describes the public Python API surface of the `snakemake` package, which underlies the `snakemake` command-line tool but can also be used programmatically to drive workflows, inspect DAGs, and build custom tooling around Snakemake.
+
+## Core concepts
+
+At a high level, working with Snakemake programmatically follows this flow:
+
+1. **Configure settings** — build up immutable settings objects (`ResourceSettings`, `ConfigSettings`, `StorageSettings`, `WorkflowSettings`, `DeploymentSettings`, `DAGSettings`, `ExecutionSettings`, etc.) describing how the workflow should be parsed and executed.
+2. **Create a `SnakemakeApi`** — the top-level entry point, used as a context manager, from which everything else is derived.
+3. **Load a workflow** — call `SnakemakeApi.workflow(...)` to parse a `Snakefile` and get a `WorkflowApi`.
+4. **Build a DAG** — call `WorkflowApi.dag(...)` to resolve targets and dependencies into a `DAGApi`.
+5. **Act on the DAG** — execute the workflow, generate reports, print graphs, clean up state, archive results, export to CWL, etc.
+
+This mirrors (and backs) the `snakemake` CLI, whose argument parsing and dispatch logic lives in `snakemake.cli`.
+
+## Main API entry points (`snakemake.api`)
+
+- **`SnakemakeApi`** — top-level object (used as a context manager) for loading workflows, deploying sources, and managing logging/exceptions.
+  - `.workflow(...)` → `WorkflowApi`
+  - `.deploy_sources(...)` — deploy remote workflow sources to a target location.
+  - `.print_exception(...)`, `.setup_logger()` — logging/error helpers.
+- **`WorkflowApi`** — represents a parsed workflow.
+  - `.dag(...)` → `DAGApi`
+  - `.lint(json=False)` — lint the workflow for style/correctness issues.
+  - `.list_rules(...)`, `.list_resources()` — introspection.
+  - `.print_compilation()` — print the compiled workflow source.
+- **`DAGApi`** — represents a workflow DAG resolved for specific targets.
+  - `.execute_workflow(executor="local", ...)` — run jobs using a named executor plugin.
+  - `.create_report(...)` — build an HTML (or other) run report.
+  - `.printdag()`, `.printrulegraph()`, `.printfilegraph()`, `.printd3dag()` — visualize the DAG in various forms.
+  - `.summary(...)`, `.archive(...)`, `.export_to_cwl(...)` — introspect or export workflow state.
+  - `.unlock()`, `.cleanup_metadata(...)`, `.cleanup_shadow()`, `.delete_output(...)` — workflow directory maintenance.
+  - `.conda_create_envs()`, `.conda_cleanup_envs()`, `.conda_list_envs()`, `.container_cleanup_images()` — environment/container management.
+  - `.list_changes(change_type)`, `.list_untracked()` — provenance inspection.
+  - `.generate_unit_tests(path)`, `.containerize()` — auxiliary tooling.
+
+Settings classes used by these methods (`ResourceSettings`, `ConfigSettings`, `StorageSettings`, `WorkflowSettings`, `DeploymentSettings`, `DAGSettings`, `ExecutionSettings`, `RemoteExecutionSettings`, `SchedulingSettings`, `GroupSettings`, `OutputSettings`, `GlobalReportSettings`, etc.) live in `snakemake.settings.types`, with supporting enums (`RerunTrigger`, `ChangeType`, `Quietness`, `PrintDag`, `StrictDagEvaluation`, `CondaCleanupPkgs`) in `snakemake.settings.enums`.
+
+## Workflow internals
+
+While the `api` module is the intended entry point for external tooling, the rest of the package implements the workflow engine itself:
+
+- **`snakemake.workflow.Workflow`** — the central object built while parsing a Snakefile; holds rules, config, pathvars, wildcard constraints, module and storage registrations, and exposes methods mirroring most CLI actions (`execute`, `create_report`, `printdag`, `unlock`, etc.). Rules register themselves onto a `Workflow` instance via `Workflow.rule(...)`.
+- **`snakemake.rules.Rule`** — represents a single rule definition (input/output/params/log/resources/wildcards) and knows how to expand its declarations against wildcards to produce concrete jobs.
+- **`snakemake.dag.DAG`** — builds and manages the dependency graph of `Job`/`GroupJob` objects, handling scheduling readiness, temp-file cleanup, storage staging, checkpoints, and provenance tracking.
+- **`snakemake.jobs`** — `Job`, `GroupJob`, and related factories (`JobFactory`, `GroupJobFactory`) represent individual and grouped units of execution, along with `Reason`, which explains why a job needs to run.
+- **`snakemake.scheduling`** — `job_scheduler.JobScheduler` selects which ready jobs to run given available resources, delegating job-selection strategy to pluggable schedulers such as `greedy.Scheduler` and `milp.Scheduler`.
+- **`snakemake.executors`** — executor backends (`local.Executor`, `dryrun.Executor`, `touch.Executor`) that actually run or simulate jobs selected by the scheduler.
+- **`snakemake.persistence.Persistence`** — tracks job metadata (code, params, input checksums, software stack) for incremental rebuild decisions and provenance ("rerun triggers").
+- **`snakemake.io`** — declarative helpers used inside rule input/output declarations: `expand`, `glob_wildcards`, `temp`, `directory`, `protected`, `touch`, `ancient`, `pipe`, `service`, `report`, `ensure`, `multiext`, `checkpoint_target`, and the `Namedlist`/`Wildcards`/`Params`/`Resources` container types passed into rule bodies and scripts.
+- **`snakemake.ioutils`** — higher-level input helpers: `lookup`, `branch`, `subpath`, `evaluate`, `exists` for building dynamic, config-driven input functions.
+- **`snakemake.checkpoints.Checkpoints`** — the `checkpoints` object available inside Snakefiles for accessing outputs of checkpoint rules.
+- **`snakemake.script`, `snakemake.notebook`, `snakemake.wrapper`, `snakemake.cwl`, `snakemake.template_rendering`** — support for `script:`, `notebook:`, `wrapper:`, `cwl:`, and templating (`jinja2`/`yte`) rule directives, each exposing a `Snakemake` object with `input`/`output`/`params`/etc. to the executed script.
+- **`snakemake.deployment`** — `conda.Env`/`conda.Conda`, `singularity.Image`/`singularity.Singularity`, and `env_modules.EnvModules` manage software environments used by jobs.
+- **`snakemake.caching`** — `AbstractOutputFileCache` and its `local`/`storage` implementations support Snakemake's output caching feature (`cache: True` rules).
+- **`snakemake.storage.StorageRegistry`** and **`snakemake.remote`** — pluggable storage/remote-file backends (S3, GS, HTTP, FTP, SFTP, WebDAV, Zenodo, iRODS, dropbox, etc.) for reading/writing files outside the local filesystem.
+- **`snakemake.report`** — builds the self-contained HTML workflow report (`auto_report`, `Reporter`), rendering rule graphs, results, run metadata, and package listings.
+- **`snakemake.linting`** — `RuleLinter` and `SnakefileLinter` implement the checks used by `Workflow.lint()` / `WorkflowApi.lint()`.
+- **`snakemake.benchmark`** — `BenchmarkRecord` and `benchmarked(...)` implement the `benchmark:` directive, recording runtime/memory statistics per job.
+- **`snakemake.exceptions`** — the exception hierarchy (`WorkflowError`, `RuleException`, `MissingInputException`, `AmbiguousRuleException`, `CyclicGraphException`, `LockException`, etc.) raised throughout the engine, along with formatting helpers for user-facing error output.
+- **`snakemake.parser`** — the tokenizer/parser that translates Snakefile syntax into executable Python, invoked when a `Workflow` includes a Snakefile.
+- **`snakemake.modules`** — `ModuleInfo` and `WorkflowModifier` implement the `module:`/`use rule ... from` mechanism for composing workflows out of reusable modules.
+- **`snakemake.cli`** — argument parsing (`get_argument_parser`, `parse_args`) and the `main(argv=None)` entry point used by the `snakemake` command-line executable; internally builds settings objects and drives the `api` module.
+- **`snakemake.gui`** — a small web UI (`run_snakemake`, Flask-style route handlers) for browsing and running workflows interactively.
+- **`snakemake.utils`** — general-purpose helpers commonly used inside Snakefiles: `validate` (JSON-schema config validation), `Paramspace` (parameter-space wildcarding), `R(code)` (inline R execution), `listfiles`, `min_version`, `update_config`, and shell-quoting helpers.
+- **`snakemake.shell.shell`** — the callable used inside `run:` blocks and scripts to execute shell commands with automatic logging and environment/container wrapping.
+
+## Installation
+
+```bash
+pip install snakemake
+```
+
+## Usage examples
+
+### Running a workflow programmatically
+
+```python
+from pathlib import Path
+from snakemake.api import SnakemakeApi
+from snakemake.settings.types import (
+    ResourceSettings,
+    ConfigSettings,
+    DAGSettings,
+    ExecutionSettings,
+)
+
+with SnakemakeApi() as snakemake_api:
+    workflow_api = snakemake_api.workflow(
+        resource_settings=ResourceSettings(cores=4),
+        config_settings=ConfigSettings(config={"samples": "samples.tsv"}),
+        snakefile=Path("workflow/Snakefile"),
+        workdir=Path("."),
+    )
+
+    dag_api = workflow_api.dag(
+        dag_settings=DAGSettings(targets=["results/summary.txt"])
+    )
+
+    dag_api.execute_workflow(
+        executor="local",
+        execution_settings=ExecutionSettings(),
+    )
+```
+
+### Linting a workflow before running it
+
+```python
+from pathlib import Path
+from snakemake.api import SnakemakeApi
+from snakemake.settings.types import ResourceSettings
+
+with SnakemakeApi() as snakemake_api:
+    workflow_api = snakemake_api.workflow(
+        resource_settings=ResourceSettings(),
+        snakefile=Path("workflow/Snakefile"),
+    )
+    workflow_api.lint(json=False)
+```
+
+### Generating a run report
+
+```python
+from pathlib import Path
+from snakemake.api import SnakemakeApi
+from snakemake.settings.types import ResourceSettings, DAGSettings, GlobalReportSettings
+
+with SnakemakeApi() as snakemake_api:
+    workflow_api = snakemake_api.workflow(
+        resource_settings=ResourceSettings(),
+        snakefile=Path("workflow/Snakefile"),
+    )
+    dag_api = workflow_api.dag(dag_settings=DAGSettings(targets=["all"]))
+    dag_api.create_report(
+        reporter="html",
+        global_report_settings=GlobalReportSettings(),
+    )
+```
+
+### Writing a Snakefile that uses helper utilities
+
+```python
+from snakemake.utils import validate, min_version
+
+min_version("8.0")
+
+configfile: "config.yaml"
+validate(config, schema="schemas/config.schema.yaml")
+
+rule all:
+    input:
+        expand("results/{sample}.txt", sample=config["samples"])
+
+rule process:
+    input:
+        "data/{sample}.txt"
+    output:
+        "results/{sample}.txt"
+    params:
+        extra=lookup(dpath="samples/{sample}/extra", within=config)
+    shell:
+        "process {input} {params.extra} > {output}"
+```
+
+### Inspecting the DAG without running it
+
+```python
+from pathlib import Path
+from snakemake.api import SnakemakeApi
+from snakemake.settings.types import ResourceSettings, DAGSettings
+
+with SnakemakeApi() as snakemake_api:
+    workflow_api = snakemake_api.workflow(
+        resource_settings=ResourceSettings(),
+        snakefile=Path("workflow/Snakefile"),
+    )
+    dag_api = workflow_api.dag(dag_settings=DAGSettings(targets=["all"]))
+    dag_api.printrulegraph()
+    dag_api.summary(detailed=True)
+```
+
+## Command-line usage
+
+The same functionality is exposed as a console command:
+
+```bash
+snakemake --cores 4 results/summary.txt
+```
+
+Internally, `snakemake.cli.main` parses arguments via `get_argument_parser`/`parse_args`, converts them into the settings objects described above via `args_to_api`, and drives the same `SnakemakeApi` → `WorkflowApi` → `DAGApi` pipeline shown in the examples.
+
+## License
+
+See the project repository for license details.

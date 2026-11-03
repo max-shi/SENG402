@@ -1,0 +1,526 @@
+# org.osgi:org.osgi.util.pushstream
+
+A Java library for building and consuming asynchronous push-based data streams.
+
+The API centers on `PushEvent` values delivered from a `PushEventSource` to a `PushEventConsumer`. A `PushStream` provides a fluent processing pipeline over those events, including transformations, filtering, buffering, merging, splitting, batching, windowing, and terminal operations that return OSGi `Promise` values.
+
+The library also includes configurable buffering and backpressure support through queue policies, pushback policies, executors, and schedulers.
+
+## Core concepts
+
+### `PushEvent<T>`
+
+`PushEvent<T>` represents an item moving through a push stream. Events can be:
+
+- data events, created with `PushEvent.data(payload)`
+- error events, created with `PushEvent.error(throwable)`
+- terminal close events, created with `PushEvent.close()`
+
+Useful methods include:
+
+```java
+PushEvent<String> event = PushEvent.data("hello");
+
+String value = event.getData();
+Throwable failure = event.getFailure();
+boolean terminal = event.isTerminal();
+PushEvent.EventType type = event.getType();
+```
+
+`nodata()` creates an event with the same non-data characteristics but a different generic type, which is useful when forwarding terminal or error events through a transformed stream.
+
+### `PushEventSource<T>`
+
+A source opens a connection to a consumer:
+
+```java
+AutoCloseable connection = source.open(consumer);
+```
+
+The returned `AutoCloseable` represents the opened connection. Closing it stops that connection.
+
+### `PushEventConsumer<T>`
+
+A consumer receives events and returns a `long`:
+
+```java
+long result = consumer.accept(event);
+```
+
+Consumers may throw exceptions. The `long` return value is also used throughout the API’s backpressure-related facilities.
+
+### `PushStream<T>`
+
+A `PushStream` is an `AutoCloseable` fluent stream pipeline. It supports intermediate operations such as `map`, `filter`, `merge`, and `buffer`, followed by terminal operations such as `forEach`, `count`, `collect`, or `reduce`.
+
+Unlike `java.util.stream.Stream`, terminal operations return OSGi `Promise` values because processing may be asynchronous.
+
+### `PushStreamProvider`
+
+`PushStreamProvider` is the main factory for creating streams, sources, buffered consumers, and stream-backed event sources.
+
+```java
+PushStreamProvider provider = new PushStreamProvider();
+```
+
+## Creating streams
+
+### Create a stream from a `PushEventSource`
+
+Use `createStream` when buffering configuration is not needed:
+
+```java
+PushStream<String> stream = provider.createStream(eventSource);
+```
+
+Use `buildStream` when you need to configure buffering:
+
+```java
+PushStreamBuilder<String, ?> builder = provider.buildStream(eventSource);
+```
+
+### Create a stream from a Java `Stream`
+
+`streamOf` adapts a `java.util.stream.Stream` into a `PushStream`:
+
+```java
+PushStream<Integer> numbers = provider.streamOf(
+    java.util.stream.Stream.of(1, 2, 3, 4, 5)
+);
+```
+
+An overload accepts an `Executor` and `ScheduledExecutorService`:
+
+```java
+PushStream<Integer> numbers = provider.streamOf(
+    executor,
+    scheduler,
+    java.util.stream.Stream.of(1, 2, 3, 4, 5)
+);
+```
+
+## Example: transform and consume a stream
+
+The following example creates a stream from ordinary Java stream data, filters it, transforms it, and consumes each remaining item.
+
+```java
+PushStreamProvider provider = new PushStreamProvider();
+
+PushStream<String> names = provider.streamOf(
+    java.util.stream.Stream.of("alice", "bob", "anna", "charlie")
+);
+
+org.osgi.util.promise.Promise<Void> completion = names
+    .filter(name -> name.startsWith("a"))
+    .map(String::toUpperCase)
+    .onError(error -> System.err.println("Stream failed: " + error))
+    .forEach(System.out::println);
+```
+
+The pipeline emits:
+
+```text
+ALICE
+ANNA
+```
+
+The `completion` promise represents completion of the terminal `forEach` operation.
+
+## Example: publish events with `SimplePushEventSource`
+
+`SimplePushEventSource<T>` is a source that can be directly published to. Create one through `PushStreamProvider`:
+
+```java
+PushStreamProvider provider = new PushStreamProvider();
+
+SimplePushEventSource<String> source =
+    provider.createSimpleEventSource(String.class);
+
+PushStream<String> stream = provider.createStream(source);
+
+org.osgi.util.promise.Promise<Void> completion = stream
+    .map(String::trim)
+    .filter(value -> !value.isEmpty())
+    .forEach(value -> System.out.println("Received: " + value));
+
+source.publish(" first ");
+source.publish(" ");
+source.publish("second");
+source.endOfStream();
+```
+
+`SimplePushEventSource` provides the following lifecycle and publishing operations:
+
+```java
+source.publish(value);       // Publish a data item
+source.endOfStream();        // Finish normally
+source.error(exception);     // Finish with an error
+source.close();              // Close the source
+```
+
+Connection state can be inspected or awaited:
+
+```java
+boolean connected = source.isConnected();
+org.osgi.util.promise.Promise<Void> connectedPromise =
+    source.connectPromise();
+```
+
+## Processing operations
+
+`PushStream<T>` supports a broad set of fluent operations.
+
+### Transforming and filtering
+
+```java
+PushStream<String> result = stream
+    .filter(value -> value.length() > 3)
+    .map(String::toUpperCase)
+    .distinct();
+```
+
+Available operations include:
+
+- `filter(Predicate<? super T>)`
+- `map(Function<? super T, ? extends R>)`
+- `asyncMap(int n, int delay, Function<? super T, Promise<? extends R>>)`
+- `flatMap(Function<? super T, ? extends PushStream<? extends R>>)`
+- `distinct()`
+- `sorted()`
+- `sorted(Comparator<? super T>)`
+- `skip(long)`
+- `limit(long)`
+- `limit(Duration)`
+
+### Error and close handling
+
+```java
+PushStream<String> handled = stream
+    .onError(error -> logger.warning(error.toString()))
+    .onClose(() -> logger.info("Stream closed"));
+```
+
+A stream can also be closed directly:
+
+```java
+stream.close();
+```
+
+### Merging and splitting
+
+Merge another source or stream into an existing pipeline:
+
+```java
+PushStream<String> merged = first.merge(second);
+```
+
+```java
+PushStream<String> merged = first.merge(otherEventSource);
+```
+
+Split a stream into multiple streams according to predicates:
+
+```java
+PushStream<Integer>[] branches = stream.split(
+    value -> value < 0,
+    value -> value == 0,
+    value -> value > 0
+);
+
+PushStream<Integer> negatives = branches[0];
+PushStream<Integer> zeros = branches[1];
+PushStream<Integer> positives = branches[2];
+```
+
+### Parallel and sequential processing
+
+`fork` creates a stream with configurable parallelism, delay, and executor:
+
+```java
+PushStream<String> parallel = stream.fork(4, 0, executor);
+```
+
+`sequential()` returns a sequential stream:
+
+```java
+PushStream<String> sequential = parallel.sequential();
+```
+
+### Time-based operations
+
+A stream can be bounded or monitored by time:
+
+```java
+PushStream<String> bounded = stream
+    .limit(java.time.Duration.ofMinutes(5))
+    .timeout(java.time.Duration.ofSeconds(30));
+```
+
+The API also supports windows and coalescing of multiple values into one result:
+
+```java
+PushStream<Integer> sums = stream.window(
+    java.time.Duration.ofSeconds(1),
+    values -> values.stream().mapToInt(Integer::intValue).sum()
+);
+```
+
+A count-based coalescing example:
+
+```java
+PushStream<String> batches = stream.coalesce(
+    10,
+    values -> String.join(",", values)
+);
+```
+
+More configurable variants accept `IntSupplier`, `Supplier<Duration>`, `Executor`, and `BiFunction<Long, Collection<T>, R>`.
+
+## Terminal operations
+
+Terminal operations consume the stream and return a `Promise`.
+
+### Consume every item
+
+```java
+org.osgi.util.promise.Promise<Void> completion =
+    stream.forEach(item -> process(item));
+```
+
+### Count items
+
+```java
+org.osgi.util.promise.Promise<Long> count = stream.count();
+```
+
+### Collect results
+
+```java
+org.osgi.util.promise.Promise<java.util.List<String>> values =
+    stream.collect(java.util.stream.Collectors.toList());
+```
+
+### Reduce values
+
+```java
+org.osgi.util.promise.Promise<Integer> total =
+    stream.reduce(0, Integer::sum);
+```
+
+Or reduce without an identity:
+
+```java
+org.osgi.util.promise.Promise<java.util.Optional<Integer>> total =
+    stream.reduce(Integer::sum);
+```
+
+### Search and matching
+
+```java
+org.osgi.util.promise.Promise<Boolean> hasError =
+    stream.anyMatch(value -> value.startsWith("ERROR"));
+
+org.osgi.util.promise.Promise<java.util.Optional<String>> first =
+    stream.findFirst();
+```
+
+Available terminal operations include:
+
+- `forEach`
+- `toArray`
+- `reduce`
+- `collect`
+- `min`
+- `max`
+- `count`
+- `anyMatch`
+- `allMatch`
+- `noneMatch`
+- `findFirst`
+- `findAny`
+- `forEachEvent`
+
+Use `forEachEvent` when the consumer needs access to full `PushEvent` objects rather than only data values:
+
+```java
+org.osgi.util.promise.Promise<Long> result = stream.forEachEvent(event -> {
+    if (event.getFailure() != null) {
+        System.err.println("Failure: " + event.getFailure());
+    } else if (event.isTerminal()) {
+        System.out.println("Terminal event received");
+    } else {
+        System.out.println("Data: " + event.getData());
+    }
+
+    return 0L;
+});
+```
+
+## Buffering and backpressure
+
+Buffering is configured with builders returned by `buildBuffer`, `buildStream`, and related provider methods.
+
+```java
+PushStreamBuilder<String, ?> builder = stream.buildBuffer();
+```
+
+Builders support:
+
+- `withBuffer(U queue)` — provide a `BlockingQueue` for `PushEvent` values
+- `withQueuePolicy(QueuePolicy<T, U>)`
+- `withQueuePolicy(QueuePolicyOption)`
+- `withPushbackPolicy(PushbackPolicy<T, U>)`
+- `withPushbackPolicy(PushbackPolicyOption, long)`
+- `withParallelism(int)`
+- `withExecutor(Executor)`
+- `withScheduler(ScheduledExecutorService)`
+- `build()`
+
+`PushStreamBuilder` additionally provides:
+
+```java
+PushStream<String> unbuffered = builder.unbuffered().build();
+```
+
+### Queue policies
+
+`QueuePolicy<T, U>` controls how an event is offered to a queue:
+
+```java
+public interface QueuePolicy<T, U> {
+    void doOffer(U queue, PushEvent<? extends T> event) throws Exception;
+}
+```
+
+Built-in policy options are available through `QueuePolicyOption`:
+
+- `DISCARD_OLDEST`
+- `BLOCK`
+- `FAIL`
+
+For example:
+
+```java
+PushStream<String> buffered = stream.buildBuffer()
+    .withBuffer(new java.util.concurrent.ArrayBlockingQueue<>(100))
+    .withQueuePolicy(QueuePolicyOption.DISCARD_OLDEST)
+    .build();
+```
+
+### Pushback policies
+
+`PushbackPolicy<T, U>` calculates a `long` pushback value from the current queue:
+
+```java
+public interface PushbackPolicy<T, U> {
+    long pushback(U queue) throws Exception;
+}
+```
+
+Built-in options are available through `PushbackPolicyOption`:
+
+- `FIXED`
+- `ON_FULL_FIXED`
+- `ON_FULL_EXPONENTIAL`
+- `LINEAR`
+
+Example:
+
+```java
+PushStream<String> buffered = stream.buildBuffer()
+    .withBuffer(new java.util.concurrent.ArrayBlockingQueue<>(100))
+    .withPushbackPolicy(PushbackPolicyOption.ON_FULL_FIXED, 50L)
+    .build();
+```
+
+For threshold-based policies, use `ThresholdPushbackPolicy`:
+
+```java
+ThresholdPushbackPolicy<String, ?> policy =
+    ThresholdPushbackPolicy.createSimpleThresholdPushbackPolicy(75);
+```
+
+Additional factories support incremental behavior:
+
+```java
+ThresholdPushbackPolicy<String, ?> incremental =
+    ThresholdPushbackPolicy.createIncrementalThresholdPushbackPolicy(
+        75,
+        10L
+    );
+
+ThresholdPushbackPolicy<String, ?> configured =
+    ThresholdPushbackPolicy.createThresholdPushbackPolicy(
+        75,
+        10L,
+        5L
+    );
+```
+
+## Adapting streams, sources, and consumers
+
+`PushStreamProvider` can create adapters between the main abstractions.
+
+### Expose a stream as an event source
+
+```java
+PushEventSource<String> source =
+    provider.createEventSourceFromStream(stream);
+```
+
+A configurable buffered form is also available:
+
+```java
+BufferBuilder<PushEventSource<String>, String, ?> builder =
+    provider.buildEventSourceFromStream(stream);
+```
+
+### Create a buffered consumer
+
+```java
+PushEventConsumer<String> delegate = event -> {
+    System.out.println(event.getData());
+    return 0L;
+};
+
+PushEventConsumer<String> bufferedConsumer =
+    provider.createBufferedConsumer(delegate);
+```
+
+To configure the buffer:
+
+```java
+BufferBuilder<PushEventConsumer<String>, String, ?> builder =
+    provider.buildBufferedConsumer(delegate);
+```
+
+### Create a configured simple source
+
+```java
+BufferBuilder<SimplePushEventSource<String>, String, ?> builder =
+    provider.buildSimpleEventSource(String.class);
+```
+
+This is useful when a directly publishable source needs the same buffering, queue-policy, pushback-policy, executor, or scheduler configuration available for other adapters.
+
+## API relationships
+
+The main types work together as follows:
+
+```text
+SimplePushEventSource<T>
+        │
+        │ implements PushEventSource<T>
+        ▼
+PushEventSource<T> ──open(...)──> PushEventConsumer<T>
+        │
+        │ createStream(...)
+        ▼
+PushStream<T>
+        │
+        ├── transformation operations: map, filter, flatMap, window, merge, ...
+        ├── buffering configuration: buildBuffer()
+        └── terminal operations: forEach, collect, count, reduce, ...
+```
+
+`PushStreamProvider` creates and adapts these components, while `BufferBuilder`, `PushStreamBuilder`, `QueuePolicy`, and `PushbackPolicy` provide buffering and flow-control configuration.

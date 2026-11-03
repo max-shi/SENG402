@@ -1,0 +1,173 @@
+# JavaFaker
+
+**JavaFaker** is a Java library for generating realistic fake data. It's useful for populating databases, creating test fixtures, generating sample content for demos and prototypes, or anonymizing data. With hundreds of data providers spanning everyday categories (names, addresses, companies, dates) as well as a huge range of pop-culture and thematic generators (Game of Thrones, Harry Potter, Rick and Morty, Star Trek, and dozens more), JavaFaker makes it easy to produce varied, human-looking test data with a single line of code.
+
+## Installation
+
+Add the dependency to your build:
+
+```xml
+<dependency>
+    <groupId>com.github.javafaker</groupId>
+    <artifactId>javafaker</artifactId>
+    <version>LATEST</version>
+</dependency>
+```
+
+## Getting Started
+
+Everything starts with the `Faker` class, which acts as the central entry point and factory for every other data-provider class in the library.
+
+```java
+import com.github.javafaker.Faker;
+
+Faker faker = new Faker();
+
+String name = faker.name().fullName();          // e.g. "Miss Samanta Schmidt"
+String street = faker.address().streetAddress(); // e.g. "829 Maggie Fork"
+String company = faker.company().name();         // e.g. "Kunde-Runolfsdottir"
+```
+
+### Locales and Randomness
+
+`Faker` can be configured with a specific `Locale` and/or a custom `Random`/`RandomService` instance, which is useful for deterministic tests or localized data generation:
+
+```java
+Faker faker = new Faker(new Locale("en-GB"));
+Faker seeded = new Faker(new Random(42));
+Faker fullControl = new Faker(new Locale("de"), new Random(42));
+
+// A shared, lazily-initialized singleton is also available
+Faker instance = Faker.instance();
+```
+
+## Core Concepts
+
+### The `Faker` Facade
+
+The `Faker` class exposes methods that return provider objects for every supported category — e.g. `faker.name()`, `faker.address()`, `faker.company()`, `faker.internet()`, `faker.date()`, and dozens of themed providers like `faker.harryPotter()`, `faker.gameOfThrones()`, `faker.rickAndMorty()`, and `faker.starTrek()`. Each provider exposes methods for the type of fake data it produces.
+
+`Faker` also exposes low-level generation helpers used internally by providers, which are handy when building custom formats:
+
+- `numerify(String)` — replaces `#` characters with random digits.
+- `letterify(String)` / `letterify(String, boolean isUpper)` — replaces `?` characters with random letters.
+- `bothify(String)` / `bothify(String, boolean isUpper)` — combines numerify and letterify.
+- `regexify(String)` — generates a string matching a given regular expression.
+- `resolve(String key)` / `expression(String expression)` — resolves values and expressions directly from the underlying locale data files, allowing advanced or custom lookups (e.g., `faker.expression("#{name.fullName}")`).
+
+```java
+String productCode = faker.bothify("??-#####");   // e.g. "AB-48213"
+String ssn = faker.numerify("###-##-####");
+String slug = faker.regexify("[a-z]{5,10}");
+```
+
+### General-Purpose Providers
+
+These cover the most common real-world data generation needs:
+
+| Provider | Examples of what it generates |
+|---|---|
+| `Name` | Full names, first/last names, prefixes, suffixes, usernames |
+| `Address` | Street addresses, cities, states, zip/postal codes, lat/long, country |
+| `PhoneNumber` | Phone numbers, cell numbers, extensions |
+| `Internet` | Emails, URLs, domain names, passwords, IP/MAC addresses, UUIDs, slugs, user agents |
+| `Company` | Company names, industries, buzzwords, catch phrases, logos |
+| `Business`, `Finance`, `Code`, `Barcode`, `Currency` | Credit cards, IBAN/BIC, ISBNs, EAN/GTIN barcodes, currency names/codes |
+| `DateAndTime` | Past/future dates, birthdays, date ranges |
+| `Number`, `Bool`, `Coin`, `Options` | Random numeric values, booleans, coin flips, choosing from custom option sets |
+| `Lorem` | Words, sentences, paragraphs, and character sequences for placeholder text |
+| `Job`, `Educator`, `University`, `Demographic`, `Relationships`, `IdNumber` | Job titles, schools, demographic attributes, relationship terms, national ID/SSN numbers |
+| `Commerce`, `Food`, `Color`, `Music`, `Team`, `App`, `Book`, `Crypto`, `Weather`, `Space`, `Mountain`, `Country`, `Nation` | Domain-specific realistic data for e-commerce, food, colors, music, sports teams, apps, literature, cryptographic hashes, weather, astronomy, geography |
+| `Animal`, `Cat`, `Dog` | Species/breed/behavior data for animals |
+| `Hacker`, `Hipster` | Buzzword-y technical or hipster jargon |
+
+### Themed / Pop-Culture Providers
+
+JavaFaker includes an extensive collection of providers based on movies, TV shows, games, and books — useful for generating fun sample or seed data:
+
+`Ancient`, `AquaTeenHungerForce`, `BackToTheFuture`, `Basketball`, `BojackHorseman`, `Buffy`, `ChuckNorris`, `DragonBall`, `Dune`, `ElderScrolls`, `EnglandFootBall`, `Esports`, `Friends`, `FunnyName`, `GameOfThrones`, `HarryPotter`, `HitchhikersGuideToTheGalaxy`, `Hobbit`, `HowIMetYourMother`, `Kaamelott`, `LeagueOfLegends`, `Lebowski`, `LordOfTheRings`, `Matz`, `Overwatch`, `Photography`, `Pokemon`, `PrincessBride`, `ProgrammingLanguage`, `RickAndMorty`, `Robin`, `RockBand`, `Shakespeare`, `SlackEmoji`, `StarCraft`, `StarTrek`, `Superhero`, `TwinPeaks`, `Witcher`, `Yoda`, `Zelda`.
+
+Each of these follows the same simple pattern — one or a few methods returning a random `String` (a character name, quote, location, etc.) drawn from that universe.
+
+```java
+String quote = faker.yoda().quote();
+String house = faker.gameOfThrones().house();
+String hero = faker.superhero().name();
+String planet = faker.starTrek().location();
+```
+
+### Aviation, Sip, and Other Specialized Providers
+
+Some providers model more technical/structured domains:
+
+- `Aviation` — aircraft, airport, and METAR weather report strings.
+- `Sip` — SIP protocol methods, content types, ports, and response codes/phrases for networking-related test data.
+- `Barcode` — barcode type and data generation.
+- `FakerIDN` (in `com.github.javafaker.service`) — converts Unicode domain names to ASCII (Punycode) form.
+
+### Under the Hood: `service` Package
+
+The `com.github.javafaker.service` package contains the machinery that powers all providers:
+
+- `FakeValuesService` — loads and resolves locale-specific YAML-backed data, handles expression resolution (`#{...}` syntax), and provides `numerify`/`letterify`/`bothify`/`regexify` primitives.
+- `FakeValuesInterface`, `FakeValues`, `FakeValuesGrouping` — abstractions for looking up raw fake-data definitions by key, with support for combining multiple locale/data sources.
+- `RandomService` — a wrapper around `java.util.Random` supplying random ints, longs, doubles, booleans, and hex strings, used consistently across all providers so that a single seed makes the entire `Faker` instance deterministic.
+
+Most applications will not need to use these classes directly — they're consumed internally by `Faker` and its provider classes — but they're available for advanced use cases like building custom providers or plugging in your own randomness source.
+
+## Usage Examples
+
+### Generating a fake user profile
+
+```java
+Faker faker = new Faker();
+
+System.out.println(faker.name().fullName());
+System.out.println(faker.internet().emailAddress());
+System.out.println(faker.address().fullAddress());
+System.out.println(faker.phoneNumber().cellPhone());
+System.out.println(faker.date().birthday(18, 65));
+```
+
+### Populating test data with deterministic output
+
+```java
+Faker faker = new Faker(new Random(12345));
+
+for (int i = 0; i < 5; i++) {
+    System.out.println(faker.company().name() + " — " + faker.commerce().productName());
+}
+```
+
+### Building custom formatted strings
+
+```java
+Faker faker = new Faker();
+
+String orderId = faker.bothify("ORD-#####-??");
+String couponCode = faker.regexify("[A-Z]{3}-[0-9]{4}");
+String sqlEmail = faker.numerify("user###@example.com");
+```
+
+### Fun / themed data for demo apps
+
+```java
+Faker faker = new Faker();
+
+System.out.println(faker.harryPotter().quote());
+System.out.println(faker.rickAndMorty().character());
+System.out.println(faker.witcher().monster());
+System.out.println(faker.zelda().game());
+```
+
+### Resolving raw expressions
+
+```java
+Faker faker = new Faker();
+
+String result = faker.expression("#{Name.fullName} works at #{Company.name}");
+```
+
+## License
+
+See the repository for license details.

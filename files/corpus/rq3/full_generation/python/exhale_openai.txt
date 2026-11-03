@@ -1,0 +1,377 @@
+# exhale
+
+`exhale` appears to be a documentation-generation library for projects whose API information is available as Doxygen XML. It provides:
+
+- Integration hooks for a Sphinx application.
+- Configuration application and documentation deployment helpers.
+- A graph model for discovered API entities and their relationships.
+- Generation of reStructuredText (RST) pages and hierarchy views.
+- XML-description-to-RST conversion utilities.
+- Formatting, logging, naming, and template-processing helpers.
+
+The library is organized around building an API graph, processing relationships such as namespaces, classes, files, and directories, and emitting documentation pages and navigable views.
+
+## Main Components
+
+### Sphinx integration
+
+The top-level package exposes lifecycle functions intended to be registered with or called by a documentation application:
+
+```python
+import exhale
+
+exhale.setup(app)
+```
+
+Available hooks:
+
+- `exhale.setup(app)` — configure the library with an application.
+- `exhale.environment_ready(app)` — run work once the documentation environment is ready.
+- `exhale.cleanup_files(app, env, docname)` — clean up generated files associated with a document.
+
+Configuration application is also available directly:
+
+```python
+from exhale.configs import apply_sphinx_configurations
+
+apply_sphinx_configurations(app)
+```
+
+### Deployment workflow
+
+The deployment module contains the high-level generation steps:
+
+```python
+from exhale.deploy import generateDoxygenXML, explode
+
+generateDoxygenXML()
+explode()
+```
+
+`generateDoxygenXML()` appears to produce or refresh Doxygen XML input, while `explode()` appears to perform the main documentation expansion or generation process.
+
+In a typical automated documentation workflow, these operations would be invoked after configuration has been applied and before the generated documentation is built.
+
+### API graph model
+
+The graph module defines the primary data structures used to represent discovered API elements.
+
+#### `ExhaleNode`
+
+`ExhaleNode` represents an individual API entity. Its methods support:
+
+- Ownership and graph relationships:
+  - `set_owner(root)`
+- Identifiers and signatures:
+  - `breathe_identifier()`
+  - `full_signature()`
+  - `templateParametersStringAsRestList(nodeByRefid)`
+- Inheritance and nesting:
+  - `baseOrDerivedListString(lst, nodeByRefid)`
+  - `findNestedNamespaces(lst)`
+  - `findNestedDirectories(lst)`
+  - `findNestedClassLike(lst)`
+  - `findNestedEnums(lst)`
+  - `findNestedUnions(lst)`
+- Hierarchy participation and output:
+  - `inPageHierarchy()`
+  - `inClassHierarchy()`
+  - `inFileHierarchy()`
+  - `inHierarchy(hierarchyType)`
+  - `hierarchySortedDirectDescendants(hierarchyType)`
+  - `toHierarchy(hierarchyType, level, stream, lastChild=False)`
+- Console-oriented display:
+  - `toConsole(level, fmt_spec, printChildren=True)`
+- Sorting:
+  - `typeSort()`
+
+Nodes are generally expected to be created and managed as part of the larger root graph rather than manually assembled by application code.
+
+#### `ExhaleRoot`
+
+`ExhaleRoot` coordinates discovery, graph organization, and documentation output. Its methods fall into several phases.
+
+**Parsing and discovery**
+
+```python
+root.parse()
+root.discoverAllNodes()
+root.trackNodeIfUnseen(node)
+```
+
+**Relationship processing**
+
+```python
+root.reparentAll()
+root.reparentUnions()
+root.reparentClassLike()
+root.reparentDirectories()
+root.renameToNamespaceScopes()
+root.reparentNamespaces()
+root.fileRefDiscovery()
+root.filePostProcess()
+root.parseFunctionSignatures()
+```
+
+These operations suggest a normalization phase that assigns nodes to their correct parents, resolves namespace and directory structure, processes file references, and prepares function signatures.
+
+**Sorting and organization**
+
+```python
+root.sortInternals()
+root.deepSortList(items)
+```
+
+**Document generation**
+
+```python
+root.generateFullAPI()
+root.generateAPIRootHeader()
+root.generateNodeDocuments()
+root.generatePageDocuments()
+root.generateNamespaceNodeDocuments()
+root.generateFileNodeDocuments()
+root.generateDirectoryNodeDocuments()
+root.generateAPIRootBody()
+root.generateViewHierarchies()
+root.generateUnabridgedAPI()
+```
+
+More targeted generation methods are also available:
+
+```python
+root.generateSingleNodeRST(node)
+root.generateSinglePageDocument(node)
+root.generateSingleNamespace(namespace_node)
+root.generateDirectoryNodeRST(directory_node)
+```
+
+**Views and hierarchy output**
+
+```python
+root.generatePageView()
+root.generateClassView()
+root.generateDirectoryView()
+root.writeOutHierarchy(hierarchy_config, data)
+```
+
+**Diagnostics**
+
+```python
+root.toConsole()
+root.consoleFormat(sectionTitle, items, fmt_spec)
+```
+
+## Description Parsing
+
+The parsing helpers convert structured text and descriptions into RST:
+
+```python
+from exhale.parse import convertDescriptionToRST, getBriefAndDetailedRST, walk
+```
+
+- `walk(...)` traverses text content with configurable prefix, postfix, and paragraph handling.
+- `convertDescriptionToRST(...)` converts a description to reStructuredText.
+- `getBriefAndDetailedRST(...)` obtains brief and detailed RST content for a node.
+
+Example:
+
+```python
+from exhale.parse import getBriefAndDetailedRST
+
+brief_rst, detailed_rst = getBriefAndDetailedRST(text_root, node)
+```
+
+The exact input objects depend on the XML and graph-processing workflow that supplies `text_root` and `node`.
+
+## Utilities
+
+The `exhale.utils` module includes reusable helpers for formatting, logging, directive selection, naming, and template handling.
+
+### Formatting headings and timing
+
+```python
+from exhale.utils import heading_mark, time_string, get_time
+
+start = get_time()
+
+# Perform documentation work here.
+
+end = get_time()
+print(time_string(start, end))
+
+title = "API Reference"
+underline = heading_mark(title, "=")
+print(title)
+print(underline)
+```
+
+### Directive and specification helpers
+
+```python
+from exhale.utils import (
+    contentsDirectiveOrNone,
+    kindAsBreatheDirective,
+    specificationsForKind,
+    qualifyKind,
+)
+
+directive = kindAsBreatheDirective("class")
+qualified_kind = qualifyKind("class")
+specifications = specificationsForKind("class")
+contents = contentsDirectiveOrNone("class")
+```
+
+These helpers appear intended for selecting documentation directives and formatting rules based on an API entity kind.
+
+### Name sanitization
+
+```python
+from exhale.utils import sanitize, sanitize_all
+
+safe_name = sanitize("my::templated<type>")
+safe_names = sanitize_all(["my::first", "my::second"])
+```
+
+Use these functions when deriving stable documentation identifiers or filenames from API names.
+
+### Template tokenization
+
+`tokenize_template()` and `join_template_tokens()` provide a round-trip-friendly interface for working with nested template-like names.
+
+```python
+from exhale.utils import tokenize_template, join_template_tokens
+
+name = "Container<Key, Value>"
+tokens = tokenize_template(name)
+
+# Process or inspect the token structure.
+rebuilt_name = join_template_tokens(tokens)
+
+assert rebuilt_name == name
+```
+
+The token representation may contain strings and nested lists, allowing nested template structures to be preserved.
+
+### Text indentation
+
+```python
+from exhale.utils import indent
+
+source = "first line\nsecond line"
+indented = indent(source, "    ")
+
+print(indented)
+```
+
+A custom predicate may be supplied to control which lines receive the prefix:
+
+```python
+indented = indent(
+    source,
+    "> ",
+    predicate=lambda line: bool(line.strip()),
+)
+```
+
+### Logging and errors
+
+The utility module provides console-output helpers with optional ANSI formatting:
+
+```python
+from exhale.utils import info, progress, verbose_log, critical
+
+progress("Generating API documentation")
+info("API graph discovered successfully")
+verbose_log("Writing generated pages")
+critical("Documentation generation failed")
+```
+
+Additional helpers include:
+
+- `prefix(token, msg)` — prepend a token or label to a message.
+- `exclaim(err_msg)` — format an emphasized error message.
+- `colorize(msg, ansi_fmt)` — apply ANSI color formatting.
+- `fancyErrorString(lex)` — produce a formatted error string.
+- `fancyError(critical_msg=None, lex='py3tb', singleton_hook=None)` — report a formatted error.
+
+`AnsiColors` exposes `printAllColorsToConsole(cls)` for inspecting supported terminal color formatting.
+
+## Example: Documentation Application Integration
+
+A minimal integration pattern is to allow `exhale` to configure itself through the application setup hook:
+
+```python
+import exhale
+
+def setup(app):
+    return exhale.setup(app)
+```
+
+If lifecycle handling is performed manually, the public hooks can be used directly:
+
+```python
+import exhale
+
+exhale.setup(app)
+exhale.environment_ready(app)
+
+# Later, when a document is being cleaned up:
+exhale.cleanup_files(app, env, docname)
+```
+
+## Example: High-Level Generation Workflow
+
+For a script or build step that controls documentation generation explicitly:
+
+```python
+from exhale.deploy import generateDoxygenXML, explode
+from exhale.utils import get_time, info, progress, time_string
+
+start = get_time()
+
+progress("Generating XML input")
+generateDoxygenXML()
+
+progress("Generating documentation output")
+explode()
+
+end = get_time()
+info(f"Documentation generation completed in {time_string(start, end)}")
+```
+
+## Example: Working With a Root Graph
+
+When an `ExhaleRoot` instance is available from the surrounding generation workflow, a complete graph-to-document process may look like this:
+
+```python
+root.parse()
+root.discoverAllNodes()
+
+root.reparentAll()
+root.fileRefDiscovery()
+root.filePostProcess()
+root.parseFunctionSignatures()
+root.sortInternals()
+
+root.generateFullAPI()
+root.generateViewHierarchies()
+root.generateUnabridgedAPI()
+```
+
+For debugging or inspection:
+
+```python
+root.toConsole()
+```
+
+## Public API Modules
+
+| Module | Purpose |
+|---|---|
+| `exhale` | Application lifecycle hooks and setup integration. |
+| `exhale.configs` | Application configuration handling. |
+| `exhale.deploy` | High-level XML and documentation deployment steps. |
+| `exhale.graph` | API node graph, hierarchy processing, and RST generation. |
+| `exhale.parse` | Description traversal and conversion to RST. |
+| `exhale.utils` | Formatting, naming, logging, directives, and template utilities. |

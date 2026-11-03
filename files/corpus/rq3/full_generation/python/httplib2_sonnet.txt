@@ -1,0 +1,301 @@
+# httplib2
+
+A comprehensive HTTP client library for Python. `httplib2` provides a small, self-contained `Http` client object that supports many features not found in the standard library's HTTP clients, including automatic caching, HTTP authentication (Basic, Digest, HMAC-Digest, WSSE, Google Login), redirect handling, connection timeouts, proxy support, and transparent content decoding.
+
+## Features
+
+- **Simple request API** — a single `Http.request()` call handles method, headers, body, redirects, and authentication retries.
+- **Caching** — pluggable disk-based caching via `FileCache`, or supply your own cache object with `get`/`set`/`delete` methods.
+- **Authentication** — built-in support for Basic, Digest, HMAC-Digest, WSSE, and Google ClientLogin authentication schemes, all driven by a shared `Authentication` interface and a `Credentials` store.
+- **Proxy support** — configure proxies manually via `ProxyInfo`, or detect them automatically from environment variables or a proxy URL.
+- **SSL client certificates** — associate a key/cert pair with a domain via `KeyCerts`/`Http.add_certificate`.
+- **Timeouts** — connection classes (`HTTPConnectionWithTimeout`, `HTTPSConnectionWithTimeout`) enforce timeouts at the socket level.
+- **Content decoding** — automatic handling of gzip/deflate-style encoded responses, with protection against decompression bombs via ratio and size limits.
+- **IRI support** — convert Internationalized Resource Identifiers to URIs with `iri2uri`.
+- **Rich error hierarchy** — all failure modes raise well-defined exceptions rooted in `HttpLib2Error`.
+
+## Installation
+
+```bash
+pip install httplib2
+```
+
+## Quick Start
+
+```python
+import httplib2
+
+# Create a client with local disk caching
+http = httplib2.Http(".cache")
+
+response, content = http.request("http://example.org/", "GET")
+
+print(response.status)
+print(content[:200])
+```
+
+## Core Concepts
+
+### `Http`
+
+The central class of the library. An `Http` instance represents an HTTP client, optionally backed by a cache, proxy configuration, and stored credentials/certificates.
+
+```python
+class Http(object):
+    def close(self): ...
+    def add_credentials(self, name, password, domain=''): ...
+    def add_certificate(self, key, cert, domain, password=None): ...
+    def clear_credentials(self): ...
+    def request(self, uri, method='GET', body=None, headers=None,
+                redirections=DEFAULT_MAX_REDIRECTS, connection_type=None): ...
+```
+
+- `request()` is the main entry point — it performs the HTTP request, following redirects, retrying with authentication when challenged, and using the cache when possible. It returns a `(Response, content)` tuple.
+- `add_credentials()` registers a username/password to be used for a given domain (used internally by the authentication classes).
+- `add_certificate()` registers an SSL client certificate/key for a given domain.
+- `clear_credentials()` removes all stored credentials and certificates.
+- `close()` releases any open connections.
+
+### `Response`
+
+A `dict` subclass returned alongside the response body from `Http.request()`. It behaves like a dictionary of HTTP headers, augmented with additional attributes describing the response (such as status code).
+
+### Caching: `FileCache`
+
+```python
+class FileCache(object):
+    def get(self, key): ...
+    def set(self, key, value): ...
+    def delete(self, key): ...
+```
+
+A simple disk-backed cache used by `Http` to store and retrieve previous responses, enabling conditional requests and reducing redundant network calls. Any object implementing `get`/`set`/`delete` can be used in its place.
+
+### Authentication
+
+All authentication schemes share a common interface:
+
+```python
+class Authentication(object):
+    def depth(self, request_uri): ...
+    def inscope(self, host, request_uri): ...
+    def request(self, method, request_uri, headers, content): ...
+    def response(self, response, content): ...
+```
+
+Concrete implementations add the appropriate headers to outgoing requests and interpret authentication challenges in responses:
+
+- `BasicAuthentication` — HTTP Basic auth.
+- `DigestAuthentication` — HTTP Digest auth, including nonce/cnonce handling.
+- `HmacDigestAuthentication` — HMAC-based digest auth.
+- `WsseAuthentication` — WS-Security UsernameToken auth.
+- `GoogleLoginAuthentication` — Google ClientLogin-style authentication.
+
+`Http` selects and drives the appropriate `Authentication` subclass automatically based on credentials registered with `add_credentials()` and the challenge returned by the server.
+
+### Credentials and Certificates
+
+```python
+class Credentials(object):
+    def add(self, name, password, domain=''): ...
+    def clear(self): ...
+    def iter(self, domain): ...
+
+class KeyCerts(Credentials):
+    def add(self, key, cert, domain, password): ...
+    def iter(self, domain): ...
+```
+
+`Credentials` stores username/password pairs scoped by domain; `KeyCerts` extends this to store SSL key/certificate pairs, also scoped by domain. Both are used internally by `Http` but can be inspected or manipulated directly if needed.
+
+### Proxy Support
+
+```python
+class ProxyInfo(object):
+    def astuple(self): ...
+    def isgood(self): ...
+    def applies_to(self, hostname): ...
+    def bypass_host(self, hostname): ...
+
+def proxy_info_from_environment(method='http'): ...
+def proxy_info_from_url(url, method='http', noproxy=None): ...
+```
+
+`ProxyInfo` describes a proxy configuration (host, port, type, credentials, and bypass rules). You can build one manually, or use the helper functions to derive proxy settings from environment variables (`proxy_info_from_environment`) or from a proxy URL string (`proxy_info_from_url`). Pass the resulting object to `Http(proxy_info=...)`.
+
+`AllHosts` is a sentinel/marker used to indicate that a `ProxyInfo` configuration applies to all hosts.
+
+### Timeouts and Connections
+
+```python
+class HTTPConnectionWithTimeout(http.client.HTTPConnection):
+    def connect(self): ...
+
+class HTTPSConnectionWithTimeout(http.client.HTTPSConnection):
+    def connect(self): ...
+```
+
+These are drop-in replacements for the standard library's connection classes that respect a configured timeout when establishing a connection. `Http` uses them internally; `has_timeout(timeout)` is a helper used to determine whether a timeout value is meaningful/set.
+
+### URI Utilities
+
+```python
+def parse_uri(uri): ...
+def urlnorm(uri): ...
+def safename(filename): ...
+```
+
+- `parse_uri()` splits a URI into its component parts.
+- `urlnorm()` normalizes a URI (e.g., for consistent cache-key generation).
+- `safename()` produces a filesystem-safe name from a URI or string, used internally by `FileCache`.
+
+### Internationalized URIs
+
+From the `iri2uri` module:
+
+```python
+def encode(c): ...
+def iri2uri(uri): ...
+```
+
+`iri2uri()` converts an IRI (which may contain non-ASCII characters) into a properly encoded URI suitable for use in HTTP requests.
+
+### Content Decoding
+
+From the `decode` module:
+
+```python
+class DecoderProtocol(Protocol): ...
+class ZlibDecoder(DecoderProtocol): ...
+def DeflateDecoder() -> ZlibDecoder: ...
+class LimitDecoder(DecoderProtocol): ...
+```
+
+These classes implement incremental decompression of response bodies (e.g., gzip/deflate). `LimitDecoder` wraps another decoder and enforces limits on the decompression ratio and total output size, guarding against maliciously crafted compressed responses. Decoding errors raise `DecodeRatioError` or `DecodeLimitError`.
+
+### Errors
+
+All exceptions derive from `HttpLib2Error`:
+
+```python
+class HttpLib2Error(Exception): ...
+class HttpLib2ErrorWithResponse(HttpLib2Error): ...
+class RedirectMissingLocation(HttpLib2ErrorWithResponse): ...
+class RedirectLimit(HttpLib2ErrorWithResponse): ...
+class FailedToDecompressContent(HttpLib2ErrorWithResponse): ...
+class UnimplementedDigestAuthOptionError(HttpLib2ErrorWithResponse): ...
+class UnimplementedHmacDigestAuthOptionError(HttpLib2ErrorWithResponse): ...
+class MalformedHeader(HttpLib2Error): ...
+class RelativeURIError(HttpLib2Error): ...
+class ServerNotFoundError(HttpLib2Error): ...
+class ProxiesUnavailableError(HttpLib2Error): ...
+```
+
+Catch `HttpLib2Error` (or a specific subclass) to handle failures such as too many redirects, a missing `Location` header on a redirect, unsupported authentication challenge parameters, DNS resolution failures, or unavailable proxies.
+
+### Certificates
+
+```python
+# certs.py
+def where(): ...
+```
+
+Returns the path to a bundle of trusted CA certificates, used by default for SSL verification when no other certificate authority file is specified.
+
+## Usage Examples
+
+### Basic GET request with caching
+
+```python
+import httplib2
+
+http = httplib2.Http(".cache")
+response, content = http.request("http://example.org/")
+
+if response.status == 200:
+    print(content.decode("utf-8"))
+```
+
+### Authenticated request
+
+```python
+import httplib2
+
+http = httplib2.Http()
+http.add_credentials("myusername", "mypassword", domain="example.org")
+
+response, content = http.request("https://example.org/secure/resource")
+```
+
+### Using a client certificate
+
+```python
+import httplib2
+
+http = httplib2.Http()
+http.add_certificate("/path/to/key.pem", "/path/to/cert.pem", domain="example.org")
+
+response, content = http.request("https://example.org/mutual-tls-endpoint")
+```
+
+### Configuring a proxy explicitly
+
+```python
+import httplib2
+import socks  # proxy type constants
+
+proxy_info = httplib2.ProxyInfo(
+    proxy_type=socks.PROXY_TYPE_HTTP,
+    proxy_host="proxy.example.com",
+    proxy_port=8080,
+)
+
+http = httplib2.Http(proxy_info=proxy_info)
+response, content = http.request("http://example.org/")
+```
+
+### Detecting proxy settings from the environment
+
+```python
+import httplib2
+
+proxy_info = httplib2.proxy_info_from_environment("http")
+http = httplib2.Http(proxy_info=proxy_info)
+
+response, content = http.request("http://example.org/")
+```
+
+### Handling redirects and errors
+
+```python
+import httplib2
+
+http = httplib2.Http()
+
+try:
+    response, content = http.request(
+        "http://example.org/redirecting-resource",
+        redirections=5,
+    )
+except httplib2.RedirectLimit:
+    print("Too many redirects")
+except httplib2.ServerNotFoundError:
+    print("Could not resolve host")
+except httplib2.HttpLib2Error as e:
+    print("HTTP error:", e)
+```
+
+### Working with internationalized URIs
+
+```python
+from httplib2.iri2uri import iri2uri
+import httplib2
+
+uri = iri2uri("http://例え.jp/パス")
+http = httplib2.Http()
+response, content = http.request(uri)
+```
+
+## License
+
+See the `LICENSE` file included with this distribution for licensing terms.

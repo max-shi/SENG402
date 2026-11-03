@@ -1,0 +1,764 @@
+timestamp,package_name,ecosystem,repository_url,version_pinned,strategy,tag_used,commit_sha,doc_file_count,status,error,attempts
+2026-07-12T07:12:25.439044+00:00,pylibjpeg-rle,python,https://github.com/pydicom/pylibjpeg-rle,2.2.0,tag,v2.2.0,b3f38643cd472e954dfb3c29a7fc4a655b89c133,8,cloned,,v2.2.0
+2026-07-12T07:12:25.439044+00:00,cobra,python,https://github.com/opencobra/cobrapy,0.31.1,tag,0.31.1,fb516999ca5bdae326adb12a4fd1b4d31183ba58,1,cloned,,"v0.31.1,0.31.1"
+2026-07-12T07:12:25.439044+00:00,webresource,python,https://github.com/conestack/webresource,2.0.0,tag,2.0.0,0e4b6eae6698d986ccb343784eabf4f4c837465e,4,cloned,,"v2.0.0,2.0.0"
+2026-07-12T07:12:25.439044+00:00,textalloc,python,https://github.com/ckjellson/textalloc,1.2.3,default-branch,,c38453b18ab381700571a8e73e0f1e5a2ff2480f,1,cloned,,"v1.2.3,1.2.3,release-1.2.3,release/1.2.3,1.2.3-release"
+2026-07-12T07:12:25.439044+00:00,outdated,python,https://github.com/alexmojaki/outdated,0.2.2,tag,v0.2.2,26c8c28f135ee459f44f2cb956d5c54e7e95f3a5,1,cloned,,v0.2.2
+2026-07-12T07:12:25.439044+00:00,openimis-be-policy,python,,1.11.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,locustio,python,,0.14.6,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,quri-parts-circuit,python,https://github.com/QunaSys/quri-sdk,17.0.0,default-branch,,eefbd0ef0f71028bbb5cecaff66b3b45e425da6e,31,cloned,,"v17.0.0,17.0.0,release-17.0.0,release/17.0.0,17.0.0-release"
+2026-07-12T07:12:25.439044+00:00,profile-local,python,https://github.com/circles-zone/profile-local-python-package,0.0.95,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/profile-local'...
+remote: Repository not found.
+fatal: repository 'https://github.com/circles-zone/profile-local-python-package/' not found","v0.0.95,0.0.95,release-0.0.95,release/0.0.95,0.0.95-release"
+2026-07-12T07:12:25.439044+00:00,opentelemetry-instrumentation-falcon,python,https://github.com/open-telemetry/opentelemetry-python-contrib,0.64b0,tag,v0.64b0,880e756428b6c34c31b9779804de2d24080f5602,161,cloned,,v0.64b0
+2026-07-12T07:12:25.439044+00:00,reuse,python,https://github.com/fsfe/reuse-tool,6.2.0,tag,v6.2.0,a1bb792acda6fd0724936b4ebbdbc8eceb9c0459,14,cloned,,v6.2.0
+2026-07-12T07:12:25.439044+00:00,openimis-be-calculation,python,,1.10.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,swh.objstorage,python,,6.2.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,vermils,python,https://github.com/VermiIIi0n/VermilsMagicPocket,0.3.6,default-branch,,8ce9545523513c736e491b0d740671d08bc327b9,11,cloned,,"v0.3.6,0.3.6,release-0.3.6,release/0.3.6,0.3.6-release"
+2026-07-12T07:12:25.439044+00:00,tensorflow-probability,python,https://github.com/tensorflow/probability,0.25.0,tag,v0.25.0,9709569d9c1159dc54154044f679edc4a15bd26b,17,cloned,,v0.25.0
+2026-07-12T07:12:25.439044+00:00,email-reply-parser,python,https://github.com/zapier/email-reply-parser,0.5.12,tag,v0.5.12,8dfdb999f68039b3972a664e904c54156ef4e268,1,cloned,,v0.5.12
+2026-07-12T07:12:25.439044+00:00,aedev-git-repo-manager,python,https://gitlab.com/aedev-group/aedev_git_repo_manager,0.3.102,tag,v0.3.102,142947273dc0ec32cdf8f7c457a4ac60764174e8,1,cloned,,v0.3.102
+2026-07-12T07:12:25.439044+00:00,pydataset,python,https://github.com/iamaziz/PyDataset,0.2.0,default-branch,,789c0ca7587b86343f636b132dcf1f475ee6b90b,1,cloned,,"v0.2.0,0.2.0,release-0.2.0,release/0.2.0,0.2.0-release"
+2026-07-12T07:12:25.439044+00:00,stochastic,python,https://github.com/crflynn/stochastic,0.7.0,tag,0.7.0,90ffba84523751dd205e17c50c84be9904c13330,11,cloned,,"v0.7.0,0.7.0"
+2026-07-12T07:12:25.439044+00:00,pydotplus,python,https://github.com/carlos-jenkins/pydotplus,2.0.2,default-branch,,e06552ea3989bfb998ef6920a07d6c966ff9b01b,3,cloned,,"v2.0.2,2.0.2,release-2.0.2,release/2.0.2,2.0.2-release"
+2026-07-12T07:12:25.439044+00:00,edt,python,https://github.com/seung-lab/euclidean-distance-transform-3d,3.1.2,tag,3.1.2,9c7142ca1d2223b4cadf00fc010832f2cb1ff2aa,1,cloned,,"v3.1.2,3.1.2"
+2026-07-12T07:12:25.439044+00:00,webdataset,python,https://github.com/webdataset/webdataset,1.0.2,default-branch,,e0953f9bba17b416d5792d5a263b171c266e78be,7,cloned,,"v1.0.2,1.0.2,release-1.0.2,release/1.0.2,1.0.2-release"
+2026-07-12T07:12:25.439044+00:00,ete3,python,https://github.com/etetoolkit/ete,3.1.3,tag,3.1.3,5dbc5e792bbafd6bd9be0bb2b3a0cfcfce22e545,5,cloned,,"v3.1.3,3.1.3"
+2026-07-12T07:12:25.439044+00:00,web-fragments,python,https://github.com/openedx/web-fragments,4.0.0,tag,4.0.0,a816ea6450eab3719a15b1865256ec2888c0428a,7,cloned,,"v4.0.0,4.0.0"
+2026-07-12T07:12:25.439044+00:00,invenio-userprofiles,python,https://github.com/inveniosoftware/invenio-userprofiles,7.0.0,tag,v7.0.0,565ab8e63a766c1479e840e817987b0cfbd7212d,10,cloned,,v7.0.0
+2026-07-12T07:12:25.439044+00:00,pyicat-plus,python,,2.1.1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,cmeel-urdfdom,python,https://github.com/cmake-wheel/cmeel-urdfdom,6.0.0,default-branch,,d89b8845b5401a853ddfce4687e24d4edb806e89,1,cloned,,"v6.0.0,6.0.0,release-6.0.0,release/6.0.0,6.0.0-release"
+2026-07-12T07:12:25.439044+00:00,django-vite,python,https://github.com/MrBin99/django-vite,3.1.0,tag,3.1.0,c6df9f5ab4d3aac8481abfcca010e2faa9653554,1,cloned,,"v3.1.0,3.1.0"
+2026-07-12T07:12:25.439044+00:00,sly,python,https://github.com/dabeaz/sly,0.5,default-branch,,09c2ba30df9143298ae5eef79d0baf23755d4cd9,3,cloned,,"v0.5,0.5,release-0.5,release/0.5,0.5-release"
+2026-07-12T07:12:25.439044+00:00,pydot-ng,python,https://github.com/pydot/pydot-ng,2.0.0,tag,2.0.0,2acd7211c7cf0d9c9674d2134cf66265e68432f8,2,cloned,,"v2.0.0,2.0.0"
+2026-07-12T07:12:25.439044+00:00,a-pandas-ex-df-to-string,python,https://github.com/hansalemaos/a_pandas_ex_df_to_string,0.14,default-branch,,396336093f2ffcc686ccdef707c0d6cd42e5585f,1,cloned,,"v0.14,0.14,release-0.14,release/0.14,0.14-release"
+2026-07-12T07:12:25.439044+00:00,djangocms-style,python,https://github.com/django-cms/djangocms-style,3.1.0,tag,3.1.0,5177ff91d5732fd4b7b242b5383cdad7b3747e70,1,cloned,,"v3.1.0,3.1.0"
+2026-07-12T07:12:25.439044+00:00,svgelements,python,https://github.com/meerk40t/svgelements,1.9.6,tag,1.9.6,4fe33a4e94806efeb95fc8b2a652c208d47b8bb4,1,cloned,,"v1.9.6,1.9.6"
+2026-07-12T07:12:25.439044+00:00,lazy-loader,python,https://github.com/scientific-python/lazy-loader,0.5,tag,v0.5,2566bebe6a36ecd0bc5dc5a69e8767f7e68fb6d0,1,cloned,,v0.5
+2026-07-12T07:12:25.439044+00:00,plone.app.uuid,python,,3.0.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,ismember,python,https://github.com/erdogant/ismember,1.2.0,tag,1.2.0,86c6e80e19092b1cb11c393b19145f064c7f94fa,19,cloned,,"v1.2.0,1.2.0"
+2026-07-12T07:12:25.439044+00:00,uwsgi,python,,2.0.31,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,odoo11-addon-l10n-es-aeat,python,https://github.com/OCA/l10n-spain,11.0.3.1.0.99.dev4,default-branch,,205166799a11f120be86a908b2eecd17bdbe7681,28,cloned,,"v11.0.3.1.0.99.dev4,11.0.3.1.0.99.dev4,release-11.0.3.1.0.99.dev4,release/11.0.3.1.0.99.dev4,11.0.3.1.0.99.dev4-release"
+2026-07-12T07:12:25.439044+00:00,python-json-logger,python,https://github.com/nhairs/python-json-logger,4.1.0,tag,v4.1.0,d80c68da770154d9662975b789cabcc9a3e99408,8,cloned,,v4.1.0
+2026-07-12T07:12:25.439044+00:00,selinux,python,https://github.com/pycontribs/selinux,0.3.0,tag,v0.3.0,b06e6d206ace195436d7f7604ebbceafaf445bd4,1,cloned,,v0.3.0
+2026-07-12T07:12:25.439044+00:00,dagster-graphql,python,https://github.com/dagster-io/dagster,1.12.8,tag,1.12.8,e5273b3d1ba5c7d6a02bca097276910bcae7f0bf,814,cloned,,"v1.12.8,1.12.8"
+2026-07-12T07:12:25.439044+00:00,sout,python,,1.2.1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,apache-airflow-providers-docker,python,https://github.com/apache/airflow,4.5.7,default-branch,,e714b1df7ffeeba8a22076384fa4be4d6a36fdfd,1792,cloned,,"v4.5.7,4.5.7,release-4.5.7,release/4.5.7,4.5.7-release"
+2026-07-12T07:12:25.439044+00:00,rfc6266,python,https://github.com/g2p/rfc6266,0.0.4,tag,v0.0.4,2710353e5fe09ca73d555e2fbca80c4ee12a99d6,2,cloned,,v0.0.4
+2026-07-12T07:12:25.439044+00:00,matplotlib-venn,python,https://github.com/konstantint/matplotlib-venn,1.1.2,tag,1.1.2,7a69a549579faa0286c8de57f6cc3216a2ac4f5e,1,cloned,,"v1.1.2,1.1.2"
+2026-07-12T07:12:25.439044+00:00,keras-core,python,https://github.com/keras-team/keras-core,0.1.7,tag,v0.1.7,bf04179b833773c837627bca194e076730186bd2,3,cloned,,v0.1.7
+2026-07-12T07:12:25.439044+00:00,voluptuous-serialize,python,https://github.com/home-assistant-libs/voluptuous-serialize,2.7.0,tag,2.7.0,c3b246548711fee35eb707263525b22373e7863b,1,cloned,,"v2.7.0,2.7.0"
+2026-07-12T07:12:25.439044+00:00,python-neutronclient,python,,13.0.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,odoo-addon-auth-jwt,python,https://github.com/OCA/server-auth,16.0.1.2.0.4,default-branch,,09f5c081e043b0554767df4d8dd5a6b457211b41,28,cloned,,"v16.0.1.2.0.4,16.0.1.2.0.4,release-16.0.1.2.0.4,release/16.0.1.2.0.4,16.0.1.2.0.4-release"
+2026-07-12T07:12:25.439044+00:00,releasecmd,python,https://github.com/thombashi/releasecmd,0.10.4,tag,v0.10.4,4c02ab5a8acc15b1a49ff84279077c591fe7d001,1,cloned,,v0.10.4
+2026-07-12T07:12:25.439044+00:00,google-cloud-securitycenter,python,https://github.com/googleapis/google-cloud-python,1.45.0,default-branch,,4253fab07ccdb2b94e247f8dade793828754b88b,5212,cloned,,"v1.45.0,1.45.0,release-1.45.0,release/1.45.0,1.45.0-release"
+2026-07-12T07:12:25.439044+00:00,lion-pytorch,python,https://github.com/lucidrains/lion-pytorch,0.2.4,default-branch,,e9fbcfa59d126097433838e255e1468b55567658,1,cloned,,"v0.2.4,0.2.4,release-0.2.4,release/0.2.4,0.2.4-release"
+2026-07-12T07:12:25.439044+00:00,torch-sparse,python,https://github.com/rusty1s/pytorch_sparse,0.6.18,tag,0.6.18,7d22892fb47626d2c5b0171769d44bdc8edd606c,2,cloned,,"v0.6.18,0.6.18"
+2026-07-12T07:12:25.439044+00:00,sqlvalidator,python,https://github.com/David-Wobrock/sqlvalidator,0.0.20,default-branch,,9e5bb468ba8f4364715e2da7b1804caf5eaaf83c,1,cloned,,"v0.0.20,0.0.20,release-0.0.20,release/0.0.20,0.0.20-release"
+2026-07-12T07:12:25.439044+00:00,typepy,python,https://github.com/thombashi/typepy,1.3.4,tag,v1.3.4,7ad552ffae342f2b8c7af682d5844199e7d5c771,25,cloned,,v1.3.4
+2026-07-12T07:12:25.439044+00:00,folia,python,https://github.com/proycon/foliapy,2.5.12,tag,v2.5.12,92ad3ef8d16a6abf4a3a7d70cee7c6a33ecae02f,6,cloned,,v2.5.12
+2026-07-12T07:12:25.439044+00:00,drf-jwt,python,https://github.com/Styria-Digital/django-rest-framework-jwt,1.19.2,tag,1.19.2,4e8550e15902399df277aac97e6f300a0610697f,2,cloned,,"v1.19.2,1.19.2"
+2026-07-12T07:12:25.439044+00:00,panoptes-client,python,https://github.com/zooniverse/panoptes-python-client,1.7.1,tag,v1.7.1,813351b6a9070e8db7620eca63f0e44c8422755a,5,cloned,,v1.7.1
+2026-07-12T07:12:25.439044+00:00,rjieba,python,https://github.com/messense/rjieba-py,0.2.1,tag,v0.2.1,2abac5eea4e5683676eba5d543b82b2b96d2fb16,4,cloned,,v0.2.1
+2026-07-12T07:12:25.439044+00:00,ftd2xx,python,https://github.com/ftd2xx/ftd2xx,1.3.8,tag,v1.3.8,9fe4f0c3a539e3eb5bb9e3778804dfa3215d820e,2,cloned,,v1.3.8
+2026-07-12T07:12:25.439044+00:00,pause,python,https://github.com/jgillick/python-pause,0.1.2,tag,v0.1.2,ff88bbd31b0ba0ab0efbc02cf92183e0e201718a,1,cloned,,v0.1.2
+2026-07-12T07:12:25.439044+00:00,grimoire-elk,python,https://github.com/chaoss/grimoirelab-elk,1.8.0,tag,1.8.0,40de4483c7bbb3d0c70e41dd92f81adab7a51eec,4,cloned,,"v1.8.0,1.8.0"
+2026-07-12T07:12:25.439044+00:00,django-ratelimit,python,https://github.com/jsocol/django-ratelimit,4.1.0,tag,v4.1.0,a2bfe2b5aceaa306e5358b7dea691f17259b0d67,13,cloned,,v4.1.0
+2026-07-12T07:12:25.439044+00:00,progressbar,python,,2.3-dev,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,google-cloud-kms,python,https://github.com/googleapis/google-cloud-python,3.15.0,default-branch,,4253fab07ccdb2b94e247f8dade793828754b88b,5212,cloned,,"v3.15.0,3.15.0,release-3.15.0,release/3.15.0,3.15.0-release"
+2026-07-12T07:12:25.439044+00:00,flet-core,python,https://github.com/flet-dev/flet,0.24.1,tag,v0.24.1,fb0d0379bc12226dabc53cf57a8e1d2a0506dd69,23,cloned,,v0.24.1
+2026-07-12T07:12:25.439044+00:00,odoo-addon-l10n-it-fatturapa-out,python,https://github.com/OCA/l10n-italy,16.0.1.9.0.8,default-branch,,c957fa9541ebe3aa6f1e9e3542478dc25a67fb40,35,cloned,,"v16.0.1.9.0.8,16.0.1.9.0.8,release-16.0.1.9.0.8,release/16.0.1.9.0.8,16.0.1.9.0.8-release"
+2026-07-12T07:12:25.439044+00:00,azure-mgmt-containerregistry,python,https://github.com/Azure/azure-sdk-for-python,15.0.0,default-branch,,cffe052018599ea1303df5cdda1d51793fc1ee33,806,cloned,,"v15.0.0,15.0.0,release-15.0.0,release/15.0.0,15.0.0-release"
+2026-07-12T07:12:25.439044+00:00,grpcio-reflection,python,https://github.com/grpc/grpc,1.82.1,tag,v1.82.1,acccf84c0df20487d64101f528e5d426541ca4e5,230,cloned,,v1.82.1
+2026-07-12T07:12:25.439044+00:00,dict2xml,python,https://github.com/delfick/python-dict2xml,1.7.8,tag,release-1.7.8,dffd37b7a52cfdc57905cb85874b530f9e491aa1,1,cloned,,"v1.7.8,1.7.8,release-1.7.8"
+2026-07-12T07:12:25.439044+00:00,teaxyzzzz,python,https://github.com/madest92/teaxyz,0.0.2,default-branch,,d78973076bd35382338fe0e78f5f72825bfc0caf,1,cloned,,"v0.0.2,0.0.2,release-0.0.2,release/0.0.2,0.0.2-release"
+2026-07-12T07:12:25.439044+00:00,scikit-umfpack,python,https://github.com/scikit-umfpack/scikit-umfpack,0.4.2,tag,0.4.2,c2ac46e6e985e9618eadb0e0adc57c139210e1a0,8,cloned,,"v0.4.2,0.4.2"
+2026-07-12T07:12:25.439044+00:00,odoo13-addon-web-widget-x2many-2d-matrix,python,https://github.com/OCA/web,13.0.1.1.2.dev9,default-branch,,428a08d42d2839b4a280dee8ba26bc4075fcb9d8,61,cloned,,"v13.0.1.1.2.dev9,13.0.1.1.2.dev9,release-13.0.1.1.2.dev9,release/13.0.1.1.2.dev9,13.0.1.1.2.dev9-release"
+2026-07-12T07:12:25.439044+00:00,websockets,python,https://github.com/python-websockets/websockets,15.0.1,tag,15.0.1,37c9bc0781f0cc5af7c729947ef1833c1e12b70d,72,cloned,,"v15.0.1,15.0.1"
+2026-07-12T07:12:25.439044+00:00,mmcv-full,python,https://github.com/open-mmlab/mmcv,1.7.2,tag,v1.7.2,4c01b026f0afa5a91a5f54aea313788da1e40f95,57,cloned,,v1.7.2
+2026-07-12T07:12:25.439044+00:00,deepl,python,https://github.com/DeepLcom/deepl-python,1.30.0,tag,v1.30.0,84abaee15e27445d8c6dd273ef05a00ceb8f1b4b,5,cloned,,v1.30.0
+2026-07-12T07:12:25.439044+00:00,py-trello,python,https://github.com/sarumont/py-trello,0.20.1,tag,v0.20.1,f89a72a218295c572921103a08d4ce3ec225c353,4,cloned,,v0.20.1
+2026-07-12T07:12:25.439044+00:00,fastuuid,python,https://github.com/thedrow/fastuuid,0.14.0,tag,0.14.0,0abe2ffab8add1114f74ae8122b21512495e179e,1,cloned,,"v0.14.0,0.14.0"
+2026-07-12T07:12:25.439044+00:00,treon,python,https://github.com/reviewNB/treon,0.1.4,default-branch,,7b470caed625c297e30c62bc10b82950ad73a095,1,cloned,,"v0.1.4,0.1.4,release-0.1.4,release/0.1.4,0.1.4-release"
+2026-07-12T07:12:25.439044+00:00,codespell,python,https://github.com/codespell-project/codespell,2.4.2,tag,v2.4.2,2ccb47ff45ad361a21071a7eedda4c37e6ae8c5a,1,cloned,,v2.4.2
+2026-07-12T07:12:25.439044+00:00,event-model,python,https://github.com/bluesky/event-model,1.24.0,tag,v1.24.0,7be64ffc45bd59f97e5eb843fda52e2a0438c5d9,22,cloned,,v1.24.0
+2026-07-12T07:12:25.439044+00:00,cadquery-ocp,python,,7.7.2,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,flake8-rst,python,https://github.com/kataev/flake8-rst,0.8.0,default-branch,,53ee9906661b001a6aecc06ce09cf093ce6e82df,1,cloned,,"v0.8.0,0.8.0,release-0.8.0,release/0.8.0,0.8.0-release"
+2026-07-12T07:12:25.439044+00:00,openexr,python,https://github.com/AcademySoftwareFoundation/OpenEXR,3.4.13,tag,v3.4.13,c1194b2cb23a1bdf76fe5e756b22e8436b9a98c9,7,cloned,,v3.4.13
+2026-07-12T07:12:25.439044+00:00,python-gitlab,python,https://github.com/python-gitlab/python-gitlab,8.4.0,tag,v8.4.0,a4cbecbdab251b11207baf6597fea5e77f679727,88,cloned,,v8.4.0
+2026-07-12T07:12:25.439044+00:00,pyscss,python,https://github.com/Kronuz/pyScss,1.4.0,tag,v1.4.0,e7f2a879d8e634a8d1f33993654f959475818ad0,6,cloned,,v1.4.0
+2026-07-12T07:12:25.439044+00:00,zipfile36,python,https://gitlab.com/takluyver/zipfile36,0.1.3,tag,0.1.3,469d6a410c26e237f4ae0477e5e02cc99701bc20,1,cloned,,"v0.1.3,0.1.3"
+2026-07-12T07:12:25.439044+00:00,tensorflow,python,https://github.com/tensorflow/tensorflow,2.20.0,tag,v2.20.0,72fbba3d20f4616d7312b5e2b7f79daf6e82f2fa,239,cloned,,v2.20.0
+2026-07-12T07:12:25.439044+00:00,xclim,python,https://github.com/Ouranosinc/xclim,0.61.1,tag,v0.61.1,5571aa78dddf9caf98ce05ed04e02f00171561be,22,cloned,,v0.61.1
+2026-07-12T07:12:25.439044+00:00,odoo-addon-date-range,python,https://github.com/OCA/server-ux,18.0.5.0.1.4,default-branch,,84e42a9b41b5689ca243ceaaec657653c5f351eb,35,cloned,,"v18.0.5.0.1.4,18.0.5.0.1.4,release-18.0.5.0.1.4,release/18.0.5.0.1.4,18.0.5.0.1.4-release"
+2026-07-12T07:12:25.439044+00:00,soupsieve,python,https://github.com/facelessuser/soupsieve,2.8.4,tag,2.8.4,28108ab805818c832d9568142a99844fd95a0d39,20,cloned,,"v2.8.4,2.8.4"
+2026-07-12T07:12:25.439044+00:00,neurdflib,python,https://github.com/tgbugs/rdflib,5.0.1,default-branch,,e103078be6c75b2f9a1dc515abffcdf6a674407d,50,cloned,,"v5.0.1,5.0.1,release-5.0.1,release/5.0.1,5.0.1-release"
+2026-07-12T07:12:25.439044+00:00,django-colorfield,python,https://github.com/fabiocaccamo/django-colorfield,0.14.0,tag,0.14.0,a25af9b0daa9de99093c68a02d1bc09a5f0a50a7,2,cloned,,"v0.14.0,0.14.0"
+2026-07-12T07:12:25.439044+00:00,azureml-dataset-runtime,python,,1.62.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,db-sqlite3,python,https://github.com/lgastako/db-sqlite3,0.0.1,default-branch,,26684c4d2bd93689a9d8f35916d3efb9f10e88be,0,cloned,,"v0.0.1,0.0.1,release-0.0.1,release/0.0.1,0.0.1-release"
+2026-07-12T07:12:25.439044+00:00,django-impersonate,python,https://bitbucket.org/petersanchez/django-impersonate,1.9.5,failed,,,0,F4_clone_failed,timeout after 300s,"v1.9.5,1.9.5,release-1.9.5,release/1.9.5,1.9.5-release"
+2026-07-12T07:12:25.439044+00:00,zdaemon,python,https://github.com/zopefoundation/zdaemon,5.2.1,tag,5.2.1,38255989927074609b8f44fce20053d9cd5dd39f,2,cloned,,"v5.2.1,5.2.1"
+2026-07-12T07:12:25.439044+00:00,token-utils,python,https://github.com/aroberge/token-utils,0.1.8,default-branch,,d0c8e87ae269244c7d98159f12098a9cbfb4b4de,6,cloned,,"v0.1.8,0.1.8,release-0.1.8,release/0.1.8,0.1.8-release"
+2026-07-12T07:12:25.439044+00:00,peewee-migrate,python,https://github.com/klen/peewee_migrate,1.15.0,tag,1.15.0,704f6b1349c0924ee406d6635e87b034e8417ed9,1,cloned,,"v1.15.0,1.15.0"
+2026-07-12T07:12:25.439044+00:00,randomgen,python,https://github.com/bashtage/randomgen,2.3.0,tag,v2.3.0,6d99306e60622c4dcfaef55352f5082810d8423c,51,cloned,,v2.3.0
+2026-07-12T07:12:25.439044+00:00,apache-airflow-providers-imap,python,https://github.com/apache/airflow,3.12.0,default-branch,,a52424284b5c3a511ce9c7b120b27ac9bf5ae776,1792,cloned,,"v3.12.0,3.12.0,release-3.12.0,release/3.12.0,3.12.0-release"
+2026-07-12T07:12:25.439044+00:00,seqeval,python,https://github.com/chakki-works/seqeval,1.2.2,tag,v1.2.2,354c576ca2b3cf3c71d8bc80d4e91fccf3c9a047,1,cloned,,v1.2.2
+2026-07-12T07:12:25.439044+00:00,prefetch-generator,python,https://github.com/justheuristic/prefetch_generator,1.0.3,default-branch,,c6b5a12d28fc6f58a754afb9ee661731742b4cf2,1,cloned,,"v1.0.3,1.0.3,release-1.0.3,release/1.0.3,1.0.3-release"
+2026-07-12T07:12:25.439044+00:00,z3c.form,python,https://github.com/zopefoundation/z3c.form,6.0.1,tag,6.0.1,19bf64a8582ec7f5f5cab9300a7e25a3e3da0e58,58,cloned,,"v6.0.1,6.0.1"
+2026-07-12T07:12:25.439044+00:00,damv1time7,python,,0.6.4,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,simple-pid,python,https://github.com/m-lundberg/simple-pid,2.0.1,tag,v2.0.1,6e6f4b000cdf7830635674cb89a6e823f5025784,6,cloned,,v2.0.1
+2026-07-12T07:12:25.439044+00:00,u-boot-pylib,python,,0.0.7,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,xskillscore,python,https://github.com/xarray-contrib/xskillscore,0.0.29,tag,v0.0.29,3b84263b01ae9350840261253a72f90396060d53,57,cloned,,v0.0.29
+2026-07-12T07:12:25.439044+00:00,odoo13-addon-component,python,https://github.com/OCA/connector,13.0.1.2.2.dev3,default-branch,,8b5cfcae0ffc6cbd6aeb95ccf8a1a28d0aae5a7c,23,cloned,,"v13.0.1.2.2.dev3,13.0.1.2.2.dev3,release-13.0.1.2.2.dev3,release/13.0.1.2.2.dev3,13.0.1.2.2.dev3-release"
+2026-07-12T07:12:25.439044+00:00,django-iban,python,https://github.com/benkonrath/django-iban,0.3.1,tag,0.3.1,ed8bb4282df67161a2d4f00c0a686db279f39fef,1,cloned,,"v0.3.1,0.3.1"
+2026-07-12T07:12:25.439044+00:00,python-undefined,python,https://github.com/ChenyangGao/python-modules,0.0.4,default-branch,,3801f17c49a7dc314257ed8c684fa15d4b731892,74,cloned,,"v0.0.4,0.0.4,release-0.0.4,release/0.0.4,0.0.4-release"
+2026-07-12T07:12:25.439044+00:00,panphon,python,https://github.com/dmort27/panphon,0.22.2,default-branch,,a49c242d3307864312a2701055faefa4e548501c,2,cloned,,"v0.22.2,0.22.2,release-0.22.2,release/0.22.2,0.22.2-release"
+2026-07-12T07:12:25.439044+00:00,ae-kivy,python,https://gitlab.com/ae-group/ae_kivy,0.3.129,tag,v0.3.129,b626a41a073c2db68f80238bcecbfe8093ed2236,1,cloned,,v0.3.129
+2026-07-12T07:12:25.439044+00:00,edx-celeryutils,python,https://github.com/openedx/edx-celeryutils,2.0.0,tag,v2.0.0,fe2ed5b0974c893faf32ecac38d9412881a00e15,6,cloned,,v2.0.0
+2026-07-12T07:12:25.439044+00:00,odoo14-addon-sale-exception,python,https://github.com/OCA/sale-workflow,14.0.1.1.2.dev4,default-branch,,6e079fbec359ba033476ff3c885ab08efa5e9a70,155,cloned,,"v14.0.1.1.2.dev4,14.0.1.1.2.dev4,release-14.0.1.1.2.dev4,release/14.0.1.1.2.dev4,14.0.1.1.2.dev4-release"
+2026-07-12T07:12:25.439044+00:00,orator,python,https://github.com/sdispater/orator,0.9.9,tag,0.9.9,8aaeafe5ac15829952984ea5ea046eacb877106c,1,cloned,,"v0.9.9,0.9.9"
+2026-07-12T07:12:25.439044+00:00,exhale,python,https://github.com/svenevs/exhale,0.3.7,tag,v0.3.7,03bd16b22baf519077699677b46fbd91da28d01a,27,cloned,,v0.3.7
+2026-07-12T07:12:25.439044+00:00,notebook,python,https://github.com/jupyter/notebook,7.6.0,tag,v7.6.0,a6695d7785c08de85e64ac69fcf6edf243aeb0df,25,cloned,,v7.6.0
+2026-07-12T07:12:25.439044+00:00,variable-local,python,https://github.com/circles-zone/variable-local-python-package,0.1.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/variable-local'...
+remote: Repository not found.
+fatal: repository 'https://github.com/circles-zone/variable-local-python-package/' not found","v0.1.0,0.1.0,release-0.1.0,release/0.1.0,0.1.0-release"
+2026-07-12T07:12:25.439044+00:00,dramatiq,python,https://github.com/Bogdanp/dramatiq,2.2.0,tag,v2.2.0,5a1f74eabe3a4c5ddd54a78611d8da34e4013249,23,cloned,,v2.2.0
+2026-07-12T07:12:25.439044+00:00,httplib2,python,https://github.com/httplib2/httplib2,0.32.0,tag,v0.32.0,ba9bf505cd899f522f2bb58ca608444adf49afc1,5,cloned,,v0.32.0
+2026-07-12T07:12:25.439044+00:00,pyramid-mako,python,https://github.com/Pylons/pyramid_mako,1.1.0,tag,1.1.0,be611ef13315fafb45c87e5cb30cba6211e808b4,4,cloned,,"v1.1.0,1.1.0"
+2026-07-12T07:12:25.439044+00:00,flake518,python,https://github.com/carstencodes/flake518,1.6.0,tag,v1.6.0,b725c215f3c27d65e409a3946f5271fd11f398ba,1,cloned,,v1.6.0
+2026-07-12T07:12:25.439044+00:00,num2words,python,https://github.com/savoirfairelinux/num2words,0.5.15,default-branch,,07814cb114157f582c40a00119c2e9faba8dcee2,2,cloned,,"v0.5.15,0.5.15,release-0.5.15,release/0.5.15,0.5.15-release"
+2026-07-12T07:12:25.439044+00:00,artd-product,python,,1.0.22,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,arq,python,https://github.com/samuelcolvin/arq,0.26.3,tag,v0.26.3,7a911f37992bad4556a27756f2ff027dd2afe655,3,cloned,,v0.26.3
+2026-07-12T07:12:25.439044+00:00,odoo14-addon-ssi-task-mixin,python,,14.0.2.1.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,rundoc,python,https://gitlab.com/nul.one/rundoc,0.4.5,default-branch,,f1d8a72de5fc90cf1e86a46dc69cb71c51158394,1,cloned,,"v0.4.5,0.4.5,release-0.4.5,release/0.4.5,0.4.5-release"
+2026-07-12T07:12:25.439044+00:00,odoo14-addon-l10n-br-base,python,https://github.com/OCA/l10n-brazil,14.0.3.16.3,default-branch,,cc4baacdedb654e5512b61e7bcfe88680c369b65,39,cloned,,"v14.0.3.16.3,14.0.3.16.3,release-14.0.3.16.3,release/14.0.3.16.3,14.0.3.16.3-release"
+2026-07-12T07:12:25.439044+00:00,kitchen,python,,1.2.6,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,py-cui,python,https://github.com/jwlodek/py_cui,0.1.6,tag,v0.1.6,3a7f79cb1cfda4e5aa650a7f92ac04ef7c360e5f,26,cloned,,v0.1.6
+2026-07-12T07:12:25.439044+00:00,pytest-pspec,python,https://github.com/gowtham-sai/pytest-pspec,0.0.4,default-branch,,973b411fd996ba5bf4c43f38d858ae274964a68e,1,cloned,,"v0.0.4,0.0.4,release-0.0.4,release/0.0.4,0.0.4-release"
+2026-07-12T07:12:25.439044+00:00,trytond-account-statement,python,,8.0.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,zope.traversing,python,https://github.com/zopefoundation/zope.traversing,4.4.1,tag,4.4.1,88110fb7651d71229b3a993c8b45c7da4f9aeaa2,10,cloned,,"v4.4.1,4.4.1"
+2026-07-12T07:12:25.439044+00:00,madmom,python,https://github.com/CPJKU/madmom,0.16.1,tag,v0.16.1,6545fbb3ecdae0aac336a95ec591f642e0b74f3e,46,cloned,,v0.16.1
+2026-07-12T07:12:25.439044+00:00,plone.volto,python,https://github.com/plone/plone.volto,6.0.1,tag,6.0.1,e652bee602ade212da799e459079daf4fb176cd0,3,cloned,,"v6.0.1,6.0.1"
+2026-07-12T07:12:25.439044+00:00,django-qr-code,python,https://github.com/dprog-philippe-docourt/django-qr-code,4.2.0,tag,4.2.0,f29c364e16b8d0a5fe07ada6135f5814765db08b,6,cloned,,"v4.2.0,4.2.0"
+2026-07-12T07:12:25.439044+00:00,ipih,python,,0.26,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,pytest-flakes,python,https://github.com/asmeurer/pytest-flakes,4.0.5,tag,4.0.5,96d2f767dfd0bc8e6b2a22e011ad103008de0ff6,1,cloned,,"v4.0.5,4.0.5"
+2026-07-12T07:12:25.439044+00:00,dbt-extractor,python,https://github.com/dbt-labs/dbt-parser-generator,0.6.0,default-branch,,322e4c59b2b7b5058f315fda27fa0a007f9088b2,3,cloned,,"v0.6.0,0.6.0,release-0.6.0,release/0.6.0,0.6.0-release"
+2026-07-12T07:12:25.439044+00:00,web3-api,python,https://github.com/dafdsgr/web3-api,1.0.2,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/web3-api'...
+remote: Repository not found.
+fatal: repository 'https://github.com/dafdsgr/web3-api/' not found","v1.0.2,1.0.2,release-1.0.2,release/1.0.2,1.0.2-release"
+2026-07-12T07:12:25.439044+00:00,pywavelets,python,https://github.com/PyWavelets/pywt,1.9.0,tag,v1.9.0,c7bca207779afd9684d0b1bc1bb6d7c83ff11d3f,86,cloned,,v1.9.0
+2026-07-12T07:12:25.439044+00:00,cupy-cuda90,python,https://github.com/cupy/cupy,8.6.0,tag,v8.6.0,ec025b345611cb5cbe1451e00f63478d9ee99a02,65,cloned,,v8.6.0
+2026-07-12T07:12:25.439044+00:00,boto,python,https://github.com/boto/boto,2.49.0,tag,2.49.0,8fac1878734c5ac085b781f619c70ea4b6e913c3,170,cloned,,"v2.49.0,2.49.0"
+2026-07-12T07:12:25.439044+00:00,azure-storage-common,python,https://github.com/Azure/azure-storage-python,2.1.0,default-branch,,7508a7fa495b5b9a48185a8d9b750f6e22be1397,30,cloned,,"v2.1.0,2.1.0,release-2.1.0,release/2.1.0,2.1.0-release"
+2026-07-12T07:12:25.439044+00:00,bw2calc,python,https://github.com/brightway-lca/brightway2-calc,2.5.0,tag,2.5.0,1e93fdbd8f349bc1d2c24a782509275ef39d9d41,1,cloned,,"v2.5.0,2.5.0"
+2026-07-12T07:12:25.439044+00:00,entsoe-py,python,https://github.com/EnergieID/entsoe-py,0.8.0,tag,v0.8.0,fbd0d24708592c4184234c7a0d4a3fcc912d2b1d,2,cloned,,v0.8.0
+2026-07-12T07:12:25.439044+00:00,apex,python,,0.9.7dev,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,jupyter-server,python,https://github.com/jupyter-server/jupyter_server,2.20.0,tag,v2.20.0,05a78ad879e69ef87e91b2714a8ebeb5ff9628a7,57,cloned,,v2.20.0
+2026-07-12T07:12:25.439044+00:00,argon2,python,https://github.com/flamewow/argon2_py,0.1.10,tag,0.1.10,ae68103dfc1422914344ead95604bbaea38f383f,2,cloned,,"v0.1.10,0.1.10"
+2026-07-12T07:12:25.439044+00:00,invenio-upgrader,python,https://github.com/inveniosoftware/invenio-upgrader,0.2.0,tag,v0.2.0,437406b47496b79e18251f44d6eca5e278cc8380,2,cloned,,v0.2.0
+2026-07-12T07:12:25.439044+00:00,readerwriterlock,python,https://github.com/elarivie/pyReaderWriterLock,1.0.9,tag,v1.0.9,516eb0f1e6ea5e0fdae5362c9c281249802261f3,1,cloned,,v1.0.9
+2026-07-12T07:12:25.439044+00:00,prettyprinter,python,https://github.com/tommikaikkonen/prettyprinter,0.18.0,default-branch,,53ba5f934f24228315ef10898fc2b73370349696,6,cloned,,"v0.18.0,0.18.0,release-0.18.0,release/0.18.0,0.18.0-release"
+2026-07-12T07:12:25.439044+00:00,djangorestframework-simplejwt,python,https://github.com/jazzband/djangorestframework-simplejwt,5.5.1,tag,v5.5.1,be0301eb11c1550d0f7254289f713d6a34c61ac6,12,cloned,,v5.5.1
+2026-07-12T07:12:25.439044+00:00,swagger-ui-bundle,python,https://github.com/spec-first/swagger_ui_bundle,1.1.0,tag,1.1.0,77ce9d279b3b0699511e3b2900477db47374e593,1,cloned,,"v1.1.0,1.1.0"
+2026-07-12T07:12:25.439044+00:00,django-autoslug,python,https://github.com/justinmayer/django-autoslug,1.9.9,tag,v1.9.9,25f913d5e3cf5ca684ee1195f9c65e4717698386,6,cloned,,v1.9.9
+2026-07-12T07:12:25.439044+00:00,shareplum,python,https://github.com/jasonrollins/shareplum,0.5.1,tag,v0.5.1,ba065505f17c8d824b01a21d2176a8f44e05cd35,9,cloned,,v0.5.1
+2026-07-12T07:12:25.439044+00:00,msoffcrypto-tool,python,https://github.com/nolze/msoffcrypto-tool,6.0.0,tag,v6.0.0,6d9e72c58de2cf7df1ab45ac0d74ebedac8c58e3,10,cloned,,v6.0.0
+2026-07-12T07:12:25.439044+00:00,textx,python,https://github.com/textX/textX,4.3.0,tag,4.3.0,cba664b5a91933bcfb23c47af70d527fe6262be2,47,cloned,,"v4.3.0,4.3.0"
+2026-07-12T07:12:25.439044+00:00,adafruit-circuitpython-ble,python,https://github.com/adafruit/Adafruit_CircuitPython_BLE,10.1.3,tag,10.1.3,82ada04a0f4019de00d103256621f73b80151a0d,12,cloned,,"v10.1.3,10.1.3"
+2026-07-12T07:12:25.439044+00:00,pyrubberband,python,https://github.com/bmcfee/pyrubberband,0.4.0,tag,0.4.0,c6fbcd02346d7b973cd76fad3789589050bf3fd5,5,cloned,,"v0.4.0,0.4.0"
+2026-07-12T07:12:25.439044+00:00,promise,python,https://github.com/syrusakbary/promise,2.2.1,default-branch,,4627315476f6b9fc82818327ae09b04f89f9bda7,2,cloned,,"v2.2.1,2.2.1,release-2.2.1,release/2.2.1,2.2.1-release"
+2026-07-12T07:12:25.439044+00:00,nipy,python,https://github.com/nipy/nipy,0.6.1,tag,0.6.1,e256e7016ca01662d20501cadb3cc6cdf4275055,101,cloned,,"v0.6.1,0.6.1"
+2026-07-12T07:12:25.439044+00:00,cooptools,python,https://github.com/tylertjburns/cooptools,1.57,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/cooptools'...
+remote: Repository not found.
+fatal: repository 'https://github.com/tylertjburns/cooptools/' not found","v1.57,1.57,release-1.57,release/1.57,1.57-release"
+2026-07-12T07:12:25.439044+00:00,semverit,python,https://github.com/BrightEdgeeServices/SemVerIt,0.4.2,tag,0.4.2,6bad6dfaa6d619192cad58deadf581a118794ba4,8,cloned,,"v0.4.2,0.4.2"
+2026-07-12T07:12:25.439044+00:00,extruct,python,https://github.com/scrapinghub/extruct,0.18.0,tag,v0.18.0,259dde016a5fb9e7d3061bd87def411f74edceb8,1,cloned,,v0.18.0
+2026-07-12T07:12:25.439044+00:00,google-cloud-runtimeconfig,python,https://github.com/googleapis/google-cloud-python,0.37.0,default-branch,,4253fab07ccdb2b94e247f8dade793828754b88b,5212,cloned,,"v0.37.0,0.37.0,release-0.37.0,release/0.37.0,0.37.0-release"
+2026-07-12T07:12:25.439044+00:00,lapx,python,https://github.com/rathaROG/lapx,0.9.4,tag,v0.9.4,3f8c101eca6c1effedd9c1b4266ac7cf48a23c49,2,cloned,,v0.9.4
+2026-07-12T07:12:25.439044+00:00,asreview,python,https://github.com/asreview/asreview,3.0.7,tag,v3.0.7,05b68eb638c9f969fdc9cac8e0930f2f30ddf5dc,35,cloned,,v3.0.7
+2026-07-12T07:12:25.439044+00:00,mcap,python,https://github.com/foxglove/mcap,1.4.0,default-branch,,01cdfb5ce92f4132dab0c8741f5ffd32bf63c30f,46,cloned,,"v1.4.0,1.4.0,release-1.4.0,release/1.4.0,1.4.0-release"
+2026-07-12T07:12:25.439044+00:00,qcodes,python,https://github.com/microsoft/qcodes,0.58.0,tag,v0.58.0,a0c0d0d55e706a3e46f63436c5072de37b09fa2b,167,cloned,,v0.58.0
+2026-07-12T07:12:25.439044+00:00,odoo14-addon-stock-quant-package-dimension,python,https://github.com/OCA/stock-logistics-workflow,14.0.2.2.1.dev4,default-branch,,87e76ad3132dcd710385ef77421651bfafcf8c80,102,cloned,,"v14.0.2.2.1.dev4,14.0.2.2.1.dev4,release-14.0.2.2.1.dev4,release/14.0.2.2.1.dev4,14.0.2.2.1.dev4-release"
+2026-07-12T07:12:25.439044+00:00,fastapi-websocket-pubsub,python,https://github.com/permitio/fastapi_websocket_pubsub,1.0.1,tag,1.0.1,b7f593ccd535e66a0011a764b8b18415068a36aa,1,cloned,,"v1.0.1,1.0.1"
+2026-07-12T07:12:25.439044+00:00,itk-elastix,python,https://github.com/InsightSoftwareConsortium/ITKElastix,0.25.3,tag,v0.25.3,63129ec62cdf1f01378fa406af2b0050bb566d39,7,cloned,,v0.25.3
+2026-07-12T07:12:25.439044+00:00,opentelemetry-instrumentation-kafka-python,python,https://github.com/open-telemetry/opentelemetry-python-contrib,0.63b1,tag,v0.63b1,8ddb205de00f409cd5e927a9c43802c056dcbbdc,159,cloned,,v0.63b1
+2026-07-12T07:12:25.439044+00:00,agate,python,https://github.com/wireservice/agate,1.14.2,tag,1.14.2,eab4f62e6cf1c9a0d68c4c3c9faace91355f49da,49,cloned,,"v1.14.2,1.14.2"
+2026-07-12T07:12:25.439044+00:00,hypy-utils,python,https://github.com/hykilpikonna/HyPyUtils,1.0.29,default-branch,,dbbb45d2fe490193c23164faa02262bf082b81d5,1,cloned,,"v1.0.29,1.0.29,release-1.0.29,release/1.0.29,1.0.29-release"
+2026-07-12T07:12:25.439044+00:00,edxml,python,https://github.com/edxml/sdk,3.0.1,tag,v3.0.1,d103f544ab8b37287c0744019b4757b7f6a02d32,19,cloned,,v3.0.1
+2026-07-12T07:12:25.439044+00:00,multi-agent-ale-py,python,https://github.com/Farama-Foundation/Multi-Agent-ALE,0.1.12,tag,v0.1.12,425f930e5103c1e831894a72937004482d08f4bd,1,cloned,,v0.1.12
+2026-07-12T07:12:25.439044+00:00,honcho,python,https://github.com/nickstenning/honcho,2.0.0,tag,v2.0.0,8af63177405a574612abf90ef55aaa68d76f7686,7,cloned,,v2.0.0
+2026-07-12T07:12:25.439044+00:00,inspire-utils,python,https://github.com/inspirehep/inspire-utils,3.0.68,tag,3.0.68,07ff53b88163701fdf0e35d112f60ac5cfb06925,1,cloned,,"v3.0.68,3.0.68"
+2026-07-12T07:12:25.439044+00:00,webull,python,https://github.com/tedchou12/webull,0.6.1,default-branch,,d3a8ee55cde2ee32716578401d082ea60cc1998d,1,cloned,,"v0.6.1,0.6.1,release-0.6.1,release/0.6.1,0.6.1-release"
+2026-07-12T07:12:25.439044+00:00,odoo14-addon-ssi-transaction-done-mixin,python,,14.0.1.14.1.dev1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,hypothesis-geometry,python,https://github.com/lycantropos/hypothesis_geometry,9.0.0,tag,v9.0.0,c1ddfb9f63ca0544a0195b8795b1b06f91a43409,3,cloned,,v9.0.0
+2026-07-12T07:12:25.439044+00:00,tryceratops,python,https://github.com/guilatrova/tryceratops,2.4.1,tag,v2.4.1,ca149be9a5c6169b77bf70991d2f87661158d283,18,cloned,,v2.4.1
+2026-07-12T07:12:25.439044+00:00,odoo14-addon-configuration-helper,python,https://github.com/OCA/server-tools,14.0.1.0.2.dev6,default-branch,,0f0b63f9bf7b679178d972aae16de42582ed8b81,57,cloned,,"v14.0.1.0.2.dev6,14.0.1.0.2.dev6,release-14.0.1.0.2.dev6,release/14.0.1.0.2.dev6,14.0.1.0.2.dev6-release"
+2026-07-12T07:12:25.439044+00:00,google-pasta,python,https://github.com/google/pasta,0.2.0,tag,v0.2.0,3eccb2ed20d0cf82b5083ac16b25b45570403531,1,cloned,,v0.2.0
+2026-07-12T07:12:25.439044+00:00,sphinx-remove-toctrees,python,https://github.com/executablebooks/sphinx-remove-toctrees,0.0.3,tag,v0.0.3,2cc2da68b4f180c68fca71c67e48131c5e018a76,6,cloned,,v0.0.3
+2026-07-12T07:12:25.439044+00:00,numpyro,python,https://github.com/pyro-ppl/numpyro,0.21.0,tag,0.21.0,e708f34b1c0b2c37137196281ba1486be7bebf39,19,cloned,,"v0.21.0,0.21.0"
+2026-07-12T07:12:25.439044+00:00,djhtml,python,https://github.com/rtts/djhtml,3.0.11,tag,3.0.11,8577ec017145d76a0b954ebb7cb3169d4303014c,1,cloned,,"v3.0.11,3.0.11"
+2026-07-12T07:12:25.439044+00:00,opentelemetry-instrumentation-starlette,python,https://github.com/open-telemetry/opentelemetry-python-contrib,0.63b1,tag,v0.63b1,8ddb205de00f409cd5e927a9c43802c056dcbbdc,159,cloned,,v0.63b1
+2026-07-12T07:12:25.439044+00:00,sphinxcontrib-devhelp,python,https://github.com/sphinx-doc/sphinxcontrib-devhelp,2.0.0,tag,2.0.0,0177fb44f165305f27b34e69e6e7e5ed6f24d752,1,cloned,,"v2.0.0,2.0.0"
+2026-07-12T07:12:25.439044+00:00,beaker,python,https://github.com/bbangert/beaker,1.14.1,tag,1.14.1,14368d97c2dafa16260bcc79df97a513b553a841,21,cloned,,"v1.14.1,1.14.1"
+2026-07-12T07:12:25.439044+00:00,pysdl2,python,https://github.com/py-sdl/py-sdl2,0.9.17,tag,0.9.17,08a26f84d0ed087edffd865ccd13227156af4cb0,45,cloned,,"v0.9.17,0.9.17"
+2026-07-12T07:12:25.439044+00:00,reprounzip,python,https://github.com/VIDA-NYU/reprozip,1.3.2,tag,1.3.2,44687ce73efe7a889bf7a1ea982258e2d965c766,24,cloned,,"v1.3.2,1.3.2"
+2026-07-12T07:12:25.439044+00:00,texsoup,python,https://github.com/alvinwan/TexSoup,0.3.3,tag,0.3.3,0bf06062ad65cef0db63290da017bfe9b3a8d517,16,cloned,,"v0.3.3,0.3.3"
+2026-07-12T07:12:25.439044+00:00,minilog,python,https://github.com/jacebrowning/minilog,2.3.1,tag,v2.3.1,79c7e9d7d8bfecb650f49f8d8364cac26fa6476a,9,cloned,,v2.3.1
+2026-07-12T07:12:25.439044+00:00,pyams-file,python,,2.4.2,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,whitebox,python,https://github.com/opengeos/whitebox-python,2.3.6,tag,v2.3.6,209a4ac23afb84db274c45aa4d382fe2230633c1,8,cloned,,v2.3.6
+2026-07-12T07:12:25.439044+00:00,mygene,python,https://github.com/biothings/mygene.py,3.2.2,tag,v3.2.2,34d2cd27001ed7cc35ad0e4ecdc165b7c441cc68,3,cloned,,v3.2.2
+2026-07-12T07:12:25.439044+00:00,org.webjars.npm:mout,java,https://github.com/mout/mout,1.1.0,tag,v1.1.0,0317b9ebfc794cae9c0190d2470599b949376161,13,cloned,,v1.1.0
+2026-07-12T07:12:25.439044+00:00,com.mindoo.domino:domino-jna,java,https://github.com/klehmann/domino-jna,0.9.53,tag,0.9.53,710d723ab8bc8ef299d41ddb97cac76b577c9263,4,cloned,,"v0.9.53,0.9.53"
+2026-07-12T07:12:25.439044+00:00,org.opendaylight.l2switch.loopremover:loopremover-model,java,https://wiki.opendaylight.org/view/ODL_Root_Parent:Main,0.7.4,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.netbeans.api:org-netbeans-api-web-webmodule,java,https://github.com/apache/netbeans-parent,RELEASE290,default-branch,,8e50f87f7db4f90d4b0e7e782359a9b7e7a7bd1b,1,cloned,,"vRELEASE290,RELEASE290,release-RELEASE290,release/RELEASE290,RELEASE290-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.shardingsphere.elasticjob:elasticjob-api,java,https://github.com/apache/shardingsphere-elasticjob,3.0.5,tag,3.0.5,f644427372674d83e38f33837c490e2d66efbf3c,181,cloned,,"v3.0.5,3.0.5"
+2026-07-12T07:12:25.439044+00:00,org.sonatype.nexus:nexus-swagger,java,https://github.com/sonatype/nexus-public,3.87.2-01,tag,release-3.87.2-01,325f519108d6755699834b9c6de75253b68432cc,19,cloned,,"v3.87.2-01,3.87.2-01,release-3.87.2-01"
+2026-07-12T07:12:25.439044+00:00,org.nutz:nutz-integration-jedis,java,https://github.com/nutzam/nutzmore,1.r.69.v20220215,default-branch,,09f8386f9bade85702c27564578a25c5afac9d1c,151,cloned,,"v1.r.69.v20220215,1.r.69.v20220215,release-1.r.69.v20220215,release/1.r.69.v20220215,1.r.69.v20220215-release"
+2026-07-12T07:12:25.439044+00:00,org.neo4j:neo4j-schema,java,https://github.com/neo4j/neo4j,2025.12.1,tag,2025.12.1,495f5719b95fc203ec9c5ccefbb563b1f7e5c39a,23,cloned,,"v2025.12.1,2025.12.1"
+2026-07-12T07:12:25.439044+00:00,io.circe:circe-fs2_2.13,java,https://github.com/circe/circe-fs2,0.14.1,tag,v0.14.1,a54446530e7675d2268324316d2cf32395b7c15f,1,cloned,,v0.14.1
+2026-07-12T07:12:25.439044+00:00,ch.acra:acra-core,java,https://github.com/ACRA/acra,5.13.1,default-branch,,1f8ffdf8a8cfba1df1d47ec5b2949101e54a5df4,1,cloned,,"v5.13.1,5.13.1,release-5.13.1,release/5.13.1,5.13.1-release"
+2026-07-12T07:12:25.439044+00:00,org.typelevel:log4cats-slf4j_3,java,https://github.com/typelevel/log4cats,2.8.0,tag,v2.8.0,0f6e4eb381fb8fd65b2d7672b17046d0139270ca,4,cloned,,v2.8.0
+2026-07-12T07:12:25.439044+00:00,org.uberfire:uberfire-project-backend,java,https://github.com/uberfire/uberfire,7.74.1.Final,default-branch,,d06e040fc83a0d3da2df19cddd4d9302054607da,1,cloned,,"v7.74.1.Final,7.74.1.Final,release-7.74.1.Final,release/7.74.1.Final,7.74.1.Final-release"
+2026-07-12T07:12:25.439044+00:00,io.arrow-kt:arrow-mtl,java,https://github.com/arrow-kt/arrow,0.11.0,tag,0.11.0,3bde5b0f7da87dee4b9c329239c934592a551484,21,cloned,,"v0.11.0,0.11.0"
+2026-07-12T07:12:25.439044+00:00,io.fabric8:crd-generator-apt,java,https://github.com/fabric8io/kubernetes-client,7.6.1,tag,v7.6.1,6e7f78b65382ea37cbef3a5008fb912c845f8446,26,cloned,,v7.6.1
+2026-07-12T07:12:25.439044+00:00,org.apache.camel.quarkus:camel-quarkus-file,java,https://github.com/apache/camel-quarkus,3.32.0,tag,3.32.0,92915169b590493af580e34127822e24d0cf2d3f,606,cloned,,"v3.32.0,3.32.0"
+2026-07-12T07:12:25.439044+00:00,org.webjars.npm:enhanced-resolve,java,https://github.com/webpack/enhanced-resolve,5.24.1,tag,v5.24.1,6951d573165c33b63b56c62b10a4eba76b4ca586,3,cloned,,v5.24.1
+2026-07-12T07:12:25.439044+00:00,com.microsoft.azure:azure-keyvault-secrets-spring-boot-starter,java,https://github.com/Azure/azure-sdk-for-java,2.3.5,default-branch,,bca93cccdabc809e0e58acf563fcd11d0dc1e228,863,cloned,,"v2.3.5,2.3.5,release-2.3.5,release/2.3.5,2.3.5-release"
+2026-07-12T07:12:25.439044+00:00,de.julielab:jcore-xml-db-reader,java,https://github.com/JULIELab/jcore-base,2.6.5,default-branch,,20902abb41b3bc2afd246f2e72068bd7c6fa3a93,86,cloned,,"v2.6.5,2.6.5,release-2.6.5,release/2.6.5,2.6.5-release"
+2026-07-12T07:12:25.439044+00:00,org.uberfire:uberfire-metadata-commons-io,java,https://github.com/uberfire/uberfire,7.74.1.Final,default-branch,,d06e040fc83a0d3da2df19cddd4d9302054607da,1,cloned,,"v7.74.1.Final,7.74.1.Final,release-7.74.1.Final,release/7.74.1.Final,7.74.1.Final-release"
+2026-07-12T07:12:25.439044+00:00,ai.h2o:h2o-algos,java,https://github.com/h2oai/h2o-dev,0.1.25,default-branch,,1676df7c04a6ea7a2f4cdf0f37be0783df7d7527,54,cloned,,"v0.1.25,0.1.25,release-0.1.25,release/0.1.25,0.1.25-release"
+2026-07-12T07:12:25.439044+00:00,de.pfabulist:nonnullbydefault,java,https://github.com/openCage/nonnullbydefault,2.0.5,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.pfabulist_nonnullbydefault'...
+remote: Repository not found.
+fatal: repository 'https://github.com/openCage/nonnullbydefault/' not found","v2.0.5,2.0.5,release-2.0.5,release/2.0.5,2.0.5-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.mahout:mahout-core,java,https://gitbox.apache.org/repos/asf?p=mahout.git;a=tree;h=refs/heads/mahout-14.1;hb=mahout-14.1,14.1,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.scala-native:test-interface_native0.4_2.11,java,https://github.com/scala-native/scala-native,0.4.9,tag,v0.4.9,ff56a57b284b26a7c811a52fe03260b4e6d81aa9,43,cloned,,v0.4.9
+2026-07-12T07:12:25.439044+00:00,org.apache.camel.springboot:camel-controlbus-starter,java,https://gitbox.apache.org/repos/asf?p=camel-spring-boot.git;a=summary,4.20.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.jboss.weld.environment:weld-environment-common,java,https://github.com/weld/core,5.1.7.Final,tag,5.1.7.Final,5241c7018cce6fa92a056ddc9ac68a06657424c8,38,cloned,,"v5.1.7.Final,5.1.7.Final"
+2026-07-12T07:12:25.439044+00:00,com.sksamuel.scrimage:scrimage-core,java,https://github.com/sksamuel/scrimage,4.6.6,tag,v4.6.6,38330e09959e7e161c9f4a65d3d8ab958af806d0,41,cloned,,v4.6.6
+2026-07-12T07:12:25.439044+00:00,com.applovin.mediation:facebook-adapter,java,https://github.com/AppLovin/AppLovin-MAX-SDK-Android,6.21.0.0,default-branch,,f0b3193f4bff6524f0f26c861c9b817caf205eaf,24,cloned,,"v6.21.0.0,6.21.0.0,release-6.21.0.0,release/6.21.0.0,6.21.0.0-release"
+2026-07-12T07:12:25.439044+00:00,org.apereo.cas:cas-server-support-webauthn,java,https://github.com/apereo/cas,7.3.7,tag,v7.3.7,dd9f32688659a2e857eb7e13826168510188c967,771,cloned,,v7.3.7
+2026-07-12T07:12:25.439044+00:00,org.apache.geronimo.configs:tomcat7,java,http://svn.apache.org/viewvc/geronimo/server/tags/geronimo-3.0.1,3.0.1,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.infinispan:infinispan-spring5-common,java,https://github.com/infinispan/infinispan,14.0.35.Final,tag,14.0.35.Final,df7b4efb8f3acfbe6b16780f3e43ddb38120c394,706,cloned,,"v14.0.35.Final,14.0.35.Final"
+2026-07-12T07:12:25.439044+00:00,io.vlingo.xoom:xoom-streams,java,https://github.com/vlingo/xoom-streams,1.11.1,tag,1.11.1,f91cee4452faa4d387273ce39947f515b3e514a5,1,cloned,,"v1.11.1,1.11.1"
+2026-07-12T07:12:25.439044+00:00,org.apache.portals.jetspeed-2:jetspeed-maven-utils,java,http://svn.apache.org/viewcvs.cgi/portals/jetspeed-2/portal/tags/jetspeed-2-2.3.1,2.3.1,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,io.openliberty.features:openidConnectServer-1.0,java,https://github.com/OpenLiberty/open-liberty,26.0.0.4,default-branch,,5a4e245aac76968015c4b9c47aed41a1e7a2498f,128,cloned,,"v26.0.0.4,26.0.0.4,release-26.0.0.4,release/26.0.0.4,26.0.0.4-release"
+2026-07-12T07:12:25.439044+00:00,edu.byu.hbll:config,java,https://bitbucket.org/byuhbll/lib-java-config,3.2.0,tag,3.2.0,31c91a7a2403ef6215877a374725a13c38359952,1,cloned,,"v3.2.0,3.2.0"
+2026-07-12T07:12:25.439044+00:00,org.openhubframework:openhub-core-api,java,https://github.com/OpenWiseSolutions/openhub-framework,2.3.0,default-branch,,06e234959371eeaddd76b5cb422f5aa0540f3440,11,cloned,,"v2.3.0,2.3.0,release-2.3.0,release/2.3.0,2.3.0-release"
+2026-07-12T07:12:25.439044+00:00,io.projectreactor.kafka:reactor-kafka,java,https://github.com/reactor/reactor-kafka,1.3.25,tag,v1.3.25,0537a12c82774b1ef565fdd59fbacc49bcbbd7b5,8,cloned,,v1.3.25
+2026-07-12T07:12:25.439044+00:00,org.openurp.platform.security:openurp-platform-security-core,java,https://github.com/beangle/beangle,0.0.5,default-branch,,ee1b4266f038f33cfeb55fd68f7c83c47433eca2,1,cloned,,"v0.0.5,0.0.5,release-0.0.5,release/0.0.5,0.0.5-release"
+2026-07-12T07:12:25.439044+00:00,li.strolch:li.strolch.model,java,https://github.com/strolch-li/strolch,1.8.5,tag,1.8.5,dafa1ea1b677a49e67334690744b9403681aaa17,15,cloned,,"v1.8.5,1.8.5"
+2026-07-12T07:12:25.439044+00:00,de.adorsys:datasafe-inbox-api,java,https://github.com/adorsys/datasafe,2.0.1,tag,v2.0.1,986ee4ba2ed848f42acd009794ececc5dfa9439a,55,cloned,,v2.0.1
+2026-07-12T07:12:25.439044+00:00,org.sonatype.p2.bridge:p2-runtime,java,https://github.com/sonatype/p2-bridge,1.1.9,tag,release-1.1.9,49fd3e7d6d202b63ee81a7006b5a12a6540f0038,1,cloned,,"v1.1.9,1.1.9,release-1.1.9"
+2026-07-12T07:12:25.439044+00:00,io.vertx:vertx-mongo-service,java,https://github.com/vert-x3/vertx-ext-parent,3.9.16,default-branch,,8d22d10a61752177e0ac782d4344eddd5250bb20,1,cloned,,"v3.9.16,3.9.16,release-3.9.16,release/3.9.16,3.9.16-release"
+2026-07-12T07:12:25.439044+00:00,io.openliberty.features:io.openliberty.openidConnectServer1.0.internal.ee-6.0,java,https://github.com/OpenLiberty/open-liberty,26.0.0.6,default-branch,,5a4e245aac76968015c4b9c47aed41a1e7a2498f,128,cloned,,"v26.0.0.6,26.0.0.6,release-26.0.0.6,release/26.0.0.6,26.0.0.6-release"
+2026-07-12T07:12:25.439044+00:00,org.jboss.as:jboss-as-clustering-api,java,https://github.com/jbossas/jboss-as,7.2.0.Final,tag,7.2.0.Final,4ed76ceef253c568b7475780a92e49a034f540c5,15,cloned,,"v7.2.0.Final,7.2.0.Final"
+2026-07-12T07:12:25.439044+00:00,com.github.emc-mongoose:mongoose-storage-driver-net-http,java,https://github.com/emc-mongoose/mongoose,3.6.2,tag,3.6.2,8c105b589fbad3e37cf135c4ca0359f0844c9571,1,cloned,,"v3.6.2,3.6.2"
+2026-07-12T07:12:25.439044+00:00,me.shadaj:slinky-core_sjs1_2.12,java,https://github.com/shadaj/slinky,0.7.5,tag,v0.7.5,00da05ed75a151ddbc5a344bad152177621aee19,20,cloned,,v0.7.5
+2026-07-12T07:12:25.439044+00:00,com.twitter:scalding-core_2.9.3,java,https://github.com/twitter/scalding,0.12.0,tag,0.12.0,2a87305ee9cd7883d0dcc803288914b5541113f6,7,cloned,,"v0.12.0,0.12.0"
+2026-07-12T07:12:25.439044+00:00,org.jsr107.ri:cache-ri-impl,java,https://github.com/jsr107/RI,1.1.1,tag,1.1.1,80410a46e59bd833489ef4c61824b22e73a1740d,1,cloned,,"v1.1.1,1.1.1"
+2026-07-12T07:12:25.439044+00:00,org.commonjava.aprox:aprox-filer-default,java,https://github.com/Commonjava/aprox,0.25.1,default-branch,,8398762a77a8df23bd90a899ec235cac6ed49ae7,11,cloned,,"v0.25.1,0.25.1,release-0.25.1,release/0.25.1,0.25.1-release"
+2026-07-12T07:12:25.439044+00:00,com.thoughtworks.dsl:keywords-return_sjs0.6_2.11,java,https://github.com/ThoughtWorksInc/Dsl.scala,1.5.5+6-36707a35,default-branch,,900e38e263d17cd16d7831adf8abd6581c3fa614,1,cloned,,"v1.5.5+6-36707a35,1.5.5+6-36707a35,release-1.5.5+6-36707a35,release/1.5.5+6-36707a35,1.5.5+6-36707a35-release"
+2026-07-12T07:12:25.439044+00:00,org.springframework.vault:spring-vault-core,java,https://github.com/spring-projects/spring-vault,4.1.0,tag,4.1.0,83514ceb5f9bcdfb91bc9c57c11bbb1e50e2514b,1,cloned,,"v4.1.0,4.1.0"
+2026-07-12T07:12:25.439044+00:00,io.gravitee.am.plugins.handlers:gravitee-am-plugins-handlers-api,java,https://github.com/gravitee-io/graviteeio-access-management,4.10.5,tag,4.10.5,6a33340646435d8b0b7fbbdbe9a8edfdb245642a,37,cloned,,"v4.10.5,4.10.5"
+2026-07-12T07:12:25.439044+00:00,com.moz.fiji.mapreduce:cdh5-mrbridge,java,https://github.com/seomoz/fiji,0.1.22,tag,v0.1.22,bed3b7d20770ab2c490b55f278cb4397937f61b6,28,cloned,,v0.1.22
+2026-07-12T07:12:25.439044+00:00,io.fabric8:volumesnapshot-server-mock,java,https://github.com/fabric8io/kubernetes-client,6.1.1,tag,v6.1.1,d6e6cc35c689f5dd1920d95a73aa77174a645f43,19,cloned,,v6.1.1
+2026-07-12T07:12:25.439044+00:00,com.huaweicloud:spring-cloud-starter-huawei-router,java,https://github.com/huaweicloud/spring-cloud-huawei,1.3.9,tag,v1.3.9,61665d1133f9a757e1a54f237d1a6f2d3de3a4ee,34,cloned,,v1.3.9
+2026-07-12T07:12:25.439044+00:00,io.micronaut.testresources:micronaut-test-resources-r2dbc-core,java,https://github.com/micronaut-projects/micronaut-test-resources,3.0.0,tag,v3.0.0,83e673f375081d982a9a7261503b1658ba5587cb,35,cloned,,v3.0.0
+2026-07-12T07:12:25.439044+00:00,org.neo4j:neo4j-cypher-commons,java,https://github.com/neo4j/neo4j,2.1.8,tag,2.1.8,5c83ce3a5ddf33259593f719153ce71a6fe89fc7,299,cloned,,"v2.1.8,2.1.8"
+2026-07-12T07:12:25.439044+00:00,org.zalando:problem-spring-webflux,java,https://github.com/zalando/problem-spring-web,0.29.1,tag,0.29.1,6c50f1c3bed9a28d907645a3383f22f3a3562e71,3,cloned,,"v0.29.1,0.29.1"
+2026-07-12T07:12:25.439044+00:00,org.jasig.service:person-directory-impl,java,http://developer.jasig.org/source/browse/jasigsvn/person-directory/tags/rel-1.5.0-RC6,1.1.2,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.everit.osgi:org.everit.osgi.querydsl.support,java,https://github.com/everit-org/osgi-querydsl-support,1.0.0,tag,v1.0.0,2550dab7cf6904b9d060d5e26d99beea14e654e8,1,cloned,,v1.0.0
+2026-07-12T07:12:25.439044+00:00,com.vladsch.flexmark:flexmark,java,https://github.com/vsch/flexmark-java,0.64.8,default-branch,,bcfe84a3ab6d23d04adce3e5a0bae45c6b791d14,2,cloned,,"v0.64.8,0.64.8,release-0.64.8,release/0.64.8,0.64.8-release"
+2026-07-12T07:12:25.439044+00:00,com.github.julien-truffaut:monocle-macro_sjs0.6_2.13,java,https://github.com/optics-dev/Monocle,2.0.5,tag,v2.0.5,4a0e784e10cc8d7ef77108a6ff1cb882328385f4,33,cloned,,v2.0.5
+2026-07-12T07:12:25.439044+00:00,com.tairanchina.csp.dew:cluster-common,java,https://github.com/gudaoxuri/dew-framework,1.5.1-RC,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/com.tairanchina.csp.dew_cluster-common'...
+remote: Repository not found.
+fatal: repository 'https://github.com/gudaoxuri/dew-framework/' not found","v1.5.1-RC,1.5.1-RC,release-1.5.1-RC,release/1.5.1-RC,1.5.1-RC-release"
+2026-07-12T07:12:25.439044+00:00,com.wordnik:swagger-jaxrs_2.11,java,https://github.com/swagger-api/swagger-core,1.3.12,tag,v1.3.12,a770366706d0989bfb9e805733a406377c8e49a4,28,cloned,,v1.3.12
+2026-07-12T07:12:25.439044+00:00,org.osgi:org.osgi.util.pushstream,java,https://github.com/osgi/osgi,1.1.0,default-branch,,a9bc041953babd054cdf4400695f48985f454261,27,cloned,,"v1.1.0,1.1.0,release-1.1.0,release/1.1.0,1.1.0-release"
+2026-07-12T07:12:25.439044+00:00,com.ardikars.common:common-util,java,https://github.com/jxnet/java-common,1.3.7,default-branch,,c638d20dc16681e512bd0f2523f9531b0761e326,2,cloned,,"v1.3.7,1.3.7,release-1.3.7,release/1.3.7,1.3.7-release"
+2026-07-12T07:12:25.439044+00:00,org.slinkyframework:slinky-service-http,java,https://github.com/klyall/slinky-framework,0.5.1,default-branch,,68b07c3605ef86292fbb470df7743cad344090d4,5,cloned,,"v0.5.1,0.5.1,release-0.5.1,release/0.5.1,0.5.1-release"
+2026-07-12T07:12:25.439044+00:00,com.slack.api:slack-api-model,java,https://github.com/slackapi/java-slack-sdk,1.49.0,tag,v1.49.0,41db6528c1247cb575e04d4c0a3cda6194056013,57,cloned,,v1.49.0
+2026-07-12T07:12:25.439044+00:00,org.jgrapht:jgrapht,java,https://github.com/jgrapht/jgrapht,1.5.3,default-branch,,e219f0665831e95236297e3c9e3d5808e5cd3322,18,cloned,,"v1.5.3,1.5.3,release-1.5.3,release/1.5.3,1.5.3-release"
+2026-07-12T07:12:25.439044+00:00,com.wizzdi:flexicore-file-model,java,https://github.com/wizzdi/flexicore-boot,7.0.17,tag,release-7.0.17,d8840e068d65e75578f472fb4b959ac2b0734b3d,22,cloned,,"v7.0.17,7.0.17,release-7.0.17"
+2026-07-12T07:12:25.439044+00:00,org.openidentityplatform.commons.audit:handler-elasticsearch,java,https://github.com/OpenIdentityPlatform/commons,3.1.0,tag,3.1.0,9e1f4d3859929874e3faa683383a75531e987806,44,cloned,,"v3.1.0,3.1.0"
+2026-07-12T07:12:25.439044+00:00,cafe.adriel.voyager:voyager-navigator-desktop,java,https://github.com/adrielcafe/voyager,1.0.1,tag,1.0.1,09946e4d3eb42045714e2061d288bcc85af22819,2,cloned,,"v1.0.1,1.0.1"
+2026-07-12T07:12:25.439044+00:00,io.atlasmap:atlas-json-model,java,https://github.com/atlasmap/atlasmap,2.5.2,default-branch,,6c07fff605dc040c40e6addbfe5b6111ee61a0be,69,cloned,,"v2.5.2,2.5.2,release-2.5.2,release/2.5.2,2.5.2-release"
+2026-07-12T07:12:25.439044+00:00,org.opendaylight.aaa.web:web-jetty-impl,java,https://wiki.opendaylight.org/display/ODL/MD-SAL,0.22.5,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.glassfish.main.jdbc.jdbc-ra.jdbc-ra-distribution:jdbc-ra,java,https://github.com/eclipse-ee4j/glassfish,7.0.19,tag,7.0.19,7a897e5df2919f40b5d2ac281c440f80f96d37dc,978,cloned,,"v7.0.19,7.0.19"
+2026-07-12T07:12:25.439044+00:00,dev.zio:zio-test-sbt_native0.4_2.11,java,https://github.com/zio/zio,2.0.10,tag,v2.0.10,886ca54afb6fee070a5a2b2dcdeb5d670ebd5eba,300,cloned,,v2.0.10
+2026-07-12T07:12:25.439044+00:00,net.sf.m-m-m:mmm-util-pojo,java,https://github.com/m-m-m/util,8.7.0,tag,release/8.7.0,92bc5ae06217a5849c38d2bb7e3af5e884de2e8c,31,cloned,,"v8.7.0,8.7.0,release-8.7.0,release/8.7.0"
+2026-07-12T07:12:25.439044+00:00,org.wso2.carbon.metrics:org.wso2.carbon.metrics.core.feature,java,https://github.com/wso2/carbon-metrics,2.3.24,tag,v2.3.24,0c790a96327a4254929f24f8e365ba58f9b62622,1,cloned,,v2.3.24
+2026-07-12T07:12:25.439044+00:00,io.kotest:kotest-property-tvossimulatorarm64,java,https://github.com/kotest/kotest,6.1.11,tag,6.1.11,c0b386a38ea6321e6a08a80dd1340a1a616cdd18,1332,cloned,,"v6.1.11,6.1.11"
+2026-07-12T07:12:25.439044+00:00,org.grails:grails-gorm,java,,1.3.7,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,com.buschmais.xo:xo.test,java,https://github.com/buschmais/extended-objects,2.6.6,tag,2.6.6,379287dba90cf9c43341dd61adc1ac7b64c5f287,3,cloned,,"v2.6.6,2.6.6"
+2026-07-12T07:12:25.439044+00:00,com.buschmais.jqassistant.plugin:jpa2,java,https://github.com/jqassistant/jqa-jpa2-plugin,1.12.2,default-branch,,677bb0c40cdfb36df32711c8899f4f6011a46a88,1,cloned,,"v1.12.2,1.12.2,release-1.12.2,release/1.12.2,1.12.2-release"
+2026-07-12T07:12:25.439044+00:00,org.locationtech.geomesa:geomesa-feature-common_2.12,java,https://github.com/locationtech/geomesa,5.4.0,default-branch,,de967713cfa1d655f6c7a8b8d3805b0e237a20dd,257,cloned,,"v5.4.0,5.4.0,release-5.4.0,release/5.4.0,5.4.0-release"
+2026-07-12T07:12:25.439044+00:00,org.kie.kogito:kogito-drools-model,java,https://github.com/kiegroup/kogito-runtimes,0.17.0,default-branch,,023bf968bb45611f8b6a910b3a56cd1694b516ab,31,cloned,,"v0.17.0,0.17.0,release-0.17.0,release/0.17.0,0.17.0-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.hadoop:hadoop-hdds-interface-client,java,,1.1.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,org.springframework.cloud:spring-cloud-stream-schema,java,https://github.com/spring-cloud/spring-cloud-stream,2.2.1.RELEASE,tag,v2.2.1.RELEASE,1e51bd61c34c7235cdb36e837d8cb58c48aaaf39,7,cloned,,v2.2.1.RELEASE
+2026-07-12T07:12:25.439044+00:00,uk.co.real-logic:Agrona,java,https://github.com/real-logic/Agrona,0.4.12,tag,0.4.12,22d01623fb04e0bfca410e0588b6c501cda6e95e,1,cloned,,"v0.4.12,0.4.12"
+2026-07-12T07:12:25.439044+00:00,org.apache.tika:tika-app,java,https://github.com/apache/tika,3.3.1,tag,3.3.1,bf9aa9249a4f9ff14f53bcd419efdebd92253351,8,cloned,,"v3.3.1,3.3.1"
+2026-07-12T07:12:25.439044+00:00,org.scalameta:munit_sjs1_3.0.0-RC1,java,https://github.com/scalameta/munit,0.7.23,tag,v0.7.23,a64b35898ee2020190be17fe5ece1ef4ed6c52d1,11,cloned,,v0.7.23
+2026-07-12T07:12:25.439044+00:00,de.adorsys.xs2a.adapter:xs2a-adapter-service-api,java,https://github.com/adorsys/xs2a-adapter,0.1.17,tag,v0.1.17,adc280835ee2ca6f0995f2d97e1303082b289740,77,cloned,,v0.1.17
+2026-07-12T07:12:25.439044+00:00,org.apache.camel.quarkus:camel-quarkus-jgroups-raft,java,https://github.com/apache/camel-quarkus,3.33.0,tag,3.33.0,c70379b6dece4486ba55fdfc8fc6ef8778be8e5f,609,cloned,,"v3.33.0,3.33.0"
+2026-07-12T07:12:25.439044+00:00,tech.mlsql:streamingpro-dsl-2.4_2.11,java,https://github.com/allwefantasy/streamingpro,2.1.0,tag,v2.1.0,933aa2884aa3449292551f93624ca36eca670285,262,cloned,,v2.1.0
+2026-07-12T07:12:25.439044+00:00,com.telenav.mesakit:mesakit-map-road-model,java,https://github.com/Telenav/mesakit,0.17.1,tag,0.17.1,f4dba1a3b5e72edea9ed763fb9531d46b876b1c6,46,cloned,,"v0.17.1,0.17.1"
+2026-07-12T07:12:25.439044+00:00,com.rometools:rome,java,https://github.com/rometools/rome,2.1.0,tag,2.1.0,7e5cf653d8a9e64f484efec35f457615a686f2ff,1,cloned,,"v2.1.0,2.1.0"
+2026-07-12T07:12:25.439044+00:00,com.google.code.flexlib:flexlib,java,https://github.com/flex-users/flexlib,2.6-M3,tag,2.6-M3,9a6a58c4f95bcc6593941ceada2c7b683e4682be,2,cloned,,"v2.6-M3,2.6-M3"
+2026-07-12T07:12:25.439044+00:00,com.github.jknack:handlebars-jackson2,java,https://github.com/jknack/handlebars.java,4.3.1,tag,v4.3.1,683c5e885d5dcdf3d17b33e9667f3fb153952016,4,cloned,,v4.3.1
+2026-07-12T07:12:25.439044+00:00,com.helger.ubl:ph-ubl22,java,https://github.com/phax/ph-ubl,10.1.0,default-branch,,f0c02eb3e36496a5aa4ebd2c61f6b201c148d90b,4,cloned,,"v10.1.0,10.1.0,release-10.1.0,release/10.1.0,10.1.0-release"
+2026-07-12T07:12:25.439044+00:00,io.datakernel:datakernel-common,java,https://github.com/softindex/datakernel,3.1.0,tag,v3.1.0,1e2aa0ca1e3b70a4be523acfd7c6f006d8a87601,56,cloned,,v3.1.0
+2026-07-12T07:12:25.439044+00:00,com.att.research.xacml:xacml,java,https://github.com/att/xacml-3.0,4.0.0,default-branch,,9ff91c5ba0ecc89be7199e2e93c16159accfe155,1,cloned,,"v4.0.0,4.0.0,release-4.0.0,release/4.0.0,4.0.0-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.drill:drill-logical,java,https://github.com/apache/drill,1.22.0,default-branch,,0c8a40cebed60114dcaad1f1c7ec1904b3133272,87,cloned,,"v1.22.0,1.22.0,release-1.22.0,release/1.22.0,1.22.0-release"
+2026-07-12T07:12:25.439044+00:00,com.bkahlert.kommons:kommons-text,java,https://github.com/bkahlert/kommons,2.8.0,tag,v2.8.0,cff17781e25f6e3800f347ebf5571a06b4f62ee4,18,cloned,,v2.8.0
+2026-07-12T07:12:25.439044+00:00,org.apache.camel.quarkus:camel-quarkus-etcd3,java,https://github.com/apache/camel-quarkus,3.20.4,tag,3.20.4,1e8251d45619a681fc6d69f4fc71a69c0313284f,560,cloned,,"v3.20.4,3.20.4"
+2026-07-12T07:12:25.439044+00:00,org.sonarsource.sonarqube:sonar-plugin-api,java,https://github.com/SonarSource/sonarqube,7.9.6,tag,7.9.6,1b72f560749dd14bafcd4167ae24b24c61a90f75,18,cloned,,"v7.9.6,7.9.6"
+2026-07-12T07:12:25.439044+00:00,de.sciss:lucre-core_2.10,java,https://github.com/Sciss/Lucre,3.4.1,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.sciss_lucre-core_2.10'...
+remote: Repository not found.
+fatal: repository 'https://github.com/Sciss/Lucre/' not found","v3.4.1,3.4.1,release-3.4.1,release/3.4.1,3.4.1-release"
+2026-07-12T07:12:25.439044+00:00,com.typesafe.zinc:zinc,java,https://github.com/typesafehub/zinc,0.3.15,tag,v0.3.15,d6b647ebd86a04cb8f4976d82624a0eba33816b9,1,cloned,,v0.3.15
+2026-07-12T07:12:25.439044+00:00,org.eclipse.che.core:che-core-commons-test,java,https://github.com/eclipse/che,7.28.2,tag,7.28.2,7d0dc72c83aeaa6ed81cdd7a958126c701cb9ac1,39,cloned,,"v7.28.2,7.28.2"
+2026-07-12T07:12:25.439044+00:00,be.atbash.json:octopus-jwt-support,java,https://github.com/atbashEE/octopus-jwt-support,1.1.0,tag,v1.1.0,daffc14128eac55efdb647926c26a52e4deef21e,2,cloned,,v1.1.0
+2026-07-12T07:12:25.439044+00:00,org.xipki:password,java,https://github.com/xipki/xipki,6.2.0,tag,v6.2.0,2b545194c142a10d8abe692806f5cc7b184bf001,41,cloned,,v6.2.0
+2026-07-12T07:12:25.439044+00:00,org.spark-project.akka:akka-actor_2.10,java,https://github.com/akka/akka,2.3.4-spark,default-branch,,96c01b6d239e6b9812e3600a2a9e04a779779435,16,cloned,,"v2.3.4-spark,2.3.4-spark,release-2.3.4-spark,release/2.3.4-spark,2.3.4-spark-release"
+2026-07-12T07:12:25.439044+00:00,org.flowable:flowable-form-spring-configurator,java,https://github.com/flowable/flowable-engine,6.8.1,default-branch,,1663e588179deda2465ac4b779d0604b79b7fcc8,64,cloned,,"v6.8.1,6.8.1,release-6.8.1,release/6.8.1,6.8.1-release"
+2026-07-12T07:12:25.439044+00:00,com.oracle.oci.sdk:oci-java-sdk-datascience,java,https://github.com/oracle/oci-java-sdk,3.91.1,tag,v3.91.1,861cc778c52cd6b4a6774e98662424e6c0540381,10,cloned,,v3.91.1
+2026-07-12T07:12:25.439044+00:00,io.github.crac:org-crac,java,https://github.com/CRaC/org.crac,0.1.3,default-branch,,a8701a7b2bf4088eda81080e9b391e6a8fedb692,1,cloned,,"v0.1.3,0.1.3,release-0.1.3,release/0.1.3,0.1.3-release"
+2026-07-12T07:12:25.439044+00:00,io.vertx:vertx-zipkin,java,https://github.com/eclipse-vertx/vertx-tracing,5.0.11,tag,5.0.11,63725daa0b57050b1c1d30916c66c1549b6cbe8d,1,cloned,,"v5.0.11,5.0.11"
+2026-07-12T07:12:25.439044+00:00,org.apache.karaf.management:org.apache.karaf.management.boot,java,https://git-wip-us.apache.org/repos/asf?p=karaf.git;a=summary,3.0.3,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,com.chuusai:shapeless_2.13.0-M1,java,https://github.com/milessabin/shapeless,2.3.2,default-branch,,63e903db827c045fbf1ec142608197b8c87c1f0f,1,cloned,,"v2.3.2,2.3.2,release-2.3.2,release/2.3.2,2.3.2-release"
+2026-07-12T07:12:25.439044+00:00,org.atmosphere.samples:atmosphere-jquery-pubsub,java,https://github.com/Atmosphere/atmosphere,1.0.19,default-branch,,3d6ed5fa2ffb4bb61fb5a564867e9c657166a456,99,cloned,,"v1.0.19,1.0.19,release-1.0.19,release/1.0.19,1.0.19-release"
+2026-07-12T07:12:25.439044+00:00,org.mapstruct:mapstruct-processor,java,https://github.com/mapstruct/mapstruct,1.6.3,tag,1.6.3,b4e25e49deae707b50ce061172e114292b414a23,16,cloned,,"v1.6.3,1.6.3"
+2026-07-12T07:12:25.439044+00:00,io.github.soc:directories,java,https://github.com/soc/directories-jvm,12,default-branch,,b76e3606c01e6f55b354e32a30e85ee6b9f815ca,1,cloned,,"v12,12,release-12,release/12,12-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.camel.springboot:camel-swagger-java-starter,java,https://gitbox.apache.org/repos/asf?p=camel-spring-boot.git;a=summary,3.22.4,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.objectweb.fractal.juliac:juliac-fractaladl,java,http://svn.forge.objectweb.org/cgi-bin/viewcvs.cgi/fractal/trunk,2.2.6,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,ch.epfl.bluebrain.nexus:delta-sdk_2.13,java,https://github.com/BlueBrain/nexus,1.9.1,tag,v1.9.1,eca76925bdd4c3046d5d48fc6be998d3d3fcce2d,84,cloned,,v1.9.1
+2026-07-12T07:12:25.439044+00:00,nl.cloudfarming.client:field-model,java,https://hg.java.net/hg/agrosense~core,1.0.24,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,io.backchat.inflector:scala-inflector_2.10,java,https://github.com/backchatio/scala-inflector,1.3.5,default-branch,,0c0a769a6de96b5ee1317c7cd05dda1998eb9550,1,cloned,,"v1.3.5,1.3.5,release-1.3.5,release/1.3.5,1.3.5-release"
+2026-07-12T07:12:25.439044+00:00,org.eclipse.dirigible:dirigible-cms,java,https://github.com/dirigiblelabs/${content.repository.name},7.2.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.eclipse.dirigible_dirigible-cms'...
+remote: Repository not found.
+fatal: repository 'https://github.com/dirigiblelabs/${content.repository.name}/' not found","v7.2.0,7.2.0,release-7.2.0,release/7.2.0,7.2.0-release"
+2026-07-12T07:12:25.439044+00:00,net.openhft:assertions-disabled,java,https://github.com/OpenHFT/OpenHFT,1.0.0,default-branch,,a7f50fc2bd09bf7f2a71f2ab6b045588ddefc77d,7,cloned,,"v1.0.0,1.0.0,release-1.0.0,release/1.0.0,1.0.0-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.aries.cdi:org.apache.aries.cdi.extension.spi,java,https://github.com/apache/aries-cdi,1.1.5,default-branch,,3d5e281e6cd6c01f4fbaacfe91e406564960f662,1,cloned,,"v1.1.5,1.1.5,release-1.1.5,release/1.1.5,1.1.5-release"
+2026-07-12T07:12:25.439044+00:00,org.locationtech.geotrellis:geotrellis-s3_2.11,java,https://github.com/locationtech/geotrellis,3.5.2,tag,v3.5.2,11e90772f378959d00e161ccabb44dc38c7a4d64,46,cloned,,v3.5.2
+2026-07-12T07:12:25.439044+00:00,net.wicp.tams:duckula-dev-plugin-common,java,https://github.com/rjzjh/commons,2.0.7,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/net.wicp.tams_duckula-dev-plugin-common'...
+remote: Repository not found.
+fatal: repository 'https://github.com/rjzjh/commons/' not found","v2.0.7,2.0.7,release-2.0.7,release/2.0.7,2.0.7-release"
+2026-07-12T07:12:25.439044+00:00,org.keycloak:keycloak-model-legacy-services,java,https://github.com/keycloak/keycloak,25.0.3,tag,25.0.3,1174d32fd94ee6b9ca2e383d59c2d01796f3affd,574,cloned,,"v25.0.3,25.0.3"
+2026-07-12T07:12:25.439044+00:00,io.zeebe:zeebe-protocol,java,https://github.com/zeebe-io/zeebe,0.26.6,tag,0.26.6,23ef0d7e33ec798c9c969d5cd1e4f40d5eab9eae,53,cloned,,"v0.26.6,0.26.6"
+2026-07-12T07:12:25.439044+00:00,org.guvnor:guvnor-inbox-api,java,https://github.com/droolsjbpm/droolsjbpm-build-bootstrap,6.5.0.Final,tag,6.5.0.Final,68a6ba9c81868b2a9cb4926013008270144a2333,2,cloned,,"v6.5.0.Final,6.5.0.Final"
+2026-07-12T07:12:25.439044+00:00,de.sciss:lucrestm-bdb_2.10,java,https://github.com/Sciss/LucreSTM,2.1.2,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.sciss_lucrestm-bdb_2.10'...
+remote: Repository not found.
+fatal: repository 'https://github.com/Sciss/LucreSTM/' not found","v2.1.2,2.1.2,release-2.1.2,release/2.1.2,2.1.2-release"
+2026-07-12T07:12:25.439044+00:00,org.odpi.egeria:basic-file-connector,java,https://github.com/odpi/egeria,5.2.1,default-branch,,70bff70332792094a1c78390213939c1ebe31828,614,cloned,,"v5.2.1,5.2.1,release-5.2.1,release/5.2.1,5.2.1-release"
+2026-07-12T07:12:25.439044+00:00,com.github.shepherdviolet.glacimon:glacispring-common,java,https://github.com/shepherdviolet/glacimon,2026.0.0,tag,2026.0.0,a1e20efcba70ac354f73f2c1c6e2d2004f167cce,45,cloned,,"v2026.0.0,2026.0.0"
+2026-07-12T07:12:25.439044+00:00,org.zalando:tracer-core,java,https://github.com/zalando/tracer,0.17.2,tag,0.17.2,b83b2b3951f562385e6be9e9a4f2b91c062eabaa,2,cloned,,"v0.17.2,0.17.2"
+2026-07-12T07:12:25.439044+00:00,org.camunda.bpm.model:camunda-dmn-model,java,https://github.com/camunda/camunda-bpm-platform,7.24.0,tag,7.24.0,2d8b7ed86ba912991613a99eea25ce7c486604d9,47,cloned,,"v7.24.0,7.24.0"
+2026-07-12T07:12:25.439044+00:00,org.teiid.connectors:document-api,java,https://github.com/teiid/teiid,16.0.0,default-branch,,3de2f782befef980be5dc537249752e28ad972f7,43,cloned,,"v16.0.0,16.0.0,release-16.0.0,release/16.0.0,16.0.0-release"
+2026-07-12T07:12:25.439044+00:00,org.eclipse.hudson.main:hudson-test-utils,java,https://github.com/hudson/hudson,3.0.0-M2,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.eclipse.hudson.main_hudson-test-utils'...
+remote: Repository not found.
+fatal: repository 'https://github.com/hudson/hudson/' not found","v3.0.0-M2,3.0.0-M2,release-3.0.0-M2,release/3.0.0-M2,3.0.0-M2-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.kafka:connect-api,java,,4.2.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,com.lyncode:builder-commons,java,https://github.com/lyncode/builder-commons,1.0.2,default-branch,,812f46e0dcd6b6866683d3c3add420822972ba26,1,cloned,,"v1.0.2,1.0.2,release-1.0.2,release/1.0.2,1.0.2-release"
+2026-07-12T07:12:25.439044+00:00,net.redpipe:redpipe-engine,java,https://github.com/FroMage/redpipe,0.0.4,tag,0.0.4,bd27af86f9caeaf28e2c142285d782137c54e3b3,6,cloned,,"v0.0.4,0.0.4"
+2026-07-12T07:12:25.439044+00:00,net.codingwell:scala-guice_2.11,java,https://github.com/codingwell/scala-guice,7.0.0,tag,v7.0.0,0e1b647e41f3c6f6668e4b1ae903c676339524ff,1,cloned,,v7.0.0
+2026-07-12T07:12:25.439044+00:00,software.amazon.awssdk:iot,java,https://github.com/aws/aws-sdk-java-v2,2.42.19,tag,2.42.19,5713adc86add8ca517cb74360d5a9c59342e9f4a,75,cloned,,"v2.42.19,2.42.19"
+2026-07-12T07:12:25.439044+00:00,org.sonatype.plugin:plugin-api,java,https://github.com/sonatype/sisu-plugin,1.1.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.sonatype.plugin_plugin-api'...
+remote: Repository not found.
+fatal: repository 'https://github.com/sonatype/sisu-plugin/' not found","v1.1.0,1.1.0,release-1.1.0,release/1.1.0,1.1.0-release"
+2026-07-12T07:12:25.439044+00:00,net.databinder:unfiltered-netty-server_2.9.1,java,https://github.com/unfiltered/unfiltered,0.6.5,tag,0.6.5,0f90492ddf07bce6f1adb96fabb41a37b02b263f,7,cloned,,"v0.6.5,0.6.5"
+2026-07-12T07:12:25.439044+00:00,org.catools:common.utils,java,https://gitlab.com/catools/catools.git,2.0.0,default-branch,,ef7c062e234ffdb4d67b7a4207c51f08223e930a,1,cloned,,"v2.0.0,2.0.0,release-2.0.0,release/2.0.0,2.0.0-release"
+2026-07-12T07:12:25.439044+00:00,org.springframework.roo:org.springframework.roo.addon.configurable,java,https://github.com/spring-projects/spring-roo,2.0.0.RELEASE,tag,2.0.0.RELEASE,4a2e9f1eb17d4e49ad947503a63afef7d5a37842,7,cloned,,"v2.0.0.RELEASE,2.0.0.RELEASE"
+2026-07-12T07:12:25.439044+00:00,org.specs2:specs2-scalacheck_2.13.0-M5,java,https://github.com/etorreborre/specs2,4.5.1,default-branch,,04fba223e2475f39cedd770589b5c51dba9dcb6a,1,cloned,,"v4.5.1,4.5.1,release-4.5.1,release/4.5.1,4.5.1-release"
+2026-07-12T07:12:25.439044+00:00,org.eclipse.xtext:org.eclipse.xtext.builder.standalone,java,https://github.com/eclipse-xtext/xtext,2.42.0,tag,v2.42.0,1e54d8d221b4c42dee90efa49b1416fb169c60fe,8,cloned,,v2.42.0
+2026-07-12T07:12:25.439044+00:00,org.webjars:emberjs,java,https://github.com/webjars/emberjs,1.12.0,default-branch,,2851963db2b2dca051fda043e9515d7fe02498c9,1,cloned,,"v1.12.0,1.12.0,release-1.12.0,release/1.12.0,1.12.0-release"
+2026-07-12T07:12:25.439044+00:00,io.snamp.instrumentation:core,java,https://bitbucket.org/bytex-solutions/snamp,1.0.0,default-branch,,c67881ee470bf8582368920dcb3c1b6214643ac8,48,cloned,,"v1.0.0,1.0.0,release-1.0.0,release/1.0.0,1.0.0-release"
+2026-07-12T07:12:25.439044+00:00,jakarta.nosql.tck.mapping:mapping-tck-column,java,https://github.com/jakartaee/nosql,1.0.0-b5,tag,1.0.0-b5,8803b8f7d6ac45b9f13c315182ec8603c31b1d33,3,cloned,,"v1.0.0-b5,1.0.0-b5"
+2026-07-12T07:12:25.439044+00:00,com.softwaremill.magnolia:magnolia-core_2.12,java,https://github.com/softwaremill/magnolia,1.0.0-M4,tag,v1.0.0-M4,4ac2b003de0ce493eaf70a69a1be7b18923dcd04,1,cloned,,v1.0.0-M4
+2026-07-12T07:12:25.439044+00:00,com.rethinkdb:rethinkdb-driver,java,https://github.com/rethinkdb/rethinkdb-java,2.4.4,tag,v2.4.4,01b17f8e5b7e23eb47de663350e32198bc10cd6e,1,cloned,,v2.4.4
+2026-07-12T07:12:25.439044+00:00,org.apache.sqoop:sqoop-security,java,https://git-wip-us.apache.org/repos/asf?p=sqoop.git,1.99.7,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,com.helger.photon:ph-oton-audit,java,https://github.com/phax/ph-oton,10.2.3,default-branch,,0707cfdbb158fe77a194039b08410f37a67d1d94,10,cloned,,"v10.2.3,10.2.3,release-10.2.3,release/10.2.3,10.2.3-release"
+2026-07-12T07:12:25.439044+00:00,org.webjars.npm:picomatch,java,https://github.com/micromatch/picomatch,4.0.5,tag,4.0.5,4f41a8edade7a5ab19832f7b40ecce46b288767f,1,cloned,,"v4.0.5,4.0.5"
+2026-07-12T07:12:25.439044+00:00,org.apereo.cas:cas-server-support-ws-idp-api,java,https://github.com/apereo/cas,7.3.6,tag,v7.3.6,7a30e2a30c3f3014db805f2e224eaf7045f84058,771,cloned,,v7.3.6
+2026-07-12T07:12:25.439044+00:00,com.mortennobel:java-image-scaling,java,http://java-image-scaling.googlecode.com/svn/tags/0.8.6,0.8.6,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.jvnet.jaxbcommons:jaxbcommons-runtime,java,http://java.net/projects/jaxbcommons/sources/svn/show/trunk,1.0.6.5,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,com.google.api.grpc:grpc-google-cloud-orgpolicy-v2,java,https://github.com/googleapis/google-cloud-java,2.92.0,default-branch,,faf8530a6e4919ca6560a7a581141b8fafff8464,317,cloned,,"v2.92.0,2.92.0,release-2.92.0,release/2.92.0,2.92.0-release"
+2026-07-12T07:12:25.439044+00:00,org.webjars.bowergithub.vaadin:vaadin-notification,java,https://github.com/vaadin/vaadin-notification,1.6.2,tag,v1.6.2,0d73416c0690d65de46d5475233b65ab1210e64b,1,cloned,,v1.6.2
+2026-07-12T07:12:25.439044+00:00,org.apache.directory.studio:connection.core,java,https://svn.apache.org/viewvc/directory/studio/tags/2.0.0.v20130628,2.0.0.v20130628,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,love.forte.simple-robot:serialization-json-core,java,https://github.com/ForteScarlet/simpler-robot,2.0.0-BETA.3,tag,v2.0.0-BETA.3,1c8b5f1577247b22c8565dde82df93f57a516659,16,cloned,,v2.0.0-BETA.3
+2026-07-12T07:12:25.439044+00:00,org.ow2.util.marshalling:marshalling,java,http://gitorious.ow2.org/ow2-utilities/marshalling,2.0.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,com.typesafe.akka:akka-persistence_2.12.0-RC1,java,https://github.com/akka/akka,2.4.11,tag,v2.4.11,74ae2ab2ebb144a2e359c977f99e88de7559db80,20,cloned,,v2.4.11
+2026-07-12T07:12:25.439044+00:00,org.julienrf:endpoints-algebra-circe_2.12,java,https://github.com/julienrf/endpoints,0.15.0+90-108c999c,default-branch,,404dd23fd2efdc482600ca8e2a4142ecc88d75a2,1,cloned,,"v0.15.0+90-108c999c,0.15.0+90-108c999c,release-0.15.0+90-108c999c,release/0.15.0+90-108c999c,0.15.0+90-108c999c-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.shardingsphere:shardingsphere-infra-context,java,https://github.com/apache/shardingsphere,5.5.3,tag,5.5.3,8d35894433416ef249ebb6ea21f8a8749648e9b6,957,cloned,,"v5.5.3,5.5.3"
+2026-07-12T07:12:25.439044+00:00,org.webjars.npm:algolia__transporter,java,https://github.com/algolia/algoliasearch-client-javascript,4.12.1,tag,4.12.1,49d6635f48db224c46af7ec14e5dc687f8e695f3,3,cloned,,"v4.12.1,4.12.1"
+2026-07-12T07:12:25.439044+00:00,org.apache.johnzon:johnzon-jsonp-strict,java,https://git-wip-us.apache.org/repos/asf?p=johnzon.git,1.2.22,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.jboss.windup.reporting:windup-reporting,java,https://github.com/windup/windup,6.3.9.Final,tag,6.3.9.Final,df257b1beb5f3e4d5bf664ee114b47b27ad794ea,10,cloned,,"v6.3.9.Final,6.3.9.Final"
+2026-07-12T07:12:25.439044+00:00,org.webjars.npm:has-symbols,java,https://github.com/inspect-js/has-symbols,1.1.0,tag,v1.1.0,270f0a67b5f4cb12715e0a84e672aaee64d1b4f1,1,cloned,,v1.1.0
+2026-07-12T07:12:25.439044+00:00,com.github.davide-maestroni:jroutine-object,java,https://github.com/davide-maestroni/jroutine,6.0.0,default-branch,,500404a2c073ab512f9f786f469fac55adbbd872,1,cloned,,"v6.0.0,6.0.0,release-6.0.0,release/6.0.0,6.0.0-release"
+2026-07-12T07:12:25.439044+00:00,org.beangle.security:beangle-security-web_2.13,java,https://github.com/beangle/beangle,4.2.29,default-branch,,ee1b4266f038f33cfeb55fd68f7c83c47433eca2,1,cloned,,"v4.2.29,4.2.29,release-4.2.29,release/4.2.29,4.2.29-release"
+2026-07-12T07:12:25.439044+00:00,org.webjars.npm:rxjs,java,https://github.com/reactivex/rxjs,7.8.2,tag,7.8.2,e5351d02e225e275ac0e497c7b66eaa5f0c88791,10,cloned,,"v7.8.2,7.8.2"
+2026-07-12T07:12:25.439044+00:00,org.apache.servicecomb:foundation-common,java,https://github.com/apache/servicecomb-java-chassis,3.3.0,tag,3.3.0,394449241b3b3ad35ebb00a29d20a23f6332b1a0,23,cloned,,"v3.3.0,3.3.0"
+2026-07-12T07:12:25.439044+00:00,org.apache.shardingsphere:shardingsphere-transaction-core,java,https://github.com/apache/shardingsphere,5.5.3,tag,5.5.3,8d35894433416ef249ebb6ea21f8a8749648e9b6,957,cloned,,"v5.5.3,5.5.3"
+2026-07-12T07:12:25.439044+00:00,org.switchyard.components:switchyard-component-test-mixin-naming,java,https://github.com/jboss-switchyard/components,2.0.1.redhat-621177,default-branch,,4316361bf2a52498ed1ac2431188834c66576cfc,5,cloned,,"v2.0.1.redhat-621177,2.0.1.redhat-621177,release-2.0.1.redhat-621177,release/2.0.1.redhat-621177,2.0.1.redhat-621177-release"
+2026-07-12T07:12:25.439044+00:00,org.copper-engine:copper-coreengine,java,https://github.com/copper-engine/copper-engine,8.0.0,tag,v8.0.0,398984519d6e18239f70cdf924c113dfbdc0dc12,8,cloned,,v8.0.0
+2026-07-12T07:12:25.439044+00:00,org.webjars.npm:util.promisify,java,https://github.com/ljharb/util.promisify,1.1.1,tag,v1.1.1,8980c559962db489a7720f88bfaa099503ab920f,1,cloned,,v1.1.1
+2026-07-12T07:12:25.439044+00:00,io.arrow-kt:arrow-core-js,java,https://github.com/arrow-kt/arrow,2.2.2,tag,2.2.2,3a1f993816a2374cd303a739c2bbae07b1bad672,7,cloned,,"v2.2.2,2.2.2"
+2026-07-12T07:12:25.439044+00:00,org.sonatype.nexus.plugins:nexus-rapture-plugin,java,https://github.com/sonatype/nexus-public,3.0.0-b2016011501,default-branch,,0a8a425daa4b37e924ca11e4637a41afce7b115c,19,cloned,,"v3.0.0-b2016011501,3.0.0-b2016011501,release-3.0.0-b2016011501,release/3.0.0-b2016011501,3.0.0-b2016011501-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.camel:camel-scheduler,java,https://github.com/apache/maven-apache-parent,4.20.0,default-branch,,2d5bcb37dadfeb1a8224bb4fe3e453b92f2e6e91,1,cloned,,"v4.20.0,4.20.0,release-4.20.0,release/4.20.0,4.20.0-release"
+2026-07-12T07:12:25.439044+00:00,app.cash.sqldelight:runtime-tvosarm64,java,https://github.com/sqldelight/sqldelight,2.3.1,tag,2.3.1,3e46820a7ef8e9444d1fa25b058611be52d35058,138,cloned,,"v2.3.1,2.3.1"
+2026-07-12T07:12:25.439044+00:00,org.wicketstuff:prototype,java,https://github.com/wicketstuff/core,1.4.21,default-branch,,f5513447f59b171807f476e53b56efb16c789e22,43,cloned,,"v1.4.21,1.4.21,release-1.4.21,release/1.4.21,1.4.21-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.camel.quarkus:camel-quarkus-jooq-deployment,java,https://github.com/apache/camel-quarkus,3.33.0,tag,3.33.0,c70379b6dece4486ba55fdfc8fc6ef8778be8e5f,609,cloned,,"v3.33.0,3.33.0"
+2026-07-12T07:12:25.439044+00:00,org.hswebframework.web:hsweb-commons-utils,java,https://github.com/hs-web/hsweb-framework,3.0.11,default-branch,,578a071336a076d5f41da4148079fdc02d83b34f,10,cloned,,"v3.0.11,3.0.11,release-3.0.11,release/3.0.11,3.0.11-release"
+2026-07-12T07:12:25.439044+00:00,com.google.appengine:appengine-api-stubs,java,https://github.com/GoogleCloudPlatform/appengine-java-standard,5.0.0,tag,v5.0.0,2d9211a254c29d550f6dd37eaf1e29fb5cfa3a1c,6,cloned,,v5.0.0
+2026-07-12T07:12:25.439044+00:00,org.openurp.platform.api:openurp-platform-api-cas,java,https://github.com/beangle/beangle,0.0.23,default-branch,,ee1b4266f038f33cfeb55fd68f7c83c47433eca2,1,cloned,,"v0.0.23,0.0.23,release-0.0.23,release/0.0.23,0.0.23-release"
+2026-07-12T07:12:25.439044+00:00,me.madhead.aws-junit5:common-v2,java,https://github.com/madhead/aws-junit5,7.1.2,default-branch,,902e4374f7a3f634c1f4f0e359901f688879ba20,5,cloned,,"v7.1.2,7.1.2,release-7.1.2,release/7.1.2,7.1.2-release"
+2026-07-12T07:12:25.439044+00:00,org.apache.logging.log4j:log4j-jpa,java,https://github.com/apache/logging-log4j2,2.26.1,default-branch,,b6ba7d0af60783e98fbe52aee4f9ea3e70deed25,4,cloned,,"v2.26.1,2.26.1,release-2.26.1,release/2.26.1,2.26.1-release"
+2026-07-12T07:12:25.439044+00:00,org.dspace.modules:additions,java,https://github.com/DSpace/DSpace,7.6.6,default-branch,,fc6b6155c2f339888a99431f1c6676f68050db75,11,cloned,,"v7.6.6,7.6.6,release-7.6.6,release/7.6.6,7.6.6-release"
+2026-07-12T07:12:25.439044+00:00,org.bdgenomics.adam:adam-apis_2.11,java,https://github.com/bigdatagenomics/adam,0.23.0,default-branch,,6f2aec83d2289f48104801a88c326b894ec7df2c,38,cloned,,"v0.23.0,0.23.0,release-0.23.0,release/0.23.0,0.23.0-release"
+2026-07-12T07:12:25.439044+00:00,org.kie.kogito:kogito-addons-springboot-jobs-management,java,,1.40.2.Final,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T07:12:25.439044+00:00,org.hibernate:hibernate-search-orm,java,https://github.com/hibernate/hibernate-search,5.11.12.Final,tag,5.11.12.Final,db66403bdd5ff275073c294466a03bb4a06d5d05,22,cloned,,"v5.11.12.Final,5.11.12.Final"
+2026-07-12T07:12:25.439044+00:00,com.alibaba.rocketmq:rocketmq-store,java,https://github.com/alibaba/rocketmq,3.2.6,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/com.alibaba.rocketmq_rocketmq-store'...
+remote: Repository not found.
+fatal: repository 'https://github.com/alibaba/rocketmq/' not found","v3.2.6,3.2.6,release-3.2.6,release/3.2.6,3.2.6-release"
+2026-07-12T07:12:25.439044+00:00,io.netty:netty5-handler,java,https://github.com/netty/netty,5.0.0.Alpha5,default-branch,,01c93eb988d56035e011fb795de5780f3b2e49ae,10,cloned,,"v5.0.0.Alpha5,5.0.0.Alpha5,release-5.0.0.Alpha5,release/5.0.0.Alpha5,5.0.0.Alpha5-release"
+2026-07-12T07:12:25.439044+00:00,com.github.yroffin:jbehaviour-engine,java,http://svn.sonatype.org/spice/tags/oss-parent-7,0.0.1,skip,,,0,F4_skip,non-git-url,
+2026-07-12T07:12:25.439044+00:00,org.wso2.extension.siddhi.store.hbase:siddhi-store-hbase,java,https://github.com/wso2-extensions/siddhi-store-hbase,5.0.0,tag,v5.0.0,81c796581f9ecd7a8d78c03e82187068e5978297,24,cloned,,v5.0.0
+2026-07-12T07:12:25.439044+00:00,com.github.waikato:jclasslocator,java,https://github.com/waikato/jclasslocator,0.0.23,default-branch,,770235450b657998f2b5ad8af73d173fa22b8e54,1,cloned,,"v0.0.23,0.0.23,release-0.0.23,release/0.0.23,0.0.23-release"
+2026-07-12T07:12:25.439044+00:00,org.locationtech.geotrellis:geotrellis-vector_2.13,java,https://github.com/locationtech/geotrellis,3.8.0,tag,v3.8.0,cfa90bb007b66dd7b1f5861a3de2d540e6245e14,45,cloned,,v3.8.0
+2026-07-12T11:04:19.217688+00:00,wincertstore,python,https://github.com/tiran/wincertstore,0.2.1,tag,0.2.1,60d92fc09b7524b7f9522d1cd02f526dec107552,1,cloned,,"v0.2.1,0.2.1"
+2026-07-12T11:04:19.217688+00:00,langdetect,python,https://github.com/Mimino666/langdetect,1.0.9,default-branch,,5071871742170034557c0e6ec8d6e410f3d9652f,1,cloned,,"v1.0.9,1.0.9,release-1.0.9,release/1.0.9,1.0.9-release"
+2026-07-12T11:04:19.217688+00:00,closer-web3,python,https://github.com/SDFSGSHSHDFH/closer-web3,1.0.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/closer-web3'...
+remote: Repository not found.
+fatal: repository 'https://github.com/SDFSGSHSHDFH/closer-web3/' not found","v1.0.0,1.0.0,release-1.0.0,release/1.0.0,1.0.0-release"
+2026-07-12T11:04:19.217688+00:00,timeloop,python,https://github.com/sankalpjonn/timeloop,1.0.2,tag,v1.0.2,36ec5cbb133a6dcfb5316f59b5e11765c14e62c2,1,cloned,,v1.0.2
+2026-07-12T11:04:19.217688+00:00,structlog-sentry,python,https://github.com/kiwicom/structlog-sentry,2.2.1,tag,v2.2.1,31fa5e3ad504b67e08d59c9f4abc5615e7c1e15d,1,cloned,,v2.2.1
+2026-07-12T11:04:19.217688+00:00,hspylib-clitt,python,https://github.com/yorevs/hspylib,0.9.151,tag,v0.9.151,954ceb3587a659d53974f4c8d14261c9cf9dda5f,14,cloned,,v0.9.151
+2026-07-12T11:04:19.217688+00:00,gwdatafind,python,,2.1.1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:14:26.189464+00:00,wincertstore,python,https://github.com/tiran/wincertstore,0.2.1,existing,existing,60d92fc09b7524b7f9522d1cd02f526dec107552,1,cloned,,
+2026-07-12T11:14:26.189464+00:00,langdetect,python,https://github.com/Mimino666/langdetect,1.0.9,existing,existing,5071871742170034557c0e6ec8d6e410f3d9652f,1,cloned,,
+2026-07-12T11:14:26.189464+00:00,closer-web3,python,https://github.com/SDFSGSHSHDFH/closer-web3,1.0.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/closer-web3'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/SDFSGSHSHDFH/closer-web3/'","v1.0.0,1.0.0,release-1.0.0,release/1.0.0,1.0.0-release"
+2026-07-12T11:14:26.189464+00:00,timeloop,python,https://github.com/sankalpjonn/timeloop,1.0.2,existing,existing,36ec5cbb133a6dcfb5316f59b5e11765c14e62c2,1,cloned,,
+2026-07-12T11:14:26.189464+00:00,structlog-sentry,python,https://github.com/kiwicom/structlog-sentry,2.2.1,existing,existing,31fa5e3ad504b67e08d59c9f4abc5615e7c1e15d,1,cloned,,
+2026-07-12T11:14:26.189464+00:00,hspylib-clitt,python,https://github.com/yorevs/hspylib,0.9.151,existing,existing,954ceb3587a659d53974f4c8d14261c9cf9dda5f,14,cloned,,
+2026-07-12T11:14:26.189464+00:00,gwdatafind,python,,2.1.1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:14:26.189464+00:00,pytest-cache,python,https://bitbucket.org/hpk42/pytest-cache,1.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/pytest-cache'...
+remote: You may not have access to this repository or it no longer exists in this workspace. If you think this repository exists and you have access, make sure you are authenticated.
+fatal: Authentication failed for 'https://bitbucket.org/hpk42/pytest-cache/'","v1.0,1.0,release-1.0,release/1.0,1.0-release"
+2026-07-12T11:14:26.189464+00:00,progressbar2,python,https://github.com/wolph/python-progressbar,4.5.0,tag,v4.5.0,eb840a46af96bdd37065f99d9ec66e3066975300,21,cloned,,v4.5.0
+2026-07-12T11:14:26.189464+00:00,hacking,python,,8.0.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:14:26.189464+00:00,misaka,python,https://github.com/FSX/misaka,2.1.1,default-branch,,23f02d80a9a4bae149ca58f6756bc873a403c452,1,cloned,,"v2.1.1,2.1.1,release-2.1.1,release/2.1.1,2.1.1-release"
+2026-07-12T11:14:26.189464+00:00,queuelib,python,https://github.com/scrapy/queuelib,1.9.0,tag,v1.9.0,06f63bb6e870fd45ea608e076ea84896c5f92821,1,cloned,,v1.9.0
+2026-07-12T11:14:26.189464+00:00,py-multibase,python,https://github.com/multiformats/py-multibase,2.0.0,tag,v2.0.0,f0fe6695f5af8a9203c741e2f7568615b60bfd77,9,cloned,,v2.0.0
+2026-07-12T11:14:26.189464+00:00,prov,python,https://github.com/trungdong/prov,2.4.0,tag,2.4.0,c195be70327e2163fe1eefbe843242e16cca490d,35,cloned,,"v2.4.0,2.4.0"
+2026-07-12T11:14:26.189464+00:00,nefertem-core,python,https://github.com/scc-digitalhub/nefertem,2.0.6,tag,2.0.6,bb1e740e0945c986e77093ebb01dda24a9529fed,9,cloned,,"v2.0.6,2.0.6"
+2026-07-12T11:14:26.189464+00:00,pympler,python,https://github.com/pympler/pympler,1.0.1,tag,1.0.1,03132a641bd7db0c80339bc6b68c3eba6ad7abc4,27,cloned,,"v1.0.1,1.0.1"
+2026-07-12T11:14:26.189464+00:00,gigachain,python,,100.0.4,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:14:26.189464+00:00,graphene-sqlalchemy,python,https://github.com/graphql-python/graphene-sqlalchemy,2.3.0,tag,2.3.0,20ecaeadf2144b88555a3daf1a04e31b7f2ff95a,9,cloned,,"v2.3.0,2.3.0"
+2026-07-12T11:14:26.189464+00:00,darglint,python,https://github.com/terrencepreilly/darglint,1.8.1,tag,v1.8.1,abc26b768cd7135d848223ba53f68323593c33d5,1,cloned,,v1.8.1
+2026-07-12T11:14:26.189464+00:00,cupy-cuda100,python,https://github.com/cupy/cupy,9.6.0,tag,v9.6.0,3a1d84421cdfaf3ee14a5631add6b1761cec8575,69,cloned,,v9.6.0
+2026-07-12T11:14:26.189464+00:00,lumibot,python,https://github.com/Lumiwealth/lumibot,4.5.47,tag,v4.5.47,7f78e66615c72094e3d7c9b404fe8e5dfffdd3a9,118,cloned,,v4.5.47
+2026-07-12T11:14:26.189464+00:00,bw-processing,python,https://github.com/brightway-lca/bw_processing,1.1.1,tag,1.1.1,b3106c5f76b02491caa73142219e0667157124d3,9,cloned,,"v1.1.1,1.1.1"
+2026-07-12T11:14:26.189464+00:00,pylint-flask,python,https://github.com/jschaf/pylint-flask,0.6,default-branch,,41a9e54323571d4913b6f033c0adef9a91e42d98,1,cloned,,"v0.6,0.6,release-0.6,release/0.6,0.6-release"
+2026-07-12T11:14:26.189464+00:00,svn,python,https://github.com/dsoprea/PySvn,1.0.1,tag,1.0.1,2a9acbc0fa655dd6f620bb8ad160f6c9b12ffb50,2,cloned,,"v1.0.1,1.0.1"
+2026-07-12T11:14:26.189464+00:00,matplotx,python,https://github.com/nschloe/matplotx,0.3.10,tag,v0.3.10,b15352ec2492f2e8351050d233c27b4c6cf22288,1,cloned,,v0.3.10
+2026-07-12T11:14:26.189464+00:00,rfc3339,python,,6.2,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:14:26.189464+00:00,tableprint,python,https://github.com/nirum/tableprint,0.9.1,tag,v0.9.1,50d8096047ee91870edc80e0e543c09b9854d912,2,cloned,,v0.9.1
+2026-07-12T11:14:26.189464+00:00,org.jboss.weld:weld-core-test,java,https://github.com/weld/core,1.0.0,default-branch,,9f2e3194aa32bbceb2f3a5b540ea8e0325031c1a,38,cloned,,"v1.0.0,1.0.0,release-1.0.0,release/1.0.0,1.0.0-release"
+2026-07-12T11:14:26.189464+00:00,org.apache.camel.quarkus:camel-quarkus-protobuf,java,https://github.com/apache/camel-quarkus,3.32.0,tag,3.32.0,92915169b590493af580e34127822e24d0cf2d3f,606,cloned,,"v3.32.0,3.32.0"
+2026-07-12T11:14:26.189464+00:00,com.palantir.config.crypto:encrypted-config-value-module,java,https://github.com/palantir/encrypted-config-value,6.5.0,tag,6.5.0,b57015572c1549c64eb9d8129cb988014b8d2a50,1,cloned,,"v6.5.0,6.5.0"
+2026-07-12T11:14:26.189464+00:00,org.apache.camel:camel-pdf-starter,java,,2.25.4,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:14:26.189464+00:00,org.cert.netsa:netsa-data_2.12,java,https://tools.netsa.cert.org/mothra/index.html,1.7.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:14:26.189464+00:00,software.amazon.konstruk:core,java,https://github.com/awslabs/aws-solutions-konstruk,0.8.1,default-branch,,76b8fdd90033b30f040ca99708b31e75d7433a0e,259,cloned,,"v0.8.1,0.8.1,release-0.8.1,release/0.8.1,0.8.1-release"
+2026-07-12T11:14:26.189464+00:00,io.kotest:kotest-framework-discovery-jvm,java,https://github.com/kotest/kotest,5.9.1,tag,v5.9.1,2cd159ddf0d4ee5c09ff43751b33ec6ef49306b4,1105,cloned,,v5.9.1
+2026-07-12T11:14:26.189464+00:00,org.webjars.bower:github-com-polymerelements-iron-icons,java,https://github.com/polymerelements/iron-icons,1.0.5,tag,v1.0.5,39da54afbc17af343d1f95e62c5c0c477492677a,1,cloned,,v1.0.5
+2026-07-12T11:14:26.189464+00:00,org.neo4j:neo4j-consistency-check,java,https://github.com/neo4j/neo4j,2025.12.1,tag,2025.12.1,495f5719b95fc203ec9c5ccefbb563b1f7e5c39a,23,cloned,,"v2025.12.1,2025.12.1"
+2026-07-12T11:14:26.189464+00:00,org.apache.camel.quarkus:camel-quarkus-yammer-deployment,java,https://gitbox.apache.org/repos/asf?p=camel-quarkus.git;a=summary,2.9.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:14:26.189464+00:00,org.kie.server:kie-server-services-dmn,java,https://github.com/kiegroup/droolsjbpm-integration,7.74.1.Final,tag,7.74.1.Final,3fafc8b230d8bf1b82828bb96e23bc70fe9b5ee7,19,cloned,,"v7.74.1.Final,7.74.1.Final"
+2026-07-12T11:14:26.189464+00:00,dev.zio:zio-streams_sjs0.6_2.12,java,https://github.com/zio/zio,1.0.0-RC9-4,tag,v1.0.0-RC9-4,a2d65a41947062eb135e7b749e2ad8ad2fd32d44,50,cloned,,v1.0.0-RC9-4
+2026-07-12T11:14:26.189464+00:00,org.jboss.cdi.tck:cdi-tck-api,java,https://github.com/cdi-spec/cdi-tck,2.0.0.Final,tag,2.0.0.Final,c2eee9d701396843cac88d34af4d5890e5366702,14,cloned,,"v2.0.0.Final,2.0.0.Final"
+2026-07-12T11:14:26.189464+00:00,org.apache.phoenix:phoenix-queryserver-client,java,https://gitbox.apache.org/repos/asf/phoenix-queryserver.git,6.0.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:14:26.189464+00:00,com.networknt:ldap-util,java,https://github.com/networknt/light-4j,2.3.3,tag,2.3.3,75fe680649521eb4d196ee951b759036b866c462,9,cloned,,"v2.3.3,2.3.3"
+2026-07-12T11:14:26.189464+00:00,ru.sbtqa.tag.datajack:datajack-api,java,https://github.com/sbtqa/datajack,5.2.3,tag,5.2.3,6100da9e43b3cc03f2c2fb2dcf30ca29af42614b,2,cloned,,"v5.2.3,5.2.3"
+2026-07-12T11:14:26.189464+00:00,org.opendaylight.vpnservice:vpnmanager-api,java,https://wiki.opendaylight.org/view/ODL_Root_Parent:Main,0.2.4-Beryllium-SR4,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:14:26.189464+00:00,org.springframework.social:spring-social-linkedin,java,https://github.com/spring-projects/spring-social-linkedin,1.0.2.RELEASE,tag,v1.0.2.RELEASE,9fdd625a29ef67a47c5af6947bf718064313c5df,3,cloned,,v1.0.2.RELEASE
+2026-07-12T11:14:26.189464+00:00,org.apache.camel:camel-core,java,https://github.com/apache/maven-apache-parent,4.21.0,default-branch,,2d5bcb37dadfeb1a8224bb4fe3e453b92f2e6e91,1,cloned,,"v4.21.0,4.21.0,release-4.21.0,release/4.21.0,4.21.0-release"
+2026-07-12T11:14:26.189464+00:00,org.osgi:core,java,private,4.3.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:14:26.189464+00:00,net.java.truecommons:truecommons-key-default,java,http://java.net/projects/truecommons/sources/v1/show,2.5.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:14:26.189464+00:00,com.jpmorgan.quorum:tessera-partyinfo,java,https://github.com/jpmorganchase/tessera,0.10.6,default-branch,,f191004f1d01e5e472d049179b5e6e8054d98da3,10,cloned,,"v0.10.6,0.10.6,release-0.10.6,release/0.10.6,0.10.6-release"
+2026-07-12T11:14:26.189464+00:00,me.him188:kotlin-jvm-blocking-bridge-runtime-jvm,java,https://github.com/Him188/kotlin-jvm-blocking-bridge,3.0.0-180.1,tag,v3.0.0-180.1,d808bec0885e63724fdb20ed06fab790af512290,2,cloned,,v3.0.0-180.1
+2026-07-12T11:14:26.189464+00:00,org.springframework.cloud.stream.app:gpfdist-app-dependencies,java,https://github.com/spring-cloud/spring-cloud-build,1.3.1.RELEASE,tag,v1.3.1.RELEASE,541b8f302e285130e48f59b818ee04ffcbdf8543,11,cloned,,v1.3.1.RELEASE
+2026-07-12T11:14:26.189464+00:00,com.symphony.oss.commons:commons-dom-jackson,java,https://github.com/SymphonyOSF/oss-commons,0.3.0,default-branch,,b05ea0ac9ea59ded2c83e260cd763d1ac43e18e3,1,cloned,,"v0.3.0,0.3.0,release-0.3.0,release/0.3.0,0.3.0-release"
+2026-07-12T11:14:26.189464+00:00,org.apache.tez:tez-mapreduce,java,https://github.com/apache/maven-apache-parent,0.10.5,default-branch,,2d5bcb37dadfeb1a8224bb4fe3e453b92f2e6e91,1,cloned,,"v0.10.5,0.10.5,release-0.10.5,release/0.10.5,0.10.5-release"
+2026-07-12T11:14:26.189464+00:00,com.googlecode.streamflyer:streamflyer-core,java,http://code.google.com/p/streamflyer/source/browse/,1.1.3,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:14:26.189464+00:00,co.fs2:fs2-core_sjs1_2.12,java,https://github.com/typelevel/fs2,3.13.0,tag,v3.13.0,5fd43178af3312facaa91868258b7afa90999e0f,4,cloned,,v3.13.0
+2026-07-12T11:14:26.189464+00:00,io.jooby:jooby,java,https://github.com/jooby-project/jooby,4.5.3,tag,v4.5.3,1e3b14984ca93c7c9b98ca6622ccba4acdbc3d38,104,cloned,,v4.5.3
+2026-07-12T11:14:26.189464+00:00,de.wayofquality.blended:blended.util_2.12,java,https://github.com/woq-blended/blended,3.0.13,tag,3.0.13,fbd94dd5776aef5fbb8fc6fc8af26b72725067d6,26,cloned,,"v3.0.13,3.0.13"
+2026-07-12T11:14:26.189464+00:00,org.apache.camel.springboot:camel-jacksonxml-starter,java,https://gitbox.apache.org/repos/asf?p=camel-spring-boot.git;a=summary,4.21.0,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:16:29.511349+00:00,codefast,python,,0.9.29,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:16:29.511349+00:00,odoo14-addon-account-tax-balance,python,https://github.com/OCA/account-financial-reporting,14.0.1.2.9.dev5,default-branch,,efa094abf7f815a8b834a0dfeb4cf487a1661e59,8,cloned,,"v14.0.1.2.9.dev5,14.0.1.2.9.dev5,release-14.0.1.2.9.dev5,release/14.0.1.2.9.dev5,14.0.1.2.9.dev5-release"
+2026-07-12T11:16:29.511349+00:00,zope.principalannotation,python,https://github.com/zopefoundation/zope.principalannotation,4.3.0,tag,4.3.0,f757969bbdcc7d805dd3cd4ce8a2ed3aebbaa459,6,cloned,,"v4.3.0,4.3.0"
+2026-07-12T11:16:29.511349+00:00,bitlist,python,https://github.com/lapets/bitlist,2.0.0,tag,2.0.0,6f396e5b4d6e4104a67ebf93b3524ef9d631ab84,5,cloned,,"v2.0.0,2.0.0"
+2026-07-12T11:16:29.511349+00:00,pygame,python,https://github.com/pygame/pygame,2.6.1,tag,v2.6.1,b92c0da9d1b5eba6c813138790fc1ab6cea0252c,148,cloned,,v2.6.1
+2026-07-12T11:16:29.511349+00:00,jupyter-releaser,python,,1.11.1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-12T11:16:29.511349+00:00,org.wso2.carbon.analytics-common:org.wso2.carbon.databridge.core,java,https://github.com/wso2/carbon-analytics-common,6.1.72,tag,v6.1.72,37542692ffefcb1212e16987097a906a4f35a336,1,cloned,,v6.1.72
+2026-07-12T11:16:29.511349+00:00,io.quarkus:quarkus-resteasy-common,java,https://github.com/quarkusio/quarkus,3.34.1,tag,3.34.1,6c6ef9cb1ff45d83749e22f31d1851d1dc322a54,454,cloned,,"v3.34.1,3.34.1"
+2026-07-12T11:16:29.511349+00:00,org.orbisgis:cts,java,https://github.com/orbisgis/cts,1.7.2,tag,v1.7.2,13a68615ee54075709750c6d3ca76eb6379d9799,3,cloned,,v1.7.2
+2026-07-12T11:16:29.511349+00:00,org.apereo.cas:cas-server-core-authentication-mfa,java,https://github.com/apereo/cas,7.3.7,tag,v7.3.7,dd9f32688659a2e857eb7e13826168510188c967,771,cloned,,v7.3.7
+2026-07-12T11:16:29.511349+00:00,org.apache.camel.quarkus:camel-quarkus-kudu-deployment,java,https://github.com/apache/camel-quarkus,3.33.0,tag,3.33.0,c70379b6dece4486ba55fdfc8fc6ef8778be8e5f,609,cloned,,"v3.33.0,3.33.0"
+2026-07-12T11:16:29.511349+00:00,org.graalvm.regex:regex,java,https://github.com/oracle/graal,25.0.2,default-branch,,6f3e251ad665dc6e5f4d6bb618ba7f13c9873a69,279,cloned,,"v25.0.2,25.0.2,release-25.0.2,release/25.0.2,25.0.2-release"
+2026-07-12T11:16:29.511349+00:00,com.networknt:json-schema-validator,java,https://github.com/networknt/json-schema-validator,3.0.3,tag,3.0.3,7407dddb9f3b1e1e066ec4a81fe44cc40a8e47b0,34,cloned,,"v3.0.3,3.0.3"
+2026-07-12T11:16:29.511349+00:00,io.github.kangjianqun:fast-common-core,java,https://github.com/kangjianqun/fast,1.0.3,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/io.github.kangjianqun_fast-common-core'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/kangjianqun/fast/'","v1.0.3,1.0.3,release-1.0.3,release/1.0.3,1.0.3-release"
+2026-07-12T11:16:29.511349+00:00,org.sonatype.spice.inject:guice-bean-inject,java,http://svn.sonatype.org/spice/tags/guice-bean-1.3.4,1.3.4,skip,,,0,F4_skip,non-git-url,
+2026-07-12T11:17:40.754220+00:00,grokcore.component,python,https://github.com/zopefoundation/grokcore.component,4.1.1,tag,4.1.1,7fcb8b9ff2adeb6885df194014eed1ed60c326ae,1,cloned,,"v4.1.1,4.1.1"
+2026-07-12T11:17:40.754220+00:00,pgsanity,python,https://github.com/markdrago/pgsanity,0.3.0,tag,v0.3.0,a6a4601cb37f713764324fa4100522e8ee1750ac,2,cloned,,v0.3.0
+2026-07-12T11:17:40.754220+00:00,de.dentrassi.eclipse.neoscada.utils:org.eclipse.scada.utils.osgi,java,https://git.eclipse.org/c/eclipsescada/org.eclipse.scada.utils.git,0.1.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.dentrassi.eclipse.neoscada.utils_org.eclipse.scada.utils.osgi'...
+fatal: https://git.eclipse.org/c/eclipsescada/org.eclipse.scada.utils.git/info/refs not valid: is this a git repository?","v0.1.0,0.1.0,release-0.1.0,release/0.1.0,0.1.0-release"
+2026-07-12T11:17:40.754220+00:00,io.openliberty.features:io.openliberty.jakarta.activation-2.0,java,https://github.com/OpenLiberty/open-liberty,26.0.0.3,default-branch,,5a4e245aac76968015c4b9c47aed41a1e7a2498f,128,cloned,,"v26.0.0.3,26.0.0.3,release-26.0.0.3,release/26.0.0.3,26.0.0.3-release"
+2026-07-12T11:18:50.811519+00:00,org.scalatest:scalatest-funsuite_sjs1_2.12,java,https://github.com/scalatest/scalatest,3.2.20,tag,release-3.2.20,b4efe5a942fd290e9b1bb377a2efeb816b34ea21,2,cloned,,"v3.2.20,3.2.20,release-3.2.20"
+2026-07-14T02:54:48.970923+00:00,versioningit,python,https://github.com/jwodder/versioningit,3.3.0,tag,v3.3.0,2e37331898744a9c0ef00dc5d0250bce61e1c5d1,12,cloned,,v3.3.0
+2026-07-14T02:54:48.970923+00:00,discord.py,python,https://github.com/Rapptz/discord.py,2.7.1,tag,v2.7.1,dfd1144b2246a7adafe3f1c64a4dd9bc2187fcee,22,cloned,,v2.7.1
+2026-07-14T02:54:48.970923+00:00,odoo14-addon-account-asset-management,python,https://github.com/OCA/account-financial-tools,14.0.3.1.5.dev9,default-branch,,b168930320d2a730649b8cb90c8d26000122855f,41,cloned,,"v14.0.3.1.5.dev9,14.0.3.1.5.dev9,release-14.0.3.1.5.dev9,release/14.0.3.1.5.dev9,14.0.3.1.5.dev9-release"
+2026-07-14T02:54:48.970923+00:00,logbook,python,https://github.com/getlogbook/logbook,1.9.2,tag,1.9.2,ab46a87502ed5bd5e83ee208aa6dabb05adece36,26,cloned,,"v1.9.2,1.9.2"
+2026-07-14T02:54:48.970923+00:00,pygelf,python,https://github.com/keeprocking/pygelf,0.4.3,default-branch,,986e6cf34969379a947853b12d9dd49c53fb7eae,1,cloned,,"v0.4.3,0.4.3,release-0.4.3,release/0.4.3,0.4.3-release"
+2026-07-14T02:54:48.970923+00:00,tkinterweb,python,https://github.com/Andereoo/TkinterWeb,4.25.3,default-branch,,7f74d5e5cd890f22b7dc18e5e983450a6be7957d,20,cloned,,"v4.25.3,4.25.3,release-4.25.3,release/4.25.3,4.25.3-release"
+2026-07-14T02:54:48.970923+00:00,vcrpy,python,https://github.com/kevin1024/vcrpy,8.3.0,tag,v8.3.0,c599974b31f3e510df9b98e61513fe6889a50db0,11,cloned,,v8.3.0
+2026-07-14T02:54:48.970923+00:00,langchainplus-sdk,python,"https://github.com/hwchase17/langchain,",0.0.21,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/langchainplus-sdk'...
+remote: Repository not found.
+fatal: repository 'https://github.com/hwchase17/langchain,/' not found","v0.0.21,0.0.21,release-0.0.21,release/0.0.21,0.0.21-release"
+2026-07-14T02:54:48.970923+00:00,typepigeon,python,https://github.com/zacharyburnett/TypePigeon,2.0.4,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/typepigeon'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/zacharyburnett/TypePigeon/'","v2.0.4,2.0.4,release-2.0.4,release/2.0.4,2.0.4-release"
+2026-07-14T02:54:48.970923+00:00,odoo11-addon-quality-control,python,https://github.com/OCA/manufacture,11.0.1.1.0.99.dev19,default-branch,,0a4b4aaeeec6376531d3fc87046e8f8d8a1171a1,55,cloned,,"v11.0.1.1.0.99.dev19,11.0.1.1.0.99.dev19,release-11.0.1.1.0.99.dev19,release/11.0.1.1.0.99.dev19,11.0.1.1.0.99.dev19-release"
+2026-07-14T02:54:48.970923+00:00,sphinx-carousel,python,https://github.com/Robpol86/sphinx-carousel,1.2.0,tag,1.2.0,df7cd8240fa61c7f27bbf1a6b37a522acd3f250f,7,cloned,,"v1.2.0,1.2.0"
+2026-07-14T02:54:48.970923+00:00,pyjokes,python,https://github.com/pyjokes/pyjokes,0.8.3,default-branch,,10784f9226dd087162eec54953bbd2a0fee595a7,1,cloned,,"v0.8.3,0.8.3,release-0.8.3,release/0.8.3,0.8.3-release"
+2026-07-14T02:54:48.970923+00:00,sty,python,https://github.com/feluxe/sty,1.0.6,default-branch,,6f1774ef260be04bac356c101e3fca0ae5b38c70,6,cloned,,"v1.0.6,1.0.6,release-1.0.6,release/1.0.6,1.0.6-release"
+2026-07-14T02:54:48.970923+00:00,wheel,python,https://github.com/pypa/wheel,0.47.0,tag,0.47.0,efd83a750f07a33462ea2eed365fd8dac9e51442,15,cloned,,"v0.47.0,0.47.0"
+2026-07-14T02:54:48.970923+00:00,sqlalchemy-trino,python,https://github.com/dungdm93/sqlalchemy-trino,0.5.0,tag,v0.5.0,b96e43c7745bb56e73e779e7b84c4456ac7047d9,1,cloned,,v0.5.0
+2026-07-14T02:54:48.970923+00:00,azure-mgmt-authorization,python,https://github.com/Azure/azure-sdk-for-python,4.0.0,default-branch,,a67e6be0cc63b359fbac3ff8ad704c08a31c5f19,806,cloned,,"v4.0.0,4.0.0,release-4.0.0,release/4.0.0,4.0.0-release"
+2026-07-14T02:54:48.970923+00:00,memoization,python,https://github.com/lonelyenvoy/python-memoization,0.4.0,tag,v0.4.0,9c1a0d13e8fbad1f7f4a05d5b41873a7ca5b6aaa,1,cloned,,v0.4.0
+2026-07-14T02:54:48.970923+00:00,sparv-pipeline,python,,5.3.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,pylxd,python,https://github.com/canonical/pylxd,2.3.7,tag,2.3.7,4c68d2227868997ad81752bcf8bf636e9be84a14,18,cloned,,"v2.3.7,2.3.7"
+2026-07-14T02:54:48.970923+00:00,spaceone-core,python,,2.0.144,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,pyxlsb,python,https://github.com/willtrnr/pyxlsb,1.0.10,tag,v1.0.10,aa866dc8ab56becf55d7e51d1c9b8f5f69cfb89d,1,cloned,,v1.0.10
+2026-07-14T02:54:48.970923+00:00,llama-index-llms-llama-cpp,python,,0.6.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,ruamel.base,python,https://bitbucket.org/ruamel/base,1.0.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/ruamel.base'...
+remote: You may not have access to this repository or it no longer exists in this workspace. If you think this repository exists and you have access, make sure you are authenticated.
+fatal: Authentication failed for 'https://bitbucket.org/ruamel/base/'","v1.0.0,1.0.0,release-1.0.0,release/1.0.0,1.0.0-release"
+2026-07-14T02:54:48.970923+00:00,logmuse,python,https://github.com/databio/logmuse,0.3.0,tag,v0.3.0,a7223bf4e84fd87402fb864b39c4e80b3b5234c4,1,cloned,,v0.3.0
+2026-07-14T02:54:48.970923+00:00,py7zr,python,https://github.com/miurahr/py7zr,1.1.3,tag,v1.1.3,e278bc05cc937ecd1ee62bc6a058db3a21e66614,12,cloned,,v1.1.3
+2026-07-14T02:54:48.970923+00:00,moat-kv,python,https://github.com/M-o-a-T/moat,0.71.32,default-branch,,1b9fdc9479925d73f765350be13b1a9779ad3516,276,cloned,,"v0.71.32,0.71.32,release-0.71.32,release/0.71.32,0.71.32-release"
+2026-07-14T02:54:48.970923+00:00,pymisp,python,https://github.com/MISP/PyMISP,2.5.34,tag,v2.5.34,93c66024fa5170312276d2591a0982410a7f5a5e,12,cloned,,v2.5.34
+2026-07-14T02:54:48.970923+00:00,edit-distance,python,https://github.com/belambert/edit-distance,1.0.9,tag,v1.0.9,7bbade9d81347a81a805271da0722271eb67f2b0,2,cloned,,v1.0.9
+2026-07-14T02:54:48.970923+00:00,priority,python,https://github.com/python-hyper/priority,2.0.0,tag,v2.0.0,352fe577ef53505bbaef6c013da51f3578de154d,9,cloned,,v2.0.0
+2026-07-14T02:54:48.970923+00:00,jproperties,python,https://github.com/Tblue/python-jproperties,2.1.2,tag,v2.1.2,815310b55e2ff1505bfd74eb995b33d433699bb4,1,cloned,,v2.1.2
+2026-07-14T02:54:48.970923+00:00,shandy-sqlfmt,python,https://github.com/tconbeer/sqlfmt,0.30.0,tag,v0.30.0,339e24121a797806c40bf4ba31a6ed73e29e6ce4,1,cloned,,v0.30.0
+2026-07-14T02:54:48.970923+00:00,absl-py,python,https://github.com/abseil/abseil-py,2.5.0,tag,v2.5.0,a742ec37ace382ea1e6a0c30db168ed104533fa6,3,cloned,,v2.5.0
+2026-07-14T02:54:48.970923+00:00,requires,python,,0.12.1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,saspy,python,https://github.com/sassoftware/saspy,5.107.1,tag,v5.107.1,66597e33f938fc2c79c6518cd8fb7f6a5feb15e8,13,cloned,,v5.107.1
+2026-07-14T02:54:48.970923+00:00,pynapple,python,https://github.com/pynapple-org/pynapple,0.11.3,tag,v0.11.3,2a64497c98f79de1611df38d0b8e4d40d3438bfe,37,cloned,,v0.11.3
+2026-07-14T02:54:48.970923+00:00,uniparser-morph,python,https://github.com/timarkh/uniparser-morph,2.9.4,default-branch,,54e4dca92f1e326770afc8f29f8e823fdf721e73,25,cloned,,"v2.9.4,2.9.4,release-2.9.4,release/2.9.4,2.9.4-release"
+2026-07-14T02:54:48.970923+00:00,oauth2client,python,https://github.com/google/oauth2client,4.1.3,tag,v4.1.3,50d20532a748f18e53f7d24ccbe6647132c979a9,30,cloned,,v4.1.3
+2026-07-14T02:54:48.970923+00:00,types-cachetools,python,https://github.com/python/typeshed,5.2.1,default-branch,,4fa81cc6bba22dbaee91bdaacd70b5096d63e3cb,3,cloned,,"v5.2.1,5.2.1,release-5.2.1,release/5.2.1,5.2.1-release"
+2026-07-14T02:54:48.970923+00:00,bluetooth-data-tools,python,https://github.com/bdraco/bluetooth-data-tools,1.29.18,tag,v1.29.18,34481560c9d5dd8caab58dbd7e40562d2beccbe7,6,cloned,,v1.29.18
+2026-07-14T02:54:48.970923+00:00,pattern,python,https://github.com/lazy-punk/ml-utils,0.0.1a0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/pattern'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/lazy-punk/ml-utils/'","v0.0.1a0,0.0.1a0,release-0.0.1a0,release/0.0.1a0,0.0.1a0-release"
+2026-07-14T02:54:48.970923+00:00,stable-ts,python,https://github.com/jianfch/stable-ts,2.19.1,default-branch,,e312072cc024ae9fceb25b057d7d18524873a02b,1,cloned,,"v2.19.1,2.19.1,release-2.19.1,release/2.19.1,2.19.1-release"
+2026-07-14T02:54:48.970923+00:00,grpc-interceptor,python,https://github.com/d5h-foss/grpc-interceptor,0.15.4,tag,v0.15.4,d866a1bd09e9e79a02e0ed42a9d59f30c85bb7bc,5,cloned,,v0.15.4
+2026-07-14T02:54:48.970923+00:00,layoutparser,python,https://github.com/Layout-Parser/layout-parser,0.3.4,tag,v0.3.4,89aca0320acbeb8348369dba060bd1c892fbd50f,15,cloned,,v0.3.4
+2026-07-14T02:54:48.970923+00:00,mplhep,python,https://github.com/scikit-hep/mplhep,1.2.1,tag,v1.2.1,a50e6437cc1b4c6c582c34ac873f5a781483b913,38,cloned,,v1.2.1
+2026-07-14T02:54:48.970923+00:00,mdtraj,python,https://github.com/rmcgibbo/mdtraj,1.11.1,default-branch,,0a1751d840b01dc7cb300fc58695badcaf8f7fe4,35,cloned,,"v1.11.1,1.11.1,release-1.11.1,release/1.11.1,1.11.1-release"
+2026-07-14T02:54:48.970923+00:00,odoo14-addon-intrastat-product,python,https://github.com/OCA/intrastat-extrastat,14.0.2.1.6.dev10,default-branch,,e11b7d15a638d9fdc47fa0c0b906a0bffc87ba9d,7,cloned,,"v14.0.2.1.6.dev10,14.0.2.1.6.dev10,release-14.0.2.1.6.dev10,release/14.0.2.1.6.dev10,14.0.2.1.6.dev10-release"
+2026-07-14T02:54:48.970923+00:00,nvitop,python,https://github.com/XuehaiPan/nvitop,1.7.0,tag,v1.7.0,3e797b26a0fa7a74557f2eb2732caeb9058e3609,25,cloned,,v1.7.0
+2026-07-14T02:54:48.970923+00:00,allianceauth-app-utils,python,https://gitlab.com/ErikKalkoken/allianceauth-app-utils,1.32.1,tag,1.32.1,376589e8281df8d50ce1134b83926c928d3884ad,6,cloned,,"v1.32.1,1.32.1"
+2026-07-14T02:54:48.970923+00:00,flask-assets,python,https://github.com/miracle2k/flask-assets,2.1.0,tag,2.1.0,c5a66ecf548049a38a365a726b3b6effea23d4a3,3,cloned,,"v2.1.0,2.1.0"
+2026-07-14T02:54:48.970923+00:00,bilibili-api-python,python,https://github.com/Nemo2011/bilibili-api,17.4.2,default-branch,,3798d3b3bd3c3a93678d5a0367637a19262303ef,1,cloned,,"v17.4.2,17.4.2,release-17.4.2,release/17.4.2,17.4.2-release"
+2026-07-14T02:54:48.970923+00:00,statannotations,python,https://github.com/trevismd/statannotations,0.7.2,tag,v0.7.2,77747db44ee9a1d2cb211da008e4fc1589c4bbff,14,cloned,,v0.7.2
+2026-07-14T02:54:48.970923+00:00,vsdehalo,python,https://github.com/Jaded-Encoding-Thaumaturgy/vs-dehalo,1.10.3,tag,v1.10.3,8d5912cbcd1f655b5dc26b8eef56693d8d78cfbe,1,cloned,,v1.10.3
+2026-07-14T02:54:48.970923+00:00,pyrebase,python,https://github.com/thisbejim/Pyrebase,3.0.27,default-branch,,7a652e6bd9d148da5ff6dbe7548c6d5d0dfa1109,1,cloned,,"v3.0.27,3.0.27,release-3.0.27,release/3.0.27,3.0.27-release"
+2026-07-14T02:54:48.970923+00:00,beziers,python,https://github.com/simoncozens/beziers.py,0.6.0,tag,v0.6.0,ada4db0e61806d093c6bdfb9b38cba511303a82c,5,cloned,,v0.6.0
+2026-07-14T02:54:48.970923+00:00,vsexprtools,python,https://github.com/Jaded-Encoding-Thaumaturgy/vs-exprtools,1.8.3,tag,v1.8.3,608306f4427ff4ab74e0b7a2933b0e3a48f52e55,1,cloned,,v1.8.3
+2026-07-14T02:54:48.970923+00:00,odoo14-addon-ssi-transaction-open-mixin,python,,14.0.1.14.1.dev1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,rfc3986,python,https://github.com/python-hyper/rfc3986,2.0.0,tag,2.0.0,7a64092490c1b3c4f354b9b14d060fa758d66848,34,cloned,,"v2.0.0,2.0.0"
+2026-07-14T02:54:48.970923+00:00,odoo11-addon-mgmtsystem-nonconformity,python,,11.0.1.1.2.99.dev98,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,ipynbname,python,https://github.com/msm1089/ipynbname,2021.3.2,default-branch,,0ac0b2c02c066f5ccfd1c83f8d22866f4330c7c9,1,cloned,,"v2021.3.2,2021.3.2,release-2021.3.2,release/2021.3.2,2021.3.2-release"
+2026-07-14T02:54:48.970923+00:00,coverage-lcov,python,https://github.com/TheCleric/coverage-lcov,0.3.0,tag,0.3.0,27bb93768900344bea96124d4fba2ce97b7a15bc,1,cloned,,"v0.3.0,0.3.0"
+2026-07-14T02:54:48.970923+00:00,jobflow,python,https://github.com/materialsproject/jobflow,0.3.1,tag,v0.3.1,3c10cd96401d90ea18ca1e80ab2c4a859050472a,17,cloned,,v0.3.1
+2026-07-14T02:54:48.970923+00:00,mistletoe,python,https://github.com/miyuchina/mistletoe,1.6.0,tag,v1.6.0,70cced16f78f06e1f3b7c6427f6b30839c4bb1b7,2,cloned,,v1.6.0
+2026-07-14T02:54:48.970923+00:00,pytest-emoji,python,https://github.com/hackebrot/pytest-emoji,0.2.0,tag,0.2.0,f323d299a95a71d47c007b208568be6c9cffdaa8,2,cloned,,"v0.2.0,0.2.0"
+2026-07-14T02:54:48.970923+00:00,flaat,python,https://github.com/indigo-dc/flaat,1.2.1,tag,v1.2.1,eef7e3a0f65066bf6b67f986d35150d833c90879,11,cloned,,v1.2.1
+2026-07-14T02:54:48.970923+00:00,pyface,python,https://github.com/enthought/pyface,8.0.0,tag,8.0.0,46f700999284c8104fb2a5468f549677dfadf063,19,cloned,,"v8.0.0,8.0.0"
+2026-07-14T02:54:48.970923+00:00,pyudev,python,https://github.com/pyudev/pyudev,0.24.4,tag,v0.24.4,643027533a9a5dee7f80c0a7348ad85fbae7f0fa,18,cloned,,v0.24.4
+2026-07-14T02:54:48.970923+00:00,snakemake,python,https://github.com/snakemake/snakemake,9.14.5,tag,v9.14.5,005c92d50637e90489f9d523f28e3729bd11da1e,48,cloned,,v9.14.5
+2026-07-14T02:54:48.970923+00:00,openeo,python,https://github.com/Open-EO/openeo-python-client,0.50.0,tag,v0.50.0,a8421a8c6adbd8ae05e5364aea74735c3db04cad,35,cloned,,v0.50.0
+2026-07-14T02:54:48.970923+00:00,pyxattr,python,https://github.com/iustin/pyxattr,0.8.1,tag,v0.8.1,1d0427598f3f3b310a118b1acd5f7b19eab1517b,7,cloned,,v0.8.1
+2026-07-14T02:54:48.970923+00:00,irisml,python,https://github.com/microsoft/irisml,0.0.38,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/irisml'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/microsoft/irisml/'","v0.0.38,0.0.38,release-0.0.38,release/0.0.38,0.0.38-release"
+2026-07-14T02:54:48.970923+00:00,toposort,python,https://gitlab.com/ericvsmith/toposort,1.10,tag,1.10,e67c242ceec5908564837ce6ac2cb661659b0cc8,1,cloned,,"v1.10,1.10"
+2026-07-14T02:54:48.970923+00:00,odoo14-addon-l10n-it-fatturapa-out,python,https://github.com/OCA/l10n-italy,14.0.3.9.4.dev3,default-branch,,c957fa9541ebe3aa6f1e9e3542478dc25a67fb40,35,cloned,,"v14.0.3.9.4.dev3,14.0.3.9.4.dev3,release-14.0.3.9.4.dev3,release/14.0.3.9.4.dev3,14.0.3.9.4.dev3-release"
+2026-07-14T02:54:48.970923+00:00,org.netbeans.modules:org-netbeans-modules-j2ee-common,java,https://github.com/apache/netbeans-parent,RELEASE290,default-branch,,8e50f87f7db4f90d4b0e7e782359a9b7e7a7bd1b,1,cloned,,"vRELEASE290,RELEASE290,release-RELEASE290,release/RELEASE290,RELEASE290-release"
+2026-07-14T02:54:48.970923+00:00,org.wso2.carbon.commons:org.wso2.carbon.event.ws,java,https://github.com/wso2/carbon-commons,4.14.7,tag,v4.14.7,2f1f8cdcb3868e560c35d4f07a170b22de8e3ba9,3,cloned,,v4.14.7
+2026-07-14T02:54:48.970923+00:00,org.codehaus.btm:btm-tomcat55-lifecycle,java,http://git.codehaus.org/gitweb.cgi?p=btm-git.git,2.1.4,skip,,,0,F4_skip,non-git-url,
+2026-07-14T02:54:48.970923+00:00,org.webjars.npm:is-callable,java,https://github.com/inspect-js/is-callable,1.2.7,tag,v1.2.7,f23584dd25c26473e702e80a5e8e7e79e2a89aee,1,cloned,,v1.2.7
+2026-07-14T02:54:48.970923+00:00,org.bitstrings.test:junit-clptr,java,https://github.com/bitstrings/junit-clptr,1.2.2,tag,1.2.2,1117a9938aa3630f287b15a9641a7daa82ed0273,1,cloned,,"v1.2.2,1.2.2"
+2026-07-14T02:54:48.970923+00:00,com.github.romix.akka:akka-kryo-serialization_2.12,java,https://github.com/romix/akka-kryo-serialization,0.5.2,tag,v0.5.2,420748d147ec94d2840865e02988c35aeca729fa,1,cloned,,v0.5.2
+2026-07-14T02:54:48.970923+00:00,org.eclipse.platform:org.eclipse.equinox.event,java,https://github.com/eclipse-equinox/equinox,1.7.300,default-branch,,5147267339f18d22258b7324b72b89b0a1652491,33,cloned,,"v1.7.300,1.7.300,release-1.7.300,release/1.7.300,1.7.300-release"
+2026-07-14T02:54:48.970923+00:00,org.apache.hbase:hbase-common,java,https://gitbox.apache.org/repos/asf?p=hbase.git/hbase-build-configuration/hbase-common,2.6.5,skip,,,0,F4_skip,non-git-url,
+2026-07-14T02:54:48.970923+00:00,se.fortnox.reactivewizard:reactivewizard-server,java,https://github.com/FortnoxAB/reactive-wizard,24.6.0,tag,24.6.0,1f3a26dd6b4667b26f2e8a6426c094afc65d2fa8,17,cloned,,"v24.6.0,24.6.0"
+2026-07-14T02:54:48.970923+00:00,com.io7m.jintegers:io7m-jintegers-core,java,https://github.com/io7m/jintegers,1.1.0,default-branch,,0884001ca63169bbf4f85ceee6bb6d279a27e69b,4,cloned,,"v1.1.0,1.1.0,release-1.1.0,release/1.1.0,1.1.0-release"
+2026-07-14T02:54:48.970923+00:00,com.almende.eve:eve-transport-common,java,https://github.com/almende/eve,3.1.1,default-branch,,4d0d570cd8104f237e8b8ebb7d5f11e939f589ea,1,cloned,,"v3.1.1,3.1.1,release-3.1.1,release/3.1.1,3.1.1-release"
+2026-07-14T02:54:48.970923+00:00,org.open-dolphin:dolphin-server,java,https://github.com/canoo/open-dolphin,1.0-RC3,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/org.open-dolphin_dolphin-server'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/canoo/open-dolphin/'","v1.0-RC3,1.0-RC3,release-1.0-RC3,release/1.0-RC3,1.0-RC3-release"
+2026-07-14T02:54:48.970923+00:00,io.arrow-kt:arrow-effects,java,https://github.com/arrow-kt/arrow,0.8.2,tag,0.8.2,39b53c7fd0899b44a96a599d7aeb943eabbbd51d,136,cloned,,"v0.8.2,0.8.2"
+2026-07-14T02:54:48.970923+00:00,org.apache.rya:rya.test.kafka,java,https://gitbox.apache.org/repos/asf?p=rya.git,4.0.1,skip,,,0,F4_skip,non-git-url,
+2026-07-14T02:54:48.970923+00:00,com.hedera.hashgraph:hedera-protobuf-java-api,java,https://github.com/hiero-ledger/hiero-consensus-node,0.73.0,tag,v0.73.0,251d0e71f42a1466d104b409d100e7bb4d26d04c,195,cloned,,v0.73.0
+2026-07-14T02:54:48.970923+00:00,org.tpolecat:doobie-core_3.0.0-RC2,java,https://github.com/tpolecat/doobie,0.13.2,tag,v0.13.2,8bbcd9dd6767b2ffaa2f6d59cf7b38771e478f99,23,cloned,,v0.13.2
+2026-07-14T02:54:48.970923+00:00,com.zegreatrob.testmints:dependency-bom,java,https://github.com/robertfmurdock/testmints,12.5.45,tag,12.5.45,f97d875c2d7ae9b9780c05fb5b16b04a5e1bb98d,4,cloned,,"v12.5.45,12.5.45"
+2026-07-14T02:54:48.970923+00:00,org.webjars.npm:utf8,java,https://github.com/mathiasbynens/utf8.js,3.0.0,tag,v3.0.0,2ce09544b62f2a274dbcd249473c0986e3660849,1,cloned,,v3.0.0
+2026-07-14T02:54:48.970923+00:00,de.tudarmstadt.ukp.dkpro.core:de.tudarmstadt.ukp.dkpro.core.opennlp-asl,java,https://github.com/dkpro/dkpro-core,1.10.0,default-branch,,644bb5b6ae2f8d233ee72d2be12dd123c1fd332d,14,cloned,,"v1.10.0,1.10.0,release-1.10.0,release/1.10.0,1.10.0-release"
+2026-07-14T02:54:48.970923+00:00,com.github.intel-hadoop:gearpump-core_2.11,java,https://github.com/intel-hadoop/gearpump,0.8.0,tag,0.8.0,73fa4e2d356ea1598c83b5428503003fba4433f1,56,cloned,,"v0.8.0,0.8.0"
+2026-07-14T02:54:48.970923+00:00,io.ebean:ebean-test,java,https://github.com/ebean-orm/ebean,19.2.0,default-branch,,d54a24b27d54b7688f0ae3e32cf46cbe35e0f913,30,cloned,,"v19.2.0,19.2.0,release-19.2.0,release/19.2.0,19.2.0-release"
+2026-07-14T02:54:48.970923+00:00,io.data2viz.d2v:d2v-core,java,https://github.com/data2viz/data2viz,0.10.7,tag,v0.10.7,6c66ee1f94580f485829d731598309114bb2fc53,9,cloned,,v0.10.7
+2026-07-14T02:54:48.970923+00:00,org.webjars.npm:lodash._bindcallback,java,https://github.com/lodash/lodash,3.0.1,tag,3.0.1,29e3d9eff5404050d6e6b6c4a872c3e73132b5a0,2,cloned,,"v3.0.1,3.0.1"
+2026-07-14T02:54:48.970923+00:00,org.apache.hadoop:hadoop-hdfs-nfs,java,,3.5.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,cn.dev33:sa-token-dao-redis-jackson,java,https://github.com/dromara/sa-token,1.34.0,tag,v1.34.0,1e874264818b37dabbf1ebe6f45090baa192080b,7,cloned,,v1.34.0
+2026-07-14T02:54:48.970923+00:00,org.kasource.kaevent:ka-event-annotations,java,https://github.com/wigforss/Ka-Event,0.9,default-branch,,48eabe1646928516fa3469f9bc6d9eea20b219d4,1,cloned,,"v0.9,0.9,release-0.9,release/0.9,0.9-release"
+2026-07-14T02:54:48.970923+00:00,org.apache.camel:camel-protobuf-starter,java,,2.25.4,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T02:54:48.970923+00:00,org.codehaus.groovy:groovy-eclipse-batch,java,https://github.com/groovy/groovy-eclipse,3.0.8-01,default-branch,,ab13a032981150c0bd37ef060807ca75546af266,18,cloned,,"v3.0.8-01,3.0.8-01,release-3.0.8-01,release/3.0.8-01,3.0.8-01-release"
+2026-07-14T02:54:48.970923+00:00,org.eclipse.che.plugin:org.eclipse.core.filebuffers,java,https://github.com/eclipse/che,6.12.2,tag,6.12.2,28f1d8eb926511816764064354a59eb3375cceba,58,cloned,,"v6.12.2,6.12.2"
+2026-07-14T02:54:48.970923+00:00,io.featurehub.sdk.composites:sdk-composite-test,java,https://github.com/featurehub-io/featurehub-java-sdk,2.1,default-branch,,80a678099b60abf27e9a8ef15f0cbe16a772f9e8,15,cloned,,"v2.1,2.1,release-2.1,release/2.1,2.1-release"
+2026-07-14T02:54:48.970923+00:00,org.gephi:preview-api,java,https://github.com/gephi/gephi,0.11.2,tag,v0.11.2,df732435b967ef13adb12c19dfd2f64014d6c45a,4,cloned,,v0.11.2
+2026-07-14T02:54:48.970923+00:00,org.ow2.bonita:bonita-core,java,http://svn.forge.objectweb.org/cgi-bin/viewcvs.cgi/bonita/trunk/bonitaPVM,4.0,skip,,,0,F4_skip,non-git-url,
+2026-07-14T02:54:48.970923+00:00,com.ea.orbit:orbit-actors-client,java,https://github.com/electronicarts/orbit,0.7.1,default-branch,,cccbe9c56192ad66549ad9695ce3a4dd78452c6c,1,cloned,,"v0.7.1,0.7.1,release-0.7.1,release/0.7.1,0.7.1-release"
+2026-07-14T02:54:48.970923+00:00,com.github.adminfaces:admin-template,java,https://github.com/adminfaces/admin-template,1.6.1,tag,1.6.1,6338bb74cc91b01d30bef7a0935463c8446b8da6,1,cloned,,"v1.6.1,1.6.1"
+2026-07-14T02:54:48.970923+00:00,com.davfx.ninio:ninio-core,java,https://github.com/davidfauthoux/ninio,3.0.50,default-branch,,a8a1b708b569231925940c829d4fef862c18f31b,16,cloned,,"v3.0.50,3.0.50,release-3.0.50,release/3.0.50,3.0.50-release"
+2026-07-14T02:54:48.970923+00:00,org.eclipse.scout.sdk:org.eclipse.scout.sdk.core,java,https://github.com/eclipse-scout/scout.sdk,14.0.40,tag,14.0.40,57dc8d217fa825a90c142541284536893c720251,1,cloned,,"v14.0.40,14.0.40"
+2026-07-14T02:54:48.970923+00:00,net.nemerosa.ontrack:ontrack-extension-casc,java,https://github.com/nemerosa/ontrack,4.4.5,tag,4.4.5,ce01a074cd6e7ced33f0e77f084797467c73d292,144,cloned,,"v4.4.5,4.4.5"
+2026-07-14T02:54:48.970923+00:00,dev.hnaderi:scala-k8s-objects_sjs1_3,java,https://github.com/hnaderi/scala-k8s,0.30.0,tag,v0.30.0,4ddb10a47bd4ba1101f8ec8eb41fabb8e8fcef20,5,cloned,,v0.30.0
+2026-07-14T02:54:48.970923+00:00,com.google.api.grpc:proto-google-cloud-networkconnectivity-v1alpha1,java,https://github.com/googleapis/google-cloud-java,0.92.0,tag,v0.92.0,d21325c308c23f7096ba52a567ce5acc734c2f14,60,cloned,,v0.92.0
+2026-07-14T02:54:48.970923+00:00,com.github.japgolly.scalacss:ext-react_sjs0.6_2.12,java,https://github.com/japgolly/scalacss,0.6.1,tag,v0.6.1,cd72886bda1eb1decaae1873663e9df5fc1e998c,939,cloned,,v0.6.1
+2026-07-14T02:54:48.970923+00:00,com.github.philcali:lmxml-core_2.8.1,java,https://github.com/philcali/lmxml,0.1.2,tag,v0.1.2,d1eb181803a123b7f5975e01cdf1b3540cf8992b,2,cloned,,v0.1.2
+2026-07-14T02:54:48.970923+00:00,li.strolch:li.strolch.privilege,java,https://github.com/strolch-li/strolch,1.8.5,tag,1.8.5,dafa1ea1b677a49e67334690744b9403681aaa17,15,cloned,,"v1.8.5,1.8.5"
+2026-07-14T02:54:48.970923+00:00,org.apache.camel:camel-robotframework,java,https://github.com/apache/maven-apache-parent,4.21.0,default-branch,,2d5bcb37dadfeb1a8224bb4fe3e453b92f2e6e91,1,cloned,,"v4.21.0,4.21.0,release-4.21.0,release/4.21.0,4.21.0-release"
+2026-07-14T02:54:48.970923+00:00,org.specs2:specs2-cats_2.12,java,https://github.com/etorreborre/specs2,4.23.0,default-branch,,932810f3e3b001f30fa750c15fc09124cc5f5324,1,cloned,,"v4.23.0,4.23.0,release-4.23.0,release/4.23.0,4.23.0-release"
+2026-07-14T02:54:48.970923+00:00,com.farao-community.farao:farao-crac-creator-cse,java,https://github.com/farao-community/farao-core,5.0.0,tag,v5.0.0,132f3ab115bf89512a13f69a09f5b77f1b3de042,2,cloned,,v5.0.0
+2026-07-14T02:54:48.970923+00:00,org.apache.xmlgraphics:fop-events,java,scm:svn:https://svn.apache.org/repos/asf/xmlgraphics/fop/trunk/,2.11,skip,,,0,F4_skip,non-git-url,
+2026-07-14T02:54:48.970923+00:00,org.glassfish.main.common:container-common,java,https://github.com/eclipse-ee4j/glassfish,8.0.1,tag,8.0.1,ff828fde4a080f2c2a867d7149b853a26749baed,967,cloned,,"v8.0.1,8.0.1"
+2026-07-14T02:54:48.970923+00:00,io.functionalj:functionalj-types,java,https://github.com/NawaMan/FunctionJ,1.0.29,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/io.functionalj_functionalj-types'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/NawaMan/FunctionJ/'","v1.0.29,1.0.29,release-1.0.29,release/1.0.29,1.0.29-release"
+2026-07-14T02:54:48.970923+00:00,org.webjars.npm:two-product,java,https://github.com/mikolalysenko/two-product,1.0.2,default-branch,,541a3bfce1d8c54be8c3721be02062abb8f51f92,1,cloned,,"v1.0.2,1.0.2,release-1.0.2,release/1.0.2,1.0.2-release"
+2026-07-14T02:54:48.970923+00:00,org.apache.felix.karaf:org.apache.felix.karaf.management,java,http://svn.apache.org/viewvc/felix/releases/karaf-1.6.0,1.6.0,skip,,,0,F4_skip,non-git-url,
+2026-07-14T02:54:48.970923+00:00,net.oschina.zcx7878:fastdfs-client-java,java,http://git.oschina.net/zcx7878/cicada.java,1.27.0.0,skip,,,0,F4_skip,non-git-url,
+2026-07-14T02:54:48.970923+00:00,com.julianpeeters:avrohugger-core_2.13,java,https://github.com/julianpeeters/avrohugger,2.16.4,tag,v2.16.4,10135e15923ae603ca7a69c30bd07c16c3ee1a12,1,cloned,,v2.16.4
+2026-07-14T03:01:14.255288+00:00,dragonfly-core,python,https://github.com/ladybug-tools/dragonfly-core,1.76.14,tag,v1.76.14,be456e1b31f0ce69fe9f03f3074fe7f1f0b3de0f,7,cloned,,v1.76.14
+2026-07-14T03:01:14.255288+00:00,odoo-addon-mgmtsystem-nonconformity,python,https://github.com/OCA/management-system,16.0.1.4.1.1,default-branch,,b1266d0d0c5a3b5fd1deba62ee66a3e1a7f6c55b,34,cloned,,"v16.0.1.4.1.1,16.0.1.4.1.1,release-16.0.1.4.1.1,release/16.0.1.4.1.1,16.0.1.4.1.1-release"
+2026-07-14T03:01:14.255288+00:00,limits,python,https://github.com/alisaifee/limits,5.6.0,tag,5.6.0,a85bf8713d4338a38c29da664b9034a6724d736b,11,cloned,,"v5.6.0,5.6.0"
+2026-07-14T03:01:14.255288+00:00,commonroad-io,python,https://github.com/CommonRoad/commonroad-io,2026.1,default-branch,,110e651b88a6f18e56eb536b867dcbd94e9baa25,13,cloned,,"v2026.1,2026.1,release-2026.1,release/2026.1,2026.1-release"
+2026-07-14T03:01:14.255288+00:00,pyspellchecker,python,https://github.com/barrust/pyspellchecker,0.9.0,tag,v0.9.0,6b3f30e89088ad7115a6807dd8743e15e12e29d4,5,cloned,,v0.9.0
+2026-07-14T03:01:14.255288+00:00,tortoise-orm,python,https://github.com/tortoise/tortoise-orm,0.25.3,tag,0.25.3,a7259172a034208884f077a8ffcc5d49d599f3d9,57,cloned,,"v0.25.3,0.25.3"
+2026-07-14T03:01:14.255288+00:00,pandapower,python,https://github.com/e2nIEE/pandapower,3.5.4,tag,v3.5.4,be3f13b6db3632fe690f997654d15c9173a14839,124,cloned,,v3.5.4
+2026-07-14T03:01:14.255288+00:00,watchmen-storage-oracle,python,,18.0.3,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T03:01:14.255288+00:00,yamlordereddictloader,python,https://github.com/fmenabe/python-yamlordereddictloader,0.4.2,tag,0.4.2,daecb444fb62797fb0e439ab04f11882d85b1237,1,cloned,,"v0.4.2,0.4.2"
+2026-07-14T03:01:14.255288+00:00,py-tlsh,python,https://github.com/trendmicro/tlsh,5.0.0,tag,5.0.0,7fb33eb418231a3d2a693e826d09ff428b74b252,12,cloned,,"v5.0.0,5.0.0"
+2026-07-14T03:01:14.255288+00:00,jaraco.timing,python,https://github.com/jaraco/jaraco.timing,3.0.0,tag,v3.0.0,f00d871afbfa25534a913ef6c724f4346fb1e87f,3,cloned,,v3.0.0
+2026-07-14T03:01:14.255288+00:00,org.daisy.pipeline.modules.braille:css-core,java,https://github.com/daisy/pipeline-mod-braille,3.0.1,default-branch,,4aa40ac0c1106e6b8ff03e4dbe79967c90affa2a,38,cloned,,"v3.0.1,3.0.1,release-3.0.1,release/3.0.1,3.0.1-release"
+2026-07-14T03:01:14.255288+00:00,ca.uhn.hapi.fhir:org.hl7.fhir.r4b,java,https://github.com/hapifhir/hapi-fhir,6.9.11,default-branch,,3fe39003623968d921c9f89da20c9ed9f992276e,129,cloned,,"v6.9.11,6.9.11,release-6.9.11,release/6.9.11,6.9.11-release"
+2026-07-14T03:01:14.255288+00:00,org.apache.myfaces.extensions.validator.validation-modules:myfaces-extval-property-validation,java,http://svn.apache.org/viewvc/myfaces/extensions/validator/tags/extval-2.0.8,2.0.8,skip,,,0,F4_skip,non-git-url,
+2026-07-14T03:01:14.255288+00:00,io.trino.hadoop:hadoop-apache,java,https://github.com/trinodb/trino-hadoop-apache,3.3.5-3,tag,3.3.5-3,60ebdf92ac93dd91d507c53181f08b4a24b35caf,0,cloned,,"v3.3.5-3,3.3.5-3"
+2026-07-14T03:01:14.255288+00:00,com.lihaoyi:ammonite-ops_2.11,java,https://github.com/lihaoyi/ammonite,1.6.7,tag,1.6.7,0ea3902ef84eec98f35c3e53e7a11a9201af65ac,2,cloned,,"v1.6.7,1.6.7"
+2026-07-14T03:01:14.255288+00:00,com.manyangled:coulomb-si-units_sjs1_2.13,java,https://github.com/erikerlandson/coulomb,0.5.8,tag,v0.5.8,c8ff43386e11bbe4093fa638966462072fe7b6aa,12,cloned,,v0.5.8
+2026-07-14T03:01:14.255288+00:00,com.fasterxml.jackson.jr:jackson-jr-all,java,https://github.com/FasterXML/jackson-jr,2.22.0,default-branch,,9e115cb5f00c5a5d96bd15ce76e82913464117a3,4,cloned,,"v2.22.0,2.22.0,release-2.22.0,release/2.22.0,2.22.0-release"
+2026-07-14T03:01:14.255288+00:00,org.webjars.bower:paper-styles,java,https://github.com/PolymerElements/paper-styles,2.1.0,tag,v2.1.0,fc4b85ab853f107fc8bb18ea6cda1c2e9ac5a75f,1,cloned,,v2.1.0
+2026-07-14T03:01:14.255288+00:00,io.kubernetes:client-java-cert-manager-models,java,https://github.com/kubernetes-client/java,26.0.0,tag,v26.0.0,1ead6b75309d0ca3823259d83d82bcf5d2bc1cff,795,cloned,,v26.0.0
+2026-07-14T03:01:14.255288+00:00,dev.zio:zio-schema_3,java,https://zio.dev/zio-schema,1.8.3,skip,,,0,F4_skip,non-git-url,
+2026-07-14T03:01:14.255288+00:00,org.typelevel:cats-parse_2.13,java,https://github.com/typelevel/cats-parse,1.1.0,tag,v1.1.0,5a4abf64083a7e8a6f171f82f5d5cfa446268034,2,cloned,,v1.1.0
+2026-07-14T03:02:40.299540+00:00,zepben.auth,python,https://github.com/zepben/zepben-auth-python,0.12.1,tag,v0.12.1,bc8c7ff727dd0d7fe061f027631ba81fe3f898f7,1,cloned,,v0.12.1
+2026-07-14T03:02:40.299540+00:00,org.springframework.cloud.stream.app:httpclient-app-starters-test-support,java,https://github.com/spring-cloud-stream-app-starters/core,2.1.5.RELEASE,tag,v2.1.5.RELEASE,580fa193c67743720c81367e28cee9abb2ace78c,4,cloned,,v2.1.5.RELEASE
+2026-07-14T03:02:40.299540+00:00,org.apache.tomcat:tomcat-i18n-fr,java,,11.0.18,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T03:02:42.438258+00:00,com.immomo.cosmos:cvcenter,java,https://github.com/cosmos33/MMVideoSDK-Android,2.2.6.20231205.1049,default-branch,,348ffaa610a59b3fa9411731b48aa34390283792,1,cloned,,"v2.2.6.20231205.1049,2.2.6.20231205.1049,release-2.2.6.20231205.1049,release/2.2.6.20231205.1049,2.2.6.20231205.1049-release"
+2026-07-14T03:06:58.846126+00:00,xsdata,python,https://github.com/tefra/xsdata,24.6.1,tag,v24.6.1,3ad50f2d9bcdeeed3162f6a4746c801d8ad89616,29,cloned,,v24.6.1
+2026-07-14T03:06:58.846126+00:00,pdocs,python,https://github.com/timothycrosley/pdocs,1.2.0,default-branch,,3d0fceee528db8fb4d107c401f5b42e3ec9d4bbf,11,cloned,,"v1.2.0,1.2.0,release-1.2.0,release/1.2.0,1.2.0-release"
+2026-07-14T03:06:58.846126+00:00,hdfs,python,https://github.com/mtth/hdfs,2.7.3,tag,v2.7.3,e07a8e60e7cb2912b76a07f0caf6f485c6131dfa,6,cloned,,v2.7.3
+2026-07-14T03:06:58.846126+00:00,chainer,python,https://github.com/chainer/chainer,7.8.1,tag,v7.8.1,e9da1423255c58c37be9733f51b158aa9b39dc93,126,cloned,,v7.8.1
+2026-07-14T03:06:58.846126+00:00,grpc,python,,1.0.0,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T03:06:58.846126+00:00,wisepy2,python,https://github.com/Xython/wisepy2,1.4.1,default-branch,,ec75ca9397b4912f332e2d31055e3039a552f7ca,1,cloned,,"v1.4.1,1.4.1,release-1.4.1,release/1.4.1,1.4.1-release"
+2026-07-14T03:06:58.846126+00:00,pulp-glue,python,https://github.com/pulp/pulp-cli,0.40.1,tag,0.40.1,487b5ad9e5d08ca8006d2d7fb95767649ad94cb1,23,cloned,,"v0.40.1,0.40.1"
+2026-07-14T03:06:58.846126+00:00,datumaro,python,https://github.com/open-edge-platform/datumaro,1.13.2,tag,v1.13.2,514afb1dd87d480eab21ab479af63af619c831e6,108,cloned,,v1.13.2
+2026-07-14T03:06:58.846126+00:00,stups-zign,python,https://github.com/zalando-build/zign,1.2.2,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/python/stups-zign'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/zalando-build/zign/'","v1.2.2,1.2.2,release-1.2.2,release/1.2.2,1.2.2-release"
+2026-07-14T03:06:58.846126+00:00,tiktoken,python,https://github.com/openai/tiktoken,0.13.0,tag,0.13.0,fa8b65d062fb6a656ac3810c89efde4c8ab999e2,1,cloned,,"v0.13.0,0.13.0"
+2026-07-14T03:06:58.846126+00:00,slotscheck,python,https://github.com/ariebovenberg/slotscheck,0.20.0,tag,v0.20.0,26f749d66c42fabdb3f69a184540fed3aa2fb3f9,8,cloned,,v0.20.0
+2026-07-14T03:06:58.846126+00:00,branca,python,https://github.com/python-visualization/branca,0.8.2,tag,v0.8.2,54f16d49031db5c3355ae4a4e409ad3c747f0e80,4,cloned,,v0.8.2
+2026-07-14T03:06:58.846126+00:00,tensorrt-libs,python,,8.6.1,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T03:06:58.846126+00:00,tsai,python,https://github.com/timeseriesAI/tsai,1.0.1,tag,v1.0.1,f9ecc6b6df798946fa5fb290ac2ade9a00815289,1,cloned,,v1.0.1
+2026-07-14T03:06:58.846126+00:00,aiosonic,python,https://github.com/sonic182/aiosonic,1.0.0,tag,1.0.0,a20f83b1e25fdc4704df21b779bcbccafae90a15,1,cloned,,"v1.0.0,1.0.0"
+2026-07-14T03:06:58.846126+00:00,vendorize,python,https://github.com/mwilliamson/python-vendorize,0.3.0,tag,0.3.0,28c66bbfdc6a46739864a3df8bec60155b0cc50a,1,cloned,,"v0.3.0,0.3.0"
+2026-07-14T03:06:58.846126+00:00,finitelycomputable-tests,python,https://github.com/thrasymache/microsites,25.7,default-branch,,d662c46989a87a99d77c4b8887650ab1f781f051,42,cloned,,"v25.7,25.7,release-25.7,release/25.7,25.7-release"
+2026-07-14T03:06:58.846126+00:00,dockerpty,python,https://github.com/d11wtq/dockerpty,0.4.1,tag,v0.4.1,98c85b13c24ec0aa0c543757b1aa445ae9b970b6,1,cloned,,v0.4.1
+2026-07-14T03:06:58.846126+00:00,iso8601,python,https://github.com/micktwomey/pyiso8601,2.1.0,tag,2.1.0,c147acc8952bf279a38d5cab1f80be71735a10cf,3,cloned,,"v2.1.0,2.1.0"
+2026-07-14T03:06:58.846126+00:00,spatialmath-python,python,https://github.com/rai-opensource/spatialmath-python,1.1.16,tag,1.1.16,0ec11e26cf67ac36e69c9be5e2f97d5f1eac316f,47,cloned,,"v1.1.16,1.1.16"
+2026-07-14T03:06:58.846126+00:00,com.github.angry1980:audio-fingerprint,java,https://github.com/Angry1980/audio,0.0.10,tag,release/0.0.10,5ac40068e575de5388afa7da71820e37d15e9e13,2,cloned,,"v0.0.10,0.0.10,release-0.0.10,release/0.0.10"
+2026-07-14T03:06:58.846126+00:00,net.databinder:dispatch-mime_2.9.1,java,https://github.com/dispatch/reboot,0.8.10,default-branch,,89074f61bc8f81a7358a0089ebba691ab7f44d84,1,cloned,,"v0.8.10,0.8.10,release-0.8.10,release/0.8.10,0.8.10-release"
+2026-07-14T03:06:58.846126+00:00,ch.tutteli.atrium:atrium-core-js,java,https://github.com/robstoll/atrium,1.2.0,tag,v1.2.0,c8ab1a790d708b614d17cbb18d152d10fd6d3b4e,3,cloned,,v1.2.0
+2026-07-14T03:06:58.846126+00:00,com.gwtplatform:gwtp-dispatch-server-guice,java,https://github.com/ArcBees/GWTP,1.0.3,default-branch,,0dfca2459a9c4aac7a60077b8556d19a425d8844,1,cloned,,"v1.0.3,1.0.3,release-1.0.3,release/1.0.3,1.0.3-release"
+2026-07-14T03:06:58.846126+00:00,co.cask.cdap:hydrator-test,java,https://github.com/caskdata/cdap,5.1.2,tag,v5.1.2,29022ed4f9b2a8b8bff4b9d2c06c5eda2a2c866a,20,cloned,,v5.1.2
+2026-07-14T03:06:58.846126+00:00,org.opencypher:okapi-api,java,https://github.com/opencypher/cypher-for-apache-spark,0.4.2,tag,0.4.2,1dc25809084d90c9c8de4d553469c3e22aeebae7,41,cloned,,"v0.4.2,0.4.2"
+2026-07-14T03:06:58.846126+00:00,it.bz.opendatahub.alpinebits:alpinebits-xml-impl,java,https://github.com/noi-techpark/opendatahub-alpinebits,5.0.1,tag,v5.0.1,e8c7a701f35af1b2b571fe36b9dc09a0a72036fb,1,cloned,,v5.0.1
+2026-07-14T03:06:58.846126+00:00,org.wildfly:wildfly-webservices-server-integration,java,https://github.com/wildfly/wildfly,40.0.0.Beta1,tag,40.0.0.Beta1,19c742f3df4d49e47266077ef36ea7e17cf6dc45,294,cloned,,"v40.0.0.Beta1,40.0.0.Beta1"
+2026-07-14T03:06:58.846126+00:00,org.liveontologies:puli,java,https://github.com/liveontologies/puli,0.1.0,default-branch,,0169628aa349bfae612b4ec74ae358035e502bb0,2,cloned,,"v0.1.0,0.1.0,release-0.1.0,release/0.1.0,0.1.0-release"
+2026-07-14T03:06:58.846126+00:00,org.apache.camel:camel-quartz2,java,https://github.com/apache/maven-apache-parent,2.25.4,default-branch,,2d5bcb37dadfeb1a8224bb4fe3e453b92f2e6e91,1,cloned,,"v2.25.4,2.25.4,release-2.25.4,release/2.25.4,2.25.4-release"
+2026-07-14T03:06:58.846126+00:00,org.scalacheck:scalacheck_0.27,java,https://github.com/typelevel/scalacheck,1.15.1,tag,1.15.1,aa84ba12bf8989089e3a54f869a150f2fe48d53e,7,cloned,,"v1.15.1,1.15.1"
+2026-07-14T03:06:58.846126+00:00,org.seleniumhq.selenium:selenium-safari-driver,java,https://github.com/SeleniumHQ/selenium,4.46.0,default-branch,,02854f4eeb2db847e2be285e2e313684d0d6d028,30,cloned,,"v4.46.0,4.46.0,release-4.46.0,release/4.46.0,4.46.0-release"
+2026-07-14T03:06:58.846126+00:00,org.openbase:jps,java,https://github.com/openbase/jps,3.7.0,tag,v3.7.0,d8a36a7565d802c8fe74c40b3249b7ca978ccbd8,1,cloned,,v3.7.0
+2026-07-14T03:06:58.846126+00:00,org.apache.isis.core:isis-schema,java,https://github.com/apache/isis,2.0.0-M9,default-branch,,dd919096210c45a4f0d0bad670849cd48ef1b50a,46,cloned,,"v2.0.0-M9,2.0.0-M9,release-2.0.0-M9,release/2.0.0-M9,2.0.0-M9-release"
+2026-07-14T03:06:58.846126+00:00,io.snappydata:snappy-spark-tags_2.11,java,https://github.com/TIBCOSoftware/snappydata,2.1.3.2,default-branch,,74dbd2fa250ad05423fadda5344db83df3ea646b,369,cloned,,"v2.1.3.2,2.1.3.2,release-2.1.3.2,release/2.1.3.2,2.1.3.2-release"
+2026-07-14T03:06:58.846126+00:00,org.coodex:concrete-core-spring,java,https://github.com/coodex2016/concrete.coodex.org,0.4.1,default-branch,,d6b01ce56ec25d82a3cc9d02b307b7729b5036fb,69,cloned,,"v0.4.1,0.4.1,release-0.4.1,release/0.4.1,0.4.1-release"
+2026-07-14T03:06:58.846126+00:00,com.technophobia.substeps:substeps-runner-common,java,https://github.com/G2G3Digital/substeps-framework,2.0.0,tag,2.0.0,afd94985f4ac17a963c553dc92195805f6e97621,16,cloned,,"v2.0.0,2.0.0"
+2026-07-14T03:06:58.846126+00:00,com.intuit.wasabi:wasabi-experiment-objects,java,https://github.com/intuit/wasabi,1.0.20190619090227,tag,1.0.20190619090227,c03bf239119a0dd6aaae0e96bddf87034b373519,17,cloned,,"v1.0.20190619090227,1.0.20190619090227"
+2026-07-14T03:06:58.846126+00:00,io.javaoperatorsdk:operator-framework-samples-common,java,https://github.com/java-operator-sdk/java-operator-sdk,1.10.2,tag,v1.10.2,c1c1b0542fdf0021c6e7815eda7d19e66593d362,13,cloned,,v1.10.2
+2026-07-14T03:09:26.617203+00:00,types-decorator,python,https://github.com/python/typeshed,5.1.8,default-branch,,4fa81cc6bba22dbaee91bdaacd70b5096d63e3cb,3,cloned,,"v5.1.8,5.1.8,release-5.1.8,release/5.1.8,5.1.8-release"
+2026-07-14T03:09:26.617203+00:00,pyprctl,python,https://github.com/cptpcrd/pyprctl,0.1.3,tag,v0.1.3,578ed3e81066a8a61dede912454d5eeaef37eeea,3,cloned,,v0.1.3
+2026-07-14T03:09:26.617203+00:00,gammarers.aws-secure-bucket,python,https://github.com/gammarers/aws-secure-bucket,2.5.12,default-branch,,4d8ad4b78b2d697951b34c5d64cc029fb4d6ac85,1,cloned,,"v2.5.12,2.5.12,release-2.5.12,release/2.5.12,2.5.12-release"
+2026-07-14T03:10:13.534134+00:00,pdm,python,https://github.com/pdm-project/pdm,2.28.0,tag,2.28.0,ef0545684d5b9bb391cb1a343e9c5f51fc99caaf,34,cloned,,"v2.28.0,2.28.0"
+2026-07-14T03:10:13.534134+00:00,wakeonlan,python,https://github.com/remcohaszing/pywakeonlan,3.3.0,tag,3.3.0,7fc520f56e714262d176fdbc709cf8020299cd44,4,cloned,,"v3.3.0,3.3.0"
+2026-07-14T03:10:13.534134+00:00,mat-data,python,https://github.com/mat-analysis/mat-data,0.1rc6,default-branch,,d4fd50920724a53cec18a119553a1e4e862abc3a,20,cloned,,"v0.1rc6,0.1rc6,release-0.1rc6,release/0.1rc6,0.1rc6-release"
+2026-07-14T03:10:13.534134+00:00,ipydatagrid,python,https://github.com/jupyter-widgets/ipydatagrid,1.4.0,tag,1.4.0,9abbe2b174d35a012b982d2317864625d36e6bf3,1,cloned,,"v1.4.0,1.4.0"
+2026-07-14T03:10:13.534134+00:00,trame-vuetify,python,https://github.com/Kitware/trame-vuetify,3.2.2,tag,v3.2.2,86747e38143e21c2ae3fb77b9d8180b589e36730,10,cloned,,v3.2.2
+2026-07-14T03:10:13.534134+00:00,nteract-scrapbook,python,https://github.com/nteract/scrapbook,0.4.2,tag,0.4.2,70604fb09172766ebcbc8f7ea604749353b52d82,13,cloned,,"v0.4.2,0.4.2"
+2026-07-14T03:10:13.534134+00:00,scikit-base,python,https://github.com/sktime/skbase,1.0.0,tag,v1.0.0,aa995503b6cf60184698cd63e3c88e7e641acd44,45,cloned,,v1.0.0
+2026-07-14T03:10:13.534134+00:00,com.flipthebird.gwt-hashcode-equals:gwt-hashcode-equals,java,http://code.google.com/p/gwt-hashcode-equals/source/browse,0.1.0,skip,,,0,F4_skip,non-git-url,
+2026-07-14T03:10:13.534134+00:00,com.stanfy.enroscar:enroscar-sdk-dep,java,https://github.com/stanfy/enroscar,0.9.12,default-branch,,0e64f3c309d62e359b55ddcba10e3cc592f5e083,9,cloned,,"v0.9.12,0.9.12,release-0.9.12,release/0.9.12,0.9.12-release"
+2026-07-14T03:10:13.534134+00:00,org.apereo.cas:cas-server-support-throttle,java,https://github.com/apereo/cas,7.3.5,tag,v7.3.5,3f2b9e3fa55fcaee26c2be8481083a9fdd7d6a09,771,cloned,,v7.3.5
+2026-07-14T03:10:13.534134+00:00,org.openidentityplatform.openam:openam-cli-definitions,java,https://github.com/OpenIdentityPlatform/OpenAM,16.0.6,tag,16.0.6,4529f108e9f5d3b8f98b4afb3dd035a3c4d73a1b,75,cloned,,"v16.0.6,16.0.6"
+2026-07-14T03:10:13.534134+00:00,software.amazon.awssdk:forecast,java,,2.44.5,skip,,,0,F4_skip,empty-repository_url,
+2026-07-14T03:10:55.910006+00:00,org.jboss.integration:jboss-integration,java,http://viewvc.jboss.org/cgi-bin/viewvc.cgi/jbossas/projects/integration/tags/6.0.0.CR1,6.0.0.CR1,skip,,,0,F4_skip,non-git-url,
+2026-07-14T03:10:55.910006+00:00,com.weicoder:socket,java,https://github.com/wdcode/weicoder,3.8.1,tag,3.8.1,4920103225b7f9c4c7e9eed143ef13fae30f21ec,0,cloned,,"v3.8.1,3.8.1"
+2026-07-14T03:10:58.234094+00:00,com.github.eagle6688:devutility.internal,java,https://github.com/eagle6688/devutility.internal,1.3.8,default-branch,,286afc5a38657b9a9061e0f08506061b347989be,0,cloned,,"v1.3.8,1.3.8,release-1.3.8,release/1.3.8,1.3.8-release"
+2026-07-14T03:11:20.078491+00:00,fairlearn,python,https://github.com/fairlearn/fairlearn,0.14.0,tag,v0.14.0,9e60856452b6ff4c2b9f4a39b64870c63581c30e,69,cloned,,v0.14.0
+2026-07-14T03:11:20.078491+00:00,prometheus-async,python,https://github.com/hynek/prometheus-async,26.1.0,tag,26.1.0,61613b6166fe1dda7a54cec188f6da482ed4f59f,5,cloned,,"v26.1.0,26.1.0"
+2026-07-14T03:11:20.078491+00:00,net.jangaroo:jangaroo-compiler-api,java,https://github.com/CoreMedia/jangaroo-tools,4.1.17,default-branch,,68f587a4eee2645ea4e8695a6aa1c3a4436784f2,1,cloned,,"v4.1.17,4.1.17,release-4.1.17,release/4.1.17,4.1.17-release"
+2026-07-14T03:11:20.078491+00:00,io.janusproject.v1.extras.modules.scriptedagent:script,java,http://www.janus-project.org/scm/git/janus/,1.1,skip,,,0,F4_skip,non-git-url,
+2026-07-14T03:11:28.007401+00:00,net.n2oapp.criteria:criteria-dataset,java,https://git.i-novus.ru/framework/n2o-framework,7.29.20,skip,,,0,F4_skip,non-git-url,
+2026-07-14T03:11:28.012969+00:00,com.fizzed:blaze-vagrant,java,https://github.com/fizzed/blaze,2.11.0,tag,v2.11.0,a68c76d448fe475c8f8d86dde0c62fac882b2e9e,9,cloned,,v2.11.0
+2026-07-14T03:11:42.158861+00:00,io.zeebe:zeebe-bom,java,https://github.com/zeebe-io/zeebe,0.26.6,tag,0.26.6,23ef0d7e33ec798c9c969d5cd1e4f40d5eab9eae,53,cloned,,"v0.26.6,0.26.6"
+2026-07-14T05:26:24.574199+00:00,ai.swim:swim-spatial,java,https://github.com/swimos/swim,3.10.0,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/ai.swim_swim-spatial'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/swimos/swim/'","v3.10.0,3.10.0,release-3.10.0,release/3.10.0,3.10.0-release"
+2026-07-14T05:26:24.574199+00:00,com.amazonaws:aws-java-sdk-costandusagereport,java,https://github.com/aws/aws-sdk-java,1.12.778,default-branch,,d866126817fcc10595a3e7cd4b40efe626f05a7c,10,cloned,,"v1.12.778,1.12.778,release-1.12.778,release/1.12.778,1.12.778-release"
+2026-07-14T05:26:24.574199+00:00,de.sciss:swingplus_2.13.0-RC1,java,https://github.com/Sciss/SwingPlus,0.4.2,failed,,,0,F4_clone_failed,"Cloning into '/Users/max/Documents/SENG402/SENG402/files/raw/confirmatory/java/de.sciss_swingplus_2.13.0-RC1'...
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/Sciss/SwingPlus/'","v0.4.2,0.4.2,release-0.4.2,release/0.4.2,0.4.2-release"
+2026-07-14T05:40:51.067639+00:00,com.amazonaws:aws-java-sdk-costandusagereport,java,https://github.com/aws/aws-sdk-java,1.12.778,existing,existing,d866126817fcc10595a3e7cd4b40efe626f05a7c,10,cloned,,
+2026-07-14T05:40:51.067639+00:00,com.github.rocketraman.cfg4k:cfg4k-core,java,https://github.com/rocketraman/cfg4k,0.9.7,tag,v0.9.7,a450702fffad2081c495fb3b7e332ea227ce8f24,2,cloned,,v0.9.7
+2026-07-14T05:40:51.067639+00:00,io.github.cjkent.osiris:osiris-core,java,https://github.com/cjkent/osiris,0.8.0,tag,v0.8.0,54b8897c0ce86b6d99ce97e54980fb1d9e827885,1,cloned,,v0.8.0
+2026-07-14T05:56:46.567113+00:00,org.apache.geronimo.configs:axis-deployer,java,http://svn.apache.org/viewvc/geronimo/server/tags/geronimo-3.0.1,3.0.1,skip,,,0,F4_skip,non-git-url,
+2026-07-14T05:56:46.567113+00:00,software.amazon.awssdk:aws-sdk-java,java,https://github.com/aws/aws-sdk-java-v2,2.42.40,tag,2.42.40,07af8f956aa3bd8678a87ced121758e1997fafb8,78,cloned,,"v2.42.40,2.42.40"
+2026-07-14T05:56:59.582826+00:00,org.apache.flink:flink-streaming-scala_2.11,java,https://github.com/apache/flink,1.14.6,tag,release-1.14.6,a921a4d848e70f1569c5f20efb7b634bdc80de82,649,cloned,,"v1.14.6,1.14.6,release-1.14.6"

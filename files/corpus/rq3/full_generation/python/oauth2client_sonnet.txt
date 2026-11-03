@@ -1,0 +1,218 @@
+# oauth2client
+
+`oauth2client` is a Python library for working with OAuth 2.0 credentials and
+flows. It provides a set of abstractions for obtaining, storing, refreshing,
+and applying OAuth 2.0 access tokens to HTTP requests, along with support for
+Google service accounts, Google Compute Engine and App Engine credentials,
+JWT signing/verification, and integration helpers for common web frameworks
+(Flask, Django, App Engine) and storage backends (files, databases, keyring,
+SQLAlchemy).
+
+It is designed around a few core concepts: **Credentials** (objects that
+represent a user's or service's authorization), **Flow** (objects that drive
+the process of obtaining new credentials), and **Storage** (objects that
+persist and retrieve credentials across process runs).
+
+## Installation
+
+```bash
+pip install oauth2client
+```
+
+## Core Concepts
+
+### Credentials
+
+`oauth2client.client.Credentials` is the base class for all credential types.
+Concrete implementations know how to:
+
+- `authorize(http)` — wrap an HTTP object so that requests are automatically
+  authenticated.
+- `refresh(http)` — obtain a new access token when the old one expires.
+- `revoke(http)` — revoke the credential's authorization.
+- `apply(headers)` — add the appropriate `Authorization` header to a dict of
+  HTTP headers.
+- `to_json()` / `from_json()` — serialize and deserialize credentials for
+  storage.
+
+The most commonly used subclass is `OAuth2Credentials`, which implements the
+standard OAuth 2.0 access/refresh token dance. Other notable subclasses:
+
+- `AccessTokenCredentials` — wraps a raw, pre-obtained access token.
+- `GoogleCredentials` — represents "application default" credentials,
+  discoverable via `GoogleCredentials.get_application_default()` or loaded
+  from a JSON file with `GoogleCredentials.from_stream(...)`.
+- `AssertionCredentials` — base class for credentials based on signed
+  assertions (JWTs), used by service accounts.
+- `service_account.ServiceAccountCredentials` — credentials backed by a
+  Google service account, loadable from a JSON key file, a JSON dict, or a
+  legacy `.p12` key file. Supports scoping (`create_scoped`) and delegation
+  (`create_delegated`).
+- `contrib.gce.AppAssertionCredentials` — credentials obtained automatically
+  from the Google Compute Engine metadata server.
+- `contrib.appengine.AppAssertionCredentials` — the App Engine equivalent.
+- `contrib.devshell.DevshellCredentials` — credentials obtained from the
+  Google Cloud Shell environment.
+
+### Flows
+
+`oauth2client.client.Flow` is the base class for objects that walk a user
+through the process of granting access and exchanging an authorization code
+for credentials. `OAuth2WebServerFlow` implements the standard "web server"
+and "device" flows:
+
+- `step1_get_authorize_url()` — build the URL to send a user to for consent.
+- `step1_get_device_and_user_codes()` — start a device-flow authorization.
+- `step2_exchange()` — exchange an authorization code (or device code) for
+  `OAuth2Credentials`.
+
+Flows are typically constructed from a `client_secrets.json` file using
+`flow_from_clientsecrets()`, which reads the file via the `clientsecrets`
+module.
+
+### Storage
+
+`oauth2client.client.Storage` is the base class for persisting credentials.
+Subclasses implement `locked_get`, `locked_put`, and `locked_delete`, and
+inherit thread/process-safe `get`, `put`, and `delete` methods built on top
+of `acquire_lock` / `release_lock`. Implementations include:
+
+- `oauth2client.file.Storage` — stores credentials in a local file.
+- `contrib.multiprocess_file_storage.MultiprocessFileStorage` — a
+  multiprocess-safe file-based storage.
+- `contrib.keyring_storage.Storage` — stores credentials in the system
+  keyring.
+- `contrib.sqlalchemy.Storage` — stores credentials in a SQL database via
+  SQLAlchemy.
+- `contrib.dictionary_storage.DictionaryStorage` — stores credentials in an
+  in-memory (or otherwise supplied) dictionary.
+- `contrib.appengine.StorageByKeyName` — stores credentials in the App
+  Engine datastore, keyed by entity name.
+- `contrib.django_util.storage.DjangoORMStorage` — stores credentials using
+  a Django model field.
+
+### Transport
+
+`oauth2client.transport` provides helpers for making authenticated HTTP
+requests: `get_http_object()` to build an HTTP client, `wrap_http_for_auth()`
+and `wrap_http_for_jwt_access()` to attach credentials to it, `request()` to
+issue a single authenticated request, and `MemoryCache` as a simple in-memory
+HTTP response cache.
+
+### Cryptography
+
+Signing and verification of JWTs (used for service accounts and ID token
+verification) is handled by pluggable backends: `_openssl_crypt`,
+`_pure_python_crypt`, and `_pycrypto_crypt` each expose a `Signer` and
+`Verifier` pair with `sign`/`verify` and `from_string` constructors. The
+`crypt` module exposes the high-level `make_signed_jwt()` and
+`verify_signed_jwt_with_certs()` functions used throughout the library, and
+`client.verify_id_token()` verifies a Google-issued ID token.
+
+## Web Framework Integrations
+
+- `oauth2client.contrib.appengine` — `OAuth2Decorator` /
+  `OAuth2DecoratorFromClientSecrets` for decorating App Engine request
+  handlers with `oauth_required` / `oauth_aware`, plus `db.Property`
+  subclasses (`CredentialsProperty`, `FlowProperty`) for storing credentials
+  and flows in datastore models.
+- `oauth2client.contrib.flask_util` — `UserOAuth2`, a Flask extension
+  providing `authorize_view`, `callback_view`, `required` decorator, and
+  `credentials`/`http` accessors.
+- `oauth2client.contrib.django_util` — `UserOAuth2` helper object,
+  `oauth_required`/`oauth_enabled` view decorators, a `CredentialsField`
+  model field, and `oauth2_authorize`/`oauth2_callback` views.
+
+## Command-Line Helper
+
+`oauth2client.tools` provides `run_flow()`, a convenience function that
+drives an `OAuth2WebServerFlow` through a local webserver redirect
+(`ClientRedirectServer`/`ClientRedirectHandler`) for command-line
+applications, storing the resulting credentials via a `Storage` instance.
+
+## Usage Examples
+
+### Basic web server flow with file storage
+
+```python
+from oauth2client.client import flow_from_clientsecrets
+from oauth2client.file import Storage
+from oauth2client import tools
+
+# Load client secrets and set up storage for the resulting credentials.
+storage = Storage('credentials.json')
+credentials = storage.get()
+
+if credentials is None or credentials.invalid:
+    flow = flow_from_clientsecrets(
+        'client_secrets.json',
+        scope='https://www.googleapis.com/auth/userinfo.email',
+        redirect_uri='urn:ietf:wg:oauth:2.0:oob')
+
+    # Run a local server to complete the flow and store the result.
+    credentials = tools.run_flow(flow, storage)
+
+# Use the credentials to authorize an HTTP client.
+http = credentials.authorize(http=None)
+```
+
+### Using a service account
+
+```python
+from oauth2client.service_account import ServiceAccountCredentials
+
+credentials = ServiceAccountCredentials.from_json_keyfile_name(
+    'service-account.json',
+    scopes=['https://www.googleapis.com/auth/cloud-platform'])
+
+http = credentials.authorize(http=None)
+```
+
+### Application default credentials
+
+```python
+from oauth2client.client import GoogleCredentials
+
+credentials = GoogleCredentials.get_application_default()
+
+if credentials.create_scoped_required():
+    credentials = credentials.create_scoped(
+        ['https://www.googleapis.com/auth/cloud-platform'])
+
+http = credentials.authorize(http=None)
+```
+
+### Manually exchanging a code for credentials
+
+```python
+from oauth2client.client import credentials_from_clientsecrets_and_code
+
+credentials = credentials_from_clientsecrets_and_code(
+    'client_secrets.json',
+    scope='https://www.googleapis.com/auth/userinfo.email',
+    code='4/authorization-code-from-redirect')
+```
+
+### Flask integration
+
+```python
+from flask import Flask
+from oauth2client.contrib.flask_util import UserOAuth2
+
+app = Flask(__name__)
+oauth2 = UserOAuth2()
+oauth2.init_app(
+    app,
+    scopes=['https://www.googleapis.com/auth/userinfo.email'],
+    client_secrets_file='client_secrets.json')
+
+@app.route('/protected')
+@oauth2.required
+def protected():
+    http = oauth2.http()
+    return 'authorized as %s' % oauth2.email()
+```
+
+## License
+
+See the `LICENSE` file for details.

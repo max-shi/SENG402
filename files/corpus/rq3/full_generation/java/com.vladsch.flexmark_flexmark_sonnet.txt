@@ -1,0 +1,149 @@
+# flexmark
+
+`flexmark` is a Java library for parsing Markdown text into an abstract syntax tree (AST) and rendering that tree to HTML or back to formatted Markdown text. It is built around a pluggable, extension-oriented architecture: the core parser, HTML renderer, and Markdown formatter all expose extension points (node renderers, attribute providers, link resolvers, post-processors, block/inline parser factories, etc.) so that additional Markdown dialects and features can be layered on top of the CommonMark-compatible core.
+
+## Key Concepts
+
+At a high level, working with flexmark involves three phases:
+
+1. **Parsing** — turn raw text into a `Document` AST using `Parser`.
+2. **Transforming (optional)** — post-process or inspect the AST using visitors, post-processors, or block/inline parser extensions.
+3. **Rendering** — convert the AST to HTML using `HtmlRenderer`, or back to Markdown text using `Formatter`.
+
+## Core Classes
+
+### Parsing
+
+- **`Parser`** — the main entry point for parsing. Built via `Parser.builder()` (optionally seeded with a `DataHolder` of options), it exposes `parse(String)`, `parse(BasedSequence)`, and `parseReader(Reader)`, all returning a `Document` node (the root of the AST).
+- **`ParserEmulationProfile`** — an enum of preset parsing behaviors (`COMMONMARK`, `GITHUB`, `KRAMDOWN`, `MULTI_MARKDOWN`, `PEGDOWN`, etc.) that configure list-parsing and other options to emulate specific Markdown flavors.
+- **`ListOptions` / `MutableListOptions`** — fine-grained configuration of list-parsing behavior (tight/loose rules, item markers, indentation, etc.), usually derived from a `ParserEmulationProfile`.
+
+### AST Node Types (`com.vladsch.flexmark.ast`)
+
+The AST is composed of `Node` subclasses (from the base `flexmark-util` AST framework), including:
+
+- **Block-level nodes**: `Heading`, `Paragraph`, `BlockQuote`, `BulletList`, `OrderedList`, `BulletListItem`, `OrderedListItem`, `CodeBlock`, `FencedCodeBlock`, `IndentedCodeBlock`, `HtmlBlock`, `HtmlCommentBlock`, `ThematicBreak`.
+- **Inline nodes**: `Text`, `TextBase`, `Emphasis`, `StrongEmphasis`, `Code`, `Link`, `Image`, `LinkRef`, `ImageRef`, `AutoLink`, `MailLink`, `HtmlEntity`, `HtmlInline`, `HtmlInlineComment`, `HardLineBreak`, `SoftLineBreak`, `WhiteSpace`.
+- **Reference support**: `Reference` and `ReferenceRepository` model link reference definitions (`[label]: url "title"`) and their lookup by referencing nodes (`LinkRef`, `ImageRef`).
+
+Many node types implement shared marker interfaces such as `TextContainer` (nodes that can contribute text), `DoNotLinkDecorate` / `DoNotDecorate` (rendering hints), `AnchorRefTarget` (headings that can be linked to by ID), and `BlankLineContainer` / `ParagraphContainer` (used by list-tightness logic).
+
+### AST Utilities (`com.vladsch.flexmark.ast.util`)
+
+- **Visitors**: `BlockVisitor`, `InlineVisitor`, `HtmlInnerVisitor` are interfaces with a `visit(...)` method per node type; their `*Ext.VISIT_HANDLERS(visitor)` companions produce handler arrays for use with the underlying `NodeVisitor` dispatch mechanism.
+- **`TextCollectingVisitor`** — walks a node subtree and collects all text into a `String` or `BasedSequence`.
+- **`HeadingCollectingVisitor`** — collects all `Heading` nodes in a document.
+- **`LineCollectingVisitor`** — collects source line ranges covered by a node.
+- **`Parsing`** — low-level character/line utilities used by block and inline parsers (tab stops, line breaks, blank detection).
+- **`ReferenceRepository`** — a `NodeRepository<Reference>` tracking link reference definitions for a document.
+
+### Parser Extension Points (`com.vladsch.flexmark.parser.block`, `com.vladsch.flexmark.parser.core`, `com.vladsch.flexmark.parser.delimiter`)
+
+- **`BlockParserFactory`** / **`AbstractBlockParserFactory`** and **`BlockParser`** / **`AbstractBlockParser`** — implement custom block-level syntax (the core ships parsers such as `BlockQuoteParser`, `FencedCodeBlockParser`, `HeadingParser`, `HtmlBlockParser`, `IndentedCodeBlockParser`, `ListBlockParser`, `ListItemParser`, `ParagraphParser`, `ThematicBreakParser`, `DocumentBlockParser`).
+- **`InlineParser`** / **`InlineParserImpl`** and **`LightInlineParser`** — drive inline-level parsing (emphasis, links, autolinks, HTML, entities). **`DelimiterProcessor`** (with `EmphasisDelimiterProcessor`, `AsteriskDelimiterProcessor`, `UnderscoreDelimiterProcessor`) implements delimiter-run matching for emphasis-like syntax.
+- **`LinkRefProcessor`** / **`LinkRefProcessorFactory`** — implement custom reference-style link syntax.
+- **`PostProcessor`** / **`PostProcessorFactory`**, **`NodePostProcessor`**, **`DocumentPostProcessor`** — run after parsing to transform the AST (e.g., resolving references, restructuring nodes).
+- **`BlockPreProcessor`**, **`ParagraphPreProcessor`** — run before/during block parsing to adjust content.
+
+### HTML Rendering (`com.vladsch.flexmark.html`)
+
+- **`HtmlRenderer`** — the main entry point for HTML output. Built via `HtmlRenderer.builder()`, it exposes `render(Node)` returning a `String`, or `render(Node, Appendable)` to write directly.
+- **`NodeRenderer`** / **`NodeRendererFactory`** — pluggable per-node-type HTML renderers, registered as sets of `NodeRenderingHandler<N>`. **`CoreNodeRenderer`** provides the default rendering for CommonMark nodes.
+- **`AttributeProvider`** / **`AttributeProviderFactory`** — add/modify HTML attributes on rendered elements.
+- **`LinkResolver`** / **`LinkResolverFactory`** — rewrite or validate URLs (`ResolvedLink`) before they're written to output.
+- **`UriContentResolver`** / **`UriContentResolverFactory`** (with `FileUriContentResolver`) — resolve the actual byte content behind a URI (e.g., for embedding).
+- **`HtmlWriter`** — the output writer passed to renderers, with helpers for attributes, source-position comments, and tag emission.
+- **`HeaderIdGenerator`** / **`HtmlIdGenerator`** / **`HtmlIdGeneratorFactory`** — generate unique, slug-style IDs for headings (used for anchors/TOCs).
+- **`PhasedNodeRenderer`** — renderers that need to contribute content at specific document phases (`RenderingPhase`: `HEAD_TOP`, `BODY`, etc.), useful for injecting `<head>` content, scripts, etc.
+
+### Markdown Formatting (`com.vladsch.flexmark.formatter`)
+
+- **`Formatter`** — renders an AST back into Markdown text (round-tripping/pretty-printing), built via `Formatter.builder()`. Supports `render(Node)`, translation-aware rendering (`translationRender`), and merging multiple documents (`mergeRender`).
+- **`NodeFormatter`** / **`NodeFormatterFactory`** — pluggable per-node-type Markdown formatters, analogous to `NodeRenderer` on the HTML side. **`CoreNodeFormatter`** handles default CommonMark nodes.
+- **`MarkdownWriter`** — the output writer used by formatters, with helpers for translating/non-translating spans (used in localization workflows).
+- **`TranslationHandler`** / **`TranslationHandlerFactory`** — support rendering documents for translation (extracting translatable text spans) and reassembling translated output.
+- **`FormatterUtils`** — static helpers for rendering common constructs (lists, block quotes, loose paragraphs) consistently across formatters.
+
+## Usage Examples
+
+### Parsing Markdown and rendering to HTML
+
+```java
+import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.html.HtmlRenderer;
+import com.vladsch.flexmark.util.ast.Document;
+import com.vladsch.flexmark.util.data.MutableDataSet;
+
+MutableDataSet options = new MutableDataSet();
+
+Parser parser = Parser.builder(options).build();
+HtmlRenderer renderer = HtmlRenderer.builder(options).build();
+
+Document document = parser.parse("# Hello *world*\n\nSome **bold** text.");
+String html = renderer.render(document);
+
+System.out.println(html);
+```
+
+### Emulating GitHub-flavored parsing
+
+```java
+import com.vladsch.flexmark.parser.Parser;
+import com.vladsch.flexmark.parser.ParserEmulationProfile;
+import com.vladsch.flexmark.util.data.MutableDataSet;
+
+MutableDataSet options = new MutableDataSet();
+ParserEmulationProfile.GITHUB.setIn(options);
+
+Parser parser = Parser.builder(options).build();
+Document document = parser.parse("- [ ] task\n- [x] done\n");
+```
+
+### Collecting headings and plain text
+
+```java
+import com.vladsch.flexmark.ast.util.HeadingCollectingVisitor;
+import com.vladsch.flexmark.ast.util.TextCollectingVisitor;
+import com.vladsch.flexmark.ast.Heading;
+
+Document document = parser.parse("# Title\n\nBody text here.");
+
+ArrayList<Heading> headings = new HeadingCollectingVisitor().collectAndGetHeadings(document);
+
+String plainText = new TextCollectingVisitor().collectAndGetText(document);
+```
+
+### Round-tripping / reformatting Markdown
+
+```java
+import com.vladsch.flexmark.formatter.Formatter;
+
+Formatter formatter = Formatter.builder().build();
+Document document = parser.parse(rawMarkdown);
+String prettyMarkdown = formatter.render(document);
+```
+
+### Generating heading anchor IDs
+
+```java
+import com.vladsch.flexmark.html.renderer.HeaderIdGenerator;
+
+HeaderIdGenerator idGenerator = new HeaderIdGenerator(options);
+idGenerator.generateIds(document);
+
+String id = idGenerator.getId(someHeadingNode);
+```
+
+## Extending the Library
+
+Custom syntax and rendering behavior can be added without modifying the core:
+
+- Implement `BlockParserFactory` / `AbstractBlockParserFactory` and register via a `CustomBlockParserFactory` to add new block-level syntax.
+- Implement `DelimiterProcessor` to add new inline delimiter-based syntax (similar to emphasis).
+- Implement `LinkRefProcessor` / `LinkRefProcessorFactory` to support custom reference-style link syntax.
+- Implement `NodeRenderer` (HTML) or `NodeFormatter` (Markdown) to control how specific node types are output.
+- Implement `AttributeProvider` to inject custom HTML attributes.
+- Implement `LinkResolver` to rewrite or validate link URLs at render time.
+- Implement `PostProcessor` / `NodePostProcessor` to transform the AST after parsing (e.g., resolving cross-references).
+
+Extensions are typically packaged as classes implementing the `Extension` interface and registered with `Parser.builder()` / `HtmlRenderer.builder()` / `Formatter.builder()` via their respective builder APIs, using `Parser.addExtensions(options, extensions...)` or equivalent builder methods.

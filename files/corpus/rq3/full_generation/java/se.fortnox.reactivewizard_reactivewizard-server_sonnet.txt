@@ -1,0 +1,149 @@
+# reactivewizard-server
+
+`reactivewizard-server` provides the HTTP server layer for Reactive Wizard applications. It wires together [Reactor Netty](https://github.com/reactor/reactor-netty)'s `HttpServer` with reactive request handling, JAX-RS resource registration, connection tracking, and graceful shutdown support. It is designed to be used together with a dependency-injection framework (Guice) via its `AutoBindModule`, but the individual pieces can also be composed manually.
+
+## Overview
+
+The library is organized around a few core concepts:
+
+### Request handling
+
+- **`RequestHandler`** (referenced interface) — the basic contract for handling an `HttpServerRequest`/`HttpServerResponse` pair and returning a `Publisher<Void>`.
+- **`CompositeRequestHandler`** — combines a `Set<RequestHandler>` into a single handler, delegating incoming requests to the appropriate handler while also coordinating with an `ExceptionHandler`, a `ConnectionCounter`, and a `RequestLogger`. This is the entry point used by the server to dispatch every incoming request.
+
+### JAX-RS resource registration
+
+- **`JaxRsResourceRegistry`** — implements `JaxRsResourcesProvider` and acts as a registry for JAX-RS annotated resource classes. Resources are registered via `add(Provider<?>)` and later retrieved as an array via `getResources()`, allowing the server (or a routing layer built on top of it) to discover and dispatch to the registered endpoints.
+
+### Server lifecycle and configuration
+
+- **`ServerConfig`** — a plain configuration object exposing settings such as `port`, `maxHeaderSize`, `maxInitialLineLengthDefault`, `maxRequestSize`, `enableGzip`, `enabled`, `shutdownTimeoutSeconds`, and `shutdownDelaySeconds`. This is typically populated from application configuration and injected wherever server behavior needs to be tuned.
+- **`RwServer`** — a `Thread` subclass that owns the actual server lifecycle. It is constructed with a `ServerConfig`, a `CompositeRequestHandler`, a `ConnectionCounter`, an optional `Set<ReactorServerConfigurer>`, and a `LoggingShutdownHandler`. Calling `run()` starts the underlying Reactor Netty server; `getServer()` exposes the resulting `DisposableServer` handle. The static method `registerShutdownDependency(Runnable)` allows other components to delay shutdown until their own cleanup work is done.
+- **`ConnectionCounter`** — tracks the number of active connections/requests via `increase()`/`decrease()`, exposes the current count with `getCount()`, and supports blocking until the count reaches zero with `awaitZero(int, TimeUnit)`. This is used to allow graceful shutdown — waiting for in-flight requests to finish before the server stops.
+
+### Customizing the underlying Netty server
+
+- **`ReactorServerConfigurer`** — an extension point for modifying the Reactor Netty `HttpServer` before it starts. Implementations receive the `HttpServer` instance in `configure(HttpServer)` and return a (possibly modified) instance. The optional `prio()` method controls ordering when multiple configurers are applied.
+- Built-in configurers, in package `se.fortnox.reactivewizard.server.modifiers`:
+  - **`NoContentFixConfigurer`** — adjusts server behavior related to `204 No Content` responses.
+  - **`RequestSizesConfigurer`** — applies request-size-related limits (such as max header size, max initial line length, and max request size) from a `ServerConfig` onto the `HttpServer`.
+- **`ServerConfigurerScanner`** — extends `AbstractClassScanner` and scans the classpath (via `visit(ClassScanner)`) to discover implementations of `ReactorServerConfigurer`, so they can be automatically picked up and applied without manual wiring.
+
+### Dependency injection integration
+
+- **`ServerModule`** — implements `AutoBindModule` and is the Guice binding module for the library. It is constructed with an `InjectAnnotatedScanner`, a `ConfigFactory`, and a `ServerConfigurerScanner`, and its `configure(Binder)` method wires up the bindings needed to construct `RwServer`, `CompositeRequestHandler`, `ServerConfig`, and any discovered `ReactorServerConfigurer` implementations.
+
+## How it fits together
+
+```
+ServerConfig ──────────────┐
+                            │
+Set<RequestHandler> ──► CompositeRequestHandler ──┐
+                            │                       │
+ConnectionCounter ──────────┘                       ├──► RwServer.run() ──► DisposableServer
+                                                     │
+Set<ReactorServerConfigurer> ───────────────────────┘
+                                                     │
+LoggingShutdownHandler ──────────────────────────────
+```
+
+`ServerModule` typically wires all of the above via dependency injection, discovering `ReactorServerConfigurer` implementations through `ServerConfigurerScanner`, and producing a fully configured `RwServer` ready to run.
+
+## Usage
+
+### Starting a server manually
+
+```java
+import se.fortnox.reactivewizard.server.*;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+// Configuration
+ServerConfig serverConfig = new ServerConfig();
+serverConfig.setPort(8080);
+serverConfig.setEnableGzip(true);
+serverConfig.setShutdownTimeoutMs(30);
+
+// Connection tracking, for graceful shutdown
+ConnectionCounter connectionCounter = new ConnectionCounter();
+
+// Composite handler dispatching to your RequestHandler implementations
+CompositeRequestHandler requestHandler = new CompositeRequestHandler(
+    Set.of(myRequestHandler),
+    exceptionHandler,
+    connectionCounter,
+    requestLogger
+);
+
+// Start the server
+RwServer server = new RwServer(
+    serverConfig,
+    requestHandler,
+    connectionCounter,
+    loggingShutdownHandler
+);
+server.start();
+
+// ... later, during shutdown ...
+connectionCounter.awaitZero(30, TimeUnit.SECONDS);
+```
+
+### Registering JAX-RS resources
+
+```java
+import se.fortnox.reactivewizard.server.JaxRsResourceRegistry;
+
+JaxRsResourceRegistry registry = new JaxRsResourceRegistry();
+registry.add(myResourceProvider);
+
+Object[] resources = registry.getResources();
+// resources can now be handed off to a routing/dispatch layer
+```
+
+### Customizing the underlying HttpServer
+
+```java
+import se.fortnox.reactivewizard.server.ReactorServerConfigurer;
+import reactor.netty.http.server.HttpServer;
+
+public class CustomHeaderConfigurer implements ReactorServerConfigurer {
+    @Override
+    public HttpServer configure(HttpServer httpServer) {
+        return httpServer.tcpConfiguration(tcp -> tcp.doOnConnection(conn -> {
+            // custom connection-level behavior
+        }));
+    }
+
+    @Override
+    public int prio() {
+        return 10;
+    }
+}
+```
+
+Configurers such as `NoContentFixConfigurer` and `RequestSizesConfigurer` are applied automatically when discovered by `ServerConfigurerScanner`, or can be added manually to the `Set<ReactorServerConfigurer>` passed to `RwServer`.
+
+### Delaying shutdown until cleanup is complete
+
+```java
+RwServer.registerShutdownDependency(() -> {
+    // perform cleanup work, e.g. flushing queues or closing resources
+});
+```
+
+## Configuration reference
+
+| Property | Description |
+|---|---|
+| `port` | Port the server listens on |
+| `enabled` | Whether the server should start |
+| `maxHeaderSize` | Maximum allowed HTTP header size |
+| `maxInitialLineLengthDefault` | Maximum allowed length of the initial HTTP request line |
+| `maxRequestSize` | Maximum allowed request body size |
+| `enableGzip` | Enable gzip compression of responses |
+| `shutdownTimeoutSeconds` | Time to wait for in-flight requests during shutdown |
+| `shutdownDelaySeconds` | Delay before shutdown begins |
+
+## Integration with dependency injection
+
+When using Guice, install `ServerModule` to automatically bind and construct the server, its request handlers, and any discovered `ReactorServerConfigurer` implementations, based on classpath scanning performed by `ServerConfigurerScanner` and configuration produced via `ConfigFactory`.

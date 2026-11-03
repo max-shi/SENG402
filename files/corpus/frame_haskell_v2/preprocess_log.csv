@@ -1,0 +1,576 @@
+timestamp,package_name,ecosystem,safe_name,n_prose_files,raw_char_count,word_count_post_clean,word_capped,english_fraction,paragraphs_checked,status,reason
+2026-08-05T09:02:28.649379+00:00,uri-bytestring,haskell,uri-bytestring,1,145,19,false,0.0,0,F5_fail,word_count_post_clean=19 < 500
+2026-08-05T09:02:28.678829+00:00,mime-types,haskell,mime-types,1,56,7,false,0.0,0,F5_fail,word_count_post_clean=7 < 500
+2026-08-05T09:02:28.691369+00:00,blaze-builder-enumerator,haskell,blaze-builder-enumerator,1,435,64,false,0.0,0,F5_fail,word_count_post_clean=64 < 500
+2026-08-05T09:02:28.694622+00:00,singletons,haskell,singletons,1,800,115,false,0.0,0,F5_fail,word_count_post_clean=115 < 500
+2026-08-05T09:02:28.702145+00:00,relude,haskell,relude,1,12104,1993,false,0.96,124,ready,
+2026-08-05T09:02:29.091054+00:00,ini,haskell,ini,1,474,73,false,0.0,0,F5_fail,word_count_post_clean=73 < 500
+2026-08-05T09:02:29.097076+00:00,http-types,haskell,http-types,1,587,99,false,0.0,0,F5_fail,word_count_post_clean=99 < 500
+2026-08-05T09:02:29.100830+00:00,lifted-base,haskell,lifted-base,1,174,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T09:02:29.103646+00:00,hw-prim,haskell,hw-prim,1,116,9,false,0.0,0,F5_fail,word_count_post_clean=9 < 500
+2026-08-05T09:02:29.108126+00:00,parser-combinators,haskell,parser-combinators,2,676,105,false,0.0,0,F5_fail,word_count_post_clean=105 < 500
+2026-08-05T09:02:29.113323+00:00,versions,haskell,versions,1,1513,246,false,0.0,0,F5_fail,word_count_post_clean=246 < 500
+2026-08-05T09:02:29.118201+00:00,string-interpolate,haskell,string-interpolate,1,9776,1466,false,1.0,48,ready,
+2026-08-05T09:02:29.319882+00:00,massiv,haskell,massiv,6,32537,5624,false,1.0,145,ready,
+2026-08-05T09:02:29.631089+00:00,raw-strings-qq,haskell,raw-strings-qq,1,89,13,false,0.0,0,F5_fail,word_count_post_clean=13 < 500
+2026-08-05T09:02:29.635110+00:00,unliftio,haskell,unliftio,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:29.638551+00:00,singleton-bool,haskell,singleton-bool,1,35,4,false,0.0,0,F5_fail,word_count_post_clean=4 < 500
+2026-08-05T09:02:29.641346+00:00,core-text,haskell,core-text,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:29.647617+00:00,simple-cmd-args,haskell,simple-cmd-args,1,391,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-08-05T09:02:29.652346+00:00,microlens-th,haskell,microlens-th,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:29.658378+00:00,blaze-builder-conduit,haskell,blaze-builder-conduit,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:29.666294+00:00,utf8-string,haskell,utf8-string,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:29.668393+00:00,comonad,haskell,comonad,1,1004,170,false,0.0,0,F5_fail,word_count_post_clean=170 < 500
+2026-08-05T09:02:29.673336+00:00,th-desugar,haskell,th-desugar,1,3213,520,false,1.0,21,ready,
+2026-08-05T09:02:29.718024+00:00,pretty,haskell,pretty,2,5940,993,false,0.962,52,ready,
+2026-08-05T09:02:29.854257+00:00,math-functions,haskell,math-functions,1,863,116,false,0.0,0,F5_fail,word_count_post_clean=116 < 500
+2026-08-05T09:02:29.859959+00:00,reflection,haskell,reflection,1,409,59,false,0.0,0,F5_fail,word_count_post_clean=59 < 500
+2026-08-05T09:02:29.863364+00:00,fsnotify,haskell,fsnotify,1,203,28,false,0.0,0,F5_fail,word_count_post_clean=28 < 500
+2026-08-05T09:02:29.866570+00:00,servant-swagger,haskell,servant-swagger,1,1307,202,false,0.0,0,F5_fail,word_count_post_clean=202 < 500
+2026-08-05T09:02:29.887399+00:00,hnix,haskell,hnix,1,3762,610,false,0.977,43,ready,
+2026-08-05T09:02:29.988572+00:00,network-uri,haskell,network-uri,1,797,131,false,0.0,0,F5_fail,word_count_post_clean=131 < 500
+2026-08-05T09:02:29.991827+00:00,bytestring-to-vector,haskell,bytestring-to-vector,1,184,26,false,0.0,0,F5_fail,word_count_post_clean=26 < 500
+2026-08-05T09:02:29.994337+00:00,prettyprinter,haskell,prettyprinter,1,5769,912,false,1.0,36,ready,
+2026-08-05T09:02:30.065420+00:00,template-haskell-compat-v0208,haskell,template-haskell-compat-v0208,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.067156+00:00,HsYAML,haskell,HsYAML,1,996,141,false,0.0,0,F5_fail,word_count_post_clean=141 < 500
+2026-08-05T09:02:30.071797+00:00,parsers,haskell,parsers,1,386,56,false,0.0,0,F5_fail,word_count_post_clean=56 < 500
+2026-08-05T09:02:30.074741+00:00,finite-typelits,haskell,finite-typelits,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.076793+00:00,hinotify,haskell,hinotify,1,545,87,false,0.0,0,F5_fail,word_count_post_clean=87 < 500
+2026-08-05T09:02:30.080522+00:00,run-st,haskell,run-st,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.081931+00:00,random-fu,haskell,random-fu,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:30.086615+00:00,semigroups,haskell,semigroups,1,881,144,false,0.0,0,F5_fail,word_count_post_clean=144 < 500
+2026-08-05T09:02:30.089451+00:00,th-reify-many,haskell,th-reify-many,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.090938+00:00,conduit-extra,haskell,conduit-extra,1,148,23,false,0.0,0,F5_fail,word_count_post_clean=23 < 500
+2026-08-05T09:02:30.097539+00:00,data-memocombinators,haskell,data-memocombinators,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.098923+00:00,intern,haskell,intern,1,235,33,false,0.0,0,F5_fail,word_count_post_clean=33 < 500
+2026-08-05T09:02:30.101858+00:00,xmlhtml,haskell,xmlhtml,1,2523,403,false,0.0,0,F5_fail,word_count_post_clean=403 < 500
+2026-08-05T09:02:30.182516+00:00,vault,haskell,vault,1,1067,186,false,0.0,0,F5_fail,word_count_post_clean=186 < 500
+2026-08-05T09:02:30.188090+00:00,hlint,haskell,hlint,2,24455,4090,false,0.981,155,ready,
+2026-08-05T09:02:30.521374+00:00,chronos,haskell,chronos,1,2378,346,false,0.0,0,F5_fail,word_count_post_clean=346 < 500
+2026-08-05T09:02:30.527518+00:00,syb,haskell,syb,1,1231,170,false,0.0,0,F5_fail,word_count_post_clean=170 < 500
+2026-08-05T09:02:30.532519+00:00,pipes-attoparsec,haskell,pipes-attoparsec,1,344,56,false,0.0,0,F5_fail,word_count_post_clean=56 < 500
+2026-08-05T09:02:30.535618+00:00,hslogger,haskell,hslogger,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.538129+00:00,gi-pango,haskell,gi-pango,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:30.554951+00:00,cereal-text,haskell,cereal-text,1,57,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-08-05T09:02:30.557781+00:00,loch-th,haskell,loch-th,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.559299+00:00,crypto-random-api,haskell,crypto-random-api,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.560859+00:00,scientific,haskell,scientific,1,1052,168,false,0.0,0,F5_fail,word_count_post_clean=168 < 500
+2026-08-05T09:02:30.564590+00:00,cprng-aes,haskell,cprng-aes,1,318,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-08-05T09:02:30.567825+00:00,base-orphans,haskell,base-orphans,1,2431,493,false,0.0,0,F5_fail,word_count_post_clean=493 < 500
+2026-08-05T09:02:30.583300+00:00,cryptonite,haskell,cryptonite,1,2371,350,false,0.0,0,F5_fail,word_count_post_clean=350 < 500
+2026-08-05T09:02:30.598568+00:00,http-streams,haskell,http-streams,1,869,137,false,0.0,0,F5_fail,word_count_post_clean=137 < 500
+2026-08-05T09:02:30.602793+00:00,monoidal-containers,haskell,monoidal-containers,1,633,99,false,0.0,0,F5_fail,word_count_post_clean=99 < 500
+2026-08-05T09:02:30.606524+00:00,socks,haskell,socks,1,612,88,false,0.0,0,F5_fail,word_count_post_clean=88 < 500
+2026-08-05T09:02:30.609989+00:00,hint,haskell,hint,1,605,100,false,0.0,0,F5_fail,word_count_post_clean=100 < 500
+2026-08-05T09:02:30.613501+00:00,haskell-lexer,haskell,haskell-lexer,1,472,70,false,0.0,0,F5_fail,word_count_post_clean=70 < 500
+2026-08-05T09:02:30.616774+00:00,clock,haskell,clock,1,144,5,false,0.0,0,F5_fail,word_count_post_clean=5 < 500
+2026-08-05T09:02:30.620153+00:00,arithmoi,haskell,arithmoi,1,8,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T09:02:30.627304+00:00,co-log-core,haskell,co-log-core,1,787,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T09:02:30.631458+00:00,statistics,haskell,statistics,1,1135,158,false,0.0,0,F5_fail,word_count_post_clean=158 < 500
+2026-08-05T09:02:30.635147+00:00,optparse-applicative,haskell,optparse-applicative,1,6801,1136,false,1.0,52,ready,
+2026-08-05T09:02:30.741889+00:00,vector-th-unbox,haskell,vector-th-unbox,1,89,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T09:02:30.744225+00:00,polysemy-conc,haskell,polysemy-conc,3,506,67,false,0.0,0,F5_fail,word_count_post_clean=67 < 500
+2026-08-05T09:02:30.751199+00:00,with-utf8,haskell,with-utf8,1,2631,488,false,0.0,0,F5_fail,word_count_post_clean=488 < 500
+2026-08-05T09:02:30.757843+00:00,void,haskell,void,1,323,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-08-05T09:02:30.760076+00:00,hpqtypes,haskell,hpqtypes,2,1918,265,false,0.0,0,F5_fail,word_count_post_clean=265 < 500
+2026-08-05T09:02:30.768622+00:00,time,haskell,time,1,394,63,false,0.0,0,F5_fail,word_count_post_clean=63 < 500
+2026-08-05T09:02:30.773604+00:00,numhask,haskell,numhask,2,3663,555,false,1.0,29,ready,
+2026-08-05T09:02:30.833085+00:00,Chart-diagrams,haskell,Chart-diagrams,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:30.838356+00:00,incipit-core,haskell,incipit-core,3,1531,273,false,0.0,0,F5_fail,word_count_post_clean=273 < 500
+2026-08-05T09:02:30.846807+00:00,cpu,haskell,cpu,1,158,23,false,0.0,0,F5_fail,word_count_post_clean=23 < 500
+2026-08-05T09:02:30.849373+00:00,hasql,haskell,hasql,1,4753,669,false,1.0,37,ready,
+2026-08-05T09:02:30.947750+00:00,tagged,haskell,tagged,1,51,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T09:02:30.953634+00:00,servant-swagger-ui-core,haskell,servant-swagger-ui-core,1,510,83,false,0.0,0,F5_fail,word_count_post_clean=83 < 500
+2026-08-05T09:02:30.962858+00:00,conduit-combinators,haskell,conduit-combinators,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:30.969257+00:00,ekg-core,haskell,ekg-core,1,45,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-08-05T09:02:30.973787+00:00,mono-traversable,haskell,mono-traversable,1,7580,1274,false,0.983,58,ready,
+2026-08-05T09:02:31.129128+00:00,crypton-connection,haskell,crypton-connection,1,689,111,false,0.0,0,F5_fail,word_count_post_clean=111 < 500
+2026-08-05T09:02:31.132557+00:00,hedgehog,haskell,hedgehog,4,6864,845,false,0.947,38,ready,
+2026-08-05T09:02:31.229771+00:00,NumInstances,haskell,NumInstances,1,90,12,false,0.0,0,F5_fail,word_count_post_clean=12 < 500
+2026-08-05T09:02:31.232948+00:00,terminal-progress-bar,haskell,terminal-progress-bar,2,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:31.236730+00:00,http-client,haskell,http-client,1,624,89,false,0.0,0,F5_fail,word_count_post_clean=89 < 500
+2026-08-05T09:02:31.244357+00:00,pem,haskell,pem,1,66,9,false,0.0,0,F5_fail,word_count_post_clean=9 < 500
+2026-08-05T09:02:31.246861+00:00,flatparse,haskell,flatparse,1,5102,776,false,1.0,19,ready,
+2026-08-05T09:02:31.297763+00:00,unix,haskell,unix,1,283,52,false,0.0,0,F5_fail,word_count_post_clean=52 < 500
+2026-08-05T09:02:31.303000+00:00,nats,haskell,nats,1,211,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T09:02:31.305564+00:00,cassava,haskell,cassava,1,1799,282,false,0.0,0,F5_fail,word_count_post_clean=282 < 500
+2026-08-05T09:02:31.311009+00:00,om-show,haskell,om-show,1,255,44,false,0.0,0,F5_fail,word_count_post_clean=44 < 500
+2026-08-05T09:02:31.313688+00:00,ansi-wl-pprint,haskell,ansi-wl-pprint,1,101,15,false,0.0,0,F5_fail,word_count_post_clean=15 < 500
+2026-08-05T09:02:31.316910+00:00,JuicyPixels,haskell,JuicyPixels,1,2641,387,false,0.0,0,F5_fail,word_count_post_clean=387 < 500
+2026-08-05T09:02:31.333895+00:00,wide-word,haskell,wide-word,1,384,65,false,0.0,0,F5_fail,word_count_post_clean=65 < 500
+2026-08-05T09:02:31.338188+00:00,os-string,haskell,os-string,1,97,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-08-05T09:02:31.341770+00:00,lifted-async,haskell,lifted-async,1,306,46,false,0.0,0,F5_fail,word_count_post_clean=46 < 500
+2026-08-05T09:02:31.345398+00:00,comonad-transformers,haskell,comonad-transformers,1,365,54,false,0.0,0,F5_fail,word_count_post_clean=54 < 500
+2026-08-05T09:02:31.348198+00:00,polysemy-resume,haskell,polysemy-resume,2,6400,1092,false,1.0,54,ready,
+2026-08-05T09:02:31.431833+00:00,repline,haskell,repline,1,1953,318,false,0.0,0,F5_fail,word_count_post_clean=318 < 500
+2026-08-05T09:02:31.437665+00:00,monoid-subclasses,haskell,monoid-subclasses,1,2415,364,false,0.0,0,F5_fail,word_count_post_clean=364 < 500
+2026-08-05T09:02:31.444077+00:00,linear,haskell,linear,1,263,38,false,0.0,0,F5_fail,word_count_post_clean=38 < 500
+2026-08-05T09:02:31.447193+00:00,haskell-lsp-types,haskell,haskell-lsp-types,1,242,22,false,0.0,0,F5_fail,word_count_post_clean=22 < 500
+2026-08-05T09:02:31.451294+00:00,bv-sized,haskell,bv-sized,1,91,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-08-05T09:02:31.453334+00:00,polysemy,haskell,polysemy,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:31.457209+00:00,criterion-measurement,haskell,criterion-measurement,1,178,19,false,0.0,0,F5_fail,word_count_post_clean=19 < 500
+2026-08-05T09:02:31.461568+00:00,uniplate,haskell,uniplate,1,8033,1288,false,1.0,50,ready,
+2026-08-05T09:02:31.541438+00:00,formatting,haskell,formatting,2,7294,1381,false,0.927,55,ready,
+2026-08-05T09:02:31.697929+00:00,operational,haskell,operational,5,8354,1344,false,0.985,68,ready,
+2026-08-05T09:02:31.811103+00:00,http-common,haskell,http-common,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:31.812598+00:00,crypto-pubkey-types,haskell,crypto-pubkey-types,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:31.814351+00:00,hw-rankselect-base,haskell,hw-rankselect-base,1,2150,316,false,0.0,0,F5_fail,word_count_post_clean=316 < 500
+2026-08-05T09:02:31.820540+00:00,x509,haskell,x509,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:31.824310+00:00,enclosed-exceptions,haskell,enclosed-exceptions,1,994,149,false,0.0,0,F5_fail,word_count_post_clean=149 < 500
+2026-08-05T09:02:31.827471+00:00,cookie,haskell,cookie,1,41,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-08-05T09:02:31.829853+00:00,singletons-base,haskell,singletons-base,1,1063,163,false,0.0,0,F5_fail,word_count_post_clean=163 < 500
+2026-08-05T09:02:31.843246+00:00,http-client-tls,haskell,http-client-tls,1,247,32,false,0.0,0,F5_fail,word_count_post_clean=32 < 500
+2026-08-05T09:02:31.848659+00:00,scotty,haskell,scotty,1,1556,241,false,0.0,0,F5_fail,word_count_post_clean=241 < 500
+2026-08-05T09:02:31.855395+00:00,proto-lens,haskell,proto-lens,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:31.864009+00:00,hedis,haskell,hedis,1,1017,148,false,0.0,0,F5_fail,word_count_post_clean=148 < 500
+2026-08-05T09:02:31.869168+00:00,composite-base,haskell,composite-base,1,1354,207,false,0.0,0,F5_fail,word_count_post_clean=207 < 500
+2026-08-05T09:02:31.872779+00:00,hxt,haskell,hxt,42,143871,22304,false,0.941,170,ready,
+2026-08-05T09:02:32.429787+00:00,protolude,haskell,protolude,1,4106,633,false,1.0,40,ready,
+2026-08-05T09:02:32.516757+00:00,ascii-case,haskell,ascii-case,2,152,25,false,0.0,0,F5_fail,word_count_post_clean=25 < 500
+2026-08-05T09:02:32.520172+00:00,tmp-proc,haskell,tmp-proc,8,5832,938,false,1.0,56,ready,
+2026-08-05T09:02:32.616850+00:00,gi-gio,haskell,gi-gio,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:32.633051+00:00,lsp,haskell,lsp,1,596,78,false,0.0,0,F5_fail,word_count_post_clean=78 < 500
+2026-08-05T09:02:32.638850+00:00,stache,haskell,stache,1,1595,224,false,0.0,0,F5_fail,word_count_post_clean=224 < 500
+2026-08-05T09:02:32.643645+00:00,binary-conduit,haskell,binary-conduit,1,227,18,false,0.0,0,F5_fail,word_count_post_clean=18 < 500
+2026-08-05T09:02:32.645956+00:00,retrie,haskell,retrie,1,4137,636,false,1.0,45,ready,
+2026-08-05T09:02:32.727428+00:00,reducers,haskell,reducers,1,265,37,false,0.0,0,F5_fail,word_count_post_clean=37 < 500
+2026-08-05T09:02:32.731760+00:00,dlist,haskell,dlist,1,137,20,false,0.0,0,F5_fail,word_count_post_clean=20 < 500
+2026-08-05T09:02:32.733833+00:00,mustache,haskell,mustache,1,953,140,false,0.0,0,F5_fail,word_count_post_clean=140 < 500
+2026-08-05T09:02:32.738612+00:00,universum,haskell,universum,1,9838,1651,false,0.99,104,ready,
+2026-08-05T09:02:32.945374+00:00,gi-glib,haskell,gi-glib,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:32.961076+00:00,yaml,haskell,yaml,3,1619,249,false,0.0,0,F5_fail,word_count_post_clean=249 < 500
+2026-08-05T09:02:32.969157+00:00,trifecta,haskell,trifecta,1,253,37,false,0.0,0,F5_fail,word_count_post_clean=37 < 500
+2026-08-05T09:02:32.972506+00:00,liquid-base,haskell,liquid-base,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:33.006389+00:00,haskell-gi,haskell,haskell-gi,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:33.022278+00:00,modern-uri,haskell,modern-uri,1,4442,739,false,0.95,40,ready,
+2026-08-05T09:02:33.091704+00:00,derive-storable,haskell,derive-storable,1,1096,174,false,0.0,0,F5_fail,word_count_post_clean=174 < 500
+2026-08-05T09:02:33.096133+00:00,bytestring,haskell,bytestring,1,876,131,false,0.0,0,F5_fail,word_count_post_clean=131 < 500
+2026-08-05T09:02:33.101267+00:00,ghc-lib-parser,haskell,ghc-lib-parser,1,6355,1097,false,0.971,34,ready,
+2026-08-05T09:02:33.155849+00:00,streaming-commons,haskell,streaming-commons,1,964,141,false,0.0,0,F5_fail,word_count_post_clean=141 < 500
+2026-08-05T09:02:33.160312+00:00,vector-sized,haskell,vector-sized,1,1353,215,false,0.0,0,F5_fail,word_count_post_clean=215 < 500
+2026-08-05T09:02:33.164553+00:00,regex-applicative,haskell,regex-applicative,1,884,138,false,0.0,0,F5_fail,word_count_post_clean=138 < 500
+2026-08-05T09:02:33.167608+00:00,transformers-base,haskell,transformers-base,1,138,18,false,0.0,0,F5_fail,word_count_post_clean=18 < 500
+2026-08-05T09:02:33.170025+00:00,atomic-primops,haskell,atomic-primops,6,5838,912,false,0.98,49,ready,
+2026-08-05T09:02:33.264341+00:00,microlens,haskell,microlens,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:33.268546+00:00,string-conversions,haskell,string-conversions,1,201,25,false,0.0,0,F5_fail,word_count_post_clean=25 < 500
+2026-08-05T09:02:33.272030+00:00,unix-compat,haskell,unix-compat,1,243,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T09:02:33.274727+00:00,type-set,haskell,type-set,1,8,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T09:02:33.277319+00:00,retry,haskell,retry,1,617,85,false,0.0,0,F5_fail,word_count_post_clean=85 < 500
+2026-08-05T09:02:33.279948+00:00,foreign-store,haskell,foreign-store,1,122,18,false,0.0,0,F5_fail,word_count_post_clean=18 < 500
+2026-08-05T09:02:33.281863+00:00,hoauth2,haskell,hoauth2,3,748,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-08-05T09:02:33.290405+00:00,quickcheck-instances,haskell,quickcheck-instances,1,517,82,false,0.0,0,F5_fail,word_count_post_clean=82 < 500
+2026-08-05T09:02:33.293488+00:00,algebraic-graphs,haskell,algebraic-graphs,1,3194,503,false,1.0,24,ready,
+2026-08-05T09:02:33.349309+00:00,ghcjs-base,haskell,ghcjs-base,2,5302,872,false,0.981,53,ready,
+2026-08-05T09:02:33.440360+00:00,primitive,haskell,primitive,1,132,17,false,0.0,0,F5_fail,word_count_post_clean=17 < 500
+2026-08-05T09:02:33.443899+00:00,timeit,haskell,timeit,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:33.445338+00:00,openapi3,haskell,openapi3,1,995,143,false,0.0,0,F5_fail,word_count_post_clean=143 < 500
+2026-08-05T09:02:33.449462+00:00,logict,haskell,logict,1,3310,497,false,0.0,0,F5_fail,word_count_post_clean=497 < 500
+2026-08-05T09:02:33.493214+00:00,gitrev,haskell,gitrev,1,839,152,false,0.0,0,F5_fail,word_count_post_clean=152 < 500
+2026-08-05T09:02:33.495705+00:00,mod,haskell,mod,1,3315,510,false,1.0,17,ready,
+2026-08-05T09:02:33.528361+00:00,contravariant,haskell,contravariant,1,227,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T09:02:33.531134+00:00,streamly-bytestring,haskell,streamly-bytestring,1,621,98,false,0.0,0,F5_fail,word_count_post_clean=98 < 500
+2026-08-05T09:02:33.534063+00:00,streaming,haskell,streaming,2,14969,2516,false,1.0,90,ready,
+2026-08-05T09:02:33.663428+00:00,parameterized-utils,haskell,parameterized-utils,1,7861,1167,false,1.0,39,ready,
+2026-08-05T09:02:33.728543+00:00,moffy,haskell,moffy,1,154,19,false,0.0,0,F5_fail,word_count_post_clean=19 < 500
+2026-08-05T09:02:33.731776+00:00,system-fileio,haskell,system-fileio,3,757,115,false,0.0,0,F5_fail,word_count_post_clean=115 < 500
+2026-08-05T09:02:33.736509+00:00,attoparsec-conduit,haskell,attoparsec-conduit,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:33.741479+00:00,unliftio-core,haskell,unliftio-core,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:02:33.743950+00:00,uniform-json,haskell,uniform-json,8,2896,457,false,0.0,0,F5_fail,word_count_post_clean=457 < 500
+2026-08-05T09:02:33.804077+00:00,wai-extra,haskell,wai-extra,1,261,38,false,0.0,0,F5_fail,word_count_post_clean=38 < 500
+2026-08-05T09:02:33.816318+00:00,ghcide,haskell,ghcide,3,11464,1894,false,1.0,89,ready,
+2026-08-05T09:02:33.981141+00:00,tasty-quickcheck,haskell,tasty-quickcheck,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:33.986934+00:00,HTTP,haskell,HTTP,1,485,81,false,0.0,0,F5_fail,word_count_post_clean=81 < 500
+2026-08-05T09:02:33.989668+00:00,asn1-types,haskell,asn1-types,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:33.992931+00:00,asn1-encoding,haskell,asn1-encoding,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:02:33.996643+00:00,type-flip,haskell,type-flip,1,33,9,false,0.0,0,F5_fail,word_count_post_clean=9 < 500
+2026-08-05T09:02:33.998994+00:00,safe,haskell,safe,1,787,142,false,0.0,0,F5_fail,word_count_post_clean=142 < 500
+2026-08-05T09:02:34.002147+00:00,xdg-basedir,haskell,xdg-basedir,1,598,98,false,0.0,0,F5_fail,word_count_post_clean=98 < 500
+2026-08-05T09:02:34.005544+00:00,exceptions,haskell,exceptions,1,308,42,false,0.0,0,F5_fail,word_count_post_clean=42 < 500
+2026-08-05T09:02:34.008392+00:00,byteable,haskell,byteable,1,44,5,false,0.0,0,F5_fail,word_count_post_clean=5 < 500
+2026-08-05T09:02:34.010389+00:00,random-source,haskell,random-source,1,215,38,false,0.0,0,F5_fail,word_count_post_clean=38 < 500
+2026-08-05T09:02:34.014491+00:00,named,haskell,named,1,642,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-08-05T09:02:34.017242+00:00,terminfo,haskell,terminfo,1,305,51,false,0.0,0,F5_fail,word_count_post_clean=51 < 500
+2026-08-05T09:02:34.019970+00:00,megaparsec,haskell,megaparsec,3,11133,1709,false,0.967,90,ready,
+2026-08-05T09:02:34.192150+00:00,tomland,haskell,tomland,1,2834,459,false,0.0,0,F5_fail,word_count_post_clean=459 < 500
+2026-08-05T09:02:34.200723+00:00,exon,haskell,exon,2,705,121,false,0.0,0,F5_fail,word_count_post_clean=121 < 500
+2026-08-05T09:02:34.204781+00:00,conduit,haskell,conduit,1,368,56,false,0.0,0,F5_fail,word_count_post_clean=56 < 500
+2026-08-05T09:02:34.211609+00:00,hls-graph,haskell,hls-graph,2,1319,211,false,0.0,0,F5_fail,word_count_post_clean=211 < 500
+2026-08-05T09:02:34.238121+00:00,boring,haskell,boring,1,131,23,false,0.0,0,F5_fail,word_count_post_clean=23 < 500
+2026-08-05T09:02:34.241128+00:00,insert-ordered-containers,haskell,insert-ordered-containers,1,91,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T09:02:34.243305+00:00,sendfile,haskell,sendfile,6,2637,370,false,0.0,0,F5_fail,word_count_post_clean=370 < 500
+2026-08-05T09:02:34.250952+00:00,invariant,haskell,invariant,1,28,3,false,0.0,0,F5_fail,word_count_post_clean=3 < 500
+2026-08-05T09:04:13.417292+00:00,dotgen,haskell,dotgen,1,215,34,false,0.0,0,F5_fail,word_count_post_clean=34 < 500
+2026-08-05T09:04:13.439913+00:00,base64-bytestring,haskell,base64-bytestring,1,385,60,false,0.0,0,F5_fail,word_count_post_clean=60 < 500
+2026-08-05T09:04:13.443178+00:00,liquidhaskell,haskell,liquidhaskell,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:04:13.464985+00:00,time-compat,haskell,time-compat,1,155,24,false,0.0,0,F5_fail,word_count_post_clean=24 < 500
+2026-08-05T09:04:13.471192+00:00,tagsoup,haskell,tagsoup,1,8956,1559,false,0.981,52,ready,
+2026-08-05T09:04:13.681108+00:00,barbies,haskell,barbies,1,674,96,false,0.0,0,F5_fail,word_count_post_clean=96 < 500
+2026-08-05T09:04:13.685089+00:00,cryptohash-sha256,haskell,cryptohash-sha256,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:13.686849+00:00,monad-time,haskell,monad-time,1,73,12,false,0.0,0,F5_fail,word_count_post_clean=12 < 500
+2026-08-05T09:04:13.689172+00:00,pqueue,haskell,pqueue,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:13.690613+00:00,heaps,haskell,heaps,1,287,39,false,0.0,0,F5_fail,word_count_post_clean=39 < 500
+2026-08-05T09:04:13.693572+00:00,crypto-api,haskell,crypto-api,1,335,51,false,0.0,0,F5_fail,word_count_post_clean=51 < 500
+2026-08-05T09:04:13.695690+00:00,stm-conduit,haskell,stm-conduit,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:13.696989+00:00,commonmark-extensions,haskell,commonmark-extensions,1,856,141,false,0.0,0,F5_fail,word_count_post_clean=141 < 500
+2026-08-05T09:04:13.703549+00:00,data-array-byte,haskell,data-array-byte,1,176,26,false,0.0,0,F5_fail,word_count_post_clean=26 < 500
+2026-08-05T09:04:13.706397+00:00,lattices,haskell,lattices,1,73,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T09:04:13.708995+00:00,hw-bits,haskell,hw-bits,1,42,5,false,0.0,0,F5_fail,word_count_post_clean=5 < 500
+2026-08-05T09:04:13.711813+00:00,monads-tf,haskell,monads-tf,2,368,54,false,0.0,0,F5_fail,word_count_post_clean=54 < 500
+2026-08-05T09:04:13.714734+00:00,gi-gobject,haskell,gi-gobject,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:04:13.727084+00:00,mig,haskell,mig,22,62715,11206,false,0.98,151,ready,
+2026-08-05T09:04:14.147818+00:00,sandwich,haskell,sandwich,32,50290,7781,false,0.949,136,ready,
+2026-08-05T09:04:14.708924+00:00,gi-gdk,haskell,gi-gdk,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:04:14.721324+00:00,ascii,haskell,ascii,2,2406,384,false,0.0,0,F5_fail,word_count_post_clean=384 < 500
+2026-08-05T09:04:14.727344+00:00,hashtables,haskell,hashtables,1,3229,491,false,0.0,0,F5_fail,word_count_post_clean=491 < 500
+2026-08-05T09:04:14.736087+00:00,fmt,haskell,fmt,1,4867,800,false,1.0,33,ready,
+2026-08-05T09:04:14.795253+00:00,mtl,haskell,mtl,2,4944,756,false,1.0,36,ready,
+2026-08-05T09:04:14.861283+00:00,base16,haskell,base16,1,590,83,false,0.0,0,F5_fail,word_count_post_clean=83 < 500
+2026-08-05T09:04:14.865347+00:00,HUnit,haskell,HUnit,1,15796,2572,false,1.0,109,ready,
+2026-08-05T09:04:15.053477+00:00,ieee754,haskell,ieee754,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:15.054626+00:00,text-manipulate,haskell,text-manipulate,1,363,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-08-05T09:04:15.058137+00:00,refined,haskell,refined,1,399,67,false,0.0,0,F5_fail,word_count_post_clean=67 < 500
+2026-08-05T09:04:15.060649+00:00,lucid,haskell,lucid,3,3356,546,false,0.933,45,ready,
+2026-08-05T09:04:15.220655+00:00,amazonka-core,haskell,amazonka-core,1,509,74,false,0.0,0,F5_fail,word_count_post_clean=74 < 500
+2026-08-05T09:04:15.408186+00:00,core-program,haskell,core-program,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:15.411996+00:00,mime-mail,haskell,mime-mail,2,623,97,false,0.0,0,F5_fail,word_count_post_clean=97 < 500
+2026-08-05T09:04:15.419093+00:00,tasty-hunit,haskell,tasty-hunit,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:15.422585+00:00,postgresql-libpq,haskell,postgresql-libpq,1,271,44,false,0.0,0,F5_fail,word_count_post_clean=44 < 500
+2026-08-05T09:04:15.424212+00:00,gi-gtk,haskell,gi-gtk,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:04:15.441039+00:00,zstd,haskell,zstd,1,1231,196,false,0.0,0,F5_fail,word_count_post_clean=196 < 500
+2026-08-05T09:04:15.444813+00:00,Win32,haskell,Win32,1,744,111,false,0.0,0,F5_fail,word_count_post_clean=111 < 500
+2026-08-05T09:04:15.452319+00:00,aeson-pretty,haskell,aeson-pretty,1,943,138,false,0.0,0,F5_fail,word_count_post_clean=138 < 500
+2026-08-05T09:04:15.455983+00:00,SafeSemaphore,haskell,SafeSemaphore,1,2908,427,false,0.0,0,F5_fail,word_count_post_clean=427 < 500
+2026-08-05T09:04:15.460032+00:00,haskeline,haskell,haskeline,1,881,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T09:04:15.464339+00:00,edit-distance,haskell,edit-distance,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:15.466757+00:00,concurrency,haskell,concurrency,15,30647,4938,false,0.983,119,ready,
+2026-08-05T09:04:15.818242+00:00,attoparsec-aeson,haskell,attoparsec-aeson,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:15.826935+00:00,ansi-terminal,haskell,ansi-terminal,3,5194,803,false,0.98,49,ready,
+2026-08-05T09:04:15.925626+00:00,array-chunks,haskell,array-chunks,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:15.926919+00:00,resourcet,haskell,resourcet,1,5345,883,false,1.0,24,ready,
+2026-08-05T09:04:15.964077+00:00,network-conduit,haskell,network-conduit,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:04:15.967904+00:00,aeson,haskell,aeson,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:04:15.976968+00:00,parallel-io,haskell,parallel-io,1,81,13,false,0.0,0,F5_fail,word_count_post_clean=13 < 500
+2026-08-05T09:04:15.979087+00:00,nonempty-containers,haskell,nonempty-containers,1,3694,543,false,1.0,27,ready,
+2026-08-05T09:04:16.027119+00:00,filepattern,haskell,filepattern,1,1653,271,false,0.0,0,F5_fail,word_count_post_clean=271 < 500
+2026-08-05T09:04:16.032649+00:00,skylighting,haskell,skylighting,1,4490,652,false,0.933,30,ready,
+2026-08-05T09:04:16.114061+00:00,text-metrics,haskell,text-metrics,1,1278,168,false,0.0,0,F5_fail,word_count_post_clean=168 < 500
+2026-08-05T09:04:16.119519+00:00,serialise,haskell,serialise,1,1578,226,false,0.0,0,F5_fail,word_count_post_clean=226 < 500
+2026-08-05T09:04:16.128194+00:00,commonmark,haskell,commonmark,1,3385,533,false,1.0,23,ready,
+2026-08-05T09:04:16.173928+00:00,bytesmith,haskell,bytesmith,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:16.175717+00:00,servant-auth-client,haskell,servant-auth-client,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:16.189362+00:00,natural-arithmetic,haskell,natural-arithmetic,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:16.191037+00:00,th-lift-instances,haskell,th-lift-instances,1,74,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T09:04:16.193288+00:00,dunai,haskell,dunai,3,24712,3874,false,0.973,112,ready,
+2026-08-05T09:04:16.433919+00:00,text-rope,haskell,text-rope,1,207,32,false,0.0,0,F5_fail,word_count_post_clean=32 < 500
+2026-08-05T09:04:16.438232+00:00,exinst,haskell,exinst,6,685,111,false,0.0,0,F5_fail,word_count_post_clean=111 < 500
+2026-08-05T09:04:16.446237+00:00,what4,haskell,what4,4,14874,2308,false,1.0,90,ready,
+2026-08-05T09:04:16.611196+00:00,row-types,haskell,row-types,3,969,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T09:04:16.619850+00:00,interpolate,haskell,interpolate,1,713,87,false,0.0,0,F5_fail,word_count_post_clean=87 < 500
+2026-08-05T09:04:16.623356+00:00,hmatrix,haskell,hmatrix,3,1310,189,false,0.0,0,F5_fail,word_count_post_clean=189 < 500
+2026-08-05T09:04:16.635298+00:00,silently,haskell,silently,1,616,91,false,0.0,0,F5_fail,word_count_post_clean=91 < 500
+2026-08-05T09:04:16.638561+00:00,base-noprelude,haskell,base-noprelude,1,333,63,false,0.0,0,F5_fail,word_count_post_clean=63 < 500
+2026-08-05T09:04:16.644354+00:00,profunctors,haskell,profunctors,1,216,30,false,0.0,0,F5_fail,word_count_post_clean=30 < 500
+2026-08-05T09:04:16.649664+00:00,doclayout,haskell,doclayout,1,475,70,false,0.0,0,F5_fail,word_count_post_clean=70 < 500
+2026-08-05T09:04:16.654105+00:00,network-bytestring,haskell,network-bytestring,1,1444,235,false,0.0,0,F5_fail,word_count_post_clean=235 < 500
+2026-08-05T09:04:16.660236+00:00,morley,haskell,morley,5,13250,2176,false,1.0,61,ready,
+2026-08-05T09:04:16.795115+00:00,prometheus-client,haskell,prometheus-client,1,1301,187,false,0.0,0,F5_fail,word_count_post_clean=187 < 500
+2026-08-05T09:04:16.800222+00:00,http-enumerator,haskell,http-enumerator,1,59,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T09:04:16.801848+00:00,opentracing,haskell,opentracing,9,881,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T09:04:16.809162+00:00,infinite-list,haskell,infinite-list,1,3025,502,false,0.87,23,ready,
+2026-08-05T09:04:16.873809+00:00,X11,haskell,X11,1,843,140,false,0.0,0,F5_fail,word_count_post_clean=140 < 500
+2026-08-05T09:04:16.877861+00:00,x509-system,haskell,x509-system,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:16.880442+00:00,th-compat,haskell,th-compat,1,1200,223,false,0.0,0,F5_fail,word_count_post_clean=223 < 500
+2026-08-05T09:04:16.884743+00:00,Chart,haskell,Chart,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:16.889797+00:00,StateVar,haskell,StateVar,1,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:16.891789+00:00,tls,haskell,tls,1,310,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-08-05T09:04:16.898050+00:00,data-fix,haskell,data-fix,1,564,86,false,0.0,0,F5_fail,word_count_post_clean=86 < 500
+2026-08-05T09:04:16.900415+00:00,lens,haskell,lens,2,4493,774,false,0.978,45,ready,
+2026-08-05T09:04:16.995978+00:00,bytestring-conversion,haskell,bytestring-conversion,1,85,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T09:04:16.998619+00:00,tonaparser,haskell,tonaparser,8,7830,1203,false,0.951,61,ready,
+2026-08-05T09:04:17.158178+00:00,network-conduit-tls,haskell,network-conduit-tls,1,121,15,false,0.0,0,F5_fail,word_count_post_clean=15 < 500
+2026-08-05T09:04:17.170444+00:00,req,haskell,req,1,2587,421,false,0.0,0,F5_fail,word_count_post_clean=421 < 500
+2026-08-05T09:04:17.180874+00:00,deriving-compat,haskell,deriving-compat,1,1458,227,false,0.0,0,F5_fail,word_count_post_clean=227 < 500
+2026-08-05T09:04:17.192073+00:00,log-base,haskell,log-base,4,1064,164,false,0.0,0,F5_fail,word_count_post_clean=164 < 500
+2026-08-05T09:04:17.200860+00:00,leancheck,haskell,leancheck,5,19308,3058,false,0.985,136,ready,
+2026-08-05T09:04:17.585709+00:00,text-show,haskell,text-show,1,545,93,false,0.0,0,F5_fail,word_count_post_clean=93 < 500
+2026-08-05T09:04:17.595659+00:00,HDBC,haskell,HDBC,1,602,104,false,0.0,0,F5_fail,word_count_post_clean=104 < 500
+2026-08-05T09:04:17.599187+00:00,bytes,haskell,bytes,1,308,47,false,0.0,0,F5_fail,word_count_post_clean=47 < 500
+2026-08-05T09:04:17.601937+00:00,constraints-extras,haskell,constraints-extras,1,34,3,false,0.0,0,F5_fail,word_count_post_clean=3 < 500
+2026-08-05T09:04:17.604434+00:00,ascii-char,haskell,ascii-char,2,140,23,false,0.0,0,F5_fail,word_count_post_clean=23 < 500
+2026-08-05T09:04:17.608179+00:00,abstract-par,haskell,abstract-par,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:17.614373+00:00,hasql-transaction,haskell,hasql-transaction,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:17.615910+00:00,blaze-builder,haskell,blaze-builder,1,1221,192,false,0.0,0,F5_fail,word_count_post_clean=192 < 500
+2026-08-05T09:04:17.620753+00:00,concurrent-extra,haskell,concurrent-extra,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:17.622945+00:00,dbus,haskell,dbus,1,502,78,false,0.0,0,F5_fail,word_count_post_clean=78 < 500
+2026-08-05T09:04:17.625717+00:00,crypto-random,haskell,crypto-random,1,892,137,false,0.0,0,F5_fail,word_count_post_clean=137 < 500
+2026-08-05T09:04:17.628493+00:00,pointed,haskell,pointed,1,232,34,false,0.0,0,F5_fail,word_count_post_clean=34 < 500
+2026-08-05T09:04:17.630836+00:00,MemoTrie,haskell,MemoTrie,1,338,53,false,0.0,0,F5_fail,word_count_post_clean=53 < 500
+2026-08-05T09:04:17.633643+00:00,hashable,haskell,hashable,1,253,43,false,0.0,0,F5_fail,word_count_post_clean=43 < 500
+2026-08-05T09:04:17.636553+00:00,http-conduit,haskell,http-conduit,1,304,28,false,0.0,0,F5_fail,word_count_post_clean=28 < 500
+2026-08-05T09:04:17.642165+00:00,focus,haskell,focus,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:17.643581+00:00,ki,haskell,ki,2,1548,194,false,0.0,0,F5_fail,word_count_post_clean=194 < 500
+2026-08-05T09:04:17.652476+00:00,c-enum,haskell,c-enum,1,95,14,false,0.0,0,F5_fail,word_count_post_clean=14 < 500
+2026-08-05T09:04:17.656686+00:00,keys,haskell,keys,1,397,64,false,0.0,0,F5_fail,word_count_post_clean=64 < 500
+2026-08-05T09:04:17.659391+00:00,svg-builder,haskell,svg-builder,1,68,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T09:04:17.662131+00:00,wai-websockets,haskell,wai-websockets,1,86,11,false,0.0,0,F5_fail,word_count_post_clean=11 < 500
+2026-08-05T09:04:17.675464+00:00,network-ip,haskell,network-ip,1,94,11,false,0.0,0,F5_fail,word_count_post_clean=11 < 500
+2026-08-05T09:04:17.677561+00:00,kan-extensions,haskell,kan-extensions,1,640,109,false,0.0,0,F5_fail,word_count_post_clean=109 < 500
+2026-08-05T09:04:17.680903+00:00,numhask-space,haskell,numhask-space,1,112,19,false,0.0,0,F5_fail,word_count_post_clean=19 < 500
+2026-08-05T09:04:17.684194+00:00,some,haskell,some,1,646,106,false,0.0,0,F5_fail,word_count_post_clean=106 < 500
+2026-08-05T09:04:17.691144+00:00,bifunctor-classes-compat,haskell,bifunctor-classes-compat,1,99,15,false,0.0,0,F5_fail,word_count_post_clean=15 < 500
+2026-08-05T09:04:17.697826+00:00,hs-opentelemetry-api,haskell,hs-opentelemetry-api,1,1403,203,false,0.0,0,F5_fail,word_count_post_clean=203 < 500
+2026-08-05T09:04:17.719048+00:00,cmdargs,haskell,cmdargs,1,4894,824,false,0.974,39,ready,
+2026-08-05T09:04:17.795519+00:00,js-jquery,haskell,js-jquery,1,596,95,false,0.0,0,F5_fail,word_count_post_clean=95 < 500
+2026-08-05T09:04:17.798583+00:00,hs-opentelemetry-sdk,haskell,hs-opentelemetry-sdk,1,9748,1594,false,0.947,57,ready,
+2026-08-05T09:04:17.950016+00:00,time-manager,haskell,time-manager,1,466,78,false,0.0,0,F5_fail,word_count_post_clean=78 < 500
+2026-08-05T09:04:17.960137+00:00,call-stack,haskell,call-stack,1,48,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T09:04:17.963330+00:00,test-framework-quickcheck2,haskell,test-framework-quickcheck2,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:17.967720+00:00,validation,haskell,validation,1,1083,185,false,0.0,0,F5_fail,word_count_post_clean=185 < 500
+2026-08-05T09:04:17.973322+00:00,doctemplates,haskell,doctemplates,1,8804,1472,false,1.0,64,ready,
+2026-08-05T09:04:18.090830+00:00,haskell-src-exts,haskell,haskell-src-exts,1,1557,225,false,0.0,0,F5_fail,word_count_post_clean=225 < 500
+2026-08-05T09:04:18.114767+00:00,singletons-th,haskell,singletons-th,1,873,123,false,0.0,0,F5_fail,word_count_post_clean=123 < 500
+2026-08-05T09:04:18.123047+00:00,pa-prelude,haskell,pa-prelude,9,5959,1035,false,1.0,53,ready,
+2026-08-05T09:04:18.232719+00:00,crypto-pubkey,haskell,crypto-pubkey,1,832,113,false,0.0,0,F5_fail,word_count_post_clean=113 < 500
+2026-08-05T09:04:18.238940+00:00,generic-lens,haskell,generic-lens,1,1851,286,false,0.0,0,F5_fail,word_count_post_clean=286 < 500
+2026-08-05T09:04:18.248327+00:00,crypton-x509-validation,haskell,crypton-x509-validation,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:18.252421+00:00,enummapset-th,haskell,enummapset-th,1,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:18.255149+00:00,crypton,haskell,crypton,1,2009,298,false,0.0,0,F5_fail,word_count_post_clean=298 < 500
+2026-08-05T09:04:18.267526+00:00,iso8601-time,haskell,iso8601-time,1,169,25,false,0.0,0,F5_fail,word_count_post_clean=25 < 500
+2026-08-05T09:04:18.269422+00:00,half,haskell,half,1,392,61,false,0.0,0,F5_fail,word_count_post_clean=61 < 500
+2026-08-05T09:04:18.271661+00:00,skylighting-core,haskell,skylighting-core,1,574,90,false,0.0,0,F5_fail,word_count_post_clean=90 < 500
+2026-08-05T09:04:18.282712+00:00,bytebuild,haskell,bytebuild,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:18.284657+00:00,wai,haskell,wai,1,754,128,false,0.0,0,F5_fail,word_count_post_clean=128 < 500
+2026-08-05T09:04:18.295102+00:00,blaze-svg,haskell,blaze-svg,1,488,78,false,0.0,0,F5_fail,word_count_post_clean=78 < 500
+2026-08-05T09:04:18.298520+00:00,http-api-data,haskell,http-api-data,1,227,30,false,0.0,0,F5_fail,word_count_post_clean=30 < 500
+2026-08-05T09:04:18.302066+00:00,vector,haskell,vector,5,6046,959,false,1.0,36,ready,
+2026-08-05T09:04:18.388222+00:00,jose-jwt,haskell,jose-jwt,1,1842,314,false,0.0,0,F5_fail,word_count_post_clean=314 < 500
+2026-08-05T09:04:18.393888+00:00,cryptohash-md5,haskell,cryptohash-md5,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:18.396612+00:00,entropy,haskell,entropy,1,623,96,false,0.0,0,F5_fail,word_count_post_clean=96 < 500
+2026-08-05T09:04:18.399491+00:00,polysemy-plugin,haskell,polysemy-plugin,1,1229,201,false,0.0,0,F5_fail,word_count_post_clean=201 < 500
+2026-08-05T09:04:18.405356+00:00,derive-storable-plugin,haskell,derive-storable-plugin,1,583,84,false,0.0,0,F5_fail,word_count_post_clean=84 < 500
+2026-08-05T09:04:18.410996+00:00,network-simple,haskell,network-simple,5,1616,255,false,0.0,0,F5_fail,word_count_post_clean=255 < 500
+2026-08-05T09:04:18.418607+00:00,th-utilities,haskell,th-utilities,1,886,134,false,0.0,0,F5_fail,word_count_post_clean=134 < 500
+2026-08-05T09:04:18.422406+00:00,simple-cmd,haskell,simple-cmd,1,341,58,false,0.0,0,F5_fail,word_count_post_clean=58 < 500
+2026-08-05T09:04:18.425543+00:00,amazonka,haskell,amazonka,1,411,59,false,0.0,0,F5_fail,word_count_post_clean=59 < 500
+2026-08-05T09:04:18.603588+00:00,githash,haskell,githash,1,666,120,false,0.0,0,F5_fail,word_count_post_clean=120 < 500
+2026-08-05T09:04:18.607228+00:00,deepseq-generics,haskell,deepseq-generics,1,55,2,false,0.0,0,F5_fail,word_count_post_clean=2 < 500
+2026-08-05T09:04:18.610234+00:00,filemanip,haskell,filemanip,1,428,60,false,0.0,0,F5_fail,word_count_post_clean=60 < 500
+2026-08-05T09:04:18.617099+00:00,text-format,haskell,text-format,1,489,72,false,0.0,0,F5_fail,word_count_post_clean=72 < 500
+2026-08-05T09:04:18.623377+00:00,parsec,haskell,parsec,1,1886,293,false,0.0,0,F5_fail,word_count_post_clean=293 < 500
+2026-08-05T09:04:18.631418+00:00,zip-archive,haskell,zip-archive,1,1173,179,false,0.0,0,F5_fail,word_count_post_clean=179 < 500
+2026-08-05T09:04:18.636011+00:00,prettyprinter-ansi-terminal,haskell,prettyprinter-ansi-terminal,1,328,42,false,0.0,0,F5_fail,word_count_post_clean=42 < 500
+2026-08-05T09:04:18.647932+00:00,polysemy-time,haskell,polysemy-time,3,2214,344,false,0.0,0,F5_fail,word_count_post_clean=344 < 500
+2026-08-05T09:04:18.662193+00:00,primitive-addr,haskell,primitive-addr,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:04:18.664826+00:00,unordered-containers,haskell,unordered-containers,2,6379,1040,false,1.0,33,ready,
+2026-08-05T09:04:18.747641+00:00,http-media,haskell,http-media,1,778,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T09:04:18.750983+00:00,haskell-gi-base,haskell,haskell-gi-base,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:11:47.515353+00:00,HsOpenSSL,haskell,HsOpenSSL,1,277,43,false,0.0,0,F5_fail,word_count_post_clean=43 < 500
+2026-08-05T09:11:47.547799+00:00,genvalidity,haskell,genvalidity,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:47.572053+00:00,hourglass,haskell,hourglass,1,669,109,false,0.0,0,F5_fail,word_count_post_clean=109 < 500
+2026-08-05T09:11:47.577219+00:00,HROOT-core,haskell,HROOT-core,3,2012,304,false,0.0,0,F5_fail,word_count_post_clean=304 < 500
+2026-08-05T09:11:47.663859+00:00,webdriver,haskell,webdriver,1,3110,441,false,0.0,0,F5_fail,word_count_post_clean=441 < 500
+2026-08-05T09:11:47.673086+00:00,bifunctors,haskell,bifunctors,1,189,27,false,0.0,0,F5_fail,word_count_post_clean=27 < 500
+2026-08-05T09:11:47.676390+00:00,monad-par,haskell,monad-par,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:47.685522+00:00,neat-interpolation,haskell,neat-interpolation,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:47.686850+00:00,x509-validation,haskell,x509-validation,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:47.690153+00:00,connection,haskell,connection,1,689,111,false,0.0,0,F5_fail,word_count_post_clean=111 < 500
+2026-08-05T09:11:47.694931+00:00,semigroupoids,haskell,semigroupoids,1,1071,170,false,0.0,0,F5_fail,word_count_post_clean=170 < 500
+2026-08-05T09:11:47.703421+00:00,primitive-unlifted,haskell,primitive-unlifted,1,18,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T09:11:47.706131+00:00,pretty-terminal,haskell,pretty-terminal,1,24,2,false,0.0,0,F5_fail,word_count_post_clean=2 < 500
+2026-08-05T09:11:47.708741+00:00,recursion-schemes,haskell,recursion-schemes,1,3184,529,false,1.0,20,ready,
+2026-08-05T09:11:47.882256+00:00,dependent-sum,haskell,dependent-sum,1,2045,361,false,0.0,0,F5_fail,word_count_post_clean=361 < 500
+2026-08-05T09:11:47.891416+00:00,sqlite-simple,haskell,sqlite-simple,1,2184,326,false,0.0,0,F5_fail,word_count_post_clean=326 < 500
+2026-08-05T09:11:47.896986+00:00,string-conv,haskell,string-conv,1,570,95,false,0.0,0,F5_fail,word_count_post_clean=95 < 500
+2026-08-05T09:11:47.900867+00:00,wai-middleware-static,haskell,wai-middleware-static,1,109,15,false,0.0,0,F5_fail,word_count_post_clean=15 < 500
+2026-08-05T09:11:47.903817+00:00,data-lens,haskell,data-lens,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:47.905955+00:00,Decimal,haskell,Decimal,1,1028,165,false,0.0,0,F5_fail,word_count_post_clean=165 < 500
+2026-08-05T09:11:47.910403+00:00,hackage-security,haskell,hackage-security,2,28110,4597,false,1.0,156,ready,
+2026-08-05T09:11:48.277404+00:00,timerep,haskell,timerep,1,508,93,false,0.0,0,F5_fail,word_count_post_clean=93 < 500
+2026-08-05T09:11:48.282233+00:00,hls-plugin-api,haskell,hls-plugin-api,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.309017+00:00,text-zipper,haskell,text-zipper,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.311118+00:00,cereal,haskell,cereal,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.313792+00:00,fast-logger,haskell,fast-logger,2,476,61,false,0.0,0,F5_fail,word_count_post_clean=61 < 500
+2026-08-05T09:11:48.318404+00:00,basic-prelude,haskell,basic-prelude,1,754,127,false,0.0,0,F5_fail,word_count_post_clean=127 < 500
+2026-08-05T09:11:48.321919+00:00,xml,haskell,xml,1,202,33,false,0.0,0,F5_fail,word_count_post_clean=33 < 500
+2026-08-05T09:11:48.325329+00:00,these,haskell,these,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.328538+00:00,time-units,haskell,time-units,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.330007+00:00,warp-tls,haskell,warp-tls,1,166,25,false,0.0,0,F5_fail,word_count_post_clean=25 < 500
+2026-08-05T09:11:48.343976+00:00,sbv,haskell,sbv,1,6161,849,false,0.932,44,ready,
+2026-08-05T09:11:48.530381+00:00,microlens-mtl,haskell,microlens-mtl,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.538766+00:00,constraints,haskell,constraints,1,298,43,false,0.0,0,F5_fail,word_count_post_clean=43 < 500
+2026-08-05T09:11:48.543962+00:00,haskell-lsp,haskell,haskell-lsp,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:11:48.547153+00:00,auto-update,haskell,auto-update,1,595,107,false,0.0,0,F5_fail,word_count_post_clean=107 < 500
+2026-08-05T09:11:48.558438+00:00,bimap,haskell,bimap,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.560626+00:00,tree-diff,haskell,tree-diff,1,206,32,false,0.0,0,F5_fail,word_count_post_clean=32 < 500
+2026-08-05T09:11:48.563526+00:00,gi-javascriptcore,haskell,gi-javascriptcore,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:11:48.581923+00:00,test-framework,haskell,test-framework,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:11:48.583910+00:00,word-wrap,haskell,word-wrap,1,61,6,false,0.0,0,F5_fail,word_count_post_clean=6 < 500
+2026-08-05T09:11:48.586017+00:00,cryptohash-sha1,haskell,cryptohash-sha1,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:48.587612+00:00,HaXml,haskell,HaXml,9,85995,13435,false,0.865,104,ready,
+2026-08-05T09:11:49.027615+00:00,pipes-text,haskell,pipes-text,1,141,24,false,0.0,0,F5_fail,word_count_post_clean=24 < 500
+2026-08-05T09:11:49.031029+00:00,posix-api,haskell,posix-api,1,1980,303,false,0.0,0,F5_fail,word_count_post_clean=303 < 500
+2026-08-05T09:11:49.036110+00:00,cryptohash,haskell,cryptohash,1,2733,432,false,0.0,0,F5_fail,word_count_post_clean=432 < 500
+2026-08-05T09:11:49.041560+00:00,gi-gdkpixbuf,haskell,gi-gdkpixbuf,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:11:49.057397+00:00,tls-extra,haskell,tls-extra,1,310,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-08-05T09:11:49.065564+00:00,strict,haskell,strict,1,2578,365,false,0.0,0,F5_fail,word_count_post_clean=365 < 500
+2026-08-05T09:11:49.071555+00:00,elynx-tools,haskell,elynx-tools,9,22248,2988,false,0.963,81,ready,
+2026-08-05T09:11:49.385594+00:00,clientsession,haskell,clientsession,1,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.387730+00:00,foldable1-classes-compat,haskell,foldable1-classes-compat,2,636,97,false,0.0,0,F5_fail,word_count_post_clean=97 < 500
+2026-08-05T09:11:49.393887+00:00,here,haskell,here,1,849,140,false,0.0,0,F5_fail,word_count_post_clean=140 < 500
+2026-08-05T09:11:49.398224+00:00,attoparsec,haskell,attoparsec,3,7864,1320,false,1.0,50,ready,
+2026-08-05T09:11:49.530438+00:00,html-conduit,haskell,html-conduit,1,374,57,false,0.0,0,F5_fail,word_count_post_clean=57 < 500
+2026-08-05T09:11:49.536705+00:00,async,haskell,async,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.540649+00:00,ip,haskell,ip,1,712,126,false,0.0,0,F5_fail,word_count_post_clean=126 < 500
+2026-08-05T09:11:49.546090+00:00,wai-cors,haskell,wai-cors,1,1935,296,false,0.0,0,F5_fail,word_count_post_clean=296 < 500
+2026-08-05T09:11:49.551581+00:00,filepath,haskell,filepath,1,2639,463,false,0.0,0,F5_fail,word_count_post_clean=463 < 500
+2026-08-05T09:11:49.558318+00:00,case-insensitive,haskell,case-insensitive,1,184,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T09:11:49.561280+00:00,autodocodec,haskell,autodocodec,1,1677,239,false,0.0,0,F5_fail,word_count_post_clean=239 < 500
+2026-08-05T09:11:49.580384+00:00,type-equality,haskell,type-equality,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.582042+00:00,microlens-platform,haskell,microlens-platform,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.587249+00:00,gi-cairo,haskell,gi-cairo,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:11:49.605473+00:00,generic-deriving,haskell,generic-deriving,1,1989,282,false,0.0,0,F5_fail,word_count_post_clean=282 < 500
+2026-08-05T09:11:49.614060+00:00,core-data,haskell,core-data,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.619205+00:00,dependent-map,haskell,dependent-map,1,334,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-08-05T09:11:49.621844+00:00,network,haskell,network,1,288,46,false,0.0,0,F5_fail,word_count_post_clean=46 < 500
+2026-08-05T09:11:49.624811+00:00,ilist,haskell,ilist,1,1660,290,false,0.0,0,F5_fail,word_count_post_clean=290 < 500
+2026-08-05T09:11:49.629409+00:00,uuid-types,haskell,uuid-types,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.633307+00:00,integration,haskell,integration,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.634691+00:00,free,haskell,free,8,3101,466,false,0.0,0,F5_fail,word_count_post_clean=466 < 500
+2026-08-05T09:11:49.655829+00:00,integer-logarithms,haskell,integer-logarithms,1,35,4,false,0.0,0,F5_fail,word_count_post_clean=4 < 500
+2026-08-05T09:11:49.658633+00:00,shelly,haskell,shelly,3,18900,3156,false,0.981,104,ready,
+2026-08-05T09:11:49.867454+00:00,hex-text,haskell,hex-text,2,698,124,false,0.0,0,F5_fail,word_count_post_clean=124 < 500
+2026-08-05T09:11:49.871312+00:00,stm-containers,haskell,stm-containers,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.873143+00:00,blaze-textual,haskell,blaze-textual,1,1865,291,false,0.0,0,F5_fail,word_count_post_clean=291 < 500
+2026-08-05T09:11:49.877577+00:00,charset,haskell,charset,1,270,38,false,0.0,0,F5_fail,word_count_post_clean=38 < 500
+2026-08-05T09:11:49.880247+00:00,enummapset,haskell,enummapset,1,299,39,false,0.0,0,F5_fail,word_count_post_clean=39 < 500
+2026-08-05T09:11:49.883098+00:00,double-conversion,haskell,double-conversion,3,2735,419,false,0.0,0,F5_fail,word_count_post_clean=419 < 500
+2026-08-05T09:11:49.891816+00:00,microlens-ghc,haskell,microlens-ghc,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.896753+00:00,vector-binary-instances,haskell,vector-binary-instances,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.898221+00:00,test-framework-hunit,haskell,test-framework-hunit,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.900732+00:00,bytestring-strict-builder,haskell,bytestring-strict-builder,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:49.902537+00:00,xml-conduit,haskell,xml-conduit,1,1057,144,false,0.0,0,F5_fail,word_count_post_clean=144 < 500
+2026-08-05T09:11:49.907068+00:00,hpack,haskell,hpack,1,13716,2304,false,0.967,92,ready,
+2026-08-05T09:11:50.122272+00:00,mtl-compat,haskell,mtl-compat,1,540,94,false,0.0,0,F5_fail,word_count_post_clean=94 < 500
+2026-08-05T09:11:50.125401+00:00,text-icu,haskell,text-icu,1,1294,186,false,0.0,0,F5_fail,word_count_post_clean=186 < 500
+2026-08-05T09:11:50.131020+00:00,box,haskell,box,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.132646+00:00,time-locale-compat,haskell,time-locale-compat,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.134261+00:00,th-abstraction,haskell,th-abstraction,1,442,64,false,0.0,0,F5_fail,word_count_post_clean=64 < 500
+2026-08-05T09:11:50.136722+00:00,http-query,haskell,http-query,1,509,33,false,0.0,0,F5_fail,word_count_post_clean=33 < 500
+2026-08-05T09:11:50.139503+00:00,servant-auth,haskell,servant-auth,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.156532+00:00,colourista,haskell,colourista,1,1746,293,false,0.0,0,F5_fail,word_count_post_clean=293 < 500
+2026-08-05T09:11:50.161249+00:00,safe-exceptions,haskell,safe-exceptions,1,13737,2190,false,1.0,87,ready,
+2026-08-05T09:11:50.292254+00:00,text-builder,haskell,text-builder,1,732,123,false,0.0,0,F5_fail,word_count_post_clean=123 < 500
+2026-08-05T09:11:50.295095+00:00,quaalude,haskell,quaalude,2,1678,271,false,0.0,0,F5_fail,word_count_post_clean=271 < 500
+2026-08-05T09:11:50.302490+00:00,validity,haskell,validity,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.322404+00:00,deferred-folds,haskell,deferred-folds,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.323978+00:00,torsor,haskell,torsor,1,6,1,false,0.0,0,F5_fail,word_count_post_clean=1 < 500
+2026-08-05T09:11:50.325658+00:00,ListLike,haskell,ListLike,1,211,28,false,0.0,0,F5_fail,word_count_post_clean=28 < 500
+2026-08-05T09:11:50.329012+00:00,lzma,haskell,lzma,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.330168+00:00,classy-prelude,haskell,classy-prelude,1,1624,237,false,0.0,0,F5_fail,word_count_post_clean=237 < 500
+2026-08-05T09:11:50.337038+00:00,placeholders,haskell,placeholders,1,974,158,false,0.0,0,F5_fail,word_count_post_clean=158 < 500
+2026-08-05T09:11:50.339671+00:00,vector-algorithms,haskell,vector-algorithms,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.341325+00:00,crypton-x509,haskell,crypton-x509,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.344110+00:00,o-clock,haskell,o-clock,1,2603,436,false,0.0,0,F5_fail,word_count_post_clean=436 < 500
+2026-08-05T09:11:50.349707+00:00,th-lego,haskell,th-lego,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.350669+00:00,swagger2,haskell,swagger2,1,877,128,false,0.0,0,F5_fail,word_count_post_clean=128 < 500
+2026-08-05T09:11:50.355221+00:00,process-extras,haskell,process-extras,1,1570,251,false,0.0,0,F5_fail,word_count_post_clean=251 < 500
+2026-08-05T09:11:50.358268+00:00,selective,haskell,selective,3,9102,1412,false,1.0,88,ready,
+2026-08-05T09:11:50.610174+00:00,Chart-cairo,haskell,Chart-cairo,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:50.613357+00:00,mwc-random,haskell,mwc-random,1,1068,146,false,0.0,0,F5_fail,word_count_post_clean=146 < 500
+2026-08-05T09:11:50.615887+00:00,ghc-tcplugins-extra,haskell,ghc-tcplugins-extra,1,67,7,false,0.0,0,F5_fail,word_count_post_clean=7 < 500
+2026-08-05T09:11:50.620695+00:00,envparse,haskell,envparse,1,215,32,false,0.0,0,F5_fail,word_count_post_clean=32 < 500
+2026-08-05T09:11:50.623313+00:00,vulkan,haskell,vulkan,5,24372,3772,false,0.977,131,ready,
+2026-08-05T09:11:50.889644+00:00,type-errors,haskell,type-errors,1,848,126,false,0.0,0,F5_fail,word_count_post_clean=126 < 500
+2026-08-05T09:11:50.893110+00:00,markdown-unlit,haskell,markdown-unlit,1,1913,342,false,0.0,0,F5_fail,word_count_post_clean=342 < 500
+2026-08-05T09:11:50.899521+00:00,configurator,haskell,configurator,1,1146,160,false,0.0,0,F5_fail,word_count_post_clean=160 < 500
+2026-08-05T09:11:50.903071+00:00,text,haskell,text,1,534,83,false,0.0,0,F5_fail,word_count_post_clean=83 < 500
+2026-08-05T09:11:50.908642+00:00,prelate,haskell,prelate,2,56,12,false,0.0,0,F5_fail,word_count_post_clean=12 < 500
+2026-08-05T09:11:50.911188+00:00,brick,haskell,brick,2,80278,13004,false,0.993,153,ready,
+2026-08-05T09:11:51.308458+00:00,contiguous,haskell,contiguous,1,301,46,false,0.0,0,F5_fail,word_count_post_clean=46 < 500
+2026-08-05T09:11:51.313190+00:00,monad-control,haskell,monad-control,1,524,86,false,0.0,0,F5_fail,word_count_post_clean=86 < 500
+2026-08-05T09:11:51.323941+00:00,liquid-fixpoint,haskell,liquid-fixpoint,1,7375,1211,false,0.962,79,ready,
+2026-08-05T09:11:51.525604+00:00,unbounded-delays,haskell,unbounded-delays,1,190,28,false,0.0,0,F5_fail,word_count_post_clean=28 < 500
+2026-08-05T09:11:51.527769+00:00,either,haskell,either,1,185,27,false,0.0,0,F5_fail,word_count_post_clean=27 < 500
+2026-08-05T09:11:51.530258+00:00,morley-prelude,haskell,morley-prelude,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:51.557723+00:00,servant-multipart-api,haskell,servant-multipart-api,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:11:51.565028+00:00,stdcxx,haskell,stdcxx,6,12907,2000,false,0.986,69,ready,
+2026-08-05T09:11:51.749336+00:00,config-ini,haskell,config-ini,1,5705,961,false,1.0,17,ready,
+2026-08-05T09:11:51.788235+00:00,hspec-expectations,haskell,hspec-expectations,1,1502,236,false,0.0,0,F5_fail,word_count_post_clean=236 < 500
+2026-08-05T09:11:51.793528+00:00,katip,haskell,katip,5,4323,644,false,0.969,32,ready,
+2026-08-05T09:11:51.866192+00:00,ghc-lib-parser-ex,haskell,ghc-lib-parser-ex,1,1132,182,false,0.0,0,F5_fail,word_count_post_clean=182 < 500
+2026-08-05T09:11:51.871226+00:00,record-hasfield,haskell,record-hasfield,1,302,48,false,0.0,0,F5_fail,word_count_post_clean=48 < 500
+2026-08-05T09:11:51.873618+00:00,gi-gst,haskell,gi-gst,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:11:51.885025+00:00,witherable,haskell,witherable,1,250,24,false,0.0,0,F5_fail,word_count_post_clean=24 < 500
+2026-08-05T09:11:51.887269+00:00,cgi,haskell,cgi,1,686,96,false,0.0,0,F5_fail,word_count_post_clean=96 < 500
+2026-08-05T09:11:51.889331+00:00,vector-instances,haskell,vector-instances,1,274,40,false,0.0,0,F5_fail,word_count_post_clean=40 < 500
+2026-08-05T09:11:51.891331+00:00,temporary,haskell,temporary,1,155,21,false,0.0,0,F5_fail,word_count_post_clean=21 < 500
+2026-08-05T09:11:51.892850+00:00,http-directory,haskell,http-directory,1,572,90,false,0.0,0,F5_fail,word_count_post_clean=90 < 500
+2026-08-05T09:15:43.478255+00:00,basement,haskell,basement,9,8733,1307,false,1.0,71,ready,
+2026-08-05T09:15:43.836371+00:00,lens-aeson,haskell,lens-aeson,1,303,47,false,0.0,0,F5_fail,word_count_post_clean=47 < 500
+2026-08-05T09:15:43.840220+00:00,aeson-better-errors,haskell,aeson-better-errors,1,300,31,false,0.0,0,F5_fail,word_count_post_clean=31 < 500
+2026-08-05T09:15:43.844227+00:00,byteslice,haskell,byteslice,1,387,58,false,0.0,0,F5_fail,word_count_post_clean=58 < 500
+2026-08-05T09:15:43.847971+00:00,path-io,haskell,path-io,1,499,74,false,0.0,0,F5_fail,word_count_post_clean=74 < 500
+2026-08-05T09:15:43.852414+00:00,file-embed,haskell,file-embed,1,483,80,false,0.0,0,F5_fail,word_count_post_clean=80 < 500
+2026-08-05T09:15:43.857228+00:00,filelock,haskell,filelock,1,238,21,false,0.0,0,F5_fail,word_count_post_clean=21 < 500
+2026-08-05T09:15:43.860106+00:00,x509-store,haskell,x509-store,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:43.864810+00:00,gi-atk,haskell,gi-atk,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:15:43.887177+00:00,uniform-strings,haskell,uniform-strings,1,2596,416,false,0.0,0,F5_fail,word_count_post_clean=416 < 500
+2026-08-05T09:15:43.892148+00:00,base-prelude,haskell,base-prelude,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:43.893768+00:00,adjunctions,haskell,adjunctions,1,238,33,false,0.0,0,F5_fail,word_count_post_clean=33 < 500
+2026-08-05T09:15:43.898239+00:00,polysemy-log,haskell,polysemy-log,4,723,105,false,0.0,0,F5_fail,word_count_post_clean=105 < 500
+2026-08-05T09:15:43.908209+00:00,base32,haskell,base32,1,574,85,false,0.0,0,F5_fail,word_count_post_clean=85 < 500
+2026-08-05T09:15:43.914043+00:00,list-t,haskell,list-t,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:43.916135+00:00,proto-lens-runtime,haskell,proto-lens-runtime,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:43.924532+00:00,transformers-compat,haskell,transformers-compat,1,694,101,false,0.0,0,F5_fail,word_count_post_clean=101 < 500
+2026-08-05T09:15:43.929455+00:00,criterion,haskell,criterion,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:15:43.931074+00:00,monad-loops,haskell,monad-loops,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:43.932919+00:00,rank2classes,haskell,rank2classes,4,12862,2085,false,1.0,88,ready,
+2026-08-05T09:15:44.166372+00:00,semirings,haskell,semirings,1,2555,445,false,0.0,0,F5_fail,word_count_post_clean=445 < 500
+2026-08-05T09:15:44.172050+00:00,cipher-aes,haskell,cipher-aes,1,1032,156,false,0.0,0,F5_fail,word_count_post_clean=156 < 500
+2026-08-05T09:15:44.177915+00:00,semialign,haskell,semialign,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:44.183009+00:00,jwt,haskell,jwt,1,657,100,false,0.0,0,F5_fail,word_count_post_clean=100 < 500
+2026-08-05T09:15:44.187193+00:00,tasty,haskell,tasty,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:15:44.190792+00:00,first-class-families,haskell,first-class-families,1,1422,207,false,0.0,0,F5_fail,word_count_post_clean=207 < 500
+2026-08-05T09:15:44.196358+00:00,xhtml,haskell,xhtml,1,123,16,false,0.0,0,F5_fail,word_count_post_clean=16 < 500
+2026-08-05T09:15:44.199195+00:00,co-log,haskell,co-log,4,6022,936,false,0.981,54,ready,
+2026-08-05T09:15:44.316687+00:00,collect-errors,haskell,collect-errors,1,2355,356,false,0.0,0,F5_fail,word_count_post_clean=356 < 500
+2026-08-05T09:15:44.323801+00:00,crypton-x509-store,haskell,crypton-x509-store,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:44.328617+00:00,extra,haskell,extra,1,2199,359,false,0.0,0,F5_fail,word_count_post_clean=359 < 500
+2026-08-05T09:15:44.334627+00:00,rio,haskell,rio,4,21774,3565,false,0.987,150,ready,
+2026-08-05T09:15:44.767614+00:00,validation-selective,haskell,validation-selective,1,2388,366,false,0.0,0,F5_fail,word_count_post_clean=366 < 500
+2026-08-05T09:15:44.777775+00:00,containers,haskell,containers,8,19347,2881,false,0.985,131,ready,
+2026-08-05T09:15:45.255784+00:00,monad-logger,haskell,monad-logger,1,156,20,false,0.0,0,F5_fail,word_count_post_clean=20 < 500
+2026-08-05T09:15:45.259052+00:00,xmlbf,haskell,xmlbf,3,400,64,false,0.0,0,F5_fail,word_count_post_clean=64 < 500
+2026-08-05T09:15:45.264889+00:00,jose,haskell,jose,1,2821,441,false,0.0,0,F5_fail,word_count_post_clean=441 < 500
+2026-08-05T09:15:45.271328+00:00,network-bsd,haskell,network-bsd,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:45.272711+00:00,safe-coloured-text,haskell,safe-coloured-text,1,1141,180,false,0.0,0,F5_fail,word_count_post_clean=180 < 500
+2026-08-05T09:15:45.283998+00:00,servant-multipart-client,haskell,servant-multipart-client,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:45.287330+00:00,dependent-sum-template,haskell,dependent-sum-template,1,522,88,false,0.0,0,F5_fail,word_count_post_clean=88 < 500
+2026-08-05T09:15:45.291968+00:00,vector-builder,haskell,vector-builder,1,425,62,false,0.0,0,F5_fail,word_count_post_clean=62 < 500
+2026-08-05T09:15:45.294941+00:00,base64,haskell,base64,1,540,77,false,0.0,0,F5_fail,word_count_post_clean=77 < 500
+2026-08-05T09:15:45.299251+00:00,distributive,haskell,distributive,1,630,100,false,0.0,0,F5_fail,word_count_post_clean=100 < 500
+2026-08-05T09:15:45.302213+00:00,sydtest,haskell,sydtest,2,17174,2879,false,0.931,72,ready,
+2026-08-05T09:15:45.510576+00:00,simple-prompt,haskell,simple-prompt,1,669,100,false,0.0,0,F5_fail,word_count_post_clean=100 < 500
+2026-08-05T09:15:45.513952+00:00,http2,haskell,http2,1,565,73,false,0.0,0,F5_fail,word_count_post_clean=73 < 500
+2026-08-05T09:15:45.529528+00:00,typed-process,haskell,typed-process,1,6628,1149,false,1.0,56,ready,
+2026-08-05T09:15:45.626795+00:00,integer-conversion,haskell,integer-conversion,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:45.628544+00:00,base16-bytestring,haskell,base16-bytestring,1,459,70,false,0.0,0,F5_fail,word_count_post_clean=70 < 500
+2026-08-05T09:15:45.631932+00:00,esqueleto,haskell,esqueleto,1,8765,1500,false,0.971,68,ready,
+2026-08-05T09:15:45.776063+00:00,optparse-simple,haskell,optparse-simple,1,127,15,false,0.0,0,F5_fail,word_count_post_clean=15 < 500
+2026-08-05T09:15:45.779761+00:00,streaming-bytestring,haskell,streaming-bytestring,1,1732,298,false,0.0,0,F5_fail,word_count_post_clean=298 < 500
+2026-08-05T09:15:45.785846+00:00,vty,haskell,vty,2,15012,2326,false,0.984,64,ready,
+2026-08-05T09:15:45.915771+00:00,lsp-types,haskell,lsp-types,1,430,50,false,0.0,0,F5_fail,word_count_post_clean=50 < 500
+2026-08-05T09:15:45.928153+00:00,hie-compat,haskell,hie-compat,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:15:45.944969+00:00,email-validate,haskell,email-validate,1,87,11,false,0.0,0,F5_fail,word_count_post_clean=11 < 500
+2026-08-05T09:15:45.948560+00:00,tasty-hedgehog,haskell,tasty-hedgehog,1,1623,300,false,0.0,0,F5_fail,word_count_post_clean=300 < 500
+2026-08-05T09:15:45.991505+00:00,memory,haskell,memory,1,734,105,false,0.0,0,F5_fail,word_count_post_clean=105 < 500
+2026-08-05T09:15:46.014932+00:00,uuid,haskell,uuid,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:46.018860+00:00,certificate,haskell,certificate,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:15:46.021874+00:00,union-color,haskell,union-color,1,60,2,false,0.0,0,F5_fail,word_count_post_clean=2 < 500
+2026-08-05T09:15:46.023899+00:00,haskell-gi-overloading,haskell,haskell-gi-overloading,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T09:15:46.045032+00:00,th-lift,haskell,th-lift,1,652,103,false,0.0,0,F5_fail,word_count_post_clean=103 < 500
+2026-08-05T09:15:46.048141+00:00,QuickCheck,haskell,QuickCheck,1,407,61,false,0.0,0,F5_fail,word_count_post_clean=61 < 500
+2026-08-05T09:15:46.050579+00:00,byte-order,haskell,byte-order,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T09:15:46.051893+00:00,warp,haskell,warp,1,136,22,false,0.0,0,F5_fail,word_count_post_clean=22 < 500
+2026-08-05T09:15:46.060114+00:00,binary,haskell,binary,1,1906,293,false,0.0,0,F5_fail,word_count_post_clean=293 < 500
+2026-08-05T09:15:46.065313+00:00,pretty-simple,haskell,pretty-simple,2,4144,703,false,0.98,50,ready,

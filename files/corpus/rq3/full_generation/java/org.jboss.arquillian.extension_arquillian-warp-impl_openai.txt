@@ -1,0 +1,675 @@
+# Arquillian Warp Implementation
+
+`org.jboss.arquillian.extension:arquillian-warp-impl` provides the implementation-side infrastructure for Warp-style, request-aware Arquillian testing.
+
+The API coordinates client-side test execution with server-side HTTP request processing. Its public types cover:
+
+- Warp execution and grouping of request observations
+- HTTP request filtering, enrichment, response transformation, and de-enrichment
+- Proxy URL management and proxy lifecycle handling
+- Transport of inspections and results through request/response payloads
+- Server-side servlet filter and request lifecycle integration
+- Cross-boundary command execution
+- Inspection transformation and serialization support
+- Supporting utilities for URLs, ports, Base64, class loading, and serialization
+
+The extension is registered through `WarpExtension` on the client side and `WarpRemoteExtension` on the remote/server side.
+
+## Core concepts
+
+### Warp execution
+
+A Warp execution starts with an `Activity` and a `WarpContext`:
+
+```java
+WarpExecutor executor = new DefaultWarpExecutor();
+WarpContext context = new WarpContextImpl();
+
+WarpResult result = executor.execute(activity, context);
+```
+
+`WarpContext` is the execution-wide state holder. It tracks:
+
+- registered `WarpGroup` instances;
+- expected requests;
+- unmatched requests;
+- received `ResponsePayload` values;
+- exceptions and failed `TestResult` values;
+- synchronization state through `SynchronizationPoint`;
+- request-observer chain managers.
+
+`WarpExecutionInitializer` and `WarpExecutionObserver` participate in the event-driven execution lifecycle. The observer exposes operations for executing an activity, advertising enrichment, waiting for a response, finishing enrichment, and cleanup.
+
+### Request groups and inspections
+
+A `WarpGroup` represents a collection of expected HTTP requests associated with an observer and one or more inspections. It also exposes group-level result and inspection APIs.
+
+`WarpGroupImpl` supports configuring a group with an observer and expected request count:
+
+```java
+WarpGroupImpl group = new WarpGroupImpl(groupInspectionBuilder, "checkout-flow");
+
+group.observe(MyRequestObserver.class)
+     .expectCount(1);
+
+group.addInspections(inspection);
+```
+
+A group can generate a `RequestPayload` for a matching request and accepts a corresponding `ResponsePayload`:
+
+```java
+RequestPayload payload = group.generateRequestPayload(request);
+boolean accepted = group.pushResponsePayload(responsePayload);
+```
+
+Useful result and diagnostic methods include:
+
+```java
+TestResult failed = group.getFirstNonSuccessfulResult();
+int expected = group.getExpectedRequestCount();
+Collection<Request> allRequests = group.getAllRequests();
+Collection<Request> pending = group.getRequestsWithoutResponse();
+```
+
+For request-specification-style execution, `DefaultWarpRequestSpecifier` exposes a fluent entry point:
+
+```java
+DefaultWarpRequestSpecifier specifier = new DefaultWarpRequestSpecifier();
+
+specifier.initiate(activity);
+specifier.observe(MyRequestObserver.class);
+WarpResult result = specifier.execute();
+```
+
+It can also inspect one or multiple inspections directly:
+
+```java
+Inspection completed = specifier.inspect(inspection);
+WarpResult result = specifier.inspectAll(firstInspection, secondInspection);
+```
+
+### HTTP filtering
+
+HTTP filtering is built with `DefaultHttpFilterBuilder`. It supports URI, method, header, and parameter matching, as well as adding an existing `RequestFilter<HttpRequest>`.
+
+```java
+HttpFilterBuilder filterBuilder = new DefaultHttpFilterBuilder();
+
+RequestFilter<HttpRequest> filter = filterBuilder
+    .method().equal(HttpMethod.GET)
+    .uri().startsWith("/api/")
+    .header().containsHeader("Authorization")
+    .parameter().containsParameter("page")
+    .build();
+```
+
+The available match operations are:
+
+| Builder | Operations |
+|---|---|
+| `UriMatcherBuilder` | `equal`, `equalIgnoreCase`, `startsWith`, `contains`, `endsWith`, `matches`, `not` |
+| `MethodMatcherBuilder` | `equal`, `not` |
+| `HttpHeaderMatcherBuilder` | `equal`, `containsHeader`, `containsValue`, `not` |
+| `HttpParameterMatcherBuilder` | `equal`, `containsParameter`, `containsValue`, `not` |
+
+A filter can be added to a chain:
+
+```java
+HttpFilterBuilder builder = new DefaultHttpFilterBuilder();
+
+builder.addFilter(new FaviconIgnore());
+builder.addFilter(new OnlyFirstRequest());
+
+RequestFilter<HttpRequest> filter = builder.build();
+```
+
+`NotHttpFilterChainBuilder` can be used where a filter-chain builder needs to apply negated matching behavior:
+
+```java
+HttpFilterChainBuilder<HttpFilterBuilder> chain = new DefaultHttpFilterBuilder();
+NotHttpFilterChainBuilder negated = new NotHttpFilterChainBuilder(chain);
+
+HttpFilterBuilder builder = negated.addFilter(filter);
+```
+
+`HttpRequestWrapper` adapts an `HttpRequest` while exposing request properties such as URI, URL, method, headers, query parameters, and HTTP data attributes:
+
+```java
+HttpRequestWrapper wrapped = new HttpRequestWrapper(request);
+
+String uri = wrapped.getUri();
+HttpMethod method = wrapped.getMethod();
+Map<String, List<String>> query = wrapped.getQueryParameters();
+
+HttpRequest original = wrapped.unwrap();
+```
+
+### Enrichment and response handling
+
+The client-side enrichment SPI consists of three interfaces:
+
+```java
+public interface HttpRequestEnrichmentService {
+    Collection<RequestPayload> getMatchingPayloads(HttpRequest request);
+    void enrichRequest(HttpRequest request, RequestPayload payload);
+}
+
+public interface HttpResponseDeenrichmentService {
+    boolean isEnriched(HttpRequest request, HttpResponse response);
+    void deenrichResponse(HttpRequest request, HttpResponse response);
+}
+
+public interface HttpResponseTransformationService {
+    HttpResponse transformResponse(HttpRequest request, HttpResponse response);
+}
+```
+
+Default implementations are available:
+
+- `DefaultHttpRequestEnrichmentService`
+- `DefaultResponseDeenrichmentService`
+- `DefaultResponseTransformationService`
+
+The event types model each phase:
+
+- `FilterHttpRequest`
+- `EnrichHttpRequest`
+- `FilterHttpResponse`
+- `DeenrichHttpResponse`
+- `TransformHttpResponse`
+- `VerifyResponsePayload`
+
+`EnrichmentObserver` handles these events:
+
+```java
+EnrichmentObserver observer = new EnrichmentObserver();
+
+observer.tryEnrichRequest(new FilterHttpRequest(request));
+observer.enrichRequest(new EnrichHttpRequest(request, payload, enrichmentService));
+
+observer.tryDeenrichResponse(new FilterHttpResponse(request, response));
+observer.deenrichResponse(new DeenrichHttpResponse(request, response));
+
+TransformHttpResponse transform = new TransformHttpResponse(request, response);
+observer.transformResponse(transform);
+
+HttpResponse transformedResponse = transform.getResponse();
+```
+
+`TransformHttpResponse` is mutable, allowing a transformation service to replace the response:
+
+```java
+TransformHttpResponse event = new TransformHttpResponse(request, response);
+
+HttpResponse replacement = transformationService.transformResponse(
+    event.getRequest(),
+    event.getResponse()
+);
+
+event.setResponse(replacement);
+```
+
+### Payloads and result transport
+
+`RequestPayload` carries inspections from the client side to the server side. It is `Externalizable` and includes a serial identifier used to correlate response data.
+
+```java
+RequestPayload requestPayload = new RequestPayload(firstInspection, secondInspection);
+
+long serialId = requestPayload.getSerialId();
+List<Inspection> inspections = requestPayload.getInspections();
+```
+
+`ResponsePayload` carries the corresponding server-side outcome:
+
+```java
+ResponsePayload responsePayload = new ResponsePayload(serialId);
+
+responsePayload.setInspections(firstInspection, secondInspection);
+responsePayload.setStatus(200);
+responsePayload.setHeaders(headers);
+responsePayload.setTestResult(testResult);
+
+int status = responsePayload.getStatus();
+TestResult result = responsePayload.getTestResult();
+Set<ExecutedMethod> executed = responsePayload.getExecutedMethods();
+```
+
+`ResponsePayloadVerifier` verifies result status and that expected lifecycle test methods were executed:
+
+```java
+ResponsePayloadVerifier verifier = new ResponsePayloadVerifier();
+
+VerifyResponsePayload event = new VerifyResponsePayload(responsePayload);
+verifier.verifyTestResult(event);
+verifier.verifyAllLifecycleTestsExecuted(event);
+```
+
+If an expected inspection method did not run, `InspectionMethodWasNotInvokedException` represents that failure.
+
+### Server-side request processing
+
+The remote side integrates with the servlet API through `WarpFilter`:
+
+```java
+WarpFilter filter = new WarpFilter();
+
+filter.init(filterConfig);
+filter.doFilter(servletRequest, servletResponse, filterChain);
+filter.destroy();
+```
+
+`HttpRequestProcessor` handles HTTP-level processing and response enrichment:
+
+```java
+HttpRequestProcessor processor = new HttpRequestProcessor();
+
+processor.processHttpRequest(
+    processHttpRequestEvent,
+    services,
+    httpServletRequest,
+    httpServletResponse,
+    filterChain
+);
+
+processor.enrichHttpResponse(enrichHttpResponseEvent, services);
+```
+
+`WarpLifecycle` executes a Warp request using correlated request and response payloads:
+
+```java
+WarpLifecycle lifecycle = new WarpLifecycle();
+
+lifecycle.execute(
+    executeWarpEvent,
+    httpServletRequest,
+    httpServletResponse,
+    filterChain,
+    requestPayload,
+    responsePayload
+);
+```
+
+The server-side enrichment SPIs are:
+
+```java
+public interface RequestDeenricher<P> {
+    boolean isEnriched();
+    P resolvePayload();
+}
+
+public interface ResponseEnricher {
+    void enrichResponse();
+}
+```
+
+Their default HTTP implementations are:
+
+- `DefaultHttpRequestDeenricher`
+- `DefaultHttpResponseEnricher`
+
+The payload and inspection registries retain data during request execution:
+
+```java
+PayloadRegistry payloads = new PayloadRegistry();
+
+payloads.registerRequestPayload(requestPayload);
+RequestPayload resolvedRequest = payloads.retrieveRequestPayload(serialId);
+
+payloads.registerResponsePayload(responsePayload);
+ResponsePayload resolvedResponse = payloads.retrieveResponsePayload(serialId);
+```
+
+```java
+InspectionRegistry registry = new InspectionRegistry();
+
+registry.registerInspections(firstInspection, secondInspection);
+
+Collection<Inspection> active = registry.getInspections();
+
+registry.unregisterInspections(firstInspection, secondInspection);
+```
+
+### Proxy management
+
+The client-side proxy API maps application URLs to proxy URLs and manages proxy lifecycles.
+
+`URLMapping` resolves the proxy URL for an original URL:
+
+```java
+URLMapping mapping = new DefaultURLMapping();
+
+URL proxyUrl = mapping.getProxyURL(realUrl);
+```
+
+`RealURLToProxyURLMapping` stores explicit mappings:
+
+```java
+RealURLToProxyURLMapping mapping = new RealURLToProxyURLMapping();
+
+mapping.register(realUrl, proxyUrl);
+
+boolean present = mapping.isRegistered(realUrl);
+Map<URL, URL> entries = mapping.asMap();
+```
+
+`ProxyHolder<T>` stores proxy instances by real URL:
+
+```java
+ProxyHolder<HttpProxyServer> holder = new ProxyHolder<>();
+
+holder.storeProxy(realUrl, proxy);
+HttpProxyServer stored = holder.getProxy(realUrl);
+
+holder.cleanAllProxies();
+```
+
+`ProxyService<T>` defines proxy startup and shutdown:
+
+```java
+public interface ProxyService<T> {
+    T startProxy(URL realUrl, URL proxyUrl);
+    void stopProxy(T proxy);
+}
+```
+
+`DefaultProxyService` provides an `HttpProxyServer` implementation:
+
+```java
+ProxyService<HttpProxyServer> service = new DefaultProxyService();
+
+HttpProxyServer proxy = service.startProxy(realUrl, proxyUrl);
+service.stopProxy(proxy);
+```
+
+Proxy lifecycle events include:
+
+- `RequireProxy`
+- `StartProxy`
+- `AbstractProxyInitializationEvent`
+
+A `RequireProxy` identifies the real and proxy URLs:
+
+```java
+RequireProxy event = new RequireProxy(realUrl, proxyUrl);
+
+URL requestedRealUrl = event.getRealUrl();
+URL requestedProxyUrl = event.getProxyUrl();
+```
+
+`ProxyURLToContextMapping` associates proxy URLs with operational contexts:
+
+```java
+ProxyURLToContextMapping contexts = new ProxyURLToContextMapping();
+
+contexts.register(proxyUrl, MyTest.class, operationalContext);
+
+OperationalContext context = contexts.get(proxyUrl);
+boolean registered = contexts.isRegistered(proxyUrl);
+
+contexts.unregister(MyTest.class);
+```
+
+### Operational contexts
+
+`OperationalContext` defines explicit activation and deactivation:
+
+```java
+public interface OperationalContext {
+    void activate();
+    void deactivate();
+}
+```
+
+`OperationalContexts` exposes named contexts:
+
+```java
+OperationalContexts contexts = new OperationalContexts();
+
+OperationalContext application = contexts.application();
+OperationalContext suite = contexts.suite();
+OperationalContext testClass = contexts.clazz();
+OperationalContext test = contexts.test();
+OperationalContext warp = contexts.warp();
+```
+
+`Contextualizer` can wrap an instance so that calls through a specified interface run with an operational context:
+
+```java
+MyService contextualService = Contextualizer.contextualize(
+    operationalContext,
+    service,
+    MyService.class
+);
+```
+
+A context may also be retrieved lazily:
+
+```java
+MyService contextualService = Contextualizer.contextualize(
+    () -> operationalContext,
+    service,
+    MyService.class
+);
+```
+
+Additional interfaces can be designated as context-propagating:
+
+```java
+MyService contextualService = Contextualizer.contextualize(
+    operationalContext,
+    service,
+    MyService.class,
+    Runnable.class,
+    AutoCloseable.class
+);
+```
+
+### Command bus
+
+Commands are serializable operations:
+
+```java
+public interface Command extends Serializable {
+    void perform();
+}
+```
+
+`CommandService` executes a command and returns it:
+
+```java
+CommandService service = new CommandServiceOnClient();
+
+MyCommand executed = service.execute(new MyCommand());
+```
+
+For remote command execution, `CommandBusOnClient` exposes bus lifecycle and delegation methods:
+
+```java
+CommandBusOnClient bus = new CommandBusOnClient();
+
+bus.startBus(startBusEvent);
+
+Command executed = bus.executeRemotely(command);
+
+bus.stopBus();
+```
+
+Server-side command support is provided by:
+
+- `CommandBusOnServer`
+- `CommandServiceOnServer`
+- `WarpCommandService`
+
+`CommandPayload` tracks a command, execution state, and any failure:
+
+```java
+CommandPayload payload = new CommandPayload(command);
+
+payload.setExecuted();
+
+if (payload.isExecuted()) {
+    Command executed = payload.getCommand();
+}
+
+payload.setThrowable(failure);
+Throwable thrown = payload.getThrowable();
+```
+
+### Inspection transformation
+
+Inspection classes can be transformed and migrated for transport or isolated execution.
+
+```java
+TransformedInspection transformed = new TransformedInspection(inspection);
+
+byte[] bytecode = transformed.toBytecode();
+NamedAsset asset = transformed.toShrinkWrapAsset();
+
+Class<?> transformedClass = transformed.getTransformedClass();
+Class<?> originalClass = transformed.getOriginalClass();
+Inspection transformedInspection = transformed.getTransformedInspection();
+```
+
+`MigratedInspection` exposes generated bytecode and serialized form:
+
+```java
+MigratedInspection migrated = new MigratedInspection(transformed);
+
+byte[] bytecode = migrated.toBytecode();
+byte[] serialized = migrated.toSerializedForm();
+```
+
+`SeparateInvocator` creates an implementation instance using a separate class loader or Java archive class path:
+
+```java
+MyContract implementation = SeparateInvocator.invoke(
+    MyImplementation.class,
+    separatedClassLoader
+);
+```
+
+```java
+MyContract implementation = SeparateInvocator.invoke(
+    MyImplementation.class,
+    archiveOne,
+    archiveTwo
+);
+```
+
+Transformation-related failures are represented by `InspectionTransformationException` and `NoSerialVersionUIDException`.
+
+## Runtime configuration
+
+`DefaultWarpRuntime` supplies the activity and HTTP-filter builders used by the runtime:
+
+```java
+DefaultWarpRuntime runtime = new DefaultWarpRuntime();
+
+runtime.setWarpActivityBuilder(warpActivityBuilder);
+runtime.setHttpFilterBuilder(httpFilterBuilder);
+
+WarpActivityBuilder activities = runtime.getWarpActivityBuilder();
+HttpFilterBuilder filters = runtime.getHttpFilterBuilder();
+```
+
+`WarpRuntimeInitializer` integrates the runtime with class lifecycle events:
+
+```java
+WarpRuntimeInitializer initializer = new WarpRuntimeInitializer();
+
+initializer.injectWarpRuntime(beforeClassEvent);
+// Execute tests using the configured runtime.
+initializer.cleanWarpRuntime(afterClassEvent);
+```
+
+## Utilities
+
+### Serialization
+
+`SerializationUtils` serializes `Serializable` values to bytes or Base64:
+
+```java
+byte[] bytes = SerializationUtils.serializeToBytes(requestPayload);
+RequestPayload copy = SerializationUtils.deserializeFromBytes(bytes);
+
+String base64 = SerializationUtils.serializeToBase64(requestPayload);
+RequestPayload decoded = SerializationUtils.deserializeFromBase64(base64);
+```
+
+### Base64
+
+The included `Base64` utility supports standard and URL-safe encodings:
+
+```java
+byte[] encoded = Base64.encodeBase64(data);
+byte[] decoded = Base64.decodeBase64(encoded);
+
+String text = Base64.encodeBase64URLSafeString(data);
+byte[] restored = Base64.decodeBase64(text);
+```
+
+### URL manipulation
+
+`URLUtils` builds and rewrites URLs:
+
+```java
+URL endpoint = URLUtils.buildUrl(baseUrl, "api", "orders");
+URL base = URLUtils.getUrlBase(endpoint);
+
+URL relocated = URLUtils.changeBase(endpoint, alternateBase);
+```
+
+### Ports and platform detection
+
+`PortProber` can find and poll local ports:
+
+```java
+int port = PortProber.findFreePort();
+
+boolean acceptingConnections = PortProber.pollPort(port);
+boolean availableSoon = PortProber.pollPort(port, 5, TimeUnit.SECONDS);
+```
+
+`Platform` identifies the current operating-system platform:
+
+```java
+Platform current = Platform.getCurrent();
+
+if (current.is(Platform.LINUX)) {
+    // Linux-specific handling
+}
+
+Platform family = current.family();
+```
+
+## Exceptions
+
+The implementation exposes several specialized exception types:
+
+- `TooManyRequestsException` — a Warp group received more requests than expected.
+- `WarpSynchronizationException` — Warp execution could not synchronize with the expected response flow.
+- `InspectionMethodWasNotInvokedException` — an expected inspection method was not invoked.
+- `InspectionTransformationException` — transformation or migration of an inspection failed.
+- `NoSerialVersionUIDException` — serialization-related inspection transformation failure.
+- `RequestDelegationException` — servlet request delegation failed.
+- `NullMemberException` — an annotation member could not be resolved.
+- `ClientWarpExecutionException` subclasses represent client-side execution failures.
+
+## Extension entry points
+
+The primary Arquillian extension entry points are:
+
+```java
+public class WarpExtension implements LoadableExtension {
+    public void register(ExtensionBuilder builder);
+}
+```
+
+```java
+public class WarpRemoteExtension implements RemoteLoadableExtension {
+    public void register(ExtensionBuilder builder);
+}
+```
+
+These types register the client and remote/server integration components with Arquillian.

@@ -1,11 +1,33 @@
-/venv/
+# Environment and local files
+.env
 .DS_Store
-/files/
-/unused/
-!/files/corpus/
-!/files/corpus/**
-/files/corpus/**/raw/
-/files/raw/confirmatory/
-md/
-__pycache__/
 .obsidian
+__pycache__/
+/venv/
+/unused/
+
+# Data and generated output: see the README for how to get these
+/files/*
+!/files/analysis/
+!/files/corpus/
+/files/corpus/**/raw/
+/files/corpus/**/text/
+/files/corpus/**/text_corrected/
+/files/corpus/**/libraries*.csv
+/files/corpus/**/frame_*.jsonl.gz
+/files/corpus/**/*.log
+/files/corpus/**/*.bak
+/files/corpus/rq3/api_surface/
+/files/corpus/rq3/readme_only/
+/files/corpus/rq3/blind_spotcheck/
+/files/corpus/rq3/contamination_34/
+/files/corpus/rq3/pilot_concatenated/
+/files/corpus/rq3/rq3_libraries*.csv
+/files/corpus/*.log
+
+# Only these files in src/md are part of the pipeline
+/src/md/*
+!/src/md/prompt_template.md
+!/src/md/prompt_template_variant_paraphrase.md
+!/src/md/dev_log.md
+!/src/md/README.md

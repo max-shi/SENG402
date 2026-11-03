@@ -1,0 +1,244 @@
+# neurdflib
+
+**neurdflib** is a Python library for working with RDF (Resource Description Framework) data. It provides an in-memory and pluggable-backend graph model, parsers and serializers for the major RDF syntaxes (Turtle, N-Triples, N-Quads, TriG, TriX, RDF/XML, JSON-LD, HexTuples), a full SPARQL 1.1 query and update engine, and a collection of utilities for namespace management, graph comparison, and format conversion.
+
+It is built around a small set of core abstractions:
+
+- **`Graph`** and its variants (`ConjunctiveGraph`, `Dataset`, `QuotedGraph`) — the primary containers for RDF triples/quads.
+- **`Node`** and its subclasses (`URIRef`, `BNode`, `Literal`, `Variable`) — the RDF terms that make up triples.
+- **`Store`** — a pluggable persistence backend for graphs (in-memory, Berkeley DB, SPARQL endpoints, etc.).
+- **Parsers/Serializers** — plugins registered via `rdflib.plugin` that read and write various RDF and SPARQL result formats.
+- **SPARQL engine** (`rdflib.plugins.sparql`) — query parsing, algebra translation, and evaluation.
+
+## Installation
+
+```bash
+pip install neurdflib
+```
+
+## Core Concepts
+
+### Terms (`rdflib.term`)
+
+RDF data is built from `Node` subclasses:
+
+- `URIRef` — an RDF IRI/URI.
+- `BNode` — a blank node (with `skolemize()`/`de_skolemize()` helpers for round-tripping to URIs).
+- `Literal` — a typed or language-tagged literal, with `.value`, `.datatype`, `.language`, `.toPython()`, and `.n3()`.
+- `Variable` — a SPARQL query variable.
+
+```python
+from rdflib import URIRef, BNode, Literal
+
+subj = URIRef("http://example.org/alice")
+pred = URIRef("http://xmlns.com/foaf/0.1/name")
+obj = Literal("Alice", lang="en")
+```
+
+### Graphs (`rdflib.graph`)
+
+`Graph` is the central data structure: a set of `(subject, predicate, object)` triples backed by a `Store`.
+
+```python
+from rdflib import Graph, URIRef, Literal, Namespace
+
+FOAF = Namespace("http://xmlns.com/foaf/0.1/")
+
+g = Graph()
+alice = URIRef("http://example.org/alice")
+g.add((alice, FOAF.name, Literal("Alice")))
+g.add((alice, FOAF.age, Literal(30)))
+
+for s, p, o in g.triples((alice, None, None)):
+    print(s, p, o)
+```
+
+Key `Graph` methods:
+
+- `add`, `addN`, `remove`, `set` — mutate the triple store.
+- `triples`, `subjects`, `predicates`, `objects`, `subject_objects`, etc. — pattern-based iteration.
+- `value` — fetch a single object/subject/predicate matching a pattern.
+- `parse` — load RDF data from a file, string, URL, or stream, auto-detecting or accepting an explicit `format`.
+- `serialize` — write the graph out in a given format (`turtle`, `xml`, `n3`, `nt`, `json-ld`, etc.), to a string, bytes, or file-like destination.
+- `query` / `update` — run SPARQL SELECT/ASK/CONSTRUCT/DESCRIBE queries or SPARQL Update operations.
+- `bind` / `namespaces` / `qname` — manage prefix-to-namespace bindings via an attached `NamespaceManager`.
+- `skolemize` / `de_skolemize` — convert blank nodes to/from well-known URIs.
+- `isomorphic`, `cbd` (Concise Bounded Description), `connected`, `all_nodes` — structural graph operations.
+
+`ConjunctiveGraph` and `Dataset` extend `Graph` with support for multiple named graphs (contexts) and quads; `QuotedGraph` supports N3-style formula quoting.
+
+### Namespaces (`rdflib.namespace`)
+
+- `Namespace` — a string subclass whose attributes/`.term()` calls produce `URIRef`s under that namespace.
+- `ClosedNamespace` — a namespace restricted to a known, fixed set of terms.
+- `DefinedNamespace` — base class for the many pre-built vocabulary namespaces shipped with the library: `RDF`, `RDFS`, `OWL`, `FOAF`, `DC`, `DCTERMS`, `SKOS`, `XSD`, `SDO`, `PROV`, `VOID`, `TIME`, `GEO`, and more.
+- `NamespaceManager` — tracks prefix bindings for a graph and computes/expands qnames and CURIEs.
+
+```python
+from rdflib.namespace import RDF, RDFS, FOAF
+
+g.bind("foaf", FOAF)
+```
+
+### Parsing and Serialization
+
+RDF I/O is handled through the `Parser`/`Serializer` plugin interfaces (`rdflib.parser`, `rdflib.serializer`), with concrete implementations for Turtle/N3 (`notation3`), N-Triples/N-Quads, TriG, TriX, RDF/XML, JSON-LD, and HexTuples living under `rdflib.plugins.parsers` and `rdflib.plugins.serializers`. These are invoked indirectly through `Graph.parse(...)`/`Graph.serialize(...)`, or resolved by name via `rdflib.plugin.get`/`register`/`plugins`.
+
+```python
+g = Graph()
+g.parse("data.ttl", format="turtle")
+print(g.serialize(format="json-ld"))
+```
+
+### SPARQL (`rdflib.plugins.sparql`)
+
+Querying and updating graphs uses a full SPARQL implementation:
+
+- `prepareQuery` / `prepareUpdate` (`rdflib.plugins.sparql.processor`) — parse and pre-compile SPARQL strings into `Query`/`Update` objects for reuse.
+- `Graph.query` / `Graph.update` — the typical entry points, accepting either a raw string or a prepared `Query`/`Update`.
+- `processUpdate` — apply a SPARQL Update string directly to a graph.
+- Custom SPARQL functions can be registered with `register_custom_function` / `custom_function` (and removed with `unregister_custom_function`) from `rdflib.plugins.sparql.operators`.
+- Results (`rdflib.query.Result`) can be serialized/parsed in XML, JSON, CSV, TSV, and plain-text formats.
+
+```python
+from rdflib.plugins.sparql import prepareQuery
+
+q = prepareQuery(
+    "SELECT ?name WHERE { ?person foaf:name ?name }",
+    initNs={"foaf": FOAF},
+)
+for row in g.query(q):
+    print(row.name)
+```
+
+```python
+g.update("""
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+    INSERT DATA { <http://example.org/bob> foaf:name "Bob" }
+""")
+```
+
+### Stores (`rdflib.store` and `rdflib.plugins.stores`)
+
+`Store` defines the pluggable backend interface (`add`, `remove`, `triples`, `contexts`, `bind`, `query`, `update`, transaction methods, etc.). Built-in implementations include:
+
+- `Memory` / `SimpleMemory` — default in-process stores.
+- `BerkeleyDB` — persistent on-disk storage.
+- `SPARQLStore` / `SPARQLUpdateStore` — treat a remote SPARQL endpoint as a store, via `SPARQLConnector`.
+- `AuditableStore` — wraps another store to support transactional commit/rollback.
+
+```python
+from rdflib import Dataset
+from rdflib.plugins.stores.sparqlstore import SPARQLUpdateStore
+
+ds = Dataset(store="SPARQLUpdateStore")
+ds.open(("http://example.org/sparql", "http://example.org/sparql-update"))
+```
+
+### Graph Comparison (`rdflib.compare`)
+
+- `to_isomorphic` / `IsomorphicGraph` — wrap a graph for canonical hashing.
+- `isomorphic(g1, g2)` — check whether two graphs represent the same RDF (regardless of blank node labeling).
+- `to_canonical_graph` — produce a graph with canonicalized blank node identifiers.
+- `graph_diff(g1, g2)` — compute the triples common to and unique to each graph.
+- `similar(g1, g2)` — approximate similarity check.
+
+```python
+from rdflib.compare import isomorphic, graph_diff
+
+if not isomorphic(g1, g2):
+    in_both, only_in_g1, only_in_g2 = graph_diff(g1, g2)
+```
+
+### Collections and Containers
+
+- `rdflib.collection.Collection` — a Pythonic wrapper over RDF Lists (`rdf:first`/`rdf:rest`), supporting `append`, `index`, `clear`, and `n3()`.
+- `rdflib.container.Container`, `Bag`, `Alt`, `Seq` — wrappers over the RDF Container vocabulary (`rdf:_1`, `rdf:_2`, ...).
+
+```python
+from rdflib.collection import Collection
+
+c = Collection(g, BNode())
+c.append(Literal(1))
+c.append(Literal(2))
+```
+
+### Resources (`rdflib.resource`)
+
+`Resource` offers an object-oriented view onto a single subject in a graph, with `add`, `set`, `remove`, `value`, `objects`, `predicates`, and traversal helpers (`transitive_objects`, `transitive_subjects`).
+
+```python
+r = g.resource(alice)
+r.set(FOAF.name, Literal("Alice"))
+print(r.value(FOAF.name))
+```
+
+### Property Paths (`rdflib.paths`)
+
+SPARQL 1.1 property paths are supported as first-class objects (`SequencePath`, `AlternativePath`, `InvPath`, `MulPath`, `NegatedPath`), constructible via operators or helper functions (`mul_path`, `inv_path`, `neg_path`), and usable directly in `Graph.objects`/`subjects`/`triples`-style queries.
+
+```python
+from rdflib.paths import ZeroOrMore
+
+for o in g.objects(alice, FOAF.knows * ZeroOrMore):
+    print(o)
+```
+
+### OWL Support (`rdflib.extras.infixowl`)
+
+`infixowl` provides an object model over OWL ontologies built on top of `Graph`: `Ontology`, `Class`, `Property`, `Restriction`, `BooleanClass`, `EnumeratedClass`, and `Individual`, with helpers like `manchesterSyntax` for rendering class expressions and `CastClass` for reinterpreting a generic `Class` as a more specific OWL construct.
+
+### Other Utilities
+
+- `rdflib.util` — helpers such as `guess_format` (infer serialization format from a filename), `first`/`uniq`, `find_roots`/`get_tree` for tree-shaped graph traversal, and `from_n3`/`to_term` for parsing N3-style term syntax.
+- `rdflib.extras.external_graph_libs` — convert a `Graph` to/from `networkx` (`rdflib_to_networkx_graph`, `rdflib_to_networkx_digraph`, `rdflib_to_networkx_multidigraph`) or `graph-tool` (`rdflib_to_graphtool`) graph objects.
+- `rdflib.extras.describer.Describer` — a fluent helper for incrementally building RDF descriptions of a resource (`about`, `value`, `rel`, `rev`, `rdftype`).
+- `rdflib.tools` — command-line-oriented scripts: `rdfpipe` (format conversion pipeline), `csv2rdf` (CSV → RDF), `rdf2dot`/`rdfs2dot` (Graphviz visualization), `graphisomorphism`, `chunk_serializer.serialize_in_chunks` (write very large graphs in bounded-size chunks), and `defined_namespace_creator` (generate `DefinedNamespace` subclasses from vocabulary data).
+- `rdflib.void.generateVoID` — generate a VoID (Vocabulary of Interlinked Datasets) description for a dataset.
+
+## Example: Building, Querying, and Serializing a Graph
+
+```python
+from rdflib import Graph, Namespace, URIRef, Literal
+from rdflib.namespace import RDF, FOAF
+
+EX = Namespace("http://example.org/")
+
+g = Graph()
+g.bind("ex", EX)
+g.bind("foaf", FOAF)
+
+alice = EX.alice
+bob = EX.bob
+
+g.add((alice, RDF.type, FOAF.Person))
+g.add((alice, FOAF.name, Literal("Alice")))
+g.add((alice, FOAF.knows, bob))
+g.add((bob, RDF.type, FOAF.Person))
+g.add((bob, FOAF.name, Literal("Bob")))
+
+# Query with SPARQL
+results = g.query("""
+    PREFIX foaf: <http://xmlns.com/foaf/0.1/>
+    SELECT ?name WHERE {
+        ?person a foaf:Person ;
+                foaf:name ?name .
+    }
+""")
+for row in results:
+    print(row.name)
+
+# Serialize to Turtle
+print(g.serialize(format="turtle"))
+
+# Round-trip through N-Triples
+data = g.serialize(format="nt")
+g2 = Graph()
+g2.parse(data=data, format="nt")
+
+assert len(g) == len(g2)
+```
+
+## License
+
+See the `LICENSE` file included with this distribution.

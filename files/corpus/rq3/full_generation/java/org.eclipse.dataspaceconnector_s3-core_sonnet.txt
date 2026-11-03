@@ -1,0 +1,145 @@
+# S3 Core (`org.eclipse.dataspaceconnector:s3-core`)
+
+## Introduction
+
+`s3-core` is a foundational library providing centralized, configurable access to AWS SDK clients (S3, IAM, and STS) for use within an Eclipse Dataspace Connector (EDC) deployment. It abstracts away client construction, credential handling, and resource lifecycle management, exposing a simple provider interface that other extensions can use to obtain properly configured AWS clients — including support for temporary, session-based credentials.
+
+This library is typically consumed as a dependency by other AWS-related extensions (e.g., S3-based data transfer or provisioning extensions) rather than used directly by end applications.
+
+## Main Concepts
+
+### `AwsClientProvider`
+
+The central abstraction of this library. It defines methods to obtain:
+
+- **`S3Client`** — a synchronous S3 client, either using the default credentials provider or a supplied `SecretToken` (e.g., temporary session credentials).
+- **`S3AsyncClient`** — an asynchronous S3 client for a given AWS region.
+- **`IamAsyncClient`** — an asynchronous IAM client, useful for identity and access management operations.
+- **`StsAsyncClient`** — an asynchronous STS client, useful for requesting temporary credentials.
+- **`shutdown()`** — releases any underlying resources (thread pools, HTTP clients, etc.) held by the provider.
+
+### `AwsClientProviderImpl`
+
+The default implementation of `AwsClientProvider`. It is constructed with an `AwsClientProviderConfiguration` and manages the actual creation and caching/pooling of AWS SDK client instances, including support for custom endpoints (e.g., for S3-compatible services) and a configurable thread pool for asynchronous operations.
+
+### `AwsClientProviderConfiguration`
+
+Holds configuration used to build an `AwsClientProviderImpl`:
+
+- `getCredentialsProvider()` — the `AwsCredentialsProvider` used to authenticate default (non-token-based) client requests.
+- `getEndpointOverride()` — an optional `URI` to override the default AWS service endpoint (useful for testing or S3-compatible storage backends).
+- `getThreadPoolSize()` — the number of threads allocated for asynchronous client operations.
+
+### `SecretToken` implementations
+
+Two implementations represent AWS credentials that can be passed to `AwsClientProvider.s3Client(String, SecretToken)`:
+
+- **`AwsSecretToken`** — represents a long-lived access key / secret key pair. Provides `getAccessKeyId()`, `getSecretAccessKey()`, and a `flatten()` method to expose the credentials as a map. Implements `equals`/`hashCode` for comparison.
+- **`AwsTemporarySecretToken`** — represents temporary, session-based credentials, adding a `getSessionToken()` and an `getExpiration()` timestamp, typically obtained via STS.
+
+Both implement the `SecretToken` interface, allowing the `AwsClientProvider` to build clients authenticated with either permanent or temporary credentials interchangeably.
+
+### `S3CoreExtension`
+
+A `ServiceExtension` that integrates this library into the EDC runtime. It registers and exposes an `AwsClientProvider` service (via the `awsClientProvider(ServiceExtensionContext)` method) that other extensions can inject and use, ensuring a single, consistently configured client provider is shared across the runtime.
+
+## How the Pieces Fit Together
+
+```
+AwsClientProviderConfiguration
+        │
+        ▼
+AwsClientProviderImpl  ──implements──▶  AwsClientProvider
+        │                                     │
+        │                                     ├── s3Client(region)
+        │                                     ├── s3Client(region, SecretToken)
+        │                                     ├── s3AsyncClient(region)
+        │                                     ├── iamAsyncClient()
+        │                                     └── stsAsyncClient(region)
+        │
+        ▼
+   S3CoreExtension (registers AwsClientProvider as a runtime service)
+
+SecretToken
+   ├── AwsSecretToken            (long-lived credentials)
+   └── AwsTemporarySecretToken   (temporary/session credentials)
+```
+
+## Usage Examples
+
+### 1. Creating an `AwsClientProvider` directly
+
+```java
+import org.eclipse.dataspaceconnector.aws.s3.core.*;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+
+import java.net.URI;
+
+AwsClientProviderConfiguration configuration = AwsClientProviderConfiguration.Builder.newInstance()
+        .credentialsProvider(DefaultCredentialsProvider.create())
+        .endpointOverride(URI.create("https://s3.custom-endpoint.example.com"))
+        .threadPoolSize(10)
+        .build();
+
+AwsClientProvider clientProvider = new AwsClientProviderImpl(configuration);
+
+// Obtain a synchronous S3 client using default credentials
+S3Client s3Client = clientProvider.s3Client("eu-west-1");
+
+// Use the client...
+s3Client.listBuckets();
+
+// Clean up when finished
+clientProvider.shutdown();
+```
+
+*(Note: the exact configuration builder API may vary; refer to `AwsClientProviderConfiguration`'s accessor methods for available settings.)*
+
+### 2. Using temporary credentials obtained via STS
+
+```java
+AwsTemporarySecretToken temporaryToken = new AwsTemporarySecretToken(
+        "ASIA...accessKeyId",
+        "secretAccessKey",
+        "sessionToken",
+        System.currentTimeMillis() + 3600_000L // expires in 1 hour
+);
+
+S3Client scopedClient = clientProvider.s3Client("us-east-1", temporaryToken);
+scopedClient.putObject(request, requestBody);
+```
+
+### 3. Using long-lived (permanent) credentials
+
+```java
+AwsSecretToken permanentToken = new AwsSecretToken("AKIA...accessKeyId", "secretAccessKey");
+
+S3Client s3Client = clientProvider.s3Client("ap-southeast-2", permanentToken);
+```
+
+### 4. Registering the provider as an EDC extension service
+
+When running within an EDC runtime, `S3CoreExtension` automatically registers an `AwsClientProvider` instance that can be injected into other extensions:
+
+```java
+public class MyS3Extension implements ServiceExtension {
+
+    @Inject
+    private AwsClientProvider awsClientProvider;
+
+    @Override
+    public String name() {
+        return "My S3 Extension";
+    }
+
+    @Override
+    public void initialize(ServiceExtensionContext context) {
+        S3Client client = awsClientProvider.s3Client("eu-central-1");
+        // perform S3 operations
+    }
+}
+```
+
+## Resource Management
+
+Because `AwsClientProvider` implementations may allocate thread pools and long-lived HTTP connections for async clients, always call `shutdown()` when the provider is no longer needed (e.g., during extension/service shutdown) to release underlying resources cleanly.

@@ -1,0 +1,423 @@
+# Apache ServiceComb Foundation Common
+
+`org.apache.servicecomb:foundation-common` is a Java utility library providing shared building blocks for application infrastructure. Its API covers:
+
+- Configuration and resource loading
+- Encryption and credential decryption abstractions
+- Event publication and listener registration
+- HTTP, URI, network, and endpoint helpers
+- JSON and object-mapping utilities
+- Multipart `Part` implementations
+- Reflection, bean access, and lambda-based getters/setters
+- Concurrency and asynchronous helpers
+- Versioning, caching, registries, and dynamic metadata containers
+- File permissions, key-pair utilities, and general-purpose utilities
+
+The library is designed as a collection of reusable foundation components rather than a single framework entry point.
+
+## Dependency
+
+```xml
+<dependency>
+  <groupId>org.apache.servicecomb</groupId>
+  <artifactId>foundation-common</artifactId>
+</dependency>
+```
+
+## Main areas
+
+### Configuration and resources
+
+Configuration support is centered around `ConfigLoader` and its loader implementations:
+
+- `ConfigLoader` defines a generic `load()` operation.
+- `AbstractLoader` stores a list of location patterns.
+- `PropertiesLoader` loads property resources and exposes the resources it found.
+- `PaaSResourceUtils` resolves and sorts Spring `Resource` instances.
+- `PaaSPropertiesLoaderUtils` merges properties from location patterns.
+- `XmlLoaderUtils` loads XML documents, creates documents, and merges XML elements.
+- `LegacyPropertyFactory` provides static property access through a Spring `Environment`.
+
+```java
+import java.util.List;
+import java.util.Properties;
+
+import org.apache.servicecomb.foundation.common.config.impl.PropertiesLoader;
+
+PropertiesLoader loader = new PropertiesLoader(List.of(
+    "classpath*:application.properties",
+    "classpath*:application-*.properties"
+));
+
+Properties properties = loader.load();
+
+String host = properties.getProperty("service.host", "127.0.0.1");
+String port = properties.getProperty("service.port", "8080");
+
+System.out.println("Loaded resources: " + loader.getFoundResList());
+System.out.println("Service endpoint: " + host + ":" + port);
+```
+
+For direct resource resolution and merged properties:
+
+```java
+import java.util.Properties;
+
+import org.apache.servicecomb.foundation.common.config.PaaSResourceUtils;
+
+Properties properties =
+    PaaSResourceUtils.loadMergedProperties("classpath*:application.properties");
+```
+
+### Encryption and authentication
+
+The encryption API separates an encryption strategy from the static convenience methods used to apply registered strategies:
+
+- `Encryption` defines `encode` and `decode` operations for `char[]` data.
+- `NoEncryption` is an `Encryption` implementation.
+- `Encryptions` exposes static `String` and `char[]` encode/decode methods.
+- `Cipher` defines named credential-decryption implementations.
+- `DefaultCipher` and `ShaAKSKCipher` implement `Cipher`.
+- `FoundationCommonAuthConfiguration` exposes a `ShaAKSKCipher` instance.
+
+`char[]` APIs are available where callers need to avoid keeping sensitive values in immutable `String` objects longer than necessary.
+
+```java
+import org.apache.servicecomb.foundation.common.encrypt.Encryption;
+import org.apache.servicecomb.foundation.common.encrypt.NoEncryption;
+
+Encryption encryption = new NoEncryption();
+
+char[] plain = "example-secret".toCharArray();
+char[] encoded = encryption.encode(plain, "config");
+char[] decoded = encryption.decode(encoded, "config");
+```
+
+Use the static facade when the application's encryption setup is available:
+
+```java
+import org.apache.servicecomb.foundation.common.encrypt.Encryptions;
+
+String encoded = Encryptions.encode("database-password", "database");
+String decoded = Encryptions.decode(encoded, "database");
+```
+
+For cipher-based decryption:
+
+```java
+import org.apache.servicecomb.foundation.auth.Cipher;
+import org.apache.servicecomb.foundation.auth.DefaultCipher;
+
+Cipher cipher = DefaultCipher.getInstance();
+
+System.out.println("Cipher: " + cipher.name());
+char[] decrypted = cipher.decrypt("encrypted-value".toCharArray());
+```
+
+### Networking, HTTP, and endpoint parsing
+
+The networking helpers provide representations and parsers for host/port addresses and URI-based endpoints:
+
+- `IpPort` stores a host or IP address and port, and can create an `InetSocketAddress`.
+- `NetUtils` parses addresses, resolves host details, validates TCP listen capability, and formats byte counts.
+- `URIEndpointObject` extends `IpPort` with endpoint schema and query-parameter access.
+- `HttpUtils` handles header parameters, filename extraction, charset extraction, and URI path encoding/decoding.
+- `HttpStatus`, `HttpStatusManager`, and `HttpStatusUtils` work with JAX-RS `StatusType` values.
+
+```java
+import org.apache.servicecomb.foundation.common.net.IpPort;
+import org.apache.servicecomb.foundation.common.net.NetUtils;
+import org.apache.servicecomb.foundation.common.net.URIEndpointObject;
+
+IpPort address = NetUtils.parseIpPort("localhost:8080");
+System.out.println(address.getHostOrIp());
+System.out.println(address.getPort());
+
+URIEndpointObject endpoint =
+    new URIEndpointObject("https://example.org:8443/api?timeout=3000&tag=blue");
+
+System.out.println(endpoint.getSchema());
+System.out.println(endpoint.isSslEnabled());
+System.out.println(endpoint.getFirst("timeout"));
+System.out.println(endpoint.getQuery("tag"));
+```
+
+Encode a path component and inspect a header:
+
+```java
+import org.apache.servicecomb.foundation.common.http.HttpUtils;
+
+String encodedPath = HttpUtils.uriEncodePath("/files/a folder/report.txt");
+String filename = HttpUtils.parseFileNameFromHeaderValue(
+    "attachment; filename=\"report.txt\""
+);
+String charset = HttpUtils.getCharsetFromContentType(
+    "application/json; charset=UTF-8"
+);
+```
+
+### JSON and object mapping
+
+JSON support is provided through Jackson-oriented utility classes:
+
+- `JsonUtils` reads, writes, and converts values.
+- `RestObjectMapper` is an object mapper with string conversion support and copying.
+- `AbstractRestObjectMapper` is the abstract base for REST-oriented object mappers.
+- `PartModule` is a Jackson module for servlet `Part` values.
+- `JavaxServletPartSerializer` and `JavaxServletPartDeserializer` serialize and deserialize `Part` values.
+
+```java
+import java.util.Map;
+
+import org.apache.servicecomb.foundation.common.utils.JsonUtils;
+
+Map<String, Object> document = Map.of(
+    "name", "orders",
+    "enabled", true
+);
+
+String json = JsonUtils.writeValueAsString(document);
+Map<?, ?> restored = JsonUtils.readValue(json.getBytes(), Map.class);
+
+System.out.println(json);
+System.out.println(restored.get("name"));
+```
+
+Use `RestObjectMapper` when an explicit mapper instance is preferred:
+
+```java
+import org.apache.servicecomb.foundation.common.utils.RestObjectMapper;
+
+RestObjectMapper mapper = new RestObjectMapper();
+
+String text = mapper.convertToString(java.util.List.of("one", "two"));
+RestObjectMapper independentCopy = mapper.copy();
+```
+
+### Events
+
+The event API provides a shared event bus and a lightweight event-bus implementation:
+
+- `EventManager` provides static registration, posting, unregistration, and access to an `EventBus`.
+- `SimpleEventBus` extends `EventBus` and supports registration and dispatch.
+- `SimpleSubscriber` represents an object/method event subscriber and can dispatch an event.
+- `AlarmEvent` carries an alarm `Type`.
+
+```java
+import org.apache.servicecomb.foundation.common.event.EventManager;
+
+Object listener = new Object();
+
+// Register listener objects supported by the configured event bus.
+EventManager.register(listener);
+
+EventManager.post("configuration-reloaded");
+
+EventManager.unregister(listener);
+```
+
+### Concurrency and asynchronous utilities
+
+Several APIs support thread management and `CompletableFuture`-based workflows:
+
+- `CommonThread` adds running and shutdown state to `Thread`.
+- `NamedThreadFactory` creates named threads.
+- `SuppressedRunnableWrapper` wraps a `Runnable` and accepts an optional error handler.
+- `AsyncUtils` converts synchronous suppliers into `CompletableFuture` operations and bridges asynchronous/synchronous code.
+- `AsyncCloseable<T>` defines asynchronous close operations.
+- `ConditionWaiter<T>` stores evolving data and can execute a `Callable` asynchronously.
+- `ConcurrentHashMapEx` extends `ConcurrentHashMap` with `computeIfAbsent`.
+
+```java
+import java.util.concurrent.CompletableFuture;
+
+import org.apache.servicecomb.foundation.common.utils.AsyncUtils;
+
+CompletableFuture<String> future = AsyncUtils.tryCatchSupplier(() -> {
+  return "completed";
+});
+
+String result = AsyncUtils.toSync(future);
+System.out.println(result);
+```
+
+Handle exceptions from a background runnable:
+
+```java
+import org.apache.servicecomb.foundation.common.concurrency.SuppressedRunnableWrapper;
+
+Runnable guarded = new SuppressedRunnableWrapper(
+    () -> {
+      // Background work
+      throw new IllegalStateException("Example failure");
+    },
+    error -> System.err.println("Background task failed: " + error.getMessage())
+);
+
+new Thread(guarded).start();
+```
+
+### Dynamic data, registries, and caches
+
+The library includes containers for data that is not part of a fixed model:
+
+- `DynamicObject` stores key/value dynamic properties.
+- `VendorExtensions` stores arbitrary extension values.
+- `DynamicEnum<T>` wraps a value and tracks whether it is dynamic.
+- `DynamicEnumCache<T>` resolves `DynamicEnum` values.
+- `VersionedCache` associates data with a version and name.
+- `RegisterManager<KEY, VALUE>` registers values by key.
+- `AbstractObjectManager<KEY_OWNER, KEY, VALUE>` provides object lookup and creation APIs.
+- `ConcurrentHashMapEx<K, V>` can be used for concurrent lazy creation.
+
+```java
+import org.apache.servicecomb.foundation.common.DynamicObject;
+import org.apache.servicecomb.foundation.common.VendorExtensions;
+
+DynamicObject requestOptions = new DynamicObject()
+    .putDynamic("region", "us-east")
+    .putDynamic("retries", 3);
+
+String region = requestOptions.getDynamic("region");
+Integer retries = requestOptions.getDynamic("retries");
+
+VendorExtensions extensions = new VendorExtensions();
+extensions.put("x-trace-enabled", true);
+
+Boolean traceEnabled = extensions.get("x-trace-enabled");
+```
+
+A `RegisterManager` can enforce lookup patterns around named registrations:
+
+```java
+import org.apache.servicecomb.foundation.common.RegisterManager;
+
+RegisterManager<String, String> registry = new RegisterManager<>("handlers");
+
+registry.register("health", "healthHandler");
+
+String handler = registry.findValue("health");
+String requiredHandler = registry.ensureFindValue("health");
+```
+
+### Version handling
+
+`Version` represents a version with major, minor, patch, and build components. It is `Comparable`, supports equality, and preserves a string representation.
+
+```java
+import org.apache.servicecomb.foundation.common.Version;
+
+Version current = new Version("1.2.3.4");
+Version minimum = new Version((short) 1, (short) 2, (short) 0, (short) 0);
+
+if (current.compareTo(minimum) >= 0) {
+  System.out.println("Version is supported: " + current.getVersion());
+}
+```
+
+### Multipart parts
+
+The multipart API provides `Part` implementations backed by files, resources, and input streams:
+
+- `AbstractPart` provides common `Part` behavior.
+- `FilePart` represents a file and optionally supports delete-after-finished behavior.
+- `FilePartForSend` identifies file-backed parts intended for sending.
+- `ResourcePart` wraps a Spring `Resource`.
+- `InputStreamPart` wraps an `InputStream`.
+- `PartUtils` converts a named value into a single `Part`.
+
+```java
+import java.io.File;
+
+import org.apache.servicecomb.foundation.common.part.FilePart;
+
+FilePart part = new FilePart("upload", new File("/tmp/report.pdf"))
+    .setDeleteAfterFinished(false);
+
+System.out.println(part.getName());
+System.out.println(part.getSubmittedFileName());
+System.out.println(part.getSize());
+System.out.println(part.getAbsolutePath());
+```
+
+### Reflection, bean access, and typed property accessors
+
+The reflection and bean utilities support dynamic integration code:
+
+- `BeanUtils` accesses beans from a Spring `ApplicationContext`.
+- `ReflectUtils` finds methods, modifies fields, resolves classes, and works with generic field types.
+- `LambdaMetafactoryUtils` builds functional interfaces, getters, and setters from methods, fields, and Jackson property definitions.
+- `Getter<C, F>` and `Setter<C, F>` define generic field access.
+- Primitive-specific getter/setter interfaces avoid boxing for boolean and numeric types.
+- `ArrayGetter`, `ArraySetter`, `MapGetter`, and `MapSetter` provide accessors for arrays and maps.
+- `EnumUtils` and `DynamicEnumCache` support enum-related reflection.
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.servicecomb.foundation.common.utils.bean.MapGetter;
+import org.apache.servicecomb.foundation.common.utils.bean.MapSetter;
+
+Map<String, Integer> counters = new HashMap<>();
+
+MapSetter<String, Integer> setter = new MapSetter<>("requests");
+MapGetter<String, Integer> getter = new MapGetter<>("requests");
+
+setter.set(counters, 42);
+Integer requestCount = getter.get(counters);
+```
+
+### Security and file utilities
+
+Security-oriented helpers include:
+
+- `KeyPairUtils` for generating key pairs, signing content, and verifying signatures.
+- `KeyPairEntry` for retaining private/public key material and an encoded public key.
+- `Keypair4Auth` as a mutable authentication key-pair container.
+- `FilePerm` for POSIX and ACL permission support and file permission updates.
+- `FortifyUtils` for exception information and security-oriented XML document factory creation.
+- `IOUtils` for quiet close operations and path anonymization.
+
+```java
+import org.apache.servicecomb.foundation.common.utils.KeyPairEntry;
+import org.apache.servicecomb.foundation.common.utils.KeyPairUtils;
+
+KeyPairEntry keyPair = KeyPairUtils.generateALGKeyPair();
+
+String content = "important payload";
+String signature = KeyPairUtils.sign(content, keyPair.getPrivateKey());
+
+boolean valid = KeyPairUtils.verify(
+    keyPair.getPublicKeyEncoded(),
+    signature,
+    content
+);
+
+System.out.println("Signature valid: " + valid);
+```
+
+### Additional utilities
+
+Other useful APIs include:
+
+| Area | APIs |
+|---|---|
+| MIME handling | `MimeTypesUtils.getSortedAcceptableMimeTypes` |
+| Exception formatting | `ExceptionUtils`, `FortifyUtils`, `MuteExceptionUtil` |
+| JVM inspection | `JvmUtils` |
+| Generic type handling | `GenericsUtils`, `TypesUtil` |
+| Time | `TimeUtils.getSystemDefaultZoneClock` |
+| String construction | `StringBuilderUtils` |
+| Class-loader scoped values | `ClassLoaderScopeContext` |
+| Resource discovery | `ResourceUtil` |
+| File permissions | `FilePerm` |
+| Thread naming | `NamedThreadFactory` |
+| Status management | `HttpStatus`, `HttpStatusManager`, `HttpStatusUtils` |
+
+## API design notes
+
+- Many utility classes expose static methods and are intended to be used without instantiation.
+- Generic return types are used by several APIs, including configuration loading, JSON conversion, registry lookup, and dynamic data access.
+- Some components integrate with Spring, Jackson, JAX-RS, Servlet `Part`, SLF4J, and Java concurrency APIs.
+- For sensitive values, prefer the `char[]` methods exposed by `Encryption`, `Encryptions`, and `Cipher` where appropriate.

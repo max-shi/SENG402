@@ -1,0 +1,173 @@
+# sample-project
+
+A lightweight, pure-Python spell checking library based on word frequency lists and Levenshtein edit distance. `sample-project` ships with prebuilt dictionaries for multiple languages and exposes a simple API for checking, correcting, and tokenizing text, as well as building and maintaining your own custom dictionaries.
+
+## Features
+
+- Spell checking and correction using edit-distance-based candidate generation
+- Frequency-weighted suggestions (more common words are preferred corrections)
+- Support for multiple bundled languages
+- Fully customizable word frequency dictionaries — add, remove, or import your own word lists
+- Tools for tokenizing raw text into words
+- Utilities to build and clean dictionaries from raw corpora (see `scripts/build_dictionary.py`)
+- Export/import dictionaries as gzipped or plain-text JSON files
+
+## Installation
+
+```bash
+pip install sample-project
+```
+
+## Core Concepts
+
+### `SpellChecker`
+
+The main entry point of the library. A `SpellChecker` instance wraps a `WordFrequency` object and provides high-level operations:
+
+- `correction(word)` — return the single best correction for a word
+- `candidates(word)` — return the set of possible corrections
+- `known(words)` / `unknown(words)` — filter an iterable of words into those known/unknown to the dictionary
+- `edit_distance_1(word)` / `edit_distance_2(word)` — generate words within 1 or 2 edits of the input
+- `split_words(text)` — tokenize a string into words using the checker's tokenizer
+- `word_usage_frequency(word, total_words=None)` — get the relative frequency of a word
+- `distance` — property controlling the maximum edit distance used for corrections (get/set)
+- `word_frequency` — property exposing the underlying `WordFrequency` instance
+- `export(filepath, encoding='utf-8', gzipped=True)` — persist the current dictionary to disk
+- `SpellChecker.languages()` — classmethod listing available bundled languages
+
+### `WordFrequency`
+
+Manages the underlying word → frequency counts that power spell checking. Typically accessed through `SpellChecker.word_frequency`, but can also be used standalone for corpus analysis.
+
+Key operations:
+
+- **Loading data**: `load_dictionary(filename)`, `load_json(data)`, `load_text_file(filename)`, `load_text(text)`, `load_words(words)`
+- **Editing**: `add(word, val=1)`, `remove(word)`, `remove_words(words)`, `remove_by_threshold(threshold=5)`, `pop(key, default=None)`
+- **Inspection**: `dictionary`, `total_words`, `unique_words`, `letters`, `longest_word_length`, `keys()`, `words()`, `items()`
+- **Tokenization**: `tokenize(text)` — split raw text into normalized word tokens using the same rules as loading text
+
+### `scripts/build_dictionary.py`
+
+A set of standalone functions used to construct and clean the frequency dictionaries that ship with the library (or to build your own from scratch). These are primarily maintainer/build tools but are useful if you want to create a dictionary for a new language or domain:
+
+- `load_file` / `load_include_exclude` — read raw word lists and inclusion/exclusion filters from disk
+- `build_word_frequency(filepath, language, output_path)` — build a frequency dictionary from a raw text corpus
+- `export_word_frequency(filepath, word_frequency)` — write a `WordFrequency`-compatible dictionary to disk
+- `export_misfit_words(...)` — export words that don't pass cleaning rules, for manual review
+- `clean_english`, `clean_spanish`, `clean_italian`, `clean_german`, `clean_french`, `clean_portuguese`, `clean_russian`, `clean_arabic`, `clean_basque`, `clean_latvian`, `clean_dutch`, `clean_persian` — language-specific cleaning routines that filter a raw word frequency dictionary against include/exclude lists (and, where applicable, a reference dictionary file) to remove noise, malformed tokens, and non-words
+
+### `spellchecker/utils.py`
+
+Internal helper utilities used throughout the library:
+
+- `ensure_unicode(value, encoding='utf-8')` — normalize input to `str`
+- `load_file(filename, encoding)` / `write_file(filepath, encoding, gzipped, data)` — low-level file I/O helpers supporting gzip
+- `fail_after(version)` / `deprecated(message='')` — decorators used internally to manage API deprecation lifecycles
+
+## Usage
+
+### Basic spell checking
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()  # defaults to English
+
+# find those words that may be misspelled
+misspelled = spell.unknown(["this", "is", "sme", "sample", "txt"])
+
+for word in misspelled:
+    # get the one `most likely` correction
+    print(spell.correction(word))
+
+    # get a list of `likely` corrections
+    print(spell.candidates(word))
+```
+
+### Using a different language
+
+```python
+from spellchecker import SpellChecker
+
+print(SpellChecker.languages())  # list available bundled languages
+
+spell = SpellChecker(language='es')
+print(spell.correction("ordenadr"))
+```
+
+### Tuning edit distance
+
+```python
+spell = SpellChecker()
+spell.distance = 1  # restrict corrections to 1 edit away (faster, less lenient)
+print(spell.correction("wrold"))
+```
+
+### Adding custom vocabulary
+
+```python
+from spellchecker import SpellChecker
+
+spell = SpellChecker()
+
+# teach the checker about domain-specific terms
+spell.word_frequency.load_words(["kubectl", "terraform", "spellchecker"])
+
+# or bump the frequency of an existing/new word
+spell.word_frequency.add("kubectl", 50)
+
+print(spell.unknown(["kubectl", "gibberish"]))
+```
+
+### Building a frequency dictionary from raw text
+
+```python
+from spellchecker import WordFrequency
+
+wf = WordFrequency()
+wf.load_text_file("my_corpus.txt")
+
+print(wf.unique_words, wf.total_words)
+
+# remove rare noise words
+wf.remove_by_threshold(2)
+```
+
+### Exporting and reusing a dictionary
+
+```python
+spell = SpellChecker()
+spell.word_frequency.load_text_file("domain_corpus.txt")
+spell.export("my_dictionary.gz", gzipped=True)
+
+# later, or in another process
+new_spell = SpellChecker()
+new_spell.word_frequency.load_dictionary("my_dictionary.gz")
+```
+
+## Building custom language dictionaries (maintainers)
+
+The `scripts/build_dictionary.py` module contains the tooling used to produce the bundled dictionaries. To build a new one:
+
+```python
+from scripts.build_dictionary import build_word_frequency, clean_english
+
+build_word_frequency("raw_corpus.txt", language="en", output_path="en_dictionary.json")
+```
+
+```python
+from scripts.build_dictionary import clean_english
+
+clean_english(
+    word_frequency,
+    filepath_exclude="exclude.txt",
+    filepath_include="include.txt",
+    filepath_dictionary="reference_dictionary.txt",
+)
+```
+
+Cleaning functions filter out malformed or unwanted tokens (using exclude/include lists and, for many languages, a reference dictionary) before the frequency list is finalized and shipped.
+
+## License
+
+See `LICENSE` for details.

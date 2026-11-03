@@ -1,0 +1,298 @@
+# tessera-partyinfo
+
+`tessera-partyinfo` provides the peer discovery and party (node) information management layer for a Tessera network node. It is responsible for tracking which nodes are part of the network, what public keys they hold, which API versions they support, and how to reach them over the network.
+
+The library exposes an abstraction called **Discovery** which is the entry point for keeping track of network peers ("party info"), together with supporting types for representing nodes, recipients (public key + URL pairs), and node URIs. It supports both automatic peer discovery (where the network topology is learned dynamically as nodes announce themselves) and a disabled/manual mode (where only a fixed, known set of peers is trusted).
+
+## Key Concepts
+
+### Discovery
+
+`Discovery` is the main interface applications interact with to learn about, and publish updates on, network topology.
+
+```java
+public interface Discovery {
+    void onCreate();
+    void onUpdate(NodeInfo nodeInfo);
+    void onDisconnect(URI nodeUri);
+    NodeInfo getCurrent();
+    NodeInfo getRemoteNodeInfo(PublicKey publicKey);
+    Set<NodeInfo> getRemoteNodeInfos();
+
+    static Discovery create();
+}
+```
+
+- `onUpdate(NodeInfo)` — informs the discovery mechanism that a node (remote or local) has published new party info (its recipients, supported API versions, and URL).
+- `onDisconnect(URI)` — informs the discovery mechanism that a node is no longer reachable/should be removed from the active network.
+- `getCurrent()` — returns the `NodeInfo` describing this node's own current state (keys, URL, supported versions).
+- `getRemoteNodeInfo(PublicKey)` / `getRemoteNodeInfos()` — query known information about remote peers.
+
+Two implementations are provided internally:
+
+- **AutoDiscovery** — dynamically learns and stores information about any node that announces itself, backed by a `NetworkStore`.
+- **DisabledAutoDiscovery** — restricts the network to a fixed set of `knownPeers`; updates from unknown peers are effectively ignored/rejected, and only whitelisted peer URIs are tracked.
+
+Instances are obtained via the service-loader-style factory method `Discovery.create()`, which internally delegates to `DiscoveryProvider.provider()`.
+
+### DiscoveryHelper
+
+`DiscoveryHelper` is a lower-level collaborator used by `Discovery` implementations (and available directly if needed) to actually *build* `NodeInfo` objects — for the local node, or for remote nodes — typically by combining data from the network store with an enclave's key material.
+
+```java
+public interface DiscoveryHelper {
+    void onCreate();
+    NodeInfo buildCurrent();
+    NodeInfo buildRemoteNodeInfo(PublicKey publicKey);
+    Set<NodeInfo> buildRemoteNodeInfos();
+
+    static DiscoveryHelper create();
+}
+```
+
+`DiscoveryHelperImpl` is the concrete implementation, constructed from a `NetworkStore` and an `Enclave` (the enclave supplies the set of public/private keys this node manages).
+
+### NetworkStore
+
+`NetworkStore` is the underlying registry of currently active nodes (`ActiveNode`), keyed by URI. `Discovery` and `DiscoveryHelper` implementations use it to persist and query the live network state.
+
+```java
+public interface NetworkStore {
+    NetworkStore store(ActiveNode activeNode);
+    NetworkStore remove(NodeUri nodeUri);
+    Stream<ActiveNode> getActiveNodes();
+
+    static NetworkStore getInstance();
+}
+```
+
+`DefaultNetworkStore` is a singleton enum implementation of `NetworkStore` used across the application.
+
+### ActiveNode
+
+Represents a single peer that is currently known to be part of the network:
+
+```java
+public class ActiveNode {
+    Set<PublicKey> getKeys();
+    NodeUri getUri();
+    Set<String> getSupportedVersions();
+}
+```
+
+### NodeUri
+
+A small value type wrapping a node's URI, with normalization/equality semantics, used as the key throughout `NetworkStore`.
+
+```java
+public class NodeUri {
+    static NodeUri create(String uri);
+    static NodeUri create(URI uri);
+    String asString();
+    URI asURI();
+}
+```
+
+### NodeInfo / Recipient / VersionInfo
+
+These types represent the "party info" payload exchanged between nodes:
+
+```java
+public interface NodeInfo {
+    Map<PublicKey, String> getRecipientsAsMap();
+    Set<Recipient> getRecipients();
+    Set<String> supportedApiVersions();
+    String getUrl();
+}
+
+public class Recipient {
+    static Recipient of(PublicKey key, String url);
+    static Recipient from(Recipient recipient);
+    PublicKey getKey();
+    String getUrl();
+}
+
+public interface VersionInfo {
+    Set<String> supportedApiVersions();
+    static VersionInfo from(Set<String> versions);
+}
+```
+
+A `NodeInfo` describes a node's URL, the public keys it hosts recipients for (and their associated URLs, via `Recipient`), and which API versions it supports.
+
+### EnclaveKeySynchroniser
+
+```java
+public interface EnclaveKeySynchroniser {
+    void syncKeys();
+}
+```
+
+Used to trigger synchronization of the enclave's key set with the discovery/network layer — e.g. after keys are added or removed from the enclave, ensuring the node's published `NodeInfo` stays in sync.
+
+### P2pClient
+
+A minimal outbound client interface for pushing party info to other nodes over HTTP(S):
+
+```java
+public interface P2pClient {
+    boolean sendPartyInfo(String targetUrl, byte[] data);
+    static P2pClient create();
+}
+```
+
+### PartyInfoServiceUtil
+
+Utility for validating that incoming party info updates are consistent with existing data — specifically that public keys are not being reassigned to different URLs than previously recorded:
+
+```java
+public interface PartyInfoServiceUtil {
+    static boolean validateKeysToUrls(NodeInfo existingPartyInfo, NodeInfo newPartyInfo);
+}
+```
+
+### URLNormalizer
+
+```java
+public interface URLNormalizer {
+    default String normalize(String url);
+    static URLNormalizer create();
+}
+```
+
+Normalizes node/recipient URLs (e.g. trailing slashes, casing, default ports) so that equivalent URLs compare equal throughout the discovery layer.
+
+### AutoDiscoveryDisabledException
+
+```java
+public class AutoDiscoveryDisabledException extends RuntimeException {
+    public AutoDiscoveryDisabledException(String message);
+}
+```
+
+Thrown when an operation requiring automatic discovery is attempted while the node is configured with disabled/manual discovery (i.e. backed by `DisabledAutoDiscovery`).
+
+## How the Pieces Fit Together
+
+```
+                 +-------------------+
+                 |     Discovery     |  <-- public entry point
+                 +-------------------+
+                          |
+             uses         | delegates node-info construction to
+                          v
+                 +-------------------+
+                 |  DiscoveryHelper  |
+                 +-------------------+
+                          |
+             reads/writes |
+                          v
+                 +-------------------+
+                 |   NetworkStore    |  <-- registry of ActiveNode
+                 +-------------------+
+```
+
+- A node calls `Discovery.onUpdate(nodeInfo)` whenever it learns about a peer's party info (its own or received from the network).
+- `Discovery` (via `DiscoveryHelper`) persists this into the `NetworkStore` as an `ActiveNode`.
+- Other components can query `Discovery.getCurrent()` or `Discovery.getRemoteNodeInfos()` to find out how to route messages to peers.
+- `Discovery.onDisconnect(uri)` removes a peer from the active network when it becomes unreachable.
+- `P2pClient` is used to actually transmit serialized party info (`byte[] data`) to a peer's URL.
+- `PartyInfoServiceUtil.validateKeysToUrls` guards against conflicting updates before they are accepted.
+- `URLNormalizer` ensures consistent URL representation across the network store, comparisons, and outbound requests.
+
+## Usage Examples
+
+### Bootstrapping discovery and publishing local node info
+
+```java
+import com.quorum.tessera.discovery.Discovery;
+import com.quorum.tessera.partyinfo.node.NodeInfo;
+
+Discovery discovery = Discovery.create();
+discovery.onCreate();
+
+// Fetch this node's own current info (keys, URL, supported versions)
+NodeInfo current = discovery.getCurrent();
+
+System.out.println("This node URL: " + current.getUrl());
+System.out.println("Supported API versions: " + current.supportedApiVersions());
+```
+
+### Handling an incoming party-info update from a peer
+
+```java
+import com.quorum.tessera.discovery.Discovery;
+import com.quorum.tessera.partyinfo.node.NodeInfo;
+import com.quorum.tessera.partyinfo.node.Recipient;
+import com.quorum.tessera.partyinfo.PartyInfoServiceUtil;
+
+Discovery discovery = Discovery.create();
+
+NodeInfo existing = discovery.getRemoteNodeInfo(somePublicKey);
+NodeInfo incoming = /* deserialized from an inbound request */ null;
+
+if (existing == null || PartyInfoServiceUtil.validateKeysToUrls(existing, incoming)) {
+    discovery.onUpdate(incoming);
+} else {
+    throw new IllegalStateException("Conflicting key-to-URL mapping detected");
+}
+```
+
+### Removing a peer that has gone offline
+
+```java
+import com.quorum.tessera.discovery.Discovery;
+import java.net.URI;
+
+Discovery discovery = Discovery.create();
+discovery.onDisconnect(URI.create("https://peer-node.example.com:9001/"));
+```
+
+### Sending party info to a peer
+
+```java
+import com.quorum.tessera.partyinfo.P2pClient;
+
+P2pClient client = P2pClient.create();
+byte[] serializedPartyInfo = /* serialize local NodeInfo */ new byte[0];
+
+boolean sent = client.sendPartyInfo("https://peer-node.example.com:9001/partyinfo", serializedPartyInfo);
+if (!sent) {
+    System.err.println("Failed to send party info to peer");
+}
+```
+
+### Normalizing URLs before storing or comparing
+
+```java
+import com.quorum.tessera.partyinfo.URLNormalizer;
+
+URLNormalizer normalizer = URLNormalizer.create();
+String normalized = normalizer.normalize("HTTPS://Example.com:443");
+```
+
+### Working directly with the network store
+
+```java
+import com.quorum.tessera.discovery.NetworkStore;
+import com.quorum.tessera.discovery.ActiveNode;
+import com.quorum.tessera.discovery.NodeUri;
+
+NetworkStore networkStore = NetworkStore.getInstance();
+
+networkStore.getActiveNodes()
+    .forEach(node -> {
+        System.out.println("Peer: " + node.getUri().asString());
+        System.out.println("Keys: " + node.getKeys());
+        System.out.println("Versions: " + node.getSupportedVersions());
+    });
+
+networkStore.remove(NodeUri.create("https://old-peer.example.com/"));
+```
+
+## Notes on Discovery Modes
+
+- **Automatic discovery** (`AutoDiscovery`): the network store is updated freely as new `NodeInfo` announcements arrive from any peer. Suitable for permissioned networks where trust is established out-of-band (e.g. via keys) rather than via a fixed peer list.
+- **Disabled/manual discovery** (`DisabledAutoDiscovery`): only a pre-configured set of known peer URIs is tracked. Updates or connections outside this set may result in an `AutoDiscoveryDisabledException` or be otherwise rejected, providing tighter control over network membership.
+
+Choose the appropriate mode via configuration; `Discovery.create()` resolves the correct implementation automatically based on how the provider is configured for the running node.

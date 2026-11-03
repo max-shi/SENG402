@@ -1,0 +1,347 @@
+# py-tlsh
+
+`py-tlsh` provides Python-facing utilities for computing digest-like values from files and grouping collections of those values into clusters.
+
+The public API includes:
+
+- File-oriented digest computation helpers.
+- Similarity and distance-related utilities.
+- Hierarchical agglomerative clustering (HAC) routines.
+- DBSCAN clustering support.
+- Dendrogram, cluster selection, and cluster-output helpers.
+- Supporting data structures for nearest-neighbor and heap-based operations.
+
+## Main API areas
+
+### Digest computation
+
+The `py_ext` utilities expose functions that compute values from a file path:
+
+```python
+from py_ext.test import compute_1, compute_2
+from py_ext.tlsh_digest import compute_1 as compute_digest
+```
+
+Available functions:
+
+```python
+compute_1(path)
+compute_2(path)
+
+compute_digest(path, force_cons_param, old_param=0)
+```
+
+`py_ext.tlsh_digest` also provides a `main(argv)` entry point for command-line-style invocation.
+
+### Similarity and clustering helpers
+
+`tlshCluster.pylib.tlsh_lib` contains the higher-level collection and clustering API.
+
+```python
+from tlshCluster.pylib import tlsh_lib
+```
+
+Key functions include:
+
+| Function | Purpose |
+|---|---|
+| `sim(idx1, idx2)` | Compare two indexed items. |
+| `tlist2cdata(tlist)` | Convert a list of values into clustering data. |
+| `tlsh_dendrogram(tlist, labelList=None)` | Build a dendrogram from a list of values. |
+| `sim_affinity(tdata)` | Produce an affinity-oriented representation of data. |
+| `assignCluster(tlist, n_clusters)` | Assign items to a requested number of clusters. |
+| `selectCluster(tlist, clusterNumber, clusterIdx, labelList=None)` | Select a particular cluster from clustered data. |
+| `runDBSCAN(tlist, eps, min_samples, algorithm='auto')` | Run DBSCAN clustering. |
+| `analyse_clusters(clusterNumber)` | Analyse a cluster collection or cluster identifier. |
+| `outputClusters(outfname, tlist, clusterNumber, labelList, quiet=False)` | Write cluster output. |
+| `tlsh_csvfile(...)` | Search and process data from a CSV file. |
+| `mb_show_sha1(...)` | Display SHA-1-related information for a family or date selection. |
+
+Distance-calculation state can be managed with:
+
+```python
+tlsh_lib.resetDistCalc()
+count = tlsh_lib.lookupDistCalc()
+```
+
+### Hierarchical clustering
+
+`tlshCluster.pylib.hac_lib` provides lower-level hierarchical agglomerative clustering operations.
+
+```python
+from tlshCluster.pylib import hac_lib
+```
+
+The main entry points are:
+
+```python
+hac_lib.HAC_T_opt(fname, CDist, step3, outfname, cenfname, verbose=0)
+
+hac_lib.HAC_T(
+    fname,
+    CDist,
+    step3,
+    outfname,
+    cenfname,
+    allowStringy=0,
+    verbose=0,
+)
+
+hac_lib.DBSCAN_procedure(fname, CDist, outfname, cenfname, verbose=0)
+```
+
+Supporting functions include:
+
+- `read_data(fname)` for loading input data.
+- `VPTGrow(...)` and `VPTSearch(...)` for VP-tree-oriented searching.
+- `Tentative_Merge(...)` and `Merge(...)` for cluster merging.
+- `linearSearch(...)` for linear candidate searching.
+- `HAC_T_step3(...)` for a HAC processing stage.
+- `median(currlist)` for median calculation.
+- `setNoTiming()`, `setShowNumberClusters()`, `print_time(...)`, and `print_number_clusters(...)` for reporting controls.
+
+### Tree and heap structures
+
+The clustering routines expose two supporting classes.
+
+#### `Node`
+
+```python
+from tlshCluster.pylib.hac_lib import Node
+```
+
+Methods:
+
+```python
+node.insert(point)
+node.PrintTree(maxdepth, depth)
+```
+
+`Node` is used by the VP-tree-related functions, including `VPTGrow()` and `VPTSearch()`.
+
+#### `MinHeap`
+
+```python
+from tlshCluster.pylib.myheap import MinHeap
+```
+
+Methods:
+
+```python
+heap.nelem()
+heap.insert(key, dist)
+heap.dist(i)
+heap.deleteTop()
+heap.heapify(i)
+heap.heapify2(i)
+heap.printHeap()
+```
+
+It also provides helpers for navigating heap positions:
+
+```python
+heap.getParentPosition(i)
+heap.getLeftChildPosition(i)
+heap.getRightChildPosition(i)
+
+heap.hasParent(i)
+heap.hasLeftChild(i)
+heap.hasRightChild(i)
+```
+
+A `heap_tester()` helper is available for exercising heap behavior.
+
+### Cluster reporting
+
+`tlshCluster.pylib.printCluster` contains output and reporting helpers:
+
+```python
+from tlshCluster.pylib import printCluster
+```
+
+```python
+printCluster.printAllCluster(
+    outfname,
+    cenfname,
+    cluster,
+    memberList,
+    tlshList,
+    tobjList,
+    labels,
+    verbose,
+)
+
+radius = printCluster.estimateRadius(ml, tobjList)
+
+printCluster.printCluster(
+    f,
+    cenf,
+    gA,
+    cluster,
+    memberList,
+    tlshList,
+    tobjList,
+    labelList,
+    dateList,
+)
+```
+
+## Usage examples
+
+### Compute a value for a file
+
+```python
+from py_ext.tlsh_digest import compute_1
+
+digest = compute_1(
+    path="samples/example.bin",
+    force_cons_param=1,
+)
+
+print(digest)
+```
+
+The optional `old_param` argument can also be supplied:
+
+```python
+from py_ext.tlsh_digest import compute_1
+
+digest = compute_1(
+    "samples/example.bin",
+    force_cons_param=1,
+    old_param=0,
+)
+```
+
+### Build a dendrogram from a collection
+
+Given a list of digest or similarity values, create a dendrogram and attach labels:
+
+```python
+from tlshCluster.pylib import tlsh_lib
+
+tlist = [
+    "value-for-item-a",
+    "value-for-item-b",
+    "value-for-item-c",
+]
+
+labels = [
+    "item-a",
+    "item-b",
+    "item-c",
+]
+
+dendrogram = tlsh_lib.tlsh_dendrogram(tlist, labelList=labels)
+print(dendrogram)
+```
+
+### Run DBSCAN clustering
+
+```python
+from tlshCluster.pylib import tlsh_lib
+
+tlist = [
+    "value-for-item-a",
+    "value-for-item-b",
+    "value-for-item-c",
+    "value-for-item-d",
+]
+
+clusters = tlsh_lib.runDBSCAN(
+    tlist,
+    eps=100,
+    min_samples=2,
+)
+
+print(clusters)
+```
+
+### Assign and export clusters
+
+```python
+from tlshCluster.pylib import tlsh_lib
+
+tlist = [
+    "value-for-item-a",
+    "value-for-item-b",
+    "value-for-item-c",
+]
+
+labels = [
+    "item-a",
+    "item-b",
+    "item-c",
+]
+
+cluster_number = tlsh_lib.assignCluster(
+    tlist,
+    n_clusters=2,
+)
+
+tlsh_lib.outputClusters(
+    outfname="clusters.txt",
+    tlist=tlist,
+    clusterNumber=cluster_number,
+    labelList=labels,
+)
+```
+
+### Use the file-based HAC workflow
+
+```python
+from tlshCluster.pylib import hac_lib
+
+hac_lib.HAC_T(
+    fname="input.txt",
+    CDist=100,
+    step3=1,
+    outfname="clusters.txt",
+    cenfname="centers.txt",
+    verbose=1,
+)
+```
+
+For the optimized variant:
+
+```python
+from tlshCluster.pylib import hac_lib
+
+hac_lib.HAC_T_opt(
+    fname="input.txt",
+    CDist=100,
+    step3=1,
+    outfname="clusters.txt",
+    cenfname="centers.txt",
+    verbose=1,
+)
+```
+
+### Load input data and inspect distance-calculation activity
+
+```python
+from tlshCluster.pylib import hac_lib
+
+data = hac_lib.read_data("input.txt")
+
+hac_lib.hac_resetDistCalc()
+
+# Perform clustering or search operations here.
+
+distance_calculations = hac_lib.hac_lookupDistCalc()
+print(distance_calculations)
+```
+
+## Command-style entry points
+
+The following modules expose `main(argv)` functions:
+
+```python
+from py_ext import tlsh_digest
+from py_ext import tlsh_parts
+
+tlsh_digest.main(argv)
+tlsh_parts.main(argv)
+```
+
+These functions can be used when integrating the library into an application that constructs command-line-style argument lists programmatically.

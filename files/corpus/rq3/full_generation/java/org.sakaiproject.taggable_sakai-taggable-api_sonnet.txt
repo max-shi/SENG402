@@ -1,0 +1,159 @@
+# Sakai Taggable API
+
+`org.sakaiproject.taggable:sakai-taggable-api` provides a generic framework for associating tagging/taxonomy metadata with content in Sakai-based tools. It defines a small set of abstractions that let any tool (assignments, forums, tests, etc.) expose its content as "taggable," and let any external tagging service (a competency framework, a rubric tool, a taxonomy browser, etc.) attach tags to that content without either side needing to know the internal details of the other.
+
+At its core, the library models three relationships:
+
+1. **Activities and Items** — the content that can be tagged (e.g. an assignment, and the individual submissions to it).
+2. **Producers and Providers** — the two sides of the integration: a *producer* exposes taggable content from a tool, and a *provider* supplies the tagging capability/UI.
+3. **Links and Tags** — the persisted association between a piece of content and a tag/criteria, and the read-only representation of a tag once resolved.
+
+This separation allows tools to be tagged by multiple, independently pluggable tagging systems.
+
+## Core Concepts
+
+### TaggableActivity and TaggableItem
+
+`TaggableActivity` represents a taggable unit of work in a tool — for example, an assignment, a forum topic, or a quiz. It exposes basic descriptive metadata (title, description, context/site, detail URL) and a reference back to the `TaggableActivityProducer` that created it.
+
+`TaggableItem` represents a single instance of content within an activity — typically a student's submission or contribution. It carries ownership information (`getUserId()`, `getOwner()`), display metadata, and a back-reference to its parent `TaggableActivity`.
+
+Both interfaces expose `getObject()`, which returns the underlying domain object from the owning tool, and `getReference()` (on `TaggableItem`)/`getReference()` semantics generally follow Sakai's entity-reference conventions.
+
+### TaggableActivityProducer
+
+A `TaggableActivityProducer` is implemented by a tool that wants its content to be taggable. It is responsible for:
+
+- Listing activities for a given site/context (`getActivities`) and resolving a single activity by reference (`getActivity`).
+- Listing/resolving items within an activity (`getItems`, `getItem`).
+- Enforcing permission checks for viewing, removing, and transferring tags (`allowGetItems`, `allowRemoveTags`, `allowTransferCopyTags`).
+- Identifying itself (`getId`, `getName`) and validating references (`checkReference`, `getContext`).
+
+Producers are registered with the `TaggingManager` so that tagging providers and UI code can discover and query them generically.
+
+### TaggingProvider
+
+A `TaggingProvider` is implemented by a tagging/taxonomy tool. It supplies:
+
+- Permission checks controlling who may view or fetch tagging data (`allowViewTags`, `allowGetActivity`, `allowGetItem`, `allowGetItems`).
+- The actual tag data for an activity, via `getTags(TaggableActivity)`, returned as a `TagList`.
+- UI integration points, via `TaggingHelperInfo`, describing helper screens for tagging an activity, a set of items, or a single item.
+- Lifecycle operations: removing tags from an activity or item, and transferring/copying tags between activities (e.g. when a site is duplicated).
+
+Providers are registered with the `TaggingManager` alongside producers.
+
+### TaggingManager
+
+`TaggingManager` is the central registry and facade of the library. It:
+
+- Registers and looks up `TaggableActivityProducer` and `TaggingProvider` instances (`registerProducer`, `registerProvider`, `findProducerById`, `findProducerByRef`, `findProviderById`).
+- Delegates activity/item queries to the appropriate producer (`getActivities`, `getActivity`, `getItem`, `getItems`).
+- Reports whether tagging is enabled at all (`isTaggable`).
+- Creates and manages `Link` objects that associate an activity with a tag/criteria (`addLink`).
+- Builds `Tag`, `TagList`, and `TagColumn` instances used to present tagging data (`createTag`, `createTagList`, `createTagColumn`).
+- Removes all links for an activity (`removeLinks`).
+
+### Link and LinkManager
+
+A `Link` is a persistent association between a taggable activity (`getActivityRef()`) and a tagging criteria (`getTagCriteriaRef()`), optionally carrying free-text rationale/rubric information, visibility, lock, and export flags.
+
+`LinkManager` provides CRUD-style operations for `Link` entities: creating (`persistLink`), fetching by reference or by activity/criteria pair (`getLink`), listing links for an activity or a criteria (`getLinks`), and deleting them (`removeLink`, `removeLinks`).
+
+### Tag, TagColumn, and TagList
+
+- `TagColumn` describes a single column of tag data (name, display name, description, sortability) — used to build tabular tag displays.
+- `Tag` represents one row of tag data for a given activity, exposing field values keyed by `TagColumn`.
+- `TagList` is a `List<Tag>` enriched with its associated `TagColumn`s and a `sort(TagColumn, boolean)` method for presenting sortable tag tables in the UI.
+
+### TaggingHelperInfo
+
+`TaggingHelperInfo` describes a pluggable UI "helper" (e.g. a JSF/Spring helper tool) that a `TaggingProvider` exposes for tagging an activity, a collection of items, or a single item. It carries the helper's identifier, display name/description, associated `TaggingProvider`, and an arbitrary parameter map used to launch the helper.
+
+## Typical Integration Flow
+
+1. A tool implements `TaggableActivityProducer` and registers itself with `TaggingManager.registerProducer(...)`.
+2. A tagging system implements `TaggingProvider` and registers itself with `TaggingManager.registerProvider(...)`.
+3. When a user wants to tag an activity, the UI asks the `TaggingManager` for the activities in the current context, and for each activity, asks the relevant `TaggingProvider` for its `TaggingHelperInfo` to launch a tagging UI, or for its current `TagList` via `getTags(activity)`.
+4. Persistent associations between activities and tagging criteria are stored as `Link` objects, managed through `LinkManager` (directly) or `TaggingManager.addLink(...)` (as a convenience façade).
+5. When content is removed, copied, or transferred between sites, `removeLinks`, `removeTags`, and `transferCopyTags` keep the tagging data consistent.
+
+## Usage Examples
+
+### Registering a producer and provider
+
+```java
+TaggingManager taggingManager = ...; // obtained via dependency injection / lookup
+
+TaggableActivityProducer assignmentProducer = new AssignmentTaggableActivityProducer();
+taggingManager.registerProducer(assignmentProducer);
+
+TaggingProvider competencyProvider = new CompetencyTaggingProvider();
+taggingManager.registerProvider(competencyProvider);
+```
+
+### Listing taggable activities in a site and fetching their tags
+
+```java
+String siteContext = "site-id-123";
+TaggingProvider provider = taggingManager.findProviderById("competency-provider");
+
+List<TaggableActivity> activities = taggingManager.getActivities(siteContext, provider);
+
+for (TaggableActivity activity : activities) {
+    TagList tags = provider.getTags(activity);
+    for (TagColumn column : tags.getColumns()) {
+        System.out.println("Column: " + column.getDisplayName());
+    }
+    for (Tag tag : tags) {
+        System.out.println("Activity ref: " + tag.getActivityRef());
+        for (String field : tag.getFields()) {
+            System.out.println("  " + field);
+        }
+    }
+}
+```
+
+### Creating a link between an activity and a tag criteria
+
+```java
+String activityRef = "/assignment/site-id-123/assignment-1";
+String tagCriteriaRef = "/competency/criteria/42";
+
+Link link = taggingManager.addLink(
+    activityRef,
+    tagCriteriaRef,
+    "Aligns with course learning outcome 3",  // rationale
+    "Meets, Approaches, Does Not Meet",        // rubric
+    true                                        // visible
+);
+
+System.out.println("Created link: " + link.getActivityRef() + " -> " + link.getTagCriteriaRef());
+```
+
+### Looking up and removing links for an activity
+
+```java
+LinkManager linkManager = ...;
+
+List<Link> links = linkManager.getLinks(activityRef, false, siteContext);
+for (Link link : links) {
+    if (!link.isLocked()) {
+        linkManager.removeLink(link);
+    }
+}
+```
+
+### Transferring tags when copying a site
+
+```java
+TaggableActivity fromActivity = taggingManager.getActivity(oldActivityRef, provider);
+TaggableActivity toActivity = taggingManager.getActivity(newActivityRef, provider);
+
+if (assignmentProducer.allowTransferCopyTags(fromActivity)) {
+    provider.transferCopyTags(fromActivity, toActivity);
+}
+```
+
+## Summary
+
+The Taggable API decouples "things that can be tagged" (activities and items, exposed by tool-specific producers) from "things that do the tagging" (providers implementing taxonomy, competency, or rubric logic). `TaggingManager` and `LinkManager` tie the two sides together and persist the resulting associations as `Link`s, while `Tag`, `TagColumn`, and `TagList` provide a uniform way to present tagging results in the UI.

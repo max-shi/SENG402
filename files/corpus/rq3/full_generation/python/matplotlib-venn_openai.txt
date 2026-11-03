@@ -1,0 +1,214 @@
+# matplotlib-venn
+
+`matplotlib-venn` provides tools for drawing two-set and three-set Venn diagrams with Matplotlib. It accepts set inputs or explicitly supplied subset sizes, creates filled diagram regions and labels, and exposes helpers for drawing circle outlines, inspecting diagram elements, and selecting layout algorithms.
+
+The library also includes lower-level geometry and region primitives used to represent circles, arcs, intersections, and Venn-diagram regions.
+
+## Main API
+
+### Draw Venn diagrams
+
+- `venn2(...)` — draw a two-set Venn diagram.
+- `venn3(...)` — draw a three-set Venn diagram and return a `VennDiagram`.
+- `venn2_circles(...)` — draw the boundary circles for a two-set diagram.
+- `venn3_circles(...)` — draw the boundary circles for a three-set diagram.
+
+These functions accept either:
+
+- A tuple of Python sets, such as `(set_a, set_b)` or `(set_a, set_b, set_c)`.
+- A dictionary mapping string subset identifiers to numeric values.
+- A `Venn2SubsetSizes` or `Venn3SubsetSizes` object where applicable.
+
+Diagram-rendering functions support labels, colors, transparency, Matplotlib axes, custom subset-label formatting, and optional layout algorithms.
+
+### Work with a rendered diagram
+
+`VennDiagram` provides access to visual elements created for a diagram:
+
+- `get_patch_by_id(id)` returns the Matplotlib `Patch` for a region.
+- `get_label_by_id(id)` returns the Matplotlib `Text` object for a region or label.
+- `get_circle_center(id)` returns a circle center.
+- `get_circle_radius(id)` returns a circle radius.
+- `hide_zeroes()` hides labels corresponding to zero-valued regions.
+
+This makes it possible to customize individual patches and labels after rendering.
+
+### Convenience functions
+
+- `venn2_unweighted(...)`
+- `venn3_unweighted(...)`
+
+These functions expose a convenience interface with configurable `subset_areas`, normalization, colors, labels, and label formatting.
+
+### Layout algorithms
+
+The layout API provides a common `VennLayoutAlgorithm` base class along with `VennLayout` and `LabelLayout` types.
+
+Available concrete layout algorithms include:
+
+- Two-set exact layout: `matplotlib_venn.layout.venn2.exact.LayoutAlgorithm`
+- Three-set pairwise layout: `matplotlib_venn.layout.venn3.pairwise.LayoutAlgorithm`
+- Three-set cost-based layout: `matplotlib_venn.layout.venn3.cost_based.LayoutAlgorithm`
+
+The cost-based API also includes:
+
+- `WeightedAggregateCost`
+- `pairwise_cost(target_areas, actual_areas)`
+
+Pass a compatible layout algorithm instance through the `layout_algorithm` argument of `venn2`, `venn3`, `venn2_circles`, or `venn3_circles`.
+
+## Basic examples
+
+### Two-set diagram from Python sets
+
+```python
+import matplotlib.pyplot as plt
+
+from matplotlib_venn._venn2 import venn2
+
+python_users = {"Ada", "Grace", "Guido", "Linus"}
+matplotlib_users = {"Ada", "Grace", "John"}
+
+fig, ax = plt.subplots()
+
+diagram = venn2(
+    subsets=(python_users, matplotlib_users),
+    set_labels=("Python users", "Matplotlib users"),
+    set_colors=("tab:blue", "tab:orange"),
+    alpha=0.5,
+    ax=ax,
+    subset_label_formatter=lambda value: f"{value:.0f}",
+)
+
+ax.set_title("Community overlap")
+plt.show()
+```
+
+### Three-set diagram with custom colors and formatting
+
+```python
+import matplotlib.pyplot as plt
+
+from matplotlib_venn._venn3 import venn3
+
+backend = {"auth", "database", "api", "worker"}
+frontend = {"api", "design-system", "dashboard"}
+operations = {"database", "worker", "monitoring"}
+
+fig, ax = plt.subplots()
+
+diagram = venn3(
+    subsets=(backend, frontend, operations),
+    set_labels=("Backend", "Frontend", "Operations"),
+    set_colors=("steelblue", "mediumseagreen", "mediumpurple"),
+    alpha=0.45,
+    subset_label_formatter=lambda value: f"{value:.0f} components",
+    ax=ax,
+)
+
+diagram.hide_zeroes()
+
+ax.set_title("Component ownership")
+plt.show()
+```
+
+### Draw only the three circle boundaries
+
+Use `venn3_circles` when circle outlines are needed without the filled-region rendering performed by `venn3`.
+
+```python
+import matplotlib.pyplot as plt
+
+from matplotlib_venn._venn3 import venn3_circles
+
+set_a = {"a", "b", "c", "d"}
+set_b = {"c", "d", "e"}
+set_c = {"b", "d", "f"}
+
+fig, ax = plt.subplots()
+
+circles = venn3_circles(
+    subsets=(set_a, set_b, set_c),
+    color="black",
+    linestyle="dashed",
+    linewidth=1.5,
+    alpha=0.9,
+    ax=ax,
+)
+
+ax.set_title("Three-set circle boundaries")
+plt.show()
+```
+
+`venn3_circles` returns a tuple containing three Matplotlib `Circle` objects, which can be further customized using the normal Matplotlib artist API.
+
+### Use the unweighted convenience interface
+
+```python
+import matplotlib.pyplot as plt
+
+from matplotlib_venn._util import venn2_unweighted
+
+fig, ax = plt.subplots()
+
+venn2_unweighted(
+    subsets=(12, 8, 5),
+    set_labels=("Requested", "Completed"),
+    set_colors=("crimson", "seagreen"),
+    subset_areas=(1, 1, 1),
+    normalize_to=1.0,
+    ax=ax,
+)
+
+plt.show()
+```
+
+## Diagram customization
+
+The returned diagram object can be used to obtain Matplotlib artists by their string identifiers:
+
+```python
+patch = diagram.get_patch_by_id("region-id")
+label = diagram.get_label_by_id("label-id")
+
+if patch is not None:
+    patch.set_edgecolor("black")
+    patch.set_linewidth(1.5)
+
+if label is not None:
+    label.set_fontweight("bold")
+```
+
+The exact identifiers used depend on the diagram and the element being accessed. Returned objects are standard Matplotlib `Patch` and `Text` instances, so they can be styled with Matplotlib's usual APIs.
+
+## Geometry and region primitives
+
+For applications that need geometric operations directly, the library exposes several lower-level types and helpers.
+
+### Geometry
+
+- `Point2D` represents a two-dimensional point and provides `asarray()`.
+- `Arc` supports arc lengths, areas, point conversion, intersections, sub-arcs, reversal, and circle membership checks.
+- Circle helpers include:
+  - `point_in_circle`
+  - `circle_intersection_area`
+  - `circle_line_intersection`
+  - `circle_circle_intersection`
+  - `find_distance_by_area`
+- Vector and coordinate helpers include:
+  - `box_product`
+  - `vector_angle_in_degrees`
+  - `normalize_by_center_of_mass`
+
+### Regions
+
+`VennRegion` is the base type for geometric Venn regions. Region implementations include:
+
+- `VennEmptyRegion`
+- `VennCircleRegion`
+- `VennArcgonRegion`
+- `VennMultipieceRegion`
+
+Regions can report their area with `size()`, provide a label position with `label_position()`, generate a Matplotlib patch with `make_patch()`, validate their geometry with `verify()`, and be split against a circle with `subtract_and_intersect_circle(...)`.
+
+`VennRegionException` is available for region-related errors, while `LayoutException` represents layout-related errors.

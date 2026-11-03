@@ -1,0 +1,436 @@
+# hdfs
+
+`hdfs` is a Python library for working with an HDFS-compatible filesystem. It provides a client-oriented API for file and directory operations, metadata inspection, ACL management, snapshots, streaming reads and writes, local file transfer, and optional integrations for Avro and data frames.
+
+The central abstraction is `Client`, with specialized client variants for insecure, token-based, and Kerberos-based access.
+
+## Highlights
+
+- Read, write, upload, and download files.
+- Create, list, walk, rename, and delete directories and files.
+- Inspect file status, content summaries, checksums, and ACLs.
+- Manage ownership, permissions, timestamps, replication, and ACL entries.
+- Work with snapshots.
+- Stream data through file-like reader/writer APIs.
+- Read and write Avro records and data frames through extension modules.
+- Build clients from configuration or option objects.
+
+## Client API
+
+### Creating or obtaining a client
+
+The base client type is `Client`. Available variants include:
+
+- `Client` — base filesystem client interface.
+- `InsecureClient` — a client variant intended for insecure access.
+- `TokenClient` — a client variant intended for token-based access.
+- `KerberosClient` — a Kerberos-enabled client, available from `hdfs.ext.kerberos`.
+
+Clients can also be created through configuration:
+
+```python
+from hdfs.config import Config
+
+config = Config()
+client = config.get_client(alias='default')
+```
+
+`Client.from_options()` provides another client-construction entry point when options are available:
+
+```python
+from hdfs.client import Client
+
+client = Client.from_options(options)
+```
+
+The exact client class can be selected with the `class_name` argument:
+
+```python
+client = Client.from_options(options, class_name='TokenClient')
+```
+
+### Paths and metadata
+
+Use these methods to resolve paths and inspect filesystem metadata:
+
+```python
+resolved_path = client.resolve('/data/events')
+content = client.content('/data/events', strict=True)
+status = client.status('/data/events/file.txt', strict=True)
+checksum = client.checksum('/data/events/file.txt')
+```
+
+Available metadata-related methods include:
+
+| Method | Purpose |
+| --- | --- |
+| `resolve(hdfs_path)` | Resolve an HDFS path. |
+| `content(hdfs_path, strict=True)` | Retrieve content-related information for a path. |
+| `status(hdfs_path, strict=True)` | Retrieve status information for a file or directory. |
+| `parts(hdfs_path, parts=None, status=False)` | Work with path parts, optionally including status information. |
+| `checksum(hdfs_path)` | Retrieve a checksum for a path. |
+
+The `strict` parameter on `content()`, `status()`, and `acl_status()` can be used when callers need to control strict path handling.
+
+### Reading and writing files
+
+`Client.write()` writes data to an HDFS path:
+
+```python
+client.write(
+    '/projects/example/notes.txt',
+    data='Hello from Python.\n',
+    overwrite=True,
+    encoding='utf-8',
+)
+```
+
+Writing can be configured with filesystem-specific options:
+
+```python
+client.write(
+    '/projects/example/archive.bin',
+    data=b'payload',
+    overwrite=True,
+    permission='640',
+    blocksize=134217728,
+    replication=2,
+    buffersize=65536,
+)
+```
+
+Append to an existing file with `append=True`:
+
+```python
+client.write(
+    '/projects/example/events.log',
+    data='new event\n',
+    append=True,
+    encoding='utf-8',
+)
+```
+
+Read file data with optional offsets, length limits, buffering, encoding, chunking, delimiters, and progress reporting:
+
+```python
+data = client.read(
+    '/projects/example/notes.txt',
+    offset=0,
+    length=None,
+    encoding='utf-8',
+)
+```
+
+For larger reads, configure chunking or a progress callback:
+
+```python
+data = client.read(
+    '/projects/example/archive.bin',
+    buffer_size=65536,
+    chunk_size=65536,
+    progress=print,
+)
+```
+
+### Uploading and downloading
+
+Transfer files between local storage and HDFS with `upload()` and `download()`.
+
+```python
+client.upload(
+    '/datasets/raw/input.csv',
+    local_path='./input.csv',
+    n_threads=4,
+    chunk_size=2 ** 16,
+    progress=print,
+)
+```
+
+Download an HDFS file to a local destination:
+
+```python
+client.download(
+    '/datasets/raw/input.csv',
+    local_path='./downloads/input.csv',
+    overwrite=True,
+    n_threads=4,
+)
+```
+
+Both transfer methods support temporary directories through `temp_dir`. Uploads also support cleanup control through `cleanup`.
+
+### Directories and traversal
+
+Create directories with `makedirs()`:
+
+```python
+client.makedirs('/projects/example/output', permission='750')
+```
+
+List a directory:
+
+```python
+entries = client.list('/projects/example/output')
+```
+
+Request listing results with status information:
+
+```python
+entries_with_status = client.list(
+    '/projects/example/output',
+    status=True,
+)
+```
+
+Traverse a directory tree with `walk()`:
+
+```python
+for entry in client.walk(
+    '/projects/example',
+    depth=2,
+    status=True,
+    ignore_missing=True,
+):
+    print(entry)
+```
+
+`walk()` supports:
+
+- `depth` — control traversal depth.
+- `status` — include status information.
+- `ignore_missing` — tolerate missing paths.
+- `allow_dir_changes` — control behavior when directories change during traversal.
+
+### File and directory changes
+
+Rename or remove paths:
+
+```python
+client.rename(
+    '/projects/example/output/result.tmp',
+    '/projects/example/output/result.txt',
+)
+
+client.delete(
+    '/projects/example/output/old-results',
+    recursive=True,
+    skip_trash=True,
+)
+```
+
+Update ownership, permissions, times, and replication:
+
+```python
+client.set_owner(
+    '/projects/example/output/result.txt',
+    owner='analytics',
+    group='data',
+)
+
+client.set_permission(
+    '/projects/example/output/result.txt',
+    permission='640',
+)
+
+client.set_times(
+    '/projects/example/output/result.txt',
+    access_time=0,
+    modification_time=0,
+)
+
+client.set_replication(
+    '/projects/example/output/result.txt',
+    replication=3,
+)
+```
+
+### ACL management
+
+Inspect and modify access-control lists:
+
+```python
+acl = client.acl_status('/projects/example/output', strict=True)
+
+client.set_acl(
+    '/projects/example/output',
+    acl_spec='user:analyst:r-x',
+    clear=True,
+)
+
+client.remove_acl_entries(
+    '/projects/example/output',
+    acl_spec='user:analyst:r-x',
+)
+
+client.remove_default_acl('/projects/example/output')
+client.remove_acl('/projects/example/output')
+```
+
+### Snapshots
+
+Manage snapshots for paths where snapshot support is enabled:
+
+```python
+client.allow_snapshot('/projects/example')
+
+snapshot = client.create_snapshot(
+    '/projects/example',
+    snapshotname='before-import',
+)
+
+client.rename_snapshot(
+    '/projects/example',
+    oldsnapshotname='before-import',
+    snapshotname='pre-import',
+)
+
+client.delete_snapshot(
+    '/projects/example',
+    snapshotname='pre-import',
+)
+
+client.disallow_snapshot('/projects/example')
+```
+
+## End-to-end example
+
+The following helper accepts an already configured client, uploads local data, updates file metadata, and verifies the resulting path.
+
+```python
+def publish_report(client, local_report):
+    target_dir = '/reports/daily'
+    target_file = f'{target_dir}/report.csv'
+
+    client.makedirs(target_dir, permission='750')
+
+    client.upload(
+        target_file,
+        local_path=local_report,
+        n_threads=2,
+        progress=print,
+    )
+
+    client.set_owner(
+        target_file,
+        owner='reporting',
+        group='analytics',
+    )
+    client.set_permission(target_file, permission='640')
+    client.set_replication(target_file, replication=2)
+
+    return client.status(target_file)
+```
+
+## Data frame support
+
+The `hdfs.ext.dataframe` module provides convenience functions for data-frame-oriented workflows.
+
+```python
+from hdfs.ext.dataframe import read_dataframe, write_dataframe
+
+df = read_dataframe(client, '/datasets/metrics.csv')
+
+write_dataframe(
+    client,
+    '/datasets/metrics-clean.csv',
+    df,
+    overwrite=True,
+)
+```
+
+Additional keyword arguments can be passed to `write_dataframe()`.
+
+## Avro support
+
+The `hdfs.ext.avro` extension exposes reader and writer types:
+
+- `AvroReader`
+  - `writer_schema()`
+- `AvroWriter`
+  - `schema()`
+  - `write(record)`
+
+A typical record-writing workflow uses an `AvroWriter` instance to inspect its schema and write records:
+
+```python
+schema = writer.schema()
+
+writer.write({
+    'event_type': 'page_view',
+    'user_id': 'user-123',
+})
+```
+
+Likewise, an `AvroReader` can expose the schema used by the source data:
+
+```python
+schema = reader.writer_schema()
+```
+
+## Configuration and logging
+
+`Config` extends `RawConfigParser` and provides helpers for obtaining clients and log handlers:
+
+```python
+from hdfs.config import Config
+
+config = Config()
+
+client = config.get_client(alias='default')
+handler = config.get_log_handler(command='upload')
+```
+
+The `catch()` helper can be used to construct exception-handling behavior for one or more error classes:
+
+```python
+from hdfs.config import catch
+from hdfs.util import HdfsError
+
+with catch(HdfsError):
+    client.delete('/projects/example/missing-path')
+```
+
+## Utilities and errors
+
+### `HdfsError`
+
+`HdfsError` is the library-specific exception type:
+
+```python
+from hdfs.util import HdfsError
+
+try:
+    client.status('/missing/path')
+except HdfsError as err:
+    print(err)
+```
+
+### `AsyncWriter`
+
+`AsyncWriter` exposes a file-like writing interface:
+
+- `write(chunk)`
+- `flush()`
+- `tell()`
+- `seekable()`
+
+### `temppath`
+
+Use `temppath()` to obtain a temporary path, optionally rooted under a supplied directory:
+
+```python
+from hdfs.util import temppath
+
+path = temppath()
+custom_path = temppath('/tmp')
+```
+
+## Command-line entry points
+
+The package includes command-line entry functions through `hdfs.__main__.main()` and an Avro-oriented command entry point through `hdfs.ext.avro.__main__.main()`.
+
+The main command helpers include:
+
+- `parse_arg(args, name, parser, separator=None)`
+- `configure_client(command, args, config=None)`
+- `main(argv=None, client=None)`

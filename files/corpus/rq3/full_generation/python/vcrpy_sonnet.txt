@@ -1,0 +1,221 @@
+# vcrpy
+
+**vcrpy** is a library for recording and replaying HTTP interactions in your tests. It intercepts outgoing HTTP requests made by your application, records the request/response pairs to a file (called a "cassette"), and on subsequent test runs replays the recorded responses instead of hitting the network. This makes tests fast, deterministic, and able to run without network access.
+
+vcrpy works by patching the HTTP client libraries you already use — including `http.client`, `requests`, `urllib3`, `httplib2`, `boto3`, `aiohttp`, `httpx`, and `tornado` — so that no changes to your application code are required.
+
+## Key Concepts
+
+### Cassettes
+
+A **cassette** is a recording of one or more HTTP request/response pairs, persisted to disk (as YAML or JSON by default). The `Cassette` class represents a loaded cassette in memory: it tracks which requests have been played, which responses are available, and whether new requests are allowed to be recorded.
+
+The `CassetteContextDecorator` provides the plumbing that allows a `Cassette` to be used both as a context manager (`with vcr.use_cassette(...):`) and as a test decorator (`@vcr.use_cassette(...)`).
+
+### VCR
+
+The `VCR` class is the main configuration object and entry point. You create an instance of `VCR`, configure how it should behave (which HTTP methods/headers to match on, where to store cassettes, how to handle new recordings, etc.), and then use `vcr.use_cassette(...)` to wrap the code you want recorded.
+
+```python
+import vcr
+
+my_vcr = vcr.VCR(
+    cassette_library_dir="fixtures/cassettes",
+    record_mode="once",
+)
+
+with my_vcr.use_cassette("example.yaml"):
+    # any HTTP requests made here are recorded/replayed
+    ...
+```
+
+`VCR` also lets you customize matching and serialization behavior:
+
+- `register_matcher(name, matcher)` — add a custom request matcher.
+- `register_serializer(name, serializer)` — add a custom cassette serializer.
+- `register_persister(persister)` — change how cassettes are read/written (defaults to the filesystem).
+- `test_case(predicate=None)` — integrate with test frameworks that auto-discover test methods.
+
+### Record Modes
+
+`RecordMode` is an enum of supported recording strategies (e.g. always record, never record, record once, record new episodes only). `validate_record_mode` checks that a given value is one of the supported modes. You typically set this via the `record_mode` argument to `VCR(...)` or `use_cassette(...)`.
+
+### Matching Requests
+
+When replaying a cassette, vcrpy needs to decide whether an incoming request matches a previously recorded one. The `vcr.matchers` module provides individual matcher functions (`method`, `uri`, `host`, `scheme`, `port`, `path`, `query`, `body`, `raw_body`, `headers`) that each compare two `Request` objects. `requests_match` combines a list of matchers to decide if two requests are equivalent, and `get_matchers_results` / `get_assertion_message` help produce human-readable diagnostics when a match fails.
+
+### Requests and Responses
+
+The `Request` class is vcrpy's internal representation of an HTTP request — it exposes `uri`, `headers`, `body`, `scheme`, `host`, `port`, `path`, `query`, `url`, and `protocol`. `HeadersDict` is a case-insensitive mapping used to store headers consistently regardless of casing.
+
+### Filters
+
+Before a request or response is written to a cassette, you often want to scrub sensitive data (auth tokens, API keys, cookies, etc.). The `vcr.filters` module provides ready-made filter functions:
+
+- `remove_headers` / `replace_headers`
+- `remove_query_parameters` / `replace_query_parameters`
+- `remove_post_data_parameters` / `replace_post_data_parameters`
+- `decompress_gzip` / `decompress_deflate` — decompress bodies so they're human-readable in cassettes.
+- `decode_response` — decode a response body for storage.
+
+These are typically wired in through `VCR` configuration hooks (e.g. `before_record_request` / `before_record_response`) to sanitize cassette contents before they're written.
+
+### Serialization
+
+Cassettes are serialized to and from a storage format. `vcr.serialize` provides generic `serialize`/`deserialize` functions that delegate to a concrete serializer. Two serializers are built in:
+
+- `vcr.serializers.yamlserializer` — YAML format, with `with_custom_tags` support for custom YAML tags.
+- `vcr.serializers.jsonserializer` — JSON format.
+
+`vcr.serializers.compat` provides helpers (`convert_to_bytes`, `convert_to_unicode`, `convert_body_to_bytes`, `convert_body_to_unicode`) for normalizing response bodies across Python's string/bytes boundary.
+
+### Persistence
+
+`vcr.persisters.filesystem.FilesystemPersister` is the default persister, responsible for `load_cassette` and `save_cassette` operations against the filesystem. It raises `CassetteNotFoundError` if a cassette file doesn't exist and `CassetteDecodeError` if a cassette file can't be parsed. You can implement and register your own persister via `VCR.register_persister` if you want to store cassettes elsewhere (e.g. a database or blob store).
+
+### Errors
+
+- `CannotOverwriteExistingCassetteException` — raised when a request doesn't match any existing recording and the cassette is in a mode that forbids new recordings.
+- `UnhandledHTTPRequestError` — raised when a request cannot be matched or handled at all.
+
+### HTTP Client Stubs
+
+Under `vcr.stubs`, vcrpy provides patched drop-in replacements for the connection classes of various HTTP libraries so that requests can be transparently intercepted:
+
+- `VCRHTTPConnection` / `VCRHTTPSConnection` / `VCRConnection` — stand-ins for `http.client` connections.
+- `VCRHTTPResponse` — a stand-in `HTTPResponse` that serves recorded data.
+- Library-specific subclasses for `requests`, `urllib3`, `httplib2`, and `boto3`.
+- `aiohttp_stubs`, `httpx_stubs`, and `tornado_stubs` modules provide equivalent interception logic for async and other HTTP clients.
+
+These are wired together by `vcr.patch.CassettePatcherBuilder`, which builds the full set of patches to apply for the libraries detected in your environment, and `reset_patchers()` / `force_reset()`, which undo patching (useful for test teardown or troubleshooting monkeypatch leakage).
+
+### Async Support
+
+`handle_coroutine` lets vcrpy manage cassette lifecycle around an `async` function, ensuring the cassette is properly entered/exited around `await`-based HTTP calls (used internally to support `aiohttp` and `httpx`).
+
+### unittest Integration
+
+For projects using Python's built-in `unittest`:
+
+- `VCRMixin` — a mixin that automatically wraps each test method in a cassette (named after the test) via its `setUp` method.
+- `VCRTestCase` — a ready-to-use `TestCase` subclass combining `VCRMixin` with `unittest.TestCase`.
+
+### Migration
+
+Older cassette formats can be upgraded using `vcr.migration`:
+
+- `migrate_yml` / `migrate_json` — convert a single cassette file between old and new formats.
+- `migrate` — generic migration given a migration function.
+- `try_migrate` — attempt to migrate a cassette file in place.
+- `main()` — command-line entry point for batch migration.
+
+### Utilities
+
+`vcr.util` contains small helpers used throughout the library and potentially useful in custom matchers/filters:
+
+- `CaseInsensitiveDict` — a case-insensitive mutable mapping (headers, etc.).
+- `partition_dict` — split a dict into two based on a predicate.
+- `compose` — functional composition of callables.
+- `read_body` — read a request body into a consistent form.
+- `auto_decorate` — apply a decorator to all matching methods of a class automatically.
+
+## Installation
+
+```bash
+pip install vcrpy
+```
+
+## Basic Usage
+
+### As a context manager
+
+```python
+import vcr
+import requests
+
+with vcr.use_cassette("fixtures/example.yaml"):
+    response = requests.get("https://example.com")
+    print(response.status_code)
+```
+
+The first time this runs, the real HTTP request is made and the response is recorded to `fixtures/example.yaml`. On subsequent runs, the recorded response is replayed and no real network call is made.
+
+### As a decorator
+
+```python
+import vcr
+
+@vcr.use_cassette("fixtures/example.yaml")
+def test_get_example():
+    import requests
+    response = requests.get("https://example.com")
+    assert response.status_code == 200
+```
+
+### Configuring a VCR instance
+
+```python
+import vcr
+
+my_vcr = vcr.VCR(
+    cassette_library_dir="fixtures/cassettes",
+    record_mode="new_episodes",
+    match_on=["method", "scheme", "host", "port", "path", "query"],
+    filter_headers=["authorization"],
+)
+
+@my_vcr.use_cassette()
+def test_authenticated_request():
+    import requests
+    response = requests.get(
+        "https://api.example.com/me",
+        headers={"Authorization": "Bearer secret-token"},
+    )
+    assert response.status_code == 200
+```
+
+### Custom matchers
+
+```python
+from vcr import VCR
+
+def match_on_body_length(r1, r2):
+    return len(r1.body or b"") == len(r2.body or b"")
+
+my_vcr = VCR()
+my_vcr.register_matcher("body_length", match_on_body_length)
+
+with my_vcr.use_cassette("fixtures/custom_match.yaml", match_on=["method", "body_length"]):
+    ...
+```
+
+### Filtering sensitive data
+
+```python
+from vcr import VCR
+from vcr.filters import remove_headers, replace_query_parameters
+
+my_vcr = VCR()
+my_vcr.before_record_request = lambda request: remove_headers(request, ["Authorization"])
+
+with my_vcr.use_cassette("fixtures/filtered.yaml"):
+    ...
+```
+
+### unittest integration
+
+```python
+from vcr.unittest import VCRTestCase
+import requests
+
+class MyTestCase(VCRTestCase):
+    def test_get(self):
+        response = requests.get("https://example.com")
+        self.assertEqual(response.status_code, 200)
+```
+
+Each test method automatically gets its own cassette, recorded on first run and replayed thereafter.
+
+## License
+
+See the `LICENSE` file in this repository for details.

@@ -1,0 +1,160 @@
+# Basic File Connector
+
+`org.odpi.egeria:basic-file-connector` provides a set of Open Connector Framework (OCF) connectors for accessing files and folders on a local (or mounted) file system. It exposes basic metadata about files — such as name, size, and timestamps — through a simple, consistent interface, making it easy for higher-level metadata and governance services to integrate with plain file-based data stores.
+
+The library ships two connector implementations:
+
+- **`BasicFileStoreConnector`** — connects to a single file.
+- **`BasicFolderConnector`** — connects to a folder/directory and reports metadata about it.
+
+Both implement the shared **`BasicFileStore`** interface, so client code can work with either kind of connector interchangeably when only basic file/folder metadata is required.
+
+## Key Components
+
+### `BasicFileStore` (interface)
+
+Defines the core contract implemented by both file and folder connectors:
+
+- `File getFile()` — returns the underlying `java.io.File` object.
+- `long getFileLength()` — returns the size of the file (or folder) in bytes.
+- `String getFileName()` — returns the name of the file or folder.
+- `Date getCreationDate()` — returns the creation timestamp.
+- `Date getLastUpdateDate()` — returns the last modified timestamp.
+- `Date getLastAccessDate()` — returns the last accessed timestamp.
+
+All methods can throw `FileException` (a general connector error) and, where relevant, `FileReadException` (a more specific error raised when metadata cannot be read from the file system).
+
+### `BasicFileStoreConnector`
+
+A concrete OCF connector (`ConnectorBase`) that connects to a single file, identified by connection configuration supplied at startup. Notable methods:
+
+- `start()` — starts the connector and validates that the configured file exists and is accessible.
+- `setFileStoreName(String fileStoreName)` — explicitly sets or overrides the path/name of the file to connect to.
+- `touchFile()` — creates the file if it does not already exist, or updates its last-modified timestamp if it does.
+- Implements all `BasicFileStore` methods to expose file metadata.
+- `disconnect()` — releases resources associated with the connector.
+
+### `BasicFileStoreProvider`
+
+The OCF connector provider for `BasicFileStoreConnector`. Used by connector brokers/factories to instantiate the connector from a `Connection` object rather than constructing it directly.
+
+### `BasicFolderConnector`
+
+A concrete OCF connector (`ConnectorBase`) that connects to a folder rather than an individual file. Notable methods:
+
+- `initialize(String connectorInstanceId, Connection connectionDetails)` — initializes the connector with its instance identifier and connection configuration, including the folder location.
+- Implements all `BasicFileStore` methods, returning metadata about the folder itself (name, size, timestamps).
+- `disconnect()` — releases resources associated with the connector.
+
+### `BasicFolderProvider`
+
+The OCF connector provider for `BasicFolderConnector`, used to instantiate folder connectors via connection configuration.
+
+### Error Handling
+
+- **`BasicFileConnectorErrorCode`** — an enum implementing `ExceptionMessageSet`, defining the set of error conditions the connectors can raise (e.g. `FILE_NOT_SPECIFIED`, `DIRECTORY_SPECIFIED`, `FILE_NOT_READABLE`, `FOLDER_NOT_SPECIFIED`, `FILE_NOT_DIRECTORY`, `FOLDER_NOT_READABLE`, `FOLDER_NOT_FOUND`, `FILE_NOT_FOUND`, `UNEXPECTED_SECURITY_EXCEPTION`, `UNEXPECTED_IO_EXCEPTION`). Each code can produce a fully formatted `ExceptionMessageDefinition`, optionally parameterized with runtime values.
+- **`FileReadException`** — a checked exception (extending `ConnectorCheckedException`) thrown when the connector fails to read metadata from a file. Carries the name of the file that could not be read (`getFileName()`), along with optional related properties and the underlying caught exception, for diagnostic purposes.
+
+## How the Pieces Fit Together
+
+1. A `Connection` object is configured (typically via Egeria's connector configuration mechanisms) pointing at either a specific file or a folder.
+2. The appropriate provider (`BasicFileStoreProvider` or `BasicFolderProvider`) is used by a connector broker to instantiate the corresponding connector (`BasicFileStoreConnector` or `BasicFolderConnector`).
+3. The connector is started, at which point it validates the underlying file/folder exists and is accessible.
+4. Client code interacts with the connector through the `BasicFileStore` interface to retrieve metadata.
+5. Errors during setup or metadata retrieval are reported using `FileException` and `FileReadException`, whose messages are derived from `BasicFileConnectorErrorCode`.
+6. When finished, the connector is disconnected to release any held resources.
+
+## Usage Examples
+
+### Connecting to a single file
+
+```java
+import org.odpi.openmetadata.adapters.connectors.datastore.basicfile.BasicFileStoreConnector;
+import org.odpi.openmetadata.adapters.connectors.datastore.basicfile.BasicFileStoreProvider;
+import org.odpi.openmetadata.frameworks.connectors.ConnectorBroker;
+import org.odpi.openmetadata.frameworks.connectors.properties.beans.Connection;
+import org.odpi.openmetadata.frameworks.connectors.properties.beans.Endpoint;
+
+// Configure a connection pointing at the target file
+Endpoint endpoint = new Endpoint();
+endpoint.setAddress("/data/sample-data/customers.csv");
+
+Connection connection = new Connection();
+connection.setEndpoint(endpoint);
+connection.setConnectorType(new BasicFileStoreProvider().getConnectorType());
+
+// Use a connector broker to instantiate the connector
+ConnectorBroker connectorBroker = new ConnectorBroker();
+BasicFileStoreConnector fileConnector =
+        (BasicFileStoreConnector) connectorBroker.getConnector(connection);
+
+fileConnector.start();
+
+System.out.println("File name: " + fileConnector.getFileName());
+System.out.println("File size: " + fileConnector.getFileLength() + " bytes");
+System.out.println("Created: " + fileConnector.getCreationDate());
+System.out.println("Last updated: " + fileConnector.getLastUpdateDate());
+System.out.println("Last accessed: " + fileConnector.getLastAccessDate());
+
+fileConnector.disconnect();
+```
+
+### Ensuring a file exists (touch)
+
+```java
+BasicFileStoreConnector fileConnector =
+        (BasicFileStoreConnector) connectorBroker.getConnector(connection);
+
+fileConnector.setFileStoreName("/data/sample-data/new-log.txt");
+
+boolean fileCreated = fileConnector.touchFile();
+if (fileCreated) {
+    System.out.println("File did not exist and was created.");
+} else {
+    System.out.println("File already existed; timestamp updated.");
+}
+```
+
+### Connecting to a folder
+
+```java
+import org.odpi.openmetadata.adapters.connectors.datastore.basicfile.BasicFolderConnector;
+import org.odpi.openmetadata.adapters.connectors.datastore.basicfile.BasicFolderProvider;
+
+Endpoint folderEndpoint = new Endpoint();
+folderEndpoint.setAddress("/data/sample-data");
+
+Connection folderConnection = new Connection();
+folderConnection.setEndpoint(folderEndpoint);
+folderConnection.setConnectorType(new BasicFolderProvider().getConnectorType());
+
+BasicFolderConnector folderConnector =
+        (BasicFolderConnector) connectorBroker.getConnector(folderConnection);
+
+folderConnector.initialize(folderConnector.getConnectorInstanceId(), folderConnection);
+
+System.out.println("Folder name: " + folderConnector.getFileName());
+System.out.println("Folder last updated: " + folderConnector.getLastUpdateDate());
+
+folderConnector.disconnect();
+```
+
+### Handling errors
+
+```java
+try {
+    fileConnector.start();
+    Date lastUpdate = fileConnector.getLastUpdateDate();
+} catch (FileReadException e) {
+    System.err.println("Could not read metadata for file: " + e.getFileName());
+    System.err.println("Details: " + e.getMessage());
+} catch (FileException e) {
+    System.err.println("File connector error: " + e.getMessage());
+} finally {
+    fileConnector.disconnect();
+}
+```
+
+## Summary
+
+This library offers lightweight, OCF-compliant connectors for exposing basic metadata about files and folders on a file system. By implementing the common `BasicFileStore` interface, both `BasicFileStoreConnector` and `BasicFolderConnector` allow calling code to retrieve file/folder attributes (name, size, creation/update/access timestamps) uniformly, with clear, structured error reporting via `FileException`, `FileReadException`, and `BasicFileConnectorErrorCode`.

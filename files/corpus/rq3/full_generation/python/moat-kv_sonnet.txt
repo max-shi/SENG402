@@ -1,0 +1,205 @@
+# MoaT-KV
+
+MoaT-KV is a distributed, hierarchical, eventually-consistent key/value store designed for coordinating small-to-medium networks of cooperating services and devices. It provides:
+
+- A resilient multi-node **server** that replicates data via a gossip/actor protocol, tracks per-node change history ("ticks"), and can recover from network splits.
+- A flexible **client** library (sync-style async API built on `anyio`/`trio`) for reading, writing, watching, and mirroring parts of the key/value tree.
+- A pluggable **authentication** framework (password-based, root/superuser, and extensible auth methods).
+- A **type/ACL/codec** subsystem for validating values, controlling per-path access, and converting on read/write.
+- An **object framework** (`ClientEntry`/`ClientRoot`/`MirrorRoot`) for building typed, tree-mirrored domain models on top of the raw KV store.
+- A collection of **integration modules** (GPIO, KNX, 1-Wire, WAGO fieldbus I/O, Akumuli time-series export, calendar/alarm handling, "runner" job execution, inventory/network modeling, code storage) that all build on the same client/object framework.
+- A rich **CLI** (`moat kv ...`) covering data access, auth, ACLs, types, codecs, error tracking, jobs, and per-integration subcommands.
+
+This README focuses on the core client/server/model API; integration modules follow the same patterns.
+
+## Core concepts
+
+### Server
+
+`moat.kv.server.Server` is the heart of a MoaT-KV node. It:
+
+- Maintains an in-memory tree of `Entry` objects (see `moat.kv.model`), each entry carrying a value plus a `NodeEvent`/chain history for conflict resolution.
+- Talks to other server nodes over a `Backend` (e.g. `MqttBackend`) using an actor protocol (`moat.kv.actor`) to agree on which node currently "owns" which piece of data and to detect/delete stale entries (`DeleteActor`).
+- Exposes a `serve()` coroutine that accepts client connections (each becomes a `ServerClient`) and dispatches `cmd_*` methods for every client operation (get/set/delete/watch/auth/etc.).
+- Supports persistence via `load()`/`save()`/`save_stream()`/`run_saver()`, and split-brain recovery via `recover_split()`.
+
+```python
+import anyio
+from moat.kv.server import Server
+
+async def main():
+    server = Server(name="node1")  # simplified; see cli/config for real construction
+    async with anyio.create_task_group() as tg:
+        await server.spawn(server.serve)
+        # server now listens for client connections
+```
+
+In practice, servers are normally started via the `moat kv server` CLI command rather than instantiated directly.
+
+### Client
+
+`moat.kv.client.open_client()` / `client_scope()` create a `Client`, the primary entry point for talking to a running server:
+
+```python
+from moat.kv.client import open_client
+
+async def example():
+    async with open_client(host="localhost", port=27586) as client:
+        await client.set(("my", "path"), value=42)
+        res = await client.get(("my", "path"))
+        print(res.value)
+
+        async for msg in client.watch(("my", "path")):
+            print("changed:", msg)
+```
+
+Key `Client` methods:
+
+- `get(path, ...)` / `set(path, value, ...)` / `delete(path, ...)` — basic CRUD, with optional chain-based optimistic concurrency (`chain`, `prev`).
+- `list(path, ...)` / `get_tree(path, ...)` / `delete_tree(path, ...)` — bulk/tree operations.
+- `watch(path, ...)` — subscribe to changes on a subtree.
+- `mirror(path, root_type=None, ...)` — build a live, locally-cached mirror of a subtree as a `ClientRoot`/`MirrorRoot` object tree.
+- `msg_monitor(topic)` / `msg_send(topic, data)` — raw pub/sub messaging alongside the KV store.
+- `unique_helper`, `dh_secret`, `get_tock`, `node` — auxiliary/session helpers.
+
+`StreamedRequest` is the underlying abstraction for streamed server responses (used internally by `watch`, `list`, etc.) and is rarely constructed directly by application code.
+
+### Data model
+
+`moat.kv.model` defines the server-side representation:
+
+- `Entry` — a node in the tree; holds `.data()`, chain-of-custody info, and supports `set()`, `apply()`, `walk()`, `serialize()`.
+- `Node` / `NodeSet` — track which server node last modified which tick range, used for conflict detection and deletion tracking.
+- `NodeEvent` / `UpdateEvent` — describe a single change (which node, which tick, chained to which previous event) and are what actually flows between client and server.
+- `Watcher` — internal helper for streaming entry changes.
+
+Application code rarely touches `Entry`/`Node` directly except when writing server extensions; most developers interact with the tree through `Client` or the object framework below.
+
+### Object framework
+
+`moat.kv.obj` provides a convenient way to map subtrees of the KV store onto Python objects:
+
+- `ClientEntry` — base class for a single tree node; supports `.update()`, `.delete()`, `.set_value()`, navigation (`.parent()`, `.root()`, `.follow()`, `.by_name()`), and `child_type()` to control what class child nodes get instantiated as.
+- `AttrClientEntry` — a `ClientEntry` whose value is an attrs-style structured object, with `get_value()`/`set_value()`/`save()`.
+- `MirrorRoot` — the root of a locally-mirrored subtree, kept in sync with the server (`run()`, `wait_loaded()`, `wait_chain()`).
+- `ClientRoot` — a `MirrorRoot` meant to represent the canonical root of a domain model (used by nearly every integration module below).
+- `NamedRoot` — mixin adding name-based lookup (`by_name()`).
+- `std_command()` — helper to build Click CLI commands around an object tree.
+
+This is the pattern used throughout the integration packages (`akumuli`, `gpio`, `knx`, `ow`, `wago`, `cal`, `code`, `errors`, `runner`, `inv`, `config`, `types`): define an `AttrClientEntry`/`ClientEntry` subclass per node type, a `ClientRoot` subclass for the top of the tree, and a `child_type()` classmethod wiring them together.
+
+```python
+from moat.kv.obj import ClientRoot, AttrClientEntry
+
+class MyLeaf(AttrClientEntry):
+    async def set_value(self, value):
+        await super().set_value(value)
+        print("leaf updated to", value)
+
+class MyRoot(ClientRoot):
+    def child_type(cls, name):
+        return MyLeaf
+
+async def use_it(client):
+    root = await MyRoot.as_handler(client, key="myapp")
+    await root.wait_loaded()
+    leaf = root["some-child"]
+    print(leaf.get_value())
+```
+
+### Authentication
+
+`moat.kv.auth` defines the pluggable auth framework:
+
+- `BaseClientAuth` / `BaseClientAuthMaker` — client-side login and account-creation flows.
+- `BaseServerAuth` / `BaseServerAuthMaker` / `RootServerUser` — server-side verification and ACL hooks (`check_read`, `check_write`).
+- `load(typ, ...)` / `loader(method, typ, ...)` — look up a concrete auth implementation by name (e.g. `"password"`, `"root"`).
+- `moat.kv.auth.password` and `moat.kv.auth.root` are the two built-in implementations.
+
+```python
+from moat.kv.auth.password import ClientUser
+from moat.kv.client import open_client
+
+async def login_example():
+    user = ClientUser.build({"name": "alice", "password": "secret"})
+    async with open_client(host="localhost", auth=user) as client:
+        ...
+```
+
+### Types, ACLs, and codecs
+
+`moat.kv.types` implements per-path validation and access control that the server enforces on every write:
+
+- `TypeRoot` / `TypeEntry` — attach a schema/validator to a subtree; `check_value()` rejects invalid writes.
+- `AclRoot` / `AclName` / `ACLFinder` / `ACLStepper` — define and evaluate read/write permissions per path.
+- `CodecRoot` / `CodecEntry` — attach encode/decode transforms (e.g. for wire formats) to a subtree.
+- `ConvRoot` / `ConvName` / `ConvNull` — value conversion pipeline used by codecs/ACLs.
+- `MatchRoot` / `MatchEntry` — pattern-based rule matching used internally by types/ACLs.
+
+These are configured primarily through the `moat kv type`, `moat kv acl`, and `moat kv codec` CLI commands, and enforced automatically by `Server`/`ServerClient`.
+
+### Errors
+
+`moat.kv.errors.ErrorRoot` tracks operational failures reported by other subsystems (e.g. a GPIO or 1-Wire task that failed):
+
+```python
+async def report_error(client, subsystem, path, exc):
+    err_root = await ErrorRoot.as_handler(client)
+    await err_root.record_error(subsystem, path, exc=exc, severity=1)
+```
+
+Errors can later be listed and resolved via `moat kv error dump` / `moat kv error resolve`.
+
+### Runner
+
+`moat.kv.runner` implements a distributed job/task runner on top of MoaT-KV: `RunnerEntry` describes a job (code + schedule), `RunnerRoot`/`SingleRunnerRoot`/`AllRunnerRoot`/`AnyRunnerRoot` decide which cluster node executes it, and `StateRoot`/`StateEntry` track liveness/heartbeats across nodes. `CallAdmin` is the context object passed into running jobs, giving them `spawn`, `watch`, `send`, `set`, `get`, `monitor`, and `timer` primitives.
+
+### Integration modules
+
+Each integration package follows the same object-model pattern to expose hardware/services as KV subtrees:
+
+- `moat.kv.gpio` — GPIO chips/lines, backed by a background `task()`.
+- `moat.kv.knx` — KNX bus devices/groups.
+- `moat.kv.ow` — 1-Wire device attributes.
+- `moat.kv.wago` — WAGO fieldbus I/O modules.
+- `moat.kv.akumuli` — forwards KV values to an Akumuli time-series server.
+- `moat.kv.cal` — calendar entries and alarms (`find_next_alarm`).
+- `moat.kv.code` / `moat.kv.config` — store executable code snippets / static configuration in the tree.
+- `moat.kv.inv` — network/host/cable inventory modeling (VLANs, networks, hosts, ports, cables, wires).
+
+Each exposes a `_main.py` Click CLI group and a `model.py` with `ClientRoot`/`ClientEntry` subclasses; a `task()` coroutine typically connects the KV mirror to the live hardware/service.
+
+## Testing helpers
+
+`moat.kv.mock` provides utilities for spinning up an in-process server/client for tests:
+
+```python
+from moat.kv.mock import stdtest
+
+async def test_something():
+    async with stdtest(n=1) as s:
+        await s.ready()
+        async with s.client(0) as client:
+            await client.set(("test",), value=1)
+            res = await client.get(("test",))
+            assert res.value == 1
+```
+
+## Command-line interface
+
+The library ships a `moat kv` Click-based CLI (see `moat.kv._main.cli` and the `moat.kv.command.*` modules) covering:
+
+- `data` — get/set/list/delete/monitor raw KV entries.
+- `auth` — manage users and auth methods.
+- `acl`, `type`, `codec` — manage access control, validation, and encoding rules.
+- `error` — inspect and resolve recorded subsystem errors.
+- `code` — store/retrieve executable snippets.
+- `job` — manage runner jobs.
+- `server` — start/stop/save/load a server instance.
+- `internal`, `log`, `dump` — low-level diagnostics, log replay, and state dumps.
+
+Run `moat kv --help` for the full command tree once installed.
+
+## Summary
+
+MoaT-KV combines a replicated, ACL- and type-aware key/value store with an object-mapping framework, making it suitable both as general distributed configuration storage and as the backbone for higher-level home/building-automation and inventory-management tooling.

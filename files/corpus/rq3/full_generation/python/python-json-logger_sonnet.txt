@@ -1,0 +1,208 @@
+# python-json-logger
+
+`python-json-logger` is a library for emitting structured JSON log output from Python's standard `logging` module. It provides a `logging.Formatter` subclass that renders log records as JSON documents instead of plain text, along with helpers for handling common non-JSON-native types (dates, UUIDs, exceptions, enums, dataclasses, bytes, etc.) that frequently show up in log data.
+
+The library ships with a core, backend-agnostic formatter (`BaseJsonFormatter`) plus several concrete implementations that delegate the actual JSON serialization to different backends: the standard library `json` module, [`orjson`](https://github.com/ijl/orjson), or [`msgspec`](https://github.com/jcrist/msgspec). This lets you pick the formatter that matches your performance/dependency needs while keeping the same configuration surface.
+
+## Installation
+
+Install the base package for standard-library JSON support:
+
+```bash
+pip install python-json-logger
+```
+
+For faster serialization, install with the optional backend you want:
+
+```bash
+pip install python-json-logger[orjson]
+pip install python-json-logger[msgspec]
+```
+
+## Core Concepts
+
+### `BaseJsonFormatter`
+
+`BaseJsonFormatter` (in `pythonjsonlogger.core`) extends `logging.Formatter` and implements the pipeline used to turn a `LogRecord` into a JSON string:
+
+- **`format(record)`** — the standard `logging.Formatter` entry point. It builds the log data dictionary, runs it through the formatting pipeline, and returns the final string.
+- **`add_fields(log_data, record, message_dict)`** — merges standard record attributes, any `extra` fields, and the rendered message into the output dictionary. Override this to add custom fields (timestamps, hostnames, request IDs, etc.) to every log line.
+- **`process_log_record(log_data)`** — a hook called before serialization, useful for renaming, filtering, or transforming the fields that will be emitted. Returns the (possibly modified) log data.
+- **`jsonify_log_record(log_data)`** — actually serializes the log data into a JSON string. This is the method that differs between backend-specific subclasses.
+- **`serialize_log_record(log_data)`** — orchestrates `process_log_record` followed by `jsonify_log_record`.
+- **`parse()`** — parses the formatter's configured format string into a list of field names.
+- **`formatException(ei)` / `formatStack(stack_info)`** — override the default exception/stack formatting so that traceback information can be represented as JSON-friendly strings or lists rather than pre-formatted multi-line text.
+
+Because `BaseJsonFormatter` does the heavy lifting of assembling the record into a dictionary, backend-specific subclasses generally only need to override `jsonify_log_record`.
+
+### `merge_record_extra`
+
+```python
+def merge_record_extra(
+    record: logging.LogRecord,
+    target: dict[Any, Any],
+    reserved: Container[str],
+    rename_fields: dict[str, str] | None = None,
+) -> dict[Any, Any]
+```
+
+A utility function used internally (and available for custom formatters) to copy any non-reserved attributes attached to a `LogRecord` — i.e., fields passed via `logging.info(..., extra={...})` — into a target dictionary, optionally renaming keys along the way.
+
+## Backend Formatters
+
+### `pythonjsonlogger.json.JsonFormatter`
+
+Uses the standard library `json` module for serialization. Pairs with `JsonEncoder`, a `json.JSONEncoder` subclass whose `default()` method knows how to serialize common types that aren't natively JSON-serializable (see **Defaults** below), and whose `format_datetime_obj()` method controls how `datetime`/`date`/`time` objects are rendered.
+
+### `pythonjsonlogger.orjson.OrjsonFormatter`
+
+Uses the `orjson` library for fast serialization. Non-native types are handled by the module-level `orjson_default(obj)` function, which is passed to `orjson` as its default-object hook.
+
+### `pythonjsonlogger.msgspec.MsgspecFormatter`
+
+Uses `msgspec` for serialization. Non-native types are handled by the module-level `msgspec_default(obj)` function.
+
+All three formatters implement the same `jsonify_log_record(log_data) -> str` method signature, so they are interchangeable — pick whichever matches the JSON backend you have installed.
+
+## Defaults: Handling Non-JSON-Native Types
+
+`pythonjsonlogger.defaults` contains a set of `use_*_default` / `*_default` function pairs used to detect and serialize types that aren't natively JSON-serializable. Each `use_X_default(obj)` is a type guard that returns whether `obj` should be handled by the corresponding `X_default(obj)` converter:
+
+| Type guard | Converter | Purpose |
+|---|---|---|
+| `use_type_default` | `type_default` | Serializes `type` objects (classes) |
+| `use_dataclass_default` | `dataclass_default` | Serializes dataclass instances to dicts |
+| `use_time_default` | `time_default` | Serializes `datetime.time` |
+| `use_date_default` | `date_default` | Serializes `datetime.date` |
+| `use_datetime_default` | `datetime_default` | Serializes `datetime.datetime` |
+| `use_datetime_any` | `datetime_any` | Serializes any of `time`/`date`/`datetime` |
+| `use_exception_default` | `exception_default` | Serializes exception instances |
+| `use_traceback_default` | `traceback_default` | Serializes traceback objects |
+| `use_enum_default` | `enum_default` | Serializes `Enum` members/classes |
+| `use_uuid_default` | `uuid_default` | Serializes `UUID` objects |
+| `use_bytes_default` | `bytes_default` | Serializes `bytes`/`bytearray` (URL-safe base64 by default) |
+
+`unknown_default(obj)` provides a fallback string representation for anything not covered by the above, useful as a last resort in a custom `default` function.
+
+These building blocks are combined by each backend's own default function (`orjson_default`, `msgspec_default`, and `JsonEncoder.default` for the standard-library path) so that dataclasses, dates, UUIDs, exceptions, enums, and bytes "just work" when logged.
+
+## Errors and Utilities
+
+- **`pythonjsonlogger.exception.PythonJsonLoggerError`** — base exception class for library-specific errors.
+- **`pythonjsonlogger.exception.MissingPackageError`** — raised (as both an `ImportError` and `PythonJsonLoggerError`) when an optional backend dependency (like `orjson` or `msgspec`) is required but not installed.
+- **`pythonjsonlogger.utils.package_is_available(name, *, throw_error=False, extras_name=None)`** — checks whether an optional package is importable, optionally raising `MissingPackageError` with a helpful message pointing to the relevant extras group (e.g. `python-json-logger[orjson]`).
+
+## Usage
+
+### Basic setup with the standard library backend
+
+```python
+import logging
+from pythonjsonlogger.json import JsonFormatter
+
+logger = logging.getLogger("myapp")
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("user logged in", extra={"user_id": 42})
+```
+
+Output:
+
+```json
+{"message": "user logged in", "user_id": 42}
+```
+
+### Logging rich, non-native types
+
+```python
+import dataclasses
+import datetime
+import logging
+import uuid
+from pythonjsonlogger.json import JsonFormatter
+
+@dataclasses.dataclass
+class Event:
+    name: str
+    timestamp: datetime.datetime
+
+logger = logging.getLogger("events")
+handler = logging.StreamHandler()
+handler.setFormatter(JsonFormatter())
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info(
+    "event recorded",
+    extra={
+        "event": Event(name="signup", timestamp=datetime.datetime.utcnow()),
+        "request_id": uuid.uuid4(),
+    },
+)
+```
+
+The `JsonEncoder` used internally will automatically convert the dataclass, `datetime`, and `UUID` into JSON-friendly values.
+
+### Using a faster backend (orjson)
+
+```python
+import logging
+from pythonjsonlogger.orjson import OrjsonFormatter
+
+logger = logging.getLogger("myapp")
+handler = logging.StreamHandler()
+handler.setFormatter(OrjsonFormatter())
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.warning("disk usage high", extra={"usage_percent": 92.5})
+```
+
+If `orjson` isn't installed, constructing `OrjsonFormatter` (or importing the module) will raise a `MissingPackageError` guiding you to install `python-json-logger[orjson]`.
+
+### Using msgspec
+
+```python
+import logging
+from pythonjsonlogger.msgspec import MsgspecFormatter
+
+logger = logging.getLogger("myapp")
+handler = logging.StreamHandler()
+handler.setFormatter(MsgspecFormatter())
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.error("payment failed", extra={"order_id": "abc-123"})
+```
+
+### Customizing fields via subclassing
+
+```python
+import logging
+from pythonjsonlogger.json import JsonFormatter
+
+class CustomFormatter(JsonFormatter):
+    def add_fields(self, log_data, record, message_dict):
+        super().add_fields(log_data, record, message_dict)
+        log_data["service"] = "billing-api"
+        log_data["environment"] = "production"
+
+logger = logging.getLogger("billing")
+handler = logging.StreamHandler()
+handler.setFormatter(CustomFormatter())
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
+
+logger.info("invoice generated", extra={"invoice_id": "INV-1001"})
+```
+
+## Choosing a Backend
+
+- **`JsonFormatter`** — no extra dependencies; good default choice.
+- **`OrjsonFormatter`** — best for high-throughput services where serialization speed matters; requires `orjson`.
+- **`MsgspecFormatter`** — an alternative high-performance option built on `msgspec`; requires `msgspec`.
+
+All three formatters share the same configuration and field-handling behavior inherited from `BaseJsonFormatter`, so switching backends is typically a one-line change.

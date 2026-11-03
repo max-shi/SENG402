@@ -1,0 +1,231 @@
+# stochastic
+
+**stochastic** is a Python library for generating realizations of stochastic processes. It provides a consistent, object-oriented interface for simulating a wide range of continuous, discrete, diffusion, and noise processes commonly used in probability, statistics, finance, and physics.
+
+Each process is implemented as a class with configurable parameters (exposed as properties with validation) and one or more `sample` (and, for time-indexed processes, `sample_at`) methods that return realizations as NumPy-friendly sequences.
+
+## Installation
+
+```bash
+pip install stochastic
+```
+
+## Core Concepts
+
+All processes ultimately derive from a small set of abstract base classes:
+
+- **`BaseProcess`** — the root abstract class. Exposes an `rng` property (the underlying random number generator) and an abstract `sample(n)` method.
+- **`BaseSequenceProcess`** — base class for processes indexed by a discrete step count (e.g., random walks, Markov chains).
+- **`BaseTimeProcess`** — base class for processes indexed by continuous time. Adds a `t` property (the end time of the sample) and a `times(n)` helper method that generates an evenly spaced time grid for `n` points.
+
+Most concrete processes fall into one of four families, organized by sub-package:
+
+- `stochastic.processes.continuous` — continuous-time stochastic processes (Brownian motion and its relatives, Poisson-type processes, gamma-type processes, etc.)
+- `stochastic.processes.diffusion` — diffusion processes defined by drift/volatility specifications (Vasicek, CIR, CEV, Ornstein-Uhlenbeck, etc.)
+- `stochastic.processes.discrete` — discrete-index/discrete-step processes (random walks, Markov chains, Bernoulli sequences, partition processes)
+- `stochastic.processes.noise` — noise processes, including colored noise and fractional Gaussian noise
+
+## Main Classes
+
+### Continuous processes
+
+| Class | Description |
+|---|---|
+| `GaussianNoise` | Base building block: samples of independent Gaussian increments over time. |
+| `BrownianMotion` | Standard/generalized Brownian motion with configurable `drift` and `scale`. |
+| `WienerProcess` | Standard Wiener process (Brownian motion with default parameters). |
+| `BrownianBridge` | Brownian motion pinned to a specified endpoint `b`. |
+| `BrownianExcursion` | Brownian bridge conditioned to stay positive. |
+| `BrownianMeander` | Brownian motion conditioned to stay positive with endpoint `b`. |
+| `BesselProcess` | Bessel process of dimension `dim`. |
+| `SquaredBesselProcess` | Square of a Bessel process. |
+| `CauchyProcess` | Brownian-motion-subordinated Cauchy process. |
+| `FractionalBrownianMotion` | Fractional Brownian motion with Hurst parameter (via `FractionalGaussianNoise`). |
+| `MultifractionalBrownianMotion` | Brownian motion with time-varying Hurst function. |
+| `GammaProcess` | Gamma process parameterized by `mean`/`variance` or `rate`/`scale`. |
+| `VarianceGammaProcess` | Variance-gamma process with `drift`, `variance`, and `scale`. |
+| `InverseGaussianProcess` | Inverse Gaussian process with `mean` and `scale`. |
+| `GeometricBrownianMotion` | Exponential of Brownian motion, with `drift` and `volatility`; useful for asset-price modeling. |
+| `PoissonProcess` | Homogeneous Poisson counting process with parameter `rate`. |
+| `MixedPoissonProcess` | Poisson process whose `rate` is drawn from a user-supplied `rate_func`. |
+
+### Diffusion processes
+
+| Class | Description |
+|---|---|
+| `DiffusionProcess` | Generic diffusion process defined by `speed`, `mean`, `vol`, and `volexp` functions. |
+| `ExtendedVasicekProcess` | Time-dependent generalization of the Vasicek model. |
+| `VasicekProcess` | Mean-reverting interest-rate model. |
+| `OrnsteinUhlenbeckProcess` | Classic mean-reverting Ornstein-Uhlenbeck process. |
+| `CoxIngersollRossProcess` | CIR process, commonly used for interest rates/volatility. |
+| `ConstantElasticityVarianceProcess` | CEV process with configurable `drift`. |
+
+### Discrete processes
+
+| Class | Description |
+|---|---|
+| `BernoulliProcess` | Sequence of i.i.d. Bernoulli trials with success probability `p`. |
+| `RandomWalk` | Discrete random walk with configurable step probabilities `p`, `steps`, and `weights`; also supports `sample_increments`. |
+| `MarkovChain` | Discrete-time Markov chain defined by a `transition` matrix and `initial` distribution. |
+| `MoranProcess` | Moran model of population genetics with population size `maximum`. |
+| `DirichletProcess` | Dirichlet process with `base` distribution and concentration `alpha`. |
+| `ChineseRestaurantProcess` | Chinese restaurant process with `discount` and `strength` parameters; includes helpers to convert between sequence and partition representations. |
+
+### Noise processes
+
+| Class | Description |
+|---|---|
+| `ColoredNoise` | Generic power-law noise process parameterized by exponent `beta`. |
+| `WhiteNoise`, `PinkNoise`, `RedNoise`, `BrownianNoise`, `BlueNoise`, `VioletNoise` | Preconfigured `ColoredNoise` subclasses for standard noise colors. |
+| `FractionalGaussianNoise` | Gaussian noise with long-range dependence controlled by `hurst`; supports multiple generation `algorithm`s (e.g. `'daviesharte'`). |
+
+## Randomness Control
+
+The `stochastic.random` module provides utilities for controlling the random number generator used by all processes:
+
+```python
+from stochastic import random
+
+random.use_generator()      # use NumPy's new Generator API
+random.use_randomstate()    # use the legacy RandomState API
+random.seed(42)             # seed the active RNG
+```
+
+Individual process instances also expose an `rng` property, allowing per-instance RNG configuration.
+
+## Utilities
+
+`stochastic.utils` provides small helper functions used throughout the library and available for general use:
+
+- `generate_times(end, n)` — build an evenly spaced array of `n` time points from 0 to `end`.
+- `single_arg_constant_function(value)` — wrap a constant as a single-argument callable.
+- `ensure_single_arg_constant_function(value)` — normalize a value or callable into a single-argument callable.
+
+`stochastic.utils.validation` provides input-validation helpers (used internally by process property setters, and safe to reuse in your own code):
+
+- `check_positive_integer(n, name='')`
+- `check_numeric(value, name='')`
+- `check_positive_number(value, name='')`
+- `check_nonnegative_number(value, name='')`
+- `check_increments(times)`
+- `times_to_increments(times)`
+- `check_numeric_or_single_arg_callable(value, name='')`
+
+## Usage Examples
+
+### Simulating Brownian motion
+
+```python
+from stochastic.processes.continuous import BrownianMotion
+
+bm = BrownianMotion(drift=0.5, scale=1.0, t=1.0)
+sample = bm.sample(n=100)      # 100 evenly spaced points over [0, 1]
+```
+
+### Simulating a Poisson process
+
+```python
+from stochastic.processes.continuous import PoissonProcess
+
+poisson = PoissonProcess(rate=2.0)
+arrival_times = poisson.sample(length=10)  # sample until reaching total length 10
+```
+
+### Geometric Brownian motion for asset price paths
+
+```python
+from stochastic.processes.continuous import GeometricBrownianMotion
+
+gbm = GeometricBrownianMotion(drift=0.05, volatility=0.2, t=1.0)
+price_path = gbm.sample(n=252, initial=100)  # simulate a year of daily prices
+```
+
+### Custom time grid with `sample_at`
+
+```python
+import numpy as np
+from stochastic.processes.continuous import BrownianBridge
+
+bridge = BrownianBridge()
+times = np.linspace(0, 1, 50)
+path = bridge.sample_at(times, b=0)
+```
+
+### Discrete random walk
+
+```python
+from stochastic.processes.discrete import RandomWalk
+
+walk = RandomWalk(p=0.5)
+path = walk.sample(n=1000)
+increments = walk.sample_increments(n=1000)
+```
+
+### Markov chain
+
+```python
+from stochastic.processes.discrete import MarkovChain
+
+chain = MarkovChain(
+    transition=[[0.9, 0.1], [0.3, 0.7]],
+    initial=[1.0, 0.0],
+)
+states = chain.sample(n=50)
+```
+
+### Fractional Gaussian noise and fractional Brownian motion
+
+```python
+from stochastic.processes.noise import FractionalGaussianNoise
+from stochastic.processes.continuous import FractionalBrownianMotion
+
+fgn = FractionalGaussianNoise(hurst=0.7)
+noise_sample = fgn.sample(n=200, algorithm='daviesharte')
+
+fbm = FractionalBrownianMotion(hurst=0.7, t=1.0)
+fbm_sample = fbm.sample(n=200)
+```
+
+### Colored noise
+
+```python
+from stochastic.processes.noise import PinkNoise, WhiteNoise, RedNoise
+
+pink = PinkNoise(t=1.0).sample(n=1024)
+white = WhiteNoise(t=1.0).sample(n=1024)
+red = RedNoise(t=1.0).sample(n=1024)
+```
+
+### Diffusion models
+
+```python
+from stochastic.processes.diffusion import (
+    VasicekProcess,
+    CoxIngersollRossProcess,
+    OrnsteinUhlenbeckProcess,
+)
+
+vasicek = VasicekProcess(t=1.0)
+rates = vasicek.sample(n=252, initial=0.03)
+
+cir = CoxIngersollRossProcess(t=1.0)
+cir_path = cir.sample(n=252, initial=0.02)
+
+ou = OrnsteinUhlenbeckProcess(t=1.0)
+ou_path = ou.sample(n=252, initial=0.0)
+```
+
+### Chinese restaurant process and partitions
+
+```python
+from stochastic.processes.discrete import ChineseRestaurantProcess
+
+crp = ChineseRestaurantProcess(discount=0.2, strength=1.0)
+sequence = crp.sample(n=20)
+partition = crp.sequence_to_partition(sequence)
+recovered_sequence = crp.partition_to_sequence(partition)
+```
+
+## License
+
+See `LICENSE` for details.

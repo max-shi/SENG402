@@ -1,0 +1,195 @@
+# djhtml
+
+**djhtml** is a Python library for automatically indenting Django/Jinja-style
+templates that mix HTML, CSS, and JavaScript with template tags. It
+tokenizes template source code, tracks the nesting depth introduced by
+template tags (`{% %}`, `{{ }}`), HTML tags, CSS rules, and JS blocks, and
+re-indents each line accordingly — similar in spirit to code formatters like
+`black`, but for template files.
+
+It can be used as a command-line tool (`djhtml` / `python -m djhtml`) or
+imported as a library to programmatically reformat template source.
+
+## How it works
+
+Templates are processed as a sequence of **modes**. Each mode understands
+the syntax of a particular sublanguage (plain HTML/template text, CSS
+inside `<style>` tags, JavaScript inside `<script>` tags, HTML tag
+attributes, and comments) and knows how to tokenize its own content and how
+to hand off to another mode when it encounters a sub-language boundary
+(e.g. entering a `<style>` block switches from `DjHTML` to `DjCSS`).
+
+As the source is scanned, each mode emits `Token` objects representing
+meaningful pieces of syntax (opening tags, closing tags, template blocks,
+etc.). These tokens are collected onto `Line` objects, which know how to
+render themselves back out as properly indented text.
+
+### Main components
+
+- **`BaseMode`** — abstract base class for all modes. Defines the shared
+  machinery for tokenizing source text (`tokenize`), building an indentation
+  tree from tokens (`parse`), computing indentation for a given tab width
+  (`indent`), and producing debug output (`debug`).
+
+- **`DjTXT`** — the base mode for plain template text (Django/Jinja tags
+  mixed with literal text). Understands `{% %}` / `{{ }}` style
+  template syntax and creates the appropriate tokens/mode transitions via
+  `create_token`.
+
+- **`DjHTML`** — extends `DjTXT` to additionally understand HTML tags. This
+  is the primary entry-point mode for formatting `.html` template files. Its
+  `create_token` recognizes HTML tag boundaries and switches into
+  `InsideHTMLTag`, `DjCSS`, `DjJS`, or `Comment` modes as appropriate.
+
+- **`DjCSS`** — mode for CSS content (e.g. inside `<style>` tags or `.css`
+  files that also contain template syntax), tracking brace/rule nesting.
+
+- **`DjJS`** — mode for JavaScript content (e.g. inside `<script>` tags or
+  `.js` files with template syntax), tracking brace/bracket/paren nesting.
+
+- **`Comment`** — mode for HTML/template comments, so their contents are
+  not misinterpreted as code.
+
+- **`InsideHTMLTag`** — mode used while scanning the attributes of an open
+  HTML tag (e.g. `<div class="..." id="...">`).
+
+- **`Line`** — represents a single line of output. Tokens are appended to a
+  `Line` via `append`; the line can then report whether it affects the
+  indentation level (`indents`), compute the indentation string for a
+  given tab width (`indent`), and render its final text (`text`).
+
+- **`Token`** — namespace/container for the token types produced by the
+  various modes while tokenizing.
+
+- **`OffsetDict`** — a `TypedDict` used internally to track offset/position
+  information associated with tokens as they are parsed.
+
+- **`compile_re`** — helper that compiles a sequence of raw regular
+  expression fragments (typically representing the recognizable tokens for
+  a mode) into a single combined `re.Pattern`.
+
+- **`MaxLineLengthExceeded`** — exception raised when a line in the source
+  exceeds the length the tokenizer/parser is able to safely process.
+
+- **`main`** — entry point for the command-line interface, used when
+  running `djhtml` as a script or via `python -m djhtml`.
+
+## Installation
+
+```bash
+pip install djhtml
+```
+
+## Command-line usage
+
+The simplest way to use djhtml is from the command line, pointing it at one
+or more template files:
+
+```bash
+djhtml templates/*.html
+```
+
+This reformats the given files in place, adjusting indentation to reflect
+the actual nesting of HTML tags, template blocks, CSS rules, and JS
+blocks.
+
+Running it as a module works the same way:
+
+```bash
+python -m djhtml templates/base.html
+```
+
+## Library usage
+
+You can also drive the formatting logic directly from Python using the
+mode classes.
+
+```python
+from djhtml.modes import DjHTML
+
+source = """
+{% if user.is_authenticated %}
+<div class="profile">
+<p>Hello, {{ user.name }}!</p>
+</div>
+{% endif %}
+""".strip()
+
+mode = DjHTML(source)
+mode.tokenize()
+mode.parse()
+
+formatted = mode.indent(tabwidth=4)
+print(formatted)
+```
+
+Typical output:
+
+```html
+{% if user.is_authenticated %}
+    <div class="profile">
+        <p>Hello, {{ user.name }}!</p>
+    </div>
+{% endif %}
+```
+
+### Formatting embedded CSS or JS directly
+
+If you have a standalone snippet of CSS or JavaScript that also contains
+template syntax, you can use the corresponding mode class instead of
+`DjHTML`:
+
+```python
+from djhtml.modes import DjCSS, DjJS
+
+css_mode = DjCSS(".btn { color: red; {% if dark_mode %} background: black; {% endif %} }")
+css_mode.tokenize()
+css_mode.parse()
+print(css_mode.indent(tabwidth=2))
+
+js_mode = DjJS("function greet() { {% if debug %} console.log('debug'); {% endif %} }")
+js_mode.tokenize()
+js_mode.parse()
+print(js_mode.indent(tabwidth=2))
+```
+
+### Handling oversized input
+
+If a line is too long for the tokenizer to process safely, a
+`MaxLineLengthExceeded` exception is raised. Wrap calls to `tokenize`/`parse`
+in a `try`/`except` block if you need to handle such cases gracefully:
+
+```python
+from djhtml.modes import DjHTML, MaxLineLengthExceeded
+
+try:
+    mode = DjHTML(very_long_source)
+    mode.tokenize()
+    mode.parse()
+except MaxLineLengthExceeded:
+    print("Skipping file: line too long to format")
+```
+
+### Debugging
+
+Every mode exposes a `debug` method that produces a human-readable
+representation of the tokenized/parsed structure, useful when
+investigating unexpected indentation results:
+
+```python
+mode = DjHTML(source)
+mode.tokenize()
+mode.parse()
+print(mode.debug())
+```
+
+## Supported languages
+
+- HTML templates with Django/Jinja-style template tags (`DjHTML`)
+- Plain template text without HTML structure (`DjTXT`)
+- CSS with embedded template syntax (`DjCSS`)
+- JavaScript with embedded template syntax (`DjJS`)
+
+## License
+
+See the `LICENSE` file in this repository for details.

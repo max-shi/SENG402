@@ -1,0 +1,74 @@
+# kotlin-jvm-blocking-bridge-runtime-jvm
+
+`me.him188:kotlin-jvm-blocking-bridge-runtime-jvm` exposes a small Java entry-point API.
+
+Based on its public surface, the library provides a single executable class, `CallsFromJava`, with a conventional Java `main` method. This makes it suitable for use as a JVM application entry point or as a simple invocation target from build tools, IDE run configurations, and command-line environments.
+
+## API Overview
+
+### `CallsFromJava`
+
+```java
+public class CallsFromJava {
+    public static void main(String[] args);
+}
+```
+
+The `main` method is the library's public entry point.
+
+| Member | Description |
+| --- | --- |
+| `public static void main(String[] args)` | Starts the program. Receives command-line arguments in the standard Java `String[]` format. |
+
+No additional public classes or callable APIs are exposed.
+
+## Usage
+
+### Run from the command line
+
+After placing the library on the runtime classpath, invoke its entry point as a Java application:
+
+```bash
+java -cp your-classpath CallsFromJava
+```
+
+Pass command-line arguments as usual:
+
+```bash
+java -cp your-classpath CallsFromJava input.txt --verbose
+```
+
+The arguments are supplied to:
+
+```java
+CallsFromJava.main(new String[] { "input.txt", "--verbose" });
+```
+
+### Invoke from another Java application
+
+A Java application can invoke the entry point directly:
+
+```java
+public final class Application {
+    public static void main(String[] args) {
+        CallsFromJava.main(args);
+    }
+}
+```
+
+Or supply a specific argument list:
+
+```java
+public final class Application {
+    public static void main(String[] args) {
+        CallsFromJava.main(new String[] {
+            "--mode",
+            "example"
+        });
+    }
+}
+```
+
+## Requirements
+
+Because the API is Java-based, use it in a JVM environment with the library available on the application classpath.

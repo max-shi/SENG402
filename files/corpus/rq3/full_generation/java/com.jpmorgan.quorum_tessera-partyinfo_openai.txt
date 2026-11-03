@@ -1,0 +1,402 @@
+# Tessera Party Info
+
+`tessera-partyinfo` provides Java APIs for representing, exchanging, and tracking party/node information in a peer-to-peer network.
+
+The library centers on:
+
+- **Node information**: recipient public keys, endpoint URLs, and supported API versions.
+- **Discovery**: receiving node updates and disconnect events, and querying known nodes.
+- **Network state**: storing active nodes by URI.
+- **Party-info transport**: sending serialized party-info data to a target URL.
+- **URL and key mapping utilities**: normalizing URLs and validating recipient-key-to-URL mappings.
+
+## Core concepts
+
+### `NodeInfo`
+
+`NodeInfo` represents the party information advertised by a node.
+
+```java
+public interface NodeInfo {
+    Set<Recipient> getRecipients();
+    Set<String> supportedApiVersions();
+    String getUrl();
+
+    default Map<PublicKey, String> getRecipientsAsMap();
+}
+```
+
+A node advertises:
+
+- its own URL via `getUrl()`;
+- one or more `Recipient` values, each associating a public key with a URL;
+- the API versions it supports.
+
+`getRecipientsAsMap()` provides a map-oriented view of recipients, keyed by `PublicKey`.
+
+### `Recipient`
+
+A `Recipient` associates a public key with the URL where that key can be reached.
+
+```java
+Recipient recipient = Recipient.of(publicKey, "http://node.example:9000");
+
+PublicKey key = recipient.getKey();
+String url = recipient.getUrl();
+```
+
+Create copies when needed:
+
+```java
+Recipient copy = Recipient.from(recipient);
+```
+
+`Recipient` implements `equals`, `hashCode`, and `toString`, making it suitable for use in sets and maps.
+
+### `VersionInfo`
+
+`VersionInfo` represents supported API versions.
+
+```java
+VersionInfo versions = VersionInfo.from(Set.of("v1", "v2"));
+
+Set<String> supported = versions.supportedApiVersions();
+```
+
+### `NodeUri`
+
+`NodeUri` is a value type for node URIs.
+
+```java
+NodeUri nodeUri = NodeUri.create("http://node.example:9000");
+
+String value = nodeUri.asString();
+URI uri = nodeUri.asURI();
+```
+
+It can also be created from an existing `URI`:
+
+```java
+NodeUri nodeUri = NodeUri.create(URI.create("http://node.example:9000"));
+```
+
+## Discovery
+
+The `Discovery` interface receives and exposes information about nodes in the network.
+
+```java
+public interface Discovery {
+    default void onCreate();
+    void onUpdate(NodeInfo nodeInfo);
+    void onDisconnect(URI nodeUri);
+
+    default NodeInfo getCurrent();
+    default NodeInfo getRemoteNodeInfo(PublicKey publicKey);
+    default Set<NodeInfo> getRemoteNodeInfos();
+
+    static Discovery create();
+}
+```
+
+### Creating a discovery service
+
+Use the factory method to obtain a `Discovery` implementation:
+
+```java
+Discovery discovery = Discovery.create();
+
+discovery.onCreate();
+```
+
+The lifecycle and query methods support the following workflow:
+
+1. Initialize discovery with `onCreate()`.
+2. Submit remote node advertisements with `onUpdate(NodeInfo)`.
+3. Remove or disconnect nodes with `onDisconnect(URI)`.
+4. Query current or remote node information.
+
+```java
+NodeInfo current = discovery.getCurrent();
+
+NodeInfo remote = discovery.getRemoteNodeInfo(recipientPublicKey);
+
+Set<NodeInfo> remotes = discovery.getRemoteNodeInfos();
+```
+
+`getRemoteNodeInfo` is useful when routing work to a node that owns or advertises a particular public key.
+
+### Discovery implementations
+
+Two public implementations are available:
+
+- `AutoDiscovery`
+- `DisabledAutoDiscovery`
+
+Both implement `Discovery` and accept a `NetworkStore`.
+
+```java
+NetworkStore store = NetworkStore.getInstance();
+
+Discovery discovery = new AutoDiscovery(store);
+```
+
+```java
+NetworkStore store = NetworkStore.getInstance();
+Set<NodeUri> knownPeers = Set.of(
+    NodeUri.create("http://peer-one.example:9000"),
+    NodeUri.create("http://peer-two.example:9000")
+);
+
+Discovery discovery = new DisabledAutoDiscovery(store, knownPeers);
+```
+
+When automatic discovery is unavailable or disallowed, callers may encounter `AutoDiscoveryDisabledException`.
+
+```java
+try {
+    NodeInfo remote = discovery.getRemoteNodeInfo(recipientPublicKey);
+} catch (AutoDiscoveryDisabledException ex) {
+    // Handle a lookup that requires auto-discovery.
+}
+```
+
+## Network state
+
+### `ActiveNode`
+
+`ActiveNode` represents an active network node and exposes:
+
+```java
+public class ActiveNode {
+    public Set<PublicKey> getKeys();
+    public NodeUri getUri();
+    public Set<String> getSupportedVersions();
+}
+```
+
+An active node combines:
+
+- the public keys served by the node;
+- its network URI;
+- supported API versions.
+
+### `NetworkStore`
+
+`NetworkStore` stores and retrieves active nodes.
+
+```java
+public interface NetworkStore {
+    NetworkStore store(ActiveNode activeNode);
+    NetworkStore remove(NodeUri nodeUri);
+    Stream<ActiveNode> getActiveNodes();
+
+    static NetworkStore getInstance();
+}
+```
+
+Obtain the shared store and inspect current active nodes:
+
+```java
+NetworkStore store = NetworkStore.getInstance();
+
+store.getActiveNodes().forEach(activeNode -> {
+    NodeUri uri = activeNode.getUri();
+    Set<PublicKey> keys = activeNode.getKeys();
+    Set<String> versions = activeNode.getSupportedVersions();
+
+    System.out.println(uri.asString());
+});
+```
+
+The `store` and `remove` methods return a `NetworkStore`, allowing fluent usage:
+
+```java
+store
+    .store(activeNode)
+    .remove(NodeUri.create("http://old-node.example:9000"));
+```
+
+The `DefaultNetworkStore` enum also exposes an `INSTANCE` constant:
+
+```java
+NetworkStore store = DefaultNetworkStore.INSTANCE;
+```
+
+## Discovery helpers and providers
+
+`DiscoveryHelper` builds `NodeInfo` objects for the current node and remote nodes.
+
+```java
+public interface DiscoveryHelper {
+    void onCreate();
+    NodeInfo buildCurrent();
+    NodeInfo buildRemoteNodeInfo(PublicKey publicKey);
+    Set<NodeInfo> buildRemoteNodeInfos();
+
+    static DiscoveryHelper create();
+}
+```
+
+Example:
+
+```java
+DiscoveryHelper helper = DiscoveryHelper.create();
+
+helper.onCreate();
+
+NodeInfo localNode = helper.buildCurrent();
+NodeInfo remoteNode = helper.buildRemoteNodeInfo(recipientPublicKey);
+Set<NodeInfo> remoteNodes = helper.buildRemoteNodeInfos();
+```
+
+Provider classes are also available when an application uses provider-based construction:
+
+```java
+Discovery discovery = DiscoveryProvider.provider();
+DiscoveryHelper helper = DiscoveryHelperProvider.provider();
+NetworkStore networkStore = NetworkStoreProvider.provider();
+EnclaveKeySynchroniser synchroniser = EnclaveKeySynchroniserProvider.provider();
+```
+
+### `DiscoveryHolder`
+
+`DiscoveryHolder` stores an optional `Discovery` instance.
+
+```java
+DiscoveryHolder holder = DiscoveryHolder.create();
+
+holder.set(discovery);
+
+holder.get().ifPresent(currentDiscovery -> {
+    Set<NodeInfo> remotes = currentDiscovery.getRemoteNodeInfos();
+});
+```
+
+This is useful when discovery is configured or initialized after application startup.
+
+### `EnclaveKeySynchroniser`
+
+`EnclaveKeySynchroniser` defines a synchronization operation for keys:
+
+```java
+EnclaveKeySynchroniser synchroniser = EnclaveKeySynchroniserProvider.provider();
+
+synchroniser.syncKeys();
+```
+
+## Sending party information
+
+`P2pClient` sends serialized party-info data to another node.
+
+```java
+public interface P2pClient {
+    boolean sendPartyInfo(String targetUrl, byte[] data);
+
+    static P2pClient create();
+}
+```
+
+Example:
+
+```java
+P2pClient client = P2pClient.create();
+
+byte[] payload = /* serialized party-info data */;
+boolean sent = client.sendPartyInfo(
+    "http://peer.example:9000",
+    payload
+);
+
+if (!sent) {
+    // Handle failed delivery.
+}
+```
+
+The API accepts a `byte[]`, so serialization and payload format are controlled by the calling application.
+
+## URL normalization and validation
+
+### `URLNormalizer`
+
+Use `URLNormalizer` to normalize endpoint URLs before comparing or storing them.
+
+```java
+URLNormalizer normalizer = URLNormalizer.create();
+
+String normalized = normalizer.normalize("http://node.example:9000");
+```
+
+### `PartyInfoServiceUtil`
+
+`PartyInfoServiceUtil` validates whether recipient-key-to-URL relationships are compatible between two `NodeInfo` instances.
+
+```java
+boolean valid = PartyInfoServiceUtil.validateKeysToUrls(
+    existingPartyInfo,
+    newPartyInfo
+);
+
+if (!valid) {
+    // Reject or investigate the updated party information.
+}
+```
+
+This is useful before accepting a node update, particularly when an update changes recipient URLs or keys.
+
+## Example: processing a party-info update
+
+The following example shows a typical update flow. The application receives a `NodeInfo`, validates it against a previously known value, and then forwards it to discovery.
+
+```java
+import com.quorum.tessera.discovery.Discovery;
+import com.quorum.tessera.partyinfo.PartyInfoServiceUtil;
+import com.quorum.tessera.partyinfo.node.NodeInfo;
+
+public class PartyInfoUpdateHandler {
+
+    private final Discovery discovery = Discovery.create();
+
+    public PartyInfoUpdateHandler() {
+        discovery.onCreate();
+    }
+
+    public boolean processUpdate(NodeInfo existing, NodeInfo incoming) {
+        boolean valid = PartyInfoServiceUtil.validateKeysToUrls(existing, incoming);
+
+        if (!valid) {
+            return false;
+        }
+
+        discovery.onUpdate(incoming);
+        return true;
+    }
+}
+```
+
+## Example: locating a node for a recipient key
+
+```java
+import com.quorum.tessera.discovery.Discovery;
+import com.quorum.tessera.partyinfo.node.NodeInfo;
+
+public class RecipientLookup {
+
+    private final Discovery discovery = Discovery.create();
+
+    public NodeInfo findNode(PublicKey recipientKey) {
+        return discovery.getRemoteNodeInfo(recipientKey);
+    }
+}
+```
+
+## Summary
+
+Use this library when an application needs to:
+
+- describe nodes and the public keys they serve;
+- maintain active-node network state;
+- react to node updates and disconnections;
+- discover remote node information by public key;
+- send party-information payloads to peers;
+- normalize node URLs and validate recipient mappings;
+- track compatible API versions across nodes.

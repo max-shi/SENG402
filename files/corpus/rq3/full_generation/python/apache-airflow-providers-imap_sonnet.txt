@@ -1,0 +1,149 @@
+# apache-airflow-providers-imap
+
+## Overview
+
+This package provides Apache Airflow integration for interacting with mail servers over the IMAP protocol. It allows Airflow DAGs to check for, retrieve, and download email attachments as part of a workflow — for example, waiting for a file to arrive by email before triggering downstream processing.
+
+The provider exposes:
+
+- **`ImapHook`** — a connection hook for talking to an IMAP mail server and searching/downloading attachments.
+- **`Mail`** and **`MailPart`** — internal helper classes representing a parsed email message and its individual parts (body, attachments, etc.), used by the hook when scanning mailboxes.
+- **`ImapAttachmentSensor`** — a sensor operator that polls a mailbox until a matching attachment appears.
+- **`get_provider_info`** — metadata function used by Airflow to discover this provider package.
+
+## Main Components
+
+### `ImapHook`
+
+`ImapHook` is a `BaseHook` subclass responsible for connecting to an IMAP server (using an Airflow connection) and performing attachment-related operations against a mailbox.
+
+Key methods:
+
+- `get_conn() -> ImapHook`: Establishes/returns the underlying IMAP connection. Typically used as a context manager.
+- `has_mail_attachment(name, *, check_regex=False, max_mails=None, mail_folder='INBOX', mail_filter='All') -> bool`: Checks whether any mail in the given folder matching the mail filter has an attachment matching `name`.
+- `retrieve_mail_attachments(name, *, check_regex=False, latest_only=False, max_mails=None, mail_folder='INBOX', mail_filter='All', not_found_mode='raise') -> list[tuple]`: Returns the matching attachments (as in-memory data) without writing to disk.
+- `download_mail_attachments(name, local_output_directory, *, check_regex=False, latest_only=False, max_mails=None, mail_folder='INBOX', mail_filter='All', not_found_mode='raise', overwrite=True) -> None`: Downloads matching attachments to a local directory.
+
+Common parameters across these methods:
+
+- `name`: The attachment filename to search for (exact match, or a regex pattern when `check_regex=True`).
+- `check_regex`: Treat `name` as a regular expression rather than an exact filename.
+- `latest_only`: Only consider the most recent matching mail.
+- `max_mails`: Limit the number of mails scanned.
+- `mail_folder`: The mailbox folder to search (default `"INBOX"`).
+- `mail_filter`: An IMAP search filter string (default `"All"`).
+- `not_found_mode`: Behavior when no matching attachment is found (`"raise"`, or other supported modes such as silently skipping/logging, depending on configuration).
+- `overwrite`: Whether to overwrite existing local files with the same name.
+
+### `Mail`
+
+`Mail` (a `LoggingMixin`) represents a parsed email message and offers convenience methods for inspecting its content:
+
+- `has_attachments() -> bool`: Whether the mail contains any attachments.
+- `get_attachments_by_name(name, check_regex, find_first=False) -> list[tuple[Any, Any]]`: Returns attachments matching the given name (or regex pattern), optionally stopping at the first match.
+
+### `MailPart`
+
+`MailPart` represents an individual MIME part of a mail message (e.g., an attachment or body section):
+
+- `is_attachment() -> bool`: Whether this part is an attachment.
+- `has_matching_name(name) -> tuple[Any, Any] | None`: Checks if the part's filename matches `name` (exact or regex), returning match details if so.
+- `has_equal_name(name) -> bool`: Exact filename comparison.
+- `get_file() -> tuple`: Extracts the file content (and metadata) from this part.
+
+`Mail` and `MailPart` work together internally to support the search/filter logic exposed by `ImapHook`; most users will interact with `ImapHook` directly rather than these classes.
+
+### `ImapAttachmentSensor`
+
+`ImapAttachmentSensor` is a `BaseSensorOperator` that polls a mailbox for a matching attachment and succeeds once one is found.
+
+- `poke(context: Context) -> bool`: Called repeatedly by Airflow's sensor mechanism; returns `True` once the target attachment is present.
+
+This sensor is typically configured with the same kind of parameters as `ImapHook.has_mail_attachment` (attachment name, mail folder, filter, regex option, etc.) so that a DAG can wait for an email to arrive before proceeding.
+
+### `get_provider_info`
+
+`get_provider_info()` returns the provider's metadata dictionary (name, description, hooks, sensors, connection types) and is used by Airflow's provider discovery mechanism. Developers typically do not need to call this directly.
+
+## Installation
+
+```bash
+pip install apache-airflow-providers-imap
+```
+
+Configure an Airflow **Connection** of type IMAP (host, login, password, and optionally port/SSL settings) before using the hook or sensor. The connection ID is passed to `ImapHook` and `ImapAttachmentSensor` as `imap_conn_id` (or the relevant connection parameter configured on those objects).
+
+## Usage Examples
+
+### Using the sensor to wait for an attachment, then download it
+
+```python
+from airflow import DAG
+from airflow.providers.imap.sensors.imap_attachment import ImapAttachmentSensor
+from airflow.providers.imap.hooks.imap import ImapHook
+from airflow.operators.python import PythonOperator
+from datetime import datetime
+
+def download_report(**context):
+    with ImapHook(imap_conn_id="my_imap_conn") as hook:
+        hook.download_mail_attachments(
+            name="daily_report.csv",
+            local_output_directory="/opt/airflow/data/reports",
+            mail_folder="INBOX",
+            mail_filter='(SUBJECT "Daily Report")',
+            latest_only=True,
+            overwrite=True,
+        )
+
+with DAG(
+    dag_id="wait_and_download_email_attachment",
+    start_date=datetime(2024, 1, 1),
+    schedule="@daily",
+    catchup=False,
+) as dag:
+
+    wait_for_attachment = ImapAttachmentSensor(
+        task_id="wait_for_attachment",
+        attachment_name="daily_report.csv",
+        conn_id="my_imap_conn",
+        mail_folder="INBOX",
+        mail_filter='(SUBJECT "Daily Report")',
+        poke_interval=300,
+        timeout=60 * 60 * 6,
+    )
+
+    fetch_attachment = PythonOperator(
+        task_id="fetch_attachment",
+        python_callable=download_report,
+    )
+
+    wait_for_attachment >> fetch_attachment
+```
+
+### Checking for and retrieving attachments directly with the hook
+
+```python
+from airflow.providers.imap.hooks.imap import ImapHook
+
+with ImapHook(imap_conn_id="my_imap_conn") as hook:
+    if hook.has_mail_attachment(
+        name=r".*\.xlsx$",
+        check_regex=True,
+        mail_folder="Reports",
+    ):
+        attachments = hook.retrieve_mail_attachments(
+            name=r".*\.xlsx$",
+            check_regex=True,
+            latest_only=True,
+            mail_folder="Reports",
+            not_found_mode="raise",
+        )
+        for filename, content in attachments:
+            print(f"Found attachment: {filename}, size={len(content)} bytes")
+```
+
+## Notes
+
+- `mail_filter` accepts standard IMAP search syntax (e.g. `'(SUBJECT "Invoice")'`, `'(FROM "billing@example.com")'`), defaulting to `"All"` to match every message in the folder.
+- When `check_regex=True`, the `name` parameter is interpreted as a Python regular expression rather than a literal filename, enabling flexible matching (e.g., date-stamped filenames).
+- `not_found_mode` controls how the hook behaves when no attachment matches the search criteria — set it according to whether a missing attachment should be treated as an error or handled gracefully by the calling task.

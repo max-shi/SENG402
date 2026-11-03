@@ -1,0 +1,234 @@
+# Octopus JWT Support
+
+`be.atbash.json:octopus-jwt-support` is a Java library that provides comprehensive support for creating, reading, writing, signing, encrypting, and validating cryptographic keys and JSON Web Tokens (JWT). It bundles:
+
+- A **key management framework** for reading, writing, generating, and selecting cryptographic keys (RSA, EC, OCT/symmetric, OKP) from various resource types (PEM, JWK, JWK Set, Java KeyStore) and locations (local files, classpath, remote HTTPS endpoints).
+- A **JOSE implementation** (JWS, JWE, Plain JWT) built on top of JSON-P/JSON-B, offering signing, verification, encryption, and decryption for JSON Web Tokens and JOSE objects, without requiring external dependencies like Nimbus JOSE (this library reimplements much of that functionality internally under its own `nimbus` package).
+- High level **encode/decode facilities** for turning arbitrary Java objects into signed/encrypted JWTs and back.
+
+It is intended for applications and frameworks (such as Atbash Octopus-based security stacks) that need flexible, configurable key handling and JWT processing.
+
+---
+
+## Key Concepts and Main Classes
+
+### Configuration
+
+- **`JwtSupportConfiguration`** — Central configuration class (singleton via `getInstance()`) controlling key locations, password lookup, key manager, default algorithms (JWS/JWE), clock skew tolerance, JWK Set caching, and more.
+- **`JCASupportConfiguration`** — Configuration for the JCA `SecureRandom` provider used throughout the library.
+- **`PemKeyEncryption`** — Enum describing how PEM private keys are encrypted (`PKCS8`, `PKCS1`, `NONE`).
+
+### Keys
+
+- **`AtbashKey`** — The library's core wrapper around a JCA `Key`, associating it with a key ID (`kid`) and metadata such as `SecretKeyType`.
+- **`AtbashKeyPair`** — Groups a public/private `AtbashKey` pair into a standard `KeyPair`.
+- **`SecretKeyType`** / **`AsymmetricPart`** — Describe the algorithm family (RSA, EC, OCT, OKP) and whether a key is public, private, or symmetric.
+- **`KeyManager`** and implementations:
+  - `LocalKeyManager` — reads keys from local configured resources.
+  - `RemoteKeyManager` — retrieves keys from a remote JWK Set URL.
+  - `ListKeyManager` — wraps an in-memory list of keys.
+  - `CombinedKeyManager` — aggregates multiple key managers.
+- **`KeySelector`**, **`SelectorCriteria`**, **`SingleKeySelector`**, **`PasswordKeySelector`** — Used to query a `KeyManager` for a specific key, filtered by ID, key type, asymmetric part, JKU, algorithm, etc. `SelectorCriteria.newBuilder()` constructs filter criteria.
+- **`KeyFilter`** implementations (`IdKeyFilter`, `KeyTypeKeyFilter`, `AsymmetricPartKeyFilter`, `SecretKeyTypeKeyFilter`) — Compose the filtering logic used internally by key managers/selectors.
+
+### Reading & Writing Keys
+
+- **`KeyReader`** — High-level entry point to read keys from a path, URI, `InputStream`, or raw content string, auto-detecting the resource type (PEM, JWK, JWK Set, KeyStore) via `KeyResourceTypeProvider`.
+- **`KeyReaderPEM`**, **`KeyReaderJWK`**, **`KeyReaderJWKSet`**, **`KeyReaderKeyStore`** — Type-specific readers.
+- **`KeyResourcePasswordLookup`** / **`ConfigKeyResourcePasswordLookup`** — Supply passwords needed to decrypt protected key resources.
+- **`KeyWriter`** / **`KeyWriterFactory`** — Serialize an `AtbashKey` to PEM, JWK, JWK Set, or Java KeyStore format, optionally password-protected.
+- **`KeyEncoder`** implementations — Low-level encoders used by `KeyWriterFactory` for each output format.
+- **`EncryptedJSONJWK`** — Produces an encrypted JSON representation of a `JWK`.
+
+### Key Generation
+
+- **`KeyGenerator`** with **`GenerationParameters`** subclasses (`RSAGenerationParameters`, `ECGenerationParameters`, `OCTGenerationParameters`, `DHGenerationParameters`) — Generate new `AtbashKey` material for the desired algorithm family.
+
+### JWT Encoding/Decoding (high level)
+
+- **`JWTEncoder`** — Encodes an arbitrary Java object (POJO) into a JWT string or JSON object, using `JWTParameters` to control signing/encryption.
+- **`JWTParametersBuilder`** — Fluent builder to construct `JWTParametersNone`, `JWTParametersPlain`, `JWTParametersSigning`, or `JWTParametersEncryption` instances.
+- **`JWTDecoder`** — Decodes a JWT string or JSON object back into a typed Java object, optionally verifying signatures via a `KeySelector` and/or a `JWTVerifier`.
+- **`JWTData`** / **`MetaJWTData`** — Wrap decoded payload data together with header metadata (key ID, header values).
+- **`JWTVerifier`** / **`DefaultJWTClaimsVerifier`** — Pluggable claims validation logic (e.g., expiration, not-before checks).
+
+### Low-Level JOSE Primitives
+
+Mirroring familiar JOSE concepts, the library provides its own implementations under the `nimbus` package:
+
+- **`JOSEObject`**, **`PlainObject`**, **`JWSObject`**, **`JWEObject`** — Generic JOSE object representations.
+- **`JWT`**, **`SignedJWT`**, **`EncryptedJWT`**, **`PlainJWT`** — JWT-specific specializations.
+- **`JWSHeader`**, **`JWEHeader`**, **`PlainHeader`**, **`CommonJWTHeader`** — Header representations.
+- **`JWSSigner`** / **`JWSVerifier`** implementations: `RSASSASigner`/`RSASSAVerifier`, `ECDSASigner`/`ECDSAVerifier`, `MACSigner`/`MACVerifier`, `Ed25519Signer`/`Ed25519Verifier`.
+- **`JWEEncrypter`** / **`JWEDecrypter`** implementations: `RSAEncrypter`/`RSADecrypter`, `ECDHEncrypter`/`ECDHDecrypter`, `AESEncrypter`/`AESDecrypter`, `DirectEncrypter`/`DirectDecrypter`, `PasswordBasedEncrypter`/`PasswordBasedDecrypter`.
+- **`JWK`** family (`RSAKey`, `ECKey`, `OctetKeyPair`, `OctetSequenceKey`) and **`JWKSet`** — JSON Web Key representations, convertible to/from JCA `Key` objects and `AtbashKey`.
+- **`JWTClaimsSet`** — Represents standard and custom JWT claims.
+- **`JWTProcessor`** / **`DefaultJWTProcessor`** — Orchestrates signature verification, decryption, and claims verification for a parsed `JWT`.
+- **`JWTParser`** — Parses a JWT compact serialization into a `JWT` object (`PlainJWT`, `SignedJWT`, or `EncryptedJWT`).
+
+### Utilities
+
+- **`Base64Value`** / **`Base64URLValue`** — Base64 and Base64URL helpers used pervasively in JOSE structures.
+- **`DateUtils`** — Time/clock-skew helpers for claim validation.
+- **`X509CertUtils`** / **`X509CertChainUtils`** — Certificate parsing and PEM conversion.
+- **`EncryptionHelper`** — Simple password/secret-key based string encryption/decryption.
+- **`HmacSecretUtil`** — Quickly wrap raw bytes into an `AtbashKey` for HMAC use.
+- **`JsonbUtil`** — Access to a shared `Jsonb` instance configured with this library's custom serializers/deserializers (see `SerializerProvider`).
+
+---
+
+## Installation
+
+```xml
+<dependency>
+    <groupId>be.atbash.json</groupId>
+    <artifactId>octopus-jwt-support</artifactId>
+    <version>${octopus-jwt-support.version}</version>
+</dependency>
+```
+
+---
+
+## Usage Examples
+
+### 1. Generating an RSA key pair and writing it to disk
+
+```java
+RSAGenerationParameters parameters = new RSAGenerationParameters.RSAGenerationParametersBuilder()
+        .withKeyId("my-rsa-key")
+        .withKeySize(2048)
+        .build();
+
+KeyGenerator keyGenerator = new KeyGenerator();
+List<AtbashKey> keys = keyGenerator.generateKeys(parameters);
+
+KeyWriter keyWriter = new KeyWriter();
+for (AtbashKey key : keys) {
+    keyWriter.writeKeyResource(key, KeyResourceType.PEM, "/path/to/keys/" + key.getKeyId() + ".pem");
+}
+```
+
+### 2. Reading keys from a resource
+
+```java
+KeyReader keyReader = new KeyReader();
+List<AtbashKey> keys = keyReader.readKeyResource("/path/to/keys/my-rsa-key.jwk");
+
+AtbashKey signingKey = keys.stream()
+        .filter(k -> k.getSecretKeyType().getAsymmetricPart() == AsymmetricPart.PRIVATE)
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("No private key found"));
+```
+
+### 3. Encoding a signed JWT from a Java object
+
+```java
+public class UserInfo {
+    private String username;
+    private String role;
+    // getters/setters
+}
+
+UserInfo userInfo = new UserInfo();
+userInfo.setUsername("jdoe");
+userInfo.setRole("admin");
+
+JWTParametersSigning signingParameters = JWTParametersBuilder
+        .newBuilderFor(JWTEncoding.JWS)
+        .withSecretKeyForSigning(signingKey)
+        .build();
+
+JWTEncoder encoder = new JWTEncoder();
+String jwtToken = encoder.encode(userInfo, signingParameters);
+```
+
+### 4. Decoding and verifying a signed JWT
+
+```java
+ListKeyManager keyManager = new ListKeyManager(keys);
+KeySelector keySelector = new KeySelector(keyManager);
+
+JWTDecoder decoder = new JWTDecoder();
+JWTData<UserInfo> jwtData = decoder.decode(jwtToken, UserInfo.class, keySelector);
+
+UserInfo decoded = jwtData.getData();
+String keyId = jwtData.getMetaData().getKeyID();
+```
+
+### 5. Encrypting a JWT (JWE) using an RSA public key
+
+```java
+AtbashKey publicKey = keys.stream()
+        .filter(k -> k.getSecretKeyType().getAsymmetricPart() == AsymmetricPart.PUBLIC)
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("No public key found"));
+
+JWTParameters encryptionParameters = JWTParametersBuilder
+        .newBuilderFor(JWTEncoding.JWE)
+        .withSecretKeyForEncryption(publicKey)
+        .withJWEAlgorithm(JWEAlgorithm.parse("RSA-OAEP-256"))
+        .build();
+
+JWTEncoder encoder = new JWTEncoder();
+String encryptedJwt = encoder.encode(userInfo, encryptionParameters);
+```
+
+### 6. Decoding an encrypted JWT with a private key selector
+
+```java
+AtbashKey privateKey = keys.stream()
+        .filter(k -> k.getSecretKeyType().getAsymmetricPart() == AsymmetricPart.PRIVATE)
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("No private key found"));
+
+KeySelector keySelector = new SingleKeySelector(privateKey);
+
+JWTDecoder decoder = new JWTDecoder();
+JWTData<UserInfo> jwtData = decoder.decode(encryptedJwt, UserInfo.class, keySelector);
+UserInfo decoded = jwtData.getData();
+```
+
+### 7. Working directly with low-level JOSE objects
+
+```java
+JWSHeader header = new JWSHeader(JWSAlgorithm.parse("RS256"));
+JWTClaimsSet claimsSet = new JWTClaimsSet.Builder()
+        .subject("jdoe")
+        .issuer("https://issuer.example.com")
+        .expirationTime(new Date(System.currentTimeMillis() + 3600_000))
+        .build();
+
+SignedJWT signedJWT = new SignedJWT(header, claimsSet);
+signedJWT.sign(new RSASSASigner(signingKey));
+
+String serialized = signedJWT.serialize();
+
+SignedJWT parsed = SignedJWT.parse(serialized);
+boolean valid = parsed.verify(new RSASSAVerifier(publicKey));
+```
+
+### 8. Fetching keys from a remote JWK Set
+
+```java
+RemoteKeyManager remoteKeyManager = new RemoteKeyManager();
+SelectorCriteria criteria = SelectorCriteria.newBuilder()
+        .withId("kid-123")
+        .withJku(URI.create("https://issuer.example.com/.well-known/jwks.json"))
+        .build();
+
+List<AtbashKey> remoteKeys = remoteKeyManager.retrieveKeys(criteria);
+```
+
+---
+
+## Configuration Notes
+
+- `JwtSupportConfiguration.getInstance()` exposes settings such as key storage location (`getKeysLocation`), which `KeyManager` implementation to use (`getKeyManager`), default JWS/JWE algorithms per key type, JWK Set cache period, and PEM key encryption strategy (`getPemKeyEncryption`).
+- `JCASupportConfiguration.getInstance()` controls the `SecureRandom` algorithm and re-seeding interval used for cryptographic operations.
+- Password resolution for encrypted key resources is delegated to a `KeyResourcePasswordLookup` implementation (default: `ConfigKeyResourcePasswordLookup`), which can be customized to fetch passwords from your own secret store.
+
+---
+
+## Exception Handling
+
+The library defines specific exceptions for common failure modes, including `InvalidKeyException`, `MissingPasswordException`, `MissingPasswordLookupException`, `ResourceNotFoundException`, `KeyResourceNotFoundException`, `UnknownKeyResourceTypeException`, `InvalidJWKSetFormatException`, `DuplicateKeyIdException`, `NotSingleKeyException`, `UnsupportedECCurveException`, `UnsupportedKeyLengthException`, `InvalidJWTException`, `JOSEException`, `BadJOSEException`, `BadJWSException`/`BadJWTException`, and `BadJWEException`. Catch these to handle key-loading and JWT-processing errors gracefully in your application.

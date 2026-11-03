@@ -1,0 +1,212 @@
+# openexr
+
+`openexr` provides Python-facing data types for describing image-related geometry, color, channels, pixel formats, compression, tiling, timing, and preview data. Its exposed API also includes utilities used to prepare and publish releases, generate release-note formats, inspect pull-request security references, and validate installation manifests.
+
+## Overview
+
+The public API is organized around three areas:
+
+- **Image and math data types** — classes in `Imath.py` for points, boxes, chromaticities, pixel and compression enumerations, channels, tiled-image descriptions, and related metadata.
+- **Release tooling** — functions for extracting release-note sections, converting Markdown, formatting dates, collecting security references, and updating release artifacts.
+- **Build metadata integration** — `dynamic_metadata()` for supplying package metadata dynamically.
+
+## Image-related types
+
+The `Imath` module exposes a collection of value and metadata classes.
+
+### Geometry and color
+
+| Type | Purpose |
+| --- | --- |
+| `chromaticity` | A chromaticity value. |
+| `point` | Base point type. |
+| `V2i` | Integer two-dimensional point; derives from `point`. |
+| `V2f` | Floating-point two-dimensional point; derives from `point`. |
+| `Box` | Base bounding-box type. |
+| `Box2i` | Integer two-dimensional box; derives from `Box`. |
+| `Box2f` | Floating-point two-dimensional box; derives from `Box`. |
+| `Chromaticities` | A collection of color chromaticity values. |
+
+### Enumerated image settings
+
+The following classes derive from `Enumerated` and represent named image settings:
+
+| Type | Represents |
+| --- | --- |
+| `LineOrder` | Scanline or line ordering. |
+| `Compression` | Compression selection. |
+| `PixelType` | Pixel sample type. |
+| `LevelMode` | Multi-level image mode. |
+| `LevelRoundingMode` | Level rounding behavior. |
+
+### Image metadata
+
+| Type | Purpose |
+| --- | --- |
+| `Channel` | A channel description. |
+| `Rational` | A rational numeric value. |
+| `TimeCode` | Time-code metadata. |
+| `KeyCode` | Key-code metadata. |
+| `PreviewImage` | Preview-image data. |
+| `TileDescription` | Tiled-image configuration, including level-related settings. |
+
+These classes are intended to be used together when constructing or inspecting structured image metadata. For example, a tiled image description may use `LevelMode` and `LevelRoundingMode`, while channel descriptions use `PixelType` and images may carry `Chromaticities`, `TimeCode`, or `PreviewImage` metadata.
+
+## Release utilities
+
+Release helpers are available under `share.util.release`.
+
+### Common helpers
+
+`share.util.release._common` contains reusable release-note and version functions:
+
+- `format_month_day_year(dt)` — format a `datetime`.
+- `format_weekday_month_day(dt)` — format a `datetime` with a weekday.
+- `parse_release_date(date_text)` — parse a release date into a `datetime`.
+- `changes_anchor_date_slug(dt)` — create a date-based changes-anchor slug.
+- `extract_section(content, version_tag)` — extract a versioned section from content.
+- `apply_release_note_emojis(release_notes)` — apply release-note emoji formatting.
+- `parse_release_version(tag)` — derive a release version from a tag.
+- `get_repo_url()` / `require_repo_url()` — obtain the repository URL.
+- `load_release_notes(tag)` — load release-date and note content for a tag.
+- `prev_patch_version(base_tag)` — find the preceding patch version, when available.
+
+### Markdown and publication helpers
+
+The release package includes conversion and publishing-related helpers:
+
+- `markdown_to_rst(markdown_text)` — convert Markdown to reStructuredText.
+- `markdown_to_html(markdown_text)` — convert Markdown to HTML.
+- `convert_to_html(release_notes)` — convert release notes to HTML.
+- `create_draft_release(tag, release_notes)` — create a draft release.
+- `update_news_file(release_notes, tag, release_date)` — update a news file.
+- `cmd_tag(tag, release_date, release_notes)` — run tag-related release processing.
+
+### Pull request and security helpers
+
+Functions for release-note and security-reference collection include:
+
+- `gh_pr_view(pr_number)` — retrieve pull-request information.
+- `pr_labels(line)` — parse pull-request labels.
+- `pr_is_workflow_only(pr_number)` — determine whether a pull request is workflow-only.
+- `parse_section(lines)` and `parse_pr_blocks_dict(...)` — parse release-note sections and pull-request blocks.
+- `strip_security_from_heading(heading_lines)` — remove security content from headings.
+- `pr_addressed_cves(pr_number)` — identify CVEs and related references addressed by a pull request.
+- `gh_security_advisories_cve_titles()` — retrieve CVE titles from security advisories.
+- `oss_fuzz_issue_titles(issue_ids)` — retrieve titles for OSS-Fuzz issues.
+- `collect_security_refs_for_prs(pr_numbers)` — collect security references across pull requests.
+
+Several release submodules also provide a `main()` entry point for task-oriented workflows, including candidate release generation, changes processing, cherry-pick support, draft releases, release logging, news updates, release notes, and tagging.
+
+## Build metadata
+
+```python
+dynamic_metadata(
+    fields: FrozenSet[str],
+    settings: Optional[Dict[str, object]] = None,
+) -> Dict[str, Union[str, Dict[str, Optional[str]]]]
+```
+
+`dynamic_metadata()` is provided by `openexr_skbuild_plugin.py`. It accepts a set of requested metadata field names and optional settings, returning metadata values suitable for build or packaging integration.
+
+## Usage examples
+
+### Format release dates and extract a release-note section
+
+```python
+from share.util.release._common import (
+    extract_section,
+    format_month_day_year,
+    parse_release_date,
+)
+
+release_date = parse_release_date("2025-01-15")
+display_date = format_month_day_year(release_date)
+
+notes = """
+## v1.2.0
+
+- Add a new feature.
+
+## v1.1.0
+
+- Previous release.
+"""
+
+section_date, release_notes = extract_section(notes, "v1.2.0")
+
+print(display_date)
+print(section_date)
+print(release_notes)
+```
+
+### Convert release notes for another publication format
+
+```python
+from share.util.release.news import markdown_to_rst
+from share.util.release.candidate import markdown_to_html
+
+markdown = """
+## Highlights
+
+- Improved release tooling
+- Updated project metadata
+"""
+
+rst = markdown_to_rst(markdown)
+html = markdown_to_html(markdown)
+
+print(rst)
+print(html)
+```
+
+### Collect security references for pull requests
+
+```python
+from share.util.release._security import collect_security_refs_for_prs
+
+pull_requests = ["101", "102", "103"]
+
+cves, issue_ids = collect_security_refs_for_prs(pull_requests)
+
+print("CVEs:", cves)
+print("OSS-Fuzz issues:", issue_ids)
+```
+
+### Request dynamic package metadata
+
+```python
+from openexr_skbuild_plugin import dynamic_metadata
+
+metadata = dynamic_metadata(
+    frozenset({"version", "license"}),
+    settings={},
+)
+
+for field, value in metadata.items():
+    print(f"{field}: {value}")
+```
+
+### Work with the image-related type hierarchy
+
+```python
+from Imath import Box2f, Chromaticities, V2f
+
+# These types can be used to represent floating-point 2D geometry
+# and chromaticity metadata in image-related code.
+point = V2f()
+bounds = Box2f()
+colors = Chromaticities()
+
+print(point)
+print(bounds)
+print(colors)
+```
+
+## API notes
+
+- `V2i` and `V2f` specialize `point`.
+- `Box2i` and `Box2f` specialize `Box`.
+- `LineOrder`, `Compression`, `PixelType`, `LevelMode`, and `LevelRoundingMode` specialize `Enumerated`.
+- Release helpers use `datetime` values where release dates are required.
+- Functions that query pull requests, repository information, advisories, or OSS-Fuzz data may depend on the surrounding project and repository configuration.

@@ -1,0 +1,127 @@
+# tika-app
+
+`tika-app` is the standalone application distribution of Apache Tika. It packages the Tika content-detection and extraction engine into a single, executable artifact that can be used either as a **command-line tool** or as a **desktop GUI application**, and also exposes supporting classes for wiring Tika parsers into batch-processing configurations.
+
+This module is primarily intended to be run as a self-contained jar (`java -jar tika-app.jar`), but its classes can also be used programmatically from other Java applications that want to embed the same CLI/GUI behavior or reuse its parser factory infrastructure.
+
+## Overview
+
+### `TikaCLI`
+
+The main entry point for command-line usage. `TikaCLI` parses command-line arguments and dispatches to the appropriate Tika functionality — detecting file types, extracting text/metadata, or performing other document-analysis operations supported by the underlying Tika parsers.
+
+- `public static void main(String[] args)` — standard command-line entry point. This is what gets invoked when you run the packaged jar directly.
+- `public void process(String arg)` — processes a single argument (e.g. a file path, URL, or option flag) using the same logic driving `main`. This lets you drive the CLI programmatically, one argument at a time, without spawning a new JVM process.
+
+Typical use: end users invoke this via the command line to detect MIME types, extract metadata, or dump extracted text from documents.
+
+### `TikaGUI`
+
+A Swing-based graphical front end for Tika, useful for interactively exploring what Tika extracts from a given file or URL.
+
+- `public TikaGUI(Parser parser, TikaConfig tikaConfig)` — constructs the GUI window around a given Tika `Parser` and `TikaConfig`, allowing the GUI to be customized with a specific parsing configuration.
+- `public static void main(String[] args)` — launches the GUI as a standalone application.
+- `public void openFile(File file)` / `public void openURL(URL url)` — programmatically open a local file or a remote URL for parsing and display, as if the user had chosen it from the GUI's "Open" dialog.
+- `actionPerformed(ActionEvent e)` and `hyperlinkUpdate(HyperlinkEvent e)` — Swing/HTML event-handling callbacks used internally to respond to menu actions and clicks on hyperlinks rendered in extracted HTML output.
+
+Typical use: developers or curious users launch the GUI to visually inspect extraction results (text, metadata, embedded resources) for arbitrary documents.
+
+### `DigestingAutoDetectParserFactory`
+
+A `ParserFactory` implementation used in Tika's batch-processing framework. It produces a Tika `Parser` that combines Tika's automatic file-type detection with content digesting (e.g. computing checksums of parsed content).
+
+- `public Parser getParser(TikaConfig config)` — builds and returns a fully configured `Parser` (an auto-detecting parser wrapped with digesting behavior) based on the supplied `TikaConfig`.
+- `public void setDigester(DigestingParser.Digester digester)` — configures which digest algorithm/implementation (e.g. MD5, SHA-256) should be applied to content as it is parsed.
+
+Typical use: configured declaratively in a batch-processing XML configuration so that every file processed in a batch run is both type-detected and digested in one pass.
+
+### `AppParserFactoryBuilder`
+
+Implements `IParserFactoryBuilder`, the mechanism Tika's batch framework uses to construct `ParserFactory` instances from XML configuration nodes.
+
+- `public ParserFactory build(Node node, Map<String, String> runtimeAttrs)` — reads a configuration `Node` (typically parsed from an XML batch-config file) along with a map of runtime attributes/overrides, and constructs the appropriate `ParserFactory` (such as a `DigestingAutoDetectParserFactory`) to be used by the batch pipeline.
+
+Typical use: not usually called directly by application code — instead, it's referenced from a batch-processing configuration file, and the batch framework invokes it to instantiate the parser factory at runtime.
+
+## How the pieces fit together
+
+- **End users and shell scripts** interact with Tika through `TikaCLI` (text-mode) or `TikaGUI` (graphical mode).
+- **Batch-processing configurations** (used for large-scale, automated document processing) reference `AppParserFactoryBuilder`, which in turn builds `ParserFactory` instances like `DigestingAutoDetectParserFactory`. These factories produce the actual `Parser` objects that do the real parsing work, configured according to a `TikaConfig`.
+- Under the hood, all of these paths ultimately construct and use standard Tika `Parser` implementations — `tika-app` is the "glue" that turns Tika's parsing engine into runnable tools and pluggable batch components.
+
+## Usage Examples
+
+### Running the CLI
+
+```bash
+# Detect the MIME type of a file
+java -jar tika-app.jar --detect myfile.pdf
+
+# Extract plain text
+java -jar tika-app.jar --text myfile.docx
+
+# Extract metadata as XML
+java -jar tika-app.jar --metadata --xml myfile.png
+```
+
+### Driving the CLI programmatically
+
+```java
+import org.apache.tika.cli.TikaCLI;
+
+public class Example {
+    public static void main(String[] args) throws Exception {
+        TikaCLI cli = new TikaCLI();
+        cli.process("--text");
+        cli.process("/path/to/document.pdf");
+    }
+}
+```
+
+### Launching the GUI with a custom configuration
+
+```java
+import org.apache.tika.gui.TikaGUI;
+import org.apache.tika.config.TikaConfig;
+import org.apache.tika.parser.Parser;
+import org.apache.tika.parser.AutoDetectParser;
+
+import java.io.File;
+
+public class GuiExample {
+    public static void main(String[] args) throws Exception {
+        TikaConfig config = TikaConfig.getDefaultConfig();
+        Parser parser = new AutoDetectParser(config);
+
+        TikaGUI gui = new TikaGUI(parser, config);
+        gui.setVisible(true);
+        gui.openFile(new File("sample.docx"));
+    }
+}
+```
+
+### Configuring a digesting parser factory for batch processing
+
+```java
+import org.apache.tika.batch.DigestingAutoDetectParserFactory;
+import org.apache.tika.parser.DigestingParser;
+import org.apache.tika.parser.Parser;
+import org.apache.tika.config.TikaConfig;
+
+public class BatchExample {
+    public static void main(String[] args) throws Exception {
+        DigestingAutoDetectParserFactory factory = new DigestingAutoDetectParserFactory();
+        factory.setDigester(new DigestingParser.Digester() {
+            // digest implementation
+        });
+
+        TikaConfig config = TikaConfig.getDefaultConfig();
+        Parser parser = factory.getParser(config);
+
+        // 'parser' now auto-detects content type and computes digests
+        // as part of the batch pipeline
+    }
+}
+```
+
+In most real-world batch deployments, `AppParserFactoryBuilder` and `DigestingAutoDetectParserFactory` are wired together declaratively via an XML batch-configuration file rather than instantiated directly in Java code, but the classes are fully usable programmatically as shown above.

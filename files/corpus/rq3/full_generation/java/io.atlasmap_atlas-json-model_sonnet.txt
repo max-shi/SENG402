@@ -1,0 +1,172 @@
+# atlas-json-model
+
+`io.atlasmap:atlas-json-model` provides the JSON-specific data model used by [AtlasMap](https://github.com/atlasmap/atlasmap) to describe the structure of JSON documents for the purpose of data mapping and transformation. It defines the classes representing JSON fields, complex types, enumerations, and documents, as well as request/response objects used when inspecting a JSON document or schema to derive its field structure.
+
+This library does not parse or transform JSON data itself — it defines the model objects that other AtlasMap modules (such as the JSON schema/instance inspectors and the core mapping engine) populate and consume.
+
+## Overview
+
+### Core model classes
+
+- **`JsonDocument`** — Represents a JSON document as a whole within the AtlasMap document model. It extends the generic `Document` type from AtlasMap's core API and serves as the top-level container for JSON field metadata.
+
+- **`JsonField`** — Represents a single field within a JSON document (a leaf value, such as a string, number, or boolean). It extends the generic `Field` type and carries JSON-specific metadata:
+  - `typeName` — the JSON type name of the field.
+  - `primitive` — whether the field represents a primitive value.
+  - `userCreated` — whether the field was manually added by a user rather than discovered through inspection.
+
+- **`JsonComplexType`** — Extends `JsonField` to represent a JSON object or array containing nested fields. It holds:
+  - `jsonFields` — the nested child fields (via `JsonFields`).
+  - `jsonEnumFields` — nested enumeration fields, if the complex type represents an enum (via `JsonEnumFields`).
+  - `enumeration` — whether this complex type is an enumeration.
+  - `uri` — a URI identifying the type, useful for schema-based inspection.
+
+- **`JsonEnumField`** — Represents a single value of a JSON enumeration, extending `Field`. It includes:
+  - `ordinal` — the position of the value within the enumeration.
+  - `typeName` — the enum's type name.
+  - `userCreated` — whether the enum value was manually added.
+
+### Collection wrappers
+
+- **`JsonFields`** — A simple wrapper around a `List<JsonField>`, used wherever a set of fields needs to be grouped (e.g., inside a `JsonComplexType`).
+- **`JsonEnumFields`** — A simple wrapper around a `List<JsonEnumField>`, used to group enum values within a `JsonComplexType`.
+
+### Data source
+
+- **`JsonDataSource`** — Extends the core `DataSource` type to describe a JSON-based source or target of a mapping, including an optional `template` used for generating output JSON.
+
+### Inspection request/response
+
+AtlasMap can *inspect* a JSON document or its schema to automatically derive its field structure. These classes model that interaction:
+
+- **`InspectionType`** — Enumerates the kind of inspection to perform: `ALL`, `INSTANCE`, `SCHEMA`, or `NONE`. Includes `value()`/`fromValue(String)` helpers for (de)serializing to/from its wire string representation.
+
+- **`JsonInspectionRequest`** — Describes an inspection request, including:
+  - `jsonData` — the raw JSON instance data or schema to inspect.
+  - `uri` — an alternative reference to the data (e.g., a document location).
+  - `type` — the `InspectionType` to apply.
+  - `fieldNameExclusions`, `typeNameExclusions`, `namespaceExclusions` — `StringList`s used to filter fields, types, or namespaces out of the inspection result.
+
+- **`JsonInspectionResponse`** — The result of an inspection request:
+  - `jsonDocument` — the resulting `JsonDocument` describing the discovered structure.
+  - `errorMessage` — populated if the inspection failed.
+  - `executionTime` — how long the inspection took, in milliseconds.
+
+### Factory and utilities
+
+- **`AtlasJsonModelFactory`** — A static utility class for creating and manipulating JSON model objects:
+  - `createJsonDocument()` / `createJsonField()` — convenience constructors.
+  - `toString(JsonField f)` — produces a human-readable representation of a field.
+  - `cloneField(JsonField field, boolean withActions)` — deep-copies a `JsonField`, optionally including its field actions.
+  - `cloneFieldGroup(FieldGroup group)` — deep-copies a `FieldGroup` of fields.
+  - `copyField(Field from, Field to, boolean withActions)` — copies field properties from one `Field` instance to another, optionally including actions.
+
+## How the pieces fit together
+
+1. A **`JsonInspectionRequest`** is built with either raw JSON data or a URI, and an `InspectionType` indicating whether to inspect an instance, a schema, or both.
+2. An inspection process (provided by another AtlasMap module) consumes the request and produces a **`JsonInspectionResponse`** containing a populated **`JsonDocument`**.
+3. The `JsonDocument` contains a tree of **`JsonField`** and **`JsonComplexType`** objects (with nested `JsonFields`/`JsonEnumFields`) describing the shape of the JSON data.
+4. This model can then be used by the AtlasMap mapping engine to define mappings between JSON fields and fields from other data formats.
+5. **`AtlasJsonModelFactory`** helps create, clone, and stringify these model objects programmatically, without needing to inspect real data.
+
+## Usage Examples
+
+### Building a JSON field model manually
+
+```java
+import io.atlasmap.json.v2.*;
+
+JsonDocument document = AtlasJsonModelFactory.createJsonDocument();
+
+JsonField nameField = AtlasJsonModelFactory.createJsonField();
+nameField.setName("name");
+nameField.setPath("/name");
+nameField.setTypeName("STRING");
+nameField.setPrimitive(true);
+
+JsonComplexType addressType = new JsonComplexType();
+addressType.setName("address");
+addressType.setPath("/address");
+addressType.setTypeName("MAP");
+
+JsonField city = AtlasJsonModelFactory.createJsonField();
+city.setName("city");
+city.setPath("/address/city");
+city.setTypeName("STRING");
+city.setPrimitive(true);
+
+JsonFields nestedFields = new JsonFields();
+nestedFields.getJsonField().add(city);
+addressType.setJsonFields(nestedFields);
+
+System.out.println(AtlasJsonModelFactory.toString(nameField));
+```
+
+### Cloning a field
+
+```java
+JsonField original = AtlasJsonModelFactory.createJsonField();
+original.setName("email");
+original.setTypeName("STRING");
+
+// Clone the field, preserving any configured field actions
+JsonField copy = AtlasJsonModelFactory.cloneField(original, true);
+```
+
+### Requesting inspection of a JSON instance
+
+```java
+JsonInspectionRequest request = new JsonInspectionRequest();
+request.setJsonData("{\"name\": \"Jane\", \"address\": {\"city\": \"Springfield\"}}");
+request.setType(InspectionType.INSTANCE);
+
+// Exclude fields you don't want to appear in the resulting model
+StringList exclusions = new StringList();
+exclusions.getString().add("password");
+request.setFieldNameExclusions(exclusions);
+
+// Passed to an AtlasMap JSON inspection service, which returns:
+JsonInspectionResponse response = jsonInspectionService.inspect(request);
+
+if (response.getErrorMessage() == null) {
+    JsonDocument document = response.getJsonDocument();
+    // Work with document.getFields(), inspect complex types, etc.
+} else {
+    System.err.println("Inspection failed: " + response.getErrorMessage());
+}
+```
+
+### Working with enumerations
+
+```java
+JsonComplexType statusEnum = new JsonComplexType();
+statusEnum.setName("Status");
+statusEnum.setEnumeration(true);
+
+JsonEnumField active = new JsonEnumField();
+active.setName("ACTIVE");
+active.setOrdinal(0);
+active.setTypeName("Status");
+
+JsonEnumField inactive = new JsonEnumField();
+inactive.setName("INACTIVE");
+inactive.setOrdinal(1);
+inactive.setTypeName("Status");
+
+JsonEnumFields enumFields = new JsonEnumFields();
+enumFields.getJsonEnumField().add(active);
+enumFields.getJsonEnumField().add(inactive);
+
+statusEnum.setJsonEnumFields(enumFields);
+```
+
+## Relation to Other AtlasMap Modules
+
+This model library is typically used alongside:
+
+- **AtlasMap core API** — for the base `Field`, `Document`, `DataSource`, `FieldGroup`, and `StringList` types extended or referenced here.
+- **AtlasMap JSON module(s)** — which perform the actual inspection of JSON instances/schemas and the runtime reading/writing of JSON data, producing and consuming the model types defined in this library.
+
+## License
+
+This project is part of the AtlasMap open-source project. See the main repository for license details.

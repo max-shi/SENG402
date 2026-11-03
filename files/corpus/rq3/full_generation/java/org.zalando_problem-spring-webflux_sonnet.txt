@@ -1,0 +1,225 @@
+# problem-spring-webflux
+
+`problem-spring-webflux` integrates [zalando/problem](https://github.com/zalando/problem) with Spring WebFlux, giving you a consistent way to translate exceptions raised in reactive request handling into [RFC 7807](https://tools.ietf.org/html/rfc7807) `application/problem+json` responses.
+
+It provides a set of composable "advice traits" — interfaces with default methods — that you mix into your own exception-handling classes (typically `@ControllerAdvice` beans or a global `WebExceptionHandler`) to map specific exception types to well-formed `Problem` responses. It also ships ready-made integration points for Spring Security's reactive authentication/authorization pipeline.
+
+## Features
+
+- Turn any `Throwable` into a `Problem` response with correct status, headers, and content negotiation.
+- Pre-built traits for common HTTP-related exceptions (method not allowed, not acceptable, unsupported media type, response status exceptions).
+- Pre-built traits for validation errors (`BindingResult`, Bean Validation `ConstraintViolationException`, OpenAPI request/response validation).
+- Pre-built traits for network failures (circuit breaker open, socket timeout).
+- Pre-built traits for Spring Security reactive authentication/authorization failures, including a ready-to-wire `ServerAuthenticationEntryPoint` / `ServerAccessDeniedHandler` implementation.
+- A generic `WebExceptionHandler` (`ProblemExceptionHandler`) you can register to catch anything not handled elsewhere.
+
+## Core Concepts
+
+### `AdviceTrait`
+
+`AdviceTrait` (extending the ecosystem-common `AdviceTrait`) is the foundation of the library. It provides the machinery to:
+
+- Build a `Mono<ResponseEntity<Problem>>` from a `Throwable`, an existing `ThrowableProblem`, or a `Throwable` paired with an already-built `Problem`.
+- Attach HTTP status, headers, and a problem `type` URI.
+- Perform content negotiation against the incoming `ServerWebExchange` (`negotiate`).
+- Log exceptions (`log`).
+- Fall back to a generic response when nothing more specific applies (`fallback`).
+- Post-process the final `ResponseEntity` before it is returned (`process`).
+
+Every other trait in this library extends `AdviceTrait` (directly or via `SpringAdviceTrait`), reusing this shared `create(...)` family of methods to produce their responses.
+
+### `SpringAdviceTrait`
+
+An extension of `AdviceTrait` with helpers specifically for Spring's `HttpStatus`-based exceptions:
+
+- `create(HttpStatus, Throwable, ServerWebExchange, ...)` — build a response from a Spring `HttpStatus`.
+- `toProblem(Throwable, HttpStatus)` — wrap a throwable into a `ThrowableProblem` using a Spring status.
+- `toStatus(HttpStatus)` — adapt an `HttpStatus` to a `StatusType`.
+
+### General-purpose traits
+
+- **`ProblemAdviceTrait`** — handles exceptions that are already `ThrowableProblem`s (`handleProblem`), passing them straight through to a `Problem` response.
+- **`ThrowableAdviceTrait`** — a catch-all handler (`handleThrowable`) for any uncaught `Throwable`, typically mapped to a 500 Internal Server Error.
+- **`UnsupportedOperationAdviceTrait`** — maps `UnsupportedOperationException` (`handleUnsupportedOperation`) to an appropriate `Problem`.
+
+### HTTP-specific traits
+
+- **`MethodNotAllowedAdviceTrait`** — handles `MethodNotAllowedException`.
+- **`NotAcceptableAdviceTrait`** — handles `NotAcceptableStatusException`.
+- **`UnsupportedMediaTypeAdviceTrait`** — handles `UnsupportedMediaTypeStatusException`.
+- **`ResponseStatusAdviceTrait`** — handles generic `ResponseStatusException`s by extending `SpringAdviceTrait` to translate the carried `HttpStatus` into a `Problem`.
+
+### Validation traits
+
+- **`BaseBindingResultAdviceTrait`** — shared logic to convert `FieldError`/`ObjectError`/`BindingResult` instances into `Violation` objects.
+- **`BindAdviceTrait`** — handles `WebExchangeBindException` (WebFlux request body binding failures), building a `Problem` listing all violations.
+- **`ConstraintViolationAdviceTrait`** — handles Bean Validation `ConstraintViolationException`, converting each `ConstraintViolation` into a `Violation`.
+- **`OpenApiValidationAdviceTrait`** — handles OpenAPI schema validation failures (`InvalidRequestException`, `InvalidResponseException`), converting a `ValidationReport`'s messages into `Violation`s.
+
+### Network traits
+
+- **`CircuitBreakerOpenAdviceTrait`** — handles `CircuitBreakerOpenException`, including building a `Retry-After` header (`retryAfter`).
+- **`SocketTimeoutAdviceTrait`** — handles `SocketTimeoutException`, typically mapped to a gateway timeout.
+
+### Security traits & support
+
+- **`AccessDeniedAdviceTrait`** — handles Spring Security's `AccessDeniedException`.
+- **`AuthenticationAdviceTrait`** — handles Spring Security's `AuthenticationException`.
+- **`SecurityProblemSupport`** — a concrete class implementing `ServerAuthenticationEntryPoint` and `ServerAccessDeniedHandler`, wired with a `SecurityAdviceTrait` and an `ObjectMapper`, ready to be registered with Spring Security's reactive filter chain.
+
+### Utilities and entry points
+
+- **`AdviceUtils.setHttpResponse(...)`** — writes a `ResponseEntity<Problem>` to a `ServerWebExchange`, serializing the body with the supplied `ObjectMapper`.
+- **`ProblemExceptionHandler`** — a `WebExceptionHandler` implementation that delegates to an `HttpAdviceTrait` (a composed trait covering HTTP-related exceptions) and serializes results using an `ObjectMapper`. Suitable for registration as a global fallback exception handler.
+
+## Getting Started
+
+### 1. Compose your own advice trait
+
+Combine whichever traits you need into a single `@ControllerAdvice`-annotated class or bean:
+
+```java
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.zalando.problem.spring.webflux.advice.general.ProblemAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.general.ThrowableAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.general.UnsupportedOperationAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.http.MethodNotAllowedAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.http.NotAcceptableAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.http.ResponseStatusAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.http.UnsupportedMediaTypeAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.validation.BindAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.validation.ConstraintViolationAdviceTrait;
+
+@ControllerAdvice
+public class ExceptionHandling implements
+        ProblemAdviceTrait,
+        ThrowableAdviceTrait,
+        UnsupportedOperationAdviceTrait,
+        MethodNotAllowedAdviceTrait,
+        NotAcceptableAdviceTrait,
+        ResponseStatusAdviceTrait,
+        UnsupportedMediaTypeAdviceTrait,
+        BindAdviceTrait,
+        ConstraintViolationAdviceTrait {
+}
+```
+
+Each trait exposes its handler method as a default method; Spring will invoke the appropriate one via `@ExceptionHandler`-style dispatch configured elsewhere in your application (e.g. via `@ControllerAdvice` scanning) or by calling them directly from your own exception-handling code.
+
+### 2. Wire in a global `WebExceptionHandler`
+
+For exceptions that escape controller-level handling (e.g. errors during routing or filters), register `ProblemExceptionHandler`:
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.zalando.problem.spring.webflux.advice.ProblemExceptionHandler;
+
+interface HttpAdviceTrait extends
+        MethodNotAllowedAdviceTrait,
+        NotAcceptableAdviceTrait,
+        UnsupportedMediaTypeAdviceTrait,
+        ResponseStatusAdviceTrait,
+        ThrowableAdviceTrait {
+}
+
+@Configuration
+public class WebFluxErrorHandlingConfig {
+
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE)
+    public ProblemExceptionHandler problemExceptionHandler(ObjectMapper mapper, HttpAdviceTrait advice) {
+        return new ProblemExceptionHandler(mapper, advice);
+    }
+
+    @Bean
+    public HttpAdviceTrait httpAdviceTrait() {
+        return new HttpAdviceTrait() {};
+    }
+}
+```
+
+### 3. Integrate with Spring Security
+
+Combine `AccessDeniedAdviceTrait` and `AuthenticationAdviceTrait` into a `SecurityAdviceTrait`, then plug `SecurityProblemSupport` into your `SecurityWebFilterChain`:
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.zalando.problem.spring.webflux.advice.security.AccessDeniedAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.security.AuthenticationAdviceTrait;
+import org.zalando.problem.spring.webflux.advice.security.SecurityProblemSupport;
+
+interface SecurityAdviceTrait extends AccessDeniedAdviceTrait, AuthenticationAdviceTrait {
+}
+
+@Configuration
+public class SecurityConfig {
+
+    @Bean
+    public SecurityAdviceTrait securityAdviceTrait() {
+        return new SecurityAdviceTrait() {};
+    }
+
+    @Bean
+    public SecurityWebFilterChain securityWebFilterChain(
+            ServerHttpSecurity http,
+            SecurityAdviceTrait advice,
+            ObjectMapper mapper) {
+
+        SecurityProblemSupport support = new SecurityProblemSupport(advice, mapper);
+
+        return http
+                .exceptionHandling(spec -> spec
+                        .authenticationEntryPoint(support)
+                        .accessDeniedHandler(support))
+                .build();
+    }
+}
+```
+
+### 4. Handling validation errors directly
+
+If you need finer control, traits can be invoked programmatically inside custom `@ExceptionHandler` methods:
+
+```java
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.server.ServerWebExchange;
+import org.springframework.http.ResponseEntity;
+import org.zalando.problem.Problem;
+import org.zalando.problem.spring.webflux.advice.validation.ConstraintViolationAdviceTrait;
+import reactor.core.publisher.Mono;
+
+import javax.validation.ConstraintViolationException;
+
+@ControllerAdvice
+public class ValidationExceptionHandling implements ConstraintViolationAdviceTrait {
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public Mono<ResponseEntity<Problem>> handle(ConstraintViolationException ex, ServerWebExchange exchange) {
+        return handleConstraintViolation(ex, exchange);
+    }
+}
+```
+
+## How It Works
+
+Each trait's handler method (`handleXxx`) typically:
+
+1. Builds a `ThrowableProblem` (or list of `Violation`s) from the incoming exception.
+2. Delegates to one of `AdviceTrait`'s `create(...)` overloads to produce a `Mono<ResponseEntity<Problem>>`, applying the correct HTTP status, headers, and problem `type`.
+3. Runs the result through `negotiate` (to pick a compatible media type) and `process` (for any final customization).
+4. Optionally logs the exception via `log`.
+
+Because all traits share the same underlying `create`/`negotiate`/`process`/`log`/`fallback` methods from `AdviceTrait`, you get consistent problem formatting across your entire application regardless of which specific exception triggered the response — and you can override any of these default methods to customize behavior globally.
+
+## License
+
+See the repository's `LICENSE` file for details.

@@ -1,0 +1,301 @@
+# Xinge Push SDK for Java
+
+A Java client library for integrating with Tencent's Xinge (XG) push notification service. It provides a typed API for sending push notifications to Android and iOS devices, targeting audiences by device token, user account, tag, or broadcasting to all devices, as well as managing device tags for segmentation.
+
+## Features
+
+- Send push notifications to Android and iOS apps through a REST-based push API
+- Target notifications by single token, list of tokens, account, list of accounts, tag, or all devices
+- Fine-grained control over Android notification presentation (icons, sound, vibration, click actions, custom payloads)
+- Fine-grained control over iOS APNs payload (`aps` dictionary, alert, sound, badge, custom data)
+- Schedule pushes, set expiration and quiet-hour (accept time) windows, and configure loop/repeat sending
+- Manage device tags (add/remove/cover tags on individual devices or in batch)
+- A "simple" high-level client (`XingeAppSimple`) for common one-line push calls, and a lower-level client (`XingeApp`) for full control via request/response beans
+
+## Installation
+
+Add the dependency to your build file.
+
+**Maven**
+```xml
+<dependency>
+    <groupId>com.github.xingePush</groupId>
+    <artifactId>xinge</artifactId>
+    <version>LATEST</version>
+</dependency>
+```
+
+**Gradle**
+```groovy
+implementation 'com.github.xingePush:xinge:LATEST'
+```
+
+## Core Concepts
+
+### Entry Points
+
+- **`XingeApp`** — The main client for app push and device tag operations. Exposes `pushApp(...)` (accepting either a `PushAppRequest` bean or a raw JSON request string) and `deviceTag(...)` for tag management. `setDomainUrl(String)` lets you point the client at a custom API domain. `stringifyError(Throwable)` is a helper for formatting exceptions raised during API calls.
+- **`XingeAppSimple`** — A convenience wrapper offering one-call methods for the most common push scenarios (single token, token list, account, account list, tag, or broadcast to all devices, for both Android and iOS). Constructed with your app credentials (`appid`, `secretKey`), and optionally a custom domain URL or `Proxy`.
+- **`RESTAPIV3`** — Encapsulates the REST API endpoint configuration used under the hood, exposing the base URL as well as the specific tag-management and push URLs (`getRestApiTagUrl()`, `getRestApiPushUrl()`). Use `setDomainUrl(String)` to override the default API host.
+
+### Push Request/Response Model
+
+- **`PushAppRequest`** — The full request bean for sending a push. Key fields include:
+  - `platform` (`Platform`: `all`, `android`, `ios`, `wns`, `web`, `email`, `sms`)
+  - `audience_type` (`AudienceType`: `all`, `tag`, `token`, `token_list`, `account`, `account_list`)
+  - `message_type` (`MessageType`: `notify` or `message`)
+  - `message` (`Message` — the notification content)
+  - `token_list`, `account_list`, `tag_list` (`TagListObject`) — target selectors depending on `audience_type`
+  - `account_type` / `account_push_type` — further refine account-based targeting
+  - `environment` (`Environment`: `product` or `dev`) — iOS APNs environment
+  - `expire_time`, `send_time`, `loop_times`, `loop_interval` — scheduling and expiration controls
+  - `seq`, `push_id`, `stat_tag` — request tracking/statistics metadata
+- **`PushAppResponse`** — The result of a push call: `ret_code`, `err_msg`, `push_id`, `seq`, `environment`, and raw `result` payload.
+
+### Message Content
+
+- **`Message`** — Top-level notification content shared across platforms: `title`, `content`, platform-specific overrides (`android`: `MessageAndroid`, `ios`: `MessageIOS`), `accept_time` (list of `TimeInterval`/`AcceptTimePair` quiet-hour windows), and `xgMediaResources` for rich media.
+- **`MessageAndroid`** — Android-specific notification settings: notification id (`n_id`), builder style (`builder_id`, `style_id`), sound (`ring`, `ring_raw`), `vibrate`, `lights`, `clearable`, icon configuration (`icon_type`, `icon_res`, `small_icon`), a click `action` (`ClickAction`), and `custom_content` for arbitrary payload data.
+- **`ClickAction`** — Defines what happens when a user taps a notification: `action_type` (see `ActionType`), target `activity` or `intent` string, an optional `Browser` (URL + confirm prompt), and `AtyAttr` (activity launch flags).
+- **`Browser`** — URL to open and whether to prompt for confirmation before opening.
+- **`AtyAttr`** — Android activity intent flags used when launching an activity from a notification.
+- **`MessageIOS`** — iOS-specific payload: `aps` (`Aps`), `custom` data, and `xg` metadata string.
+- **`Aps`** — Maps to the APNs `aps` dictionary: `alert` (`Alert`), `sound`, `badge_type`, `category`, `content_available`, `mutable_content`, `thread_id`.
+- **`Alert`** — Rich alert content: `title`, `subtitle`, `body`, localization keys/args, and `launch_image`.
+- **`Sound`** — Critical alert sound configuration: `name`, `volume`, `critical` flag.
+- **`TimeInterval`** / **`AcceptTimePair`** / **`AcceptTimePoint`** — Define "quiet hour" windows during which push should not be delivered; `TimeInterval` provides a constructor taking start/end hour and minute plus `isValid()` and `toJsonObject()` helpers.
+
+### Device Tag Management
+
+- **`DeviceTagRequest`** — Request for adding, removing, or overwriting tags on devices. Fields include `operator_type` (see `OperatorType` for supported operations, e.g. add/remove single or multiple tags, batch operations, cover), `platform`, `token_list`, `tag_list`, `tag_token_list` (`TagTokenPair` — pairs of tag and token for batch operations), plus `seq`, `op_type`, and `op_id` for tracking.
+- **`DeviceTagResponse`** — Result of a tag operation: `ret_code`, `err_msg`, `result`, `seg`.
+- **`TagListObject`** — A list of tags combined with an `OpType` (`OR`/`AND`) used to express tag-based audience targeting logic in `PushAppRequest`.
+- **`TagTokenPair`** — Simple pairing of a tag string and a device token string, used for batch tag operations.
+
+### Enums
+
+| Enum | Purpose |
+|---|---|
+| `Platform` | Target platform: `all`, `android`, `ios`, `wns`, `web`, `email`, `sms` |
+| `AudienceType` | How the push audience is specified: `all`, `tag`, `token`, `token_list`, `account`, `account_list` |
+| `MessageType` | `notify` (system notification) or `message` (transparent/custom message) |
+| `Environment` | APNs environment: `product` or `dev` |
+| `AccountType` | Type of account identifier: `mobile`, `email`, `wx_openid`, `qq_openid`, `weibo`, `alipay`, `taobao`, `douban`, `facebook`, `twitter`, `google`, `baidu`, `jd`, `linkin`, `others`, `visitors`, `unknown` |
+| `AccountPushType` | `latest_device_of_singe_account` or `all_devices_of_singe_account` |
+| `ActionType` | Notification click behavior: open activity by class name, open web page, open intent, open app by APK name, open activity/receiver by action |
+| `OperatorType` | Tag operation types (add/remove single or multiple tags, delete all tags, cover tag, batch add/delete) |
+| `OpType` | Logical operator (`OR`/`AND`) for combining tags |
+| `RetCode` | Result codes: `SUCCESS`, `UNKNOWN_ERROR`, `NETWORK_TIMEOUT` |
+
+## Usage
+
+### Quick Start with `XingeAppSimple`
+
+`XingeAppSimple` is the easiest way to get started — it wraps the most common push scenarios into single method calls.
+
+```java
+import com.tencent.xinge.XingeAppSimple;
+import org.json.JSONObject;
+
+public class QuickStartExample {
+    public static void main(String[] args) {
+        String appId = "your-app-id";
+        String secretKey = "your-secret-key";
+
+        XingeAppSimple client = new XingeAppSimple(appId, secretKey);
+
+        // Push to a single Android device by token
+        JSONObject androidResult = client.pushTokenAndroid(
+                "Hello",
+                "This is a push notification for Android",
+                "device-token-value"
+        );
+        System.out.println(androidResult);
+
+        // Push to a single iOS device by token in the production environment
+        JSONObject iosResult = client.pushTokenIos(
+                "Hello",
+                "This is a push notification for iOS",
+                "device-token-value",
+                "product"
+        );
+        System.out.println(iosResult);
+
+        // Broadcast to all Android devices
+        client.pushAllAndroid("Announcement", "New version available!");
+
+        // Push to devices tagged with "vip-users"
+        client.pushTagAndroid("VIP Offer", "Special discount just for you", "vip-users");
+    }
+}
+```
+
+### Advanced Push with `XingeApp` and `PushAppRequest`
+
+For full control over the push payload (custom click actions, rich alerts, scheduling, etc.), build a `PushAppRequest` and send it via `XingeApp`.
+
+```java
+import com.tencent.xinge.XingeApp;
+import com.tencent.xinge.bean.*;
+import com.tencent.xinge.bean.ios.*;
+import com.tencent.xinge.push.app.PushAppRequest;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+
+public class AdvancedPushExample {
+    public static void main(String[] args) {
+        XingeApp xingeApp = new XingeApp();
+        xingeApp.setDomainUrl("https://api.xg.qq.com");
+
+        // Build the Android-specific settings
+        MessageAndroid android = new MessageAndroid();
+        android.setN_id(1);
+        android.setBuilder_id(0);
+        android.setRing(1);
+        android.setVibrate(1);
+        android.setClearable(1);
+
+        ClickAction clickAction = new ClickAction();
+        clickAction.setAction_type(ActionType.OPEN_ACTIVITY_BY_CLASS_NAME.getType());
+        clickAction.setActivity("com.example.app.MainActivity");
+        android.setAction(clickAction);
+
+        // Build the message content
+        Message message = new Message();
+        message.setTitle("New Message");
+        message.setContent("You have a new message waiting for you.");
+        message.setAndroid(android);
+
+        // Build the push request
+        PushAppRequest request = new PushAppRequest();
+        request.setPlatform(Platform.android);
+        request.setAudience_type(AudienceType.tag);
+
+        TagListObject tagList = new TagListObject();
+        ArrayList<String> tags = new ArrayList<>();
+        tags.add("active-users");
+        tagList.setTags(tags);
+        tagList.setOp(OpType.OR);
+        request.setTag_list(tagList);
+
+        request.setMessage_type(MessageType.notify);
+        request.setMessage(message);
+        request.setEnvironment(Environment.product);
+        request.setExpire_time(3600);
+
+        JSONObject response = xingeApp.pushApp(request);
+        System.out.println(response);
+    }
+}
+```
+
+### iOS Push with Custom Alert
+
+```java
+import com.tencent.xinge.XingeApp;
+import com.tencent.xinge.bean.*;
+import com.tencent.xinge.bean.ios.*;
+import com.tencent.xinge.push.app.PushAppRequest;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+
+public class IosPushExample {
+    public static void main(String[] args) {
+        XingeApp xingeApp = new XingeApp();
+
+        Alert alert = new Alert();
+        alert.setTitle("Reminder");
+        alert.setBody("Don't forget to check your account today.");
+
+        Aps aps = new Aps();
+        aps.setAlert(alert);
+        aps.setSound("default");
+        aps.setBadge_type(1);
+
+        MessageIOS ios = new MessageIOS();
+        ios.setAps(aps);
+
+        Message message = new Message();
+        message.setIos(ios);
+
+        PushAppRequest request = new PushAppRequest();
+        request.setPlatform(Platform.ios);
+        request.setAudience_type(AudienceType.token_list);
+
+        ArrayList<String> tokens = new ArrayList<>();
+        tokens.add("ios-device-token-1");
+        tokens.add("ios-device-token-2");
+        request.setToken_list(tokens);
+
+        request.setMessage_type(MessageType.notify);
+        request.setMessage(message);
+        request.setEnvironment(Environment.dev);
+
+        JSONObject response = xingeApp.pushApp(request);
+        System.out.println(response);
+    }
+}
+```
+
+### Managing Device Tags
+
+```java
+import com.tencent.xinge.XingeApp;
+import com.tencent.xinge.device.tag.DeviceTagRequest;
+import com.tencent.xinge.bean.OperatorType;
+import com.tencent.xinge.bean.Platform;
+import org.json.JSONObject;
+
+import java.util.ArrayList;
+
+public class TagManagementExample {
+    public static void main(String[] args) {
+        XingeApp xingeApp = new XingeApp();
+
+        DeviceTagRequest tagRequest = new DeviceTagRequest();
+        tagRequest.setPlatform(Platform.android);
+        tagRequest.setOperator_type(OperatorType.ADD_MULT_TAGS_SINGLE.getType());
+
+        ArrayList<String> tokens = new ArrayList<>();
+        tokens.add("device-token-value");
+        tagRequest.setToken_list(tokens);
+
+        ArrayList<String> tags = new ArrayList<>();
+        tags.add("premium-user");
+        tags.add("region-us");
+        tagRequest.setTag_list(tags);
+
+        JSONObject response = xingeApp.deviceTag(tagRequest.toString());
+        System.out.println(response);
+    }
+}
+```
+
+### Handling Errors
+
+Both `pushApp` and `deviceTag` return a `JSONObject` reflecting the API's response. `ret_code` of `0` typically indicates success; consult `err_msg` for details on failures. `XingeApp.stringifyError(Throwable)` can be used to format exceptions raised during the call for logging purposes:
+
+```java
+try {
+    JSONObject response = xingeApp.pushApp(request);
+} catch (Exception e) {
+    System.err.println(XingeApp.stringifyError(e));
+}
+```
+
+## Reference: Targeting Options
+
+Use `AudienceType` together with the matching fields on `PushAppRequest`:
+
+| `AudienceType` | Relevant fields |
+|---|---|
+| `all` | — (broadcast) |
+| `token` / `token_list` | `token_list` |
+| `account` / `account_list` | `account_list`, `account_type`, `account_push_type` |
+| `tag` | `tag_list` (`TagListObject`) |
+
+## License
+
+See the repository's LICENSE file for details.

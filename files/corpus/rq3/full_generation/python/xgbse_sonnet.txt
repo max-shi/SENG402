@@ -1,0 +1,205 @@
+# xgbse
+
+**xgbse** (XGBoost Survival Embeddings) is a Python library that brings gradient boosting to survival analysis. It combines XGBoost's feature extraction and gradient boosted trees with classical survival analysis techniques (Kaplan-Meier estimation, logistic regression calibration, bootstrap aggregation) to produce full survival curve estimates — not just point predictions or risk scores.
+
+All estimators follow a scikit-learn-like `fit`/`predict` interface, output survival probabilities over a set of time bins, and support confidence interval estimation, extrapolation, and standard survival metrics for evaluation.
+
+## Key Features
+
+- Multiple estimator flavors trading off speed, accuracy, and confidence interval quality
+- Confidence intervals via bootstrapping or nearest-neighbor Kaplan-Meier estimation
+- Support for AFT and Cox objectives under the hood via XGBoost
+- Utilities for converting time/event data into the formats XGBoost expects
+- Metrics tailored to survival analysis: concordance index, Brier score, calibration
+- Extrapolation of survival curves beyond the observed time horizon
+
+## Installation
+
+```bash
+pip install xgbse
+```
+
+## Core Concepts
+
+### Data Format
+
+Survival data is represented as `(T, E)` pairs — time-to-event and event indicator — which are packed into a single structured array `y` via `convert_to_structured`. Most `fit` methods accept `X` (features) and `y` (this structured array).
+
+```python
+from xgbse.converters import convert_to_structured
+
+y = convert_to_structured(T, E)
+```
+
+### Time Bins
+
+Predictions are made over a discretized set of time intervals. `get_time_bins` computes sensible bins automatically from your data, based on event times and event indicators.
+
+```python
+from xgbse.non_parametric import get_time_bins
+
+time_bins = get_time_bins(T, E, size=12)
+```
+
+## Main Estimators
+
+### `XGBSEDebiasedBCE`
+
+Fits an XGBoost feature extractor (via the AFT/Cox objective) and then trains a debiased binary cross-entropy classifier per time bin to estimate survival probabilities. Good balance of speed and accuracy.
+
+```python
+from xgbse import XGBSEDebiasedBCE
+
+model = XGBSEDebiasedBCE()
+model.fit(X_train, y_train, time_bins=time_bins)
+survival_curves = model.predict(X_test)
+```
+
+### `XGBSEKaplanNeighbors`
+
+Uses XGBoost leaf co-occurrence to find "neighbors" for each observation, then computes a Kaplan-Meier estimate over each neighborhood. Naturally supports confidence intervals.
+
+```python
+from xgbse import XGBSEKaplanNeighbors
+
+model = XGBSEKaplanNeighbors()
+model.fit(X_train, y_train, time_bins=time_bins)
+survival_curves, upper_ci, lower_ci = model.predict(
+    X_test, return_ci=True, ci_width=0.683
+)
+```
+
+### `XGBSEKaplanTree`
+
+A lightweight single-tree variant: fits one XGBoost tree, groups samples by leaf, and computes a Kaplan-Meier curve per leaf. Fast and interpretable, often used as a base learner for bagging.
+
+```python
+from xgbse import XGBSEKaplanTree
+
+tree_model = XGBSEKaplanTree()
+tree_model.fit(X_train, y_train, time_bins=time_bins)
+survival_curves = tree_model.predict(X_test)
+```
+
+### `XGBSEBootstrapEstimator`
+
+A meta-estimator that wraps another xgbse estimator (commonly `XGBSEKaplanTree`) and fits multiple bootstrapped copies of it, aggregating predictions to produce more robust survival curves and confidence intervals.
+
+```python
+from xgbse import XGBSEBootstrapEstimator, XGBSEKaplanTree
+
+base_model = XGBSEKaplanTree()
+bootstrap_model = XGBSEBootstrapEstimator(base_model)
+bootstrap_model.fit(X_train, y_train, time_bins=time_bins)
+
+survival_curves, upper_ci, lower_ci = bootstrap_model.predict(
+    X_test, return_ci=True
+)
+```
+
+### `XGBSEStackedWeibull`
+
+Fits an XGBoost feature extractor and stacks a Weibull AFT model on top to produce smooth, parametric survival curves.
+
+```python
+from xgbse import XGBSEStackedWeibull
+
+model = XGBSEStackedWeibull()
+model.fit(X_train, y_train, time_bins=time_bins)
+survival_curves = model.predict(X_test)
+```
+
+## Base Classes
+
+- **`XGBSEBaseEstimator`**: shared base class implementing `fit_feature_extractor` (trains the underlying XGBoost model used for leaf/hazard extraction) and `get_neighbors` (finds nearest neighbors between two datasets based on leaf co-occurrence). All main estimators inherit from this.
+- **`DummyLogisticRegression`**: a minimal fallback classifier used internally when calibrating per-interval probabilities.
+- **`FeatureExtractor`**: wraps XGBoost training and exposes `predict_leaves` (leaf indices per tree) and `predict_hazard` (raw hazard/risk predictions), used internally by the estimators above.
+
+## Evaluating Models
+
+```python
+from xgbse.metrics import (
+    concordance_index,
+    approx_brier_score,
+    dist_calibration_score,
+)
+
+c_index = concordance_index(y_test, survival_curves)
+brier = approx_brier_score(y_test, survival_curves)
+calibration_pval = dist_calibration_score(y_test, survival_curves, n_bins=10)
+```
+
+- **`concordance_index`**: ranking-based metric, supports different risk aggregation strategies across time windows.
+- **`approx_brier_score`**: approximates the (time-dependent) Brier score across intervals, with configurable aggregation.
+- **`dist_calibration_score`**: checks whether predicted survival distributions are well-calibrated, returning a p-value or D-statistic depending on `returns`.
+
+## Extrapolating Survival Curves
+
+If you need predictions beyond your observed time horizon, `extrapolate_constant_risk` extends survival curves assuming a constant hazard rate after the last known interval:
+
+```python
+from xgbse.extrapolation import extrapolate_constant_risk
+
+extrapolated_curves = extrapolate_constant_risk(
+    survival_curves, final_time=365, intervals=30
+)
+```
+
+## Working with Confidence Intervals & Interval Probabilities
+
+Most `predict` methods accept `return_ci=True` (for models based on Kaplan-Meier) and/or `return_interval_probs=True` to expose the discrete per-interval failure probabilities underlying the cumulative survival curve, rather than just the cumulative survival function:
+
+```python
+survival_curves, interval_probs = model.predict(
+    X_test, return_interval_probs=True
+)
+```
+
+## Low-Level Utilities
+
+For advanced use cases, xgbse exposes the building blocks it uses internally:
+
+- **`convert_data_to_xgb_format`**, **`build_xgb_aft_dmatrix`**, **`build_xgb_cox_dmatrix`**: construct XGBoost `DMatrix` objects with the correct labels/bounds for AFT or Cox objectives.
+- **`hazard_to_survival`**: converts per-interval hazard values into cumulative survival probabilities.
+- **`sort_times_and_events`**, **`calculate_survival_func`**, **`calculate_confidence_intervals`**, **`calculate_kaplan_vectorized`**: vectorized Kaplan-Meier computation utilities.
+- **`calculate_interval_failures`**, **`sample_time_bins`**, **`calculate_exp_boundary`**, **`sort_and_add_zeros`**: supporting routines for building interval-based survival estimates and confidence bands.
+- **`check_xgboost_parameters`**: validates and normalizes user-supplied XGBoost parameters, including handling of categorical feature support.
+
+## Typical Workflow
+
+```python
+import pandas as pd
+from xgbse import XGBSEKaplanNeighbors
+from xgbse.converters import convert_to_structured
+from xgbse.non_parametric import get_time_bins
+from xgbse.metrics import concordance_index, approx_brier_score
+
+# Prepare data
+X_train, X_test = ...  # feature DataFrames
+T_train, E_train = ...  # time and event arrays
+
+y_train = convert_to_structured(T_train, E_train)
+time_bins = get_time_bins(T_train, E_train, size=15)
+
+# Fit model
+model = XGBSEKaplanNeighbors()
+model.fit(
+    X_train,
+    y_train,
+    time_bins=time_bins,
+    num_boost_round=100,
+    early_stopping_rounds=10,
+    validation_data=[(X_test, y_test)],
+)
+
+# Predict
+survival_curves, upper_ci, lower_ci = model.predict(X_test, return_ci=True)
+
+# Evaluate
+print("C-index:", concordance_index(y_test, survival_curves))
+print("Brier score:", approx_brier_score(y_test, survival_curves))
+```
+
+## License
+
+This project is open source. See the repository for license details.

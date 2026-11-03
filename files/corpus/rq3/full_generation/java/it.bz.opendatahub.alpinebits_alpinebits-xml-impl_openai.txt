@@ -1,0 +1,207 @@
+# alpinebits-xml-impl
+
+Java XML support for AlpineBits-oriented applications.
+
+This library provides JAXB-based conversion between Java objects and XML streams, XML schema lookup helpers, stream utilities, and middleware components that map XML request and response bodies to typed values stored in a middleware `Context`.
+
+## Main components
+
+### JAXB conversion
+
+- `JAXBObjectToXmlConverter` implements `ObjectToXmlConverter`
+  - Converts a Java object to XML written to an `OutputStream`.
+  - Main method: `toXml(Object objectToConvert, OutputStream os)`
+
+- `JAXBXmlToObjectConverter<T>` implements `XmlToObjectConverter<T>`
+  - Converts XML read from an `InputStream` into an object of type `T`.
+  - Main method: `T toObject(InputStream is)`
+
+- `JAXBContextSingleton`
+  - Provides a shared JAXB `JAXBContext`.
+  - Main method: `static JAXBContext getInstance()`
+
+### XML schema support
+
+- `OtaSchemaSingleton`
+  - Provides a shared `Schema` instance.
+  - Main method: `static Schema getInstance()`
+
+- `XmlValidationSchemaProvider`
+  - Builds Relax NG or XSD validation schemas.
+  - Supports both AlpineBits version-based lookup and direct filename-based lookup.
+
+  Available methods:
+
+  ```java
+  Schema buildRngSchemaForAlpineBitsVersion(String version);
+  Schema buildRngSchema(String filename);
+
+  Schema buildXsdSchemaForAlpineBitsVersion(String version);
+  Schema buildXsdSchema(String filename);
+  ```
+
+### Middleware integration
+
+- `XmlRequestMappingMiddleware<T>`
+  - Uses an `XmlToObjectConverter<T>` to map an XML request into typed data.
+  - Stores the converted request value using a supplied `Key<T>`.
+
+- `XmlResponseMappingMiddleware<T>`
+  - Uses an `ObjectToXmlConverter` to map typed response data to XML.
+  - Reads the response value using a supplied `Key<T>`.
+
+Both middleware classes implement `Middleware` and participate in a `MiddlewareChain`.
+
+### Stream utility
+
+- `StreamConverter`
+  - Reads an entire `InputStream` into a `String`.
+
+  ```java
+  String xml = StreamConverter.readToString(inputStream);
+  ```
+
+## Basic XML conversion
+
+The following example converts a JAXB-compatible Java object to XML and then converts XML back into a typed object.
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBObjectToXmlConverter;
+import it.bz.opendatahub.alpinebits.xml.JAXBXmlToObjectConverter;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+
+JAXBObjectToXmlConverter objectToXml = new JAXBObjectToXmlConverter();
+
+MyRequest request = new MyRequest();
+
+ByteArrayOutputStream output = new ByteArrayOutputStream();
+objectToXml.toXml(request, output);
+
+String xml = output.toString(StandardCharsets.UTF_8);
+
+JAXBXmlToObjectConverter<MyRequest> xmlToObject =
+    new JAXBXmlToObjectConverter<>();
+
+MyRequest parsedRequest = xmlToObject.toObject(
+    new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8))
+);
+```
+
+`MyRequest` should be a type supported by the configured JAXB context.
+
+## Reading XML from a stream
+
+Use `StreamConverter` when raw XML text is needed, for example for logging, inspection, or forwarding.
+
+```java
+import it.bz.opendatahub.alpinebits.xml.StreamConverter;
+
+import java.io.InputStream;
+
+InputStream input = /* XML input stream */;
+String xml = StreamConverter.readToString(input);
+```
+
+Because `readToString` declares `IOException`, callers should handle or propagate it.
+
+```java
+try {
+    String xml = StreamConverter.readToString(input);
+    // Process XML text
+} catch (java.io.IOException e) {
+    // Handle stream read failure
+}
+```
+
+## Obtaining schemas
+
+Schemas can be obtained for a specific AlpineBits version or from a named schema resource.
+
+```java
+import it.bz.opendatahub.alpinebits.xml.XmlValidationSchemaProvider;
+
+import javax.xml.validation.Schema;
+
+Schema xsdSchema =
+    XmlValidationSchemaProvider.buildXsdSchemaForAlpineBitsVersion("example-version");
+
+Schema rngSchema =
+    XmlValidationSchemaProvider.buildRngSchemaForAlpineBitsVersion("example-version");
+```
+
+To select a schema by filename instead:
+
+```java
+Schema xsdSchema =
+    XmlValidationSchemaProvider.buildXsdSchema("schema-file.xsd");
+
+Schema rngSchema =
+    XmlValidationSchemaProvider.buildRngSchema("schema-file.rng");
+```
+
+A shared schema is also available through `OtaSchemaSingleton`:
+
+```java
+import it.bz.opendatahub.alpinebits.xml.OtaSchemaSingleton;
+
+import javax.xml.validation.Schema;
+
+Schema schema = OtaSchemaSingleton.getInstance();
+```
+
+## Middleware usage
+
+The middleware classes connect XML conversion to a context-based request/response processing pipeline.
+
+### Map request XML to a typed context value
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBXmlToObjectConverter;
+import it.bz.opendatahub.alpinebits.xml.middleware.XmlRequestMappingMiddleware;
+
+// Obtain the Key<MyRequest> from the application's context/key setup.
+Key<MyRequest> requestKey = /* request data key */;
+
+XmlRequestMappingMiddleware<MyRequest> requestMiddleware =
+    new XmlRequestMappingMiddleware<>(
+        new JAXBXmlToObjectConverter<MyRequest>(),
+        requestKey
+    );
+```
+
+The middleware can then be registered wherever the application configures its `Middleware` chain.
+
+### Map a typed response context value to XML
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBObjectToXmlConverter;
+import it.bz.opendatahub.alpinebits.xml.middleware.XmlResponseMappingMiddleware;
+
+// Obtain the Key<MyResponse> from the application's context/key setup.
+Key<MyResponse> responseKey = /* response data key */;
+
+XmlResponseMappingMiddleware<MyResponse> responseMiddleware =
+    new XmlResponseMappingMiddleware<>(
+        new JAXBObjectToXmlConverter(),
+        responseKey
+    );
+```
+
+In a typical pipeline, request mapping runs before application logic so that XML input becomes a typed request object. Response mapping runs after application logic has placed a typed response object under the configured context key.
+
+## Shared JAXB context
+
+If direct access to the configured JAXB context is required, retrieve it through the singleton:
+
+```java
+import it.bz.opendatahub.alpinebits.xml.JAXBContextSingleton;
+
+import javax.xml.bind.JAXBContext;
+
+JAXBContext context = JAXBContextSingleton.getInstance();
+```
+
+This is useful when application code needs JAXB facilities beyond the converter interfaces.

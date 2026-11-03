@@ -1,0 +1,190 @@
+# li.strolch.privilege
+
+A comprehensive Java authentication and authorization framework providing user/role/privilege management, session handling, password encryption, and pluggable persistence and policy mechanisms.
+
+## Overview
+
+`li.strolch.privilege` implements a full-featured privilege management system for Java applications. It handles:
+
+- **User and role management** — creating, updating, and querying users and roles
+- **Authentication** — username/password login, single sign-on, and challenge/response flows (e.g. for password resets or two-factor login)
+- **Session management** — issuing and validating `Certificate` objects representing authenticated sessions
+- **Authorization** — fine-grained privilege checks based on roles and configurable policies
+- **Password security** — salted/hashed password storage, configurable password strength rules, and encryption
+- **Persistence** — pluggable storage backends (an XML-based implementation is included)
+- **XML-based configuration** — bootstrapping the whole system from a configuration file
+
+The library is organized around a central `PrivilegeHandler` that coordinates several pluggable components.
+
+## Core Concepts
+
+### PrivilegeHandler
+
+`PrivilegeHandler` (with its default implementation `DefaultPrivilegeHandler`) is the main entry point of the library. It exposes operations to:
+
+- Authenticate users (`authenticate`, `authenticateSingleSignOn`)
+- Validate and refresh sessions (`validate`, `refresh`, `invalidate`)
+- Manage users and roles (`addUser`, `updateUser`, `removeUser`, `addRole`, `removeRole`, `addOrReplacePrivilegeOnRole`, etc.)
+- Handle challenge-based flows (`initiateChallengeFor`, `validateChallenge`)
+- Run privileged system-level actions (`runAs`, `runWithResult`, `openSystemUserContext`)
+- Persist and reload the underlying user/role store (`persist`, `reload`)
+
+Two LDAP-backed extensions are provided: `BaseLdapPrivilegeHandler`, `SimpleLdapPrivilegeHandler`, and `JsonConfigLdapPrivilegeHandler`, for authenticating against LDAP directories while still using the local privilege model for authorization.
+
+### Pluggable Handlers
+
+The `PrivilegeHandler` delegates to several collaborator interfaces, each configurable via a parameter map:
+
+| Interface | Purpose | Provided implementations |
+|---|---|---|
+| `EncryptionHandler` | Password hashing, salting, and token generation | `DefaultEncryptionHandler` |
+| `PasswordStrengthHandler` | Validates password strength rules | `BasicPasswordStrengthHandler`, `SimplePasswordStrengthHandler` |
+| `PersistenceHandler` | Stores/loads `User` and `Role` objects | `XmlPersistenceHandler` |
+| `UserChallengeHandler` | Sends challenge codes to users (e.g. for password reset) | `ConsoleUserChallengeHandler`, `MailUserChallengeHandler` |
+| `SingleSignOnHandler` | Authenticates users via external SSO data | (implement yourself) |
+
+### Model Classes
+
+- **`Certificate`** — represents an authenticated session; returned from `authenticate`/`validate` calls and passed to nearly every `PrivilegeHandler` method for authorization checks.
+- **`UserRep`, `RoleRep`, `PrivilegeRep`** — serializable, client-facing representations of users, roles, and privileges.
+- **`User`, `Role`, `IPrivilege`/`PrivilegeImpl`** (internal model) — the server-side objects persisted by a `PersistenceHandler`.
+- **`PrivilegeContext`** — obtained via `validate(Certificate)`; used to check privileges and roles (`assertHasPrivilege`, `hasRole`, `validateAction`, `hasPrivilege`) within the scope of a request.
+- **`UserState`** — lifecycle state of a user (`NEW`, `ENABLED`, `DISABLED`, `EXPIRED`, `REMOTE`, `SYSTEM`).
+- **`Usage`** — describes intended certificate usage (`ANY`, `SINGLE`, `SET_PASSWORD`), used in challenge and authentication flows.
+- **`Restrictable`** / **`SimpleRestrictable`** — represent an action + object pair to be checked against privileges.
+
+### Privilege Policies
+
+Authorization decisions are delegated to `PrivilegePolicy` implementations, referenced by name from `IPrivilege`/`PrivilegeRep`:
+
+- `DefaultPrivilege` — simple allow/deny list checking
+- `RoleAccessPrivilege`, `UserAccessPrivilege`, `UserAccessWithSameOrganisationPrivilege` — restrict access based on role/user identity, optionally scoped by organisation
+- `UsernameFromCertificatePrivilege`, `UsernameFromCertificateWithSameOrganisationPrivilege` — restrict actions to the authenticated user (or same-organisation users)
+
+`PrivilegePolicyHelper` provides shared logic (`preValidate`, `checkByAllowDenyValues`) for building custom policies.
+
+### Configuration and Bootstrapping
+
+- **`PrivilegeContainerModel`** — an in-memory representation of the full configuration (handler class names, parameter maps, policy mappings).
+- **`PrivilegeConfigSaxReader`** / **`PrivilegeConfigDomWriter`** — read/write the configuration to/from XML.
+- **`PrivilegeInitializationHelper`** — convenience entry points to bootstrap a fully wired `PrivilegeHandler` from an XML file, input stream, or `PrivilegeContainerModel`.
+- **`PrivilegeUsersSaxReader`/`DomWriter`**, **`PrivilegeRolesSaxReader`/`DomWriter`**, **`CertificateStubsSaxReader`/`DomWriter`** — XML (de)serialization for users, roles, and session certificate stubs, used internally by `XmlPersistenceHandler` and session persistence.
+
+### Exceptions
+
+- `PrivilegeException` — base runtime exception for the library
+- `PrivilegeModelException` — thrown for invalid model data
+- `NotAuthenticatedException` — thrown when a certificate/session is missing or invalid
+- `AccessDeniedException` — thrown when an authenticated user lacks sufficient privileges
+- `InvalidCredentialsException` — thrown on failed authentication attempts
+
+## Getting Started
+
+### 1. Bootstrapping from XML configuration
+
+```java
+import li.strolch.privilege.handler.PrivilegeHandler;
+import li.strolch.privilege.helper.PrivilegeInitializationHelper;
+
+import java.io.File;
+
+PrivilegeHandler privilegeHandler =
+        PrivilegeInitializationHelper.initializeFromXml(new File("config/PrivilegeConfig.xml"));
+```
+
+The XML file describes which `EncryptionHandler`, `PersistenceHandler`, `PasswordStrengthHandler`, `UserChallengeHandler`, `SingleSignOnHandler`, and `PrivilegePolicy` implementations to use, along with their parameters.
+
+### 2. Authenticating a user
+
+```java
+import li.strolch.privilege.model.Certificate;
+import li.strolch.privilege.base.AccessDeniedException;
+
+try {
+    Certificate certificate = privilegeHandler.authenticate("jdoe", "s3cr3t!".toCharArray(), false);
+    System.out.println("Logged in as " + certificate.getUsername());
+} catch (AccessDeniedException e) {
+    System.err.println("Login failed: " + e.getMessage());
+}
+```
+
+### 3. Validating a session and checking privileges
+
+```java
+import li.strolch.privilege.model.PrivilegeContext;
+import li.strolch.privilege.model.SimpleRestrictable;
+import li.strolch.privilege.base.AccessDeniedException;
+
+PrivilegeContext ctx = privilegeHandler.validate(certificate);
+
+// Simple role check
+ctx.assertHasRole("Admin");
+
+// Privilege-based check with a restrictable action
+try {
+    ctx.validateAction(new SimpleRestrictable("DeleteOrder", "order-1234"));
+    // proceed with the action
+} catch (AccessDeniedException e) {
+    // deny the operation
+}
+```
+
+### 4. Managing users and roles
+
+```java
+import li.strolch.privilege.model.UserRep;
+import li.strolch.privilege.model.UserState;
+import li.strolch.privilege.model.RoleRep;
+import li.strolch.privilege.model.PrivilegeRep;
+
+import java.util.Set;
+import java.util.Collections;
+
+// Create a new user
+UserRep newUser = new UserRep(null, "asmith", "Alice", "Smith",
+        UserState.NEW, Set.of("User"), null, Collections.emptyMap(), null);
+UserRep created = privilegeHandler.addUser(certificate, newUser, "InitialPass1!".toCharArray());
+
+// Add a privilege to a role
+PrivilegeRep privilege = new PrivilegeRep("DeleteOrder", "DefaultPrivilege",
+        false, Set.of(), Set.of("order-1234"));
+privilegeHandler.addOrReplacePrivilegeOnRole(certificate, "Admin", privilege);
+```
+
+### 5. Password reset via challenge
+
+```java
+import li.strolch.privilege.model.Usage;
+
+// Trigger a challenge (e.g. sends an email/console message with a code)
+privilegeHandler.initiateChallengeFor(Usage.SET_PASSWORD, "asmith");
+
+// Later, once the user provides the code they received:
+Certificate resetCertificate = privilegeHandler.validateChallenge("asmith", "123456");
+privilegeHandler.setUserPassword(resetCertificate, "asmith", "NewPassw0rd!".toCharArray());
+```
+
+### 6. Running privileged system actions
+
+```java
+import li.strolch.privilege.handler.SystemAction;
+import li.strolch.privilege.model.PrivilegeContext;
+
+privilegeHandler.runAs("system-user", new SystemAction() {
+    @Override
+    public void execute(PrivilegeContext privilegeContext) throws Exception {
+        // perform maintenance work with full system privileges
+    }
+});
+```
+
+## Extending the Library
+
+- Implement `PrivilegePolicy` to define custom authorization logic, then register it in your `PrivilegeContainerModel` / XML configuration via `addPolicy`.
+- Implement `PersistenceHandler` to back user/role storage with a database instead of XML.
+- Implement `SingleSignOnHandler` to integrate with an external identity provider.
+- Subclass `UserChallengeHandler` to deliver challenge codes over a custom channel (SMS, push notification, etc.), following the pattern of `ConsoleUserChallengeHandler` and `MailUserChallengeHandler`.
+
+## License
+
+See the repository's license file for details.

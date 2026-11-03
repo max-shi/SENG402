@@ -1,0 +1,393 @@
+# texsoup
+
+`texsoup` is a Python library for reading TeX/LaTeX source into a mutable tree of nodes. It provides tools to inspect commands, environments, groups, text, and arguments; search the resulting document structure; edit it; and serialize it again.
+
+The primary entry point is `TexSoup`, which accepts TeX source and returns a document-like `TexNode` object.
+
+```python
+from texsoup import TexSoup
+
+soup = TexSoup(r"""
+\section{Introduction}
+This is \emph{important}.
+""")
+```
+
+## Quick start
+
+Parse a document, locate elements by name, and inspect or modify them:
+
+```python
+from texsoup import TexSoup
+
+source = r"""
+\documentclass{article}
+\begin{document}
+\section{Overview}
+A short \emph{example}.
+\end{document}
+"""
+
+soup = TexSoup(source)
+
+section = soup.find("section")
+if section is not None:
+    print(section.name)
+    print(section.args)
+    print(section.contents)
+
+for command in soup.find_all("emph"):
+    print(command.string)
+```
+
+The parsed document can also be searched recursively:
+
+```python
+# Count matching nodes.
+num_sections = soup.count("section")
+
+# Retrieve every descendant node.
+nodes = soup.descendants
+
+# Search textual content using a regular expression.
+matches = soup.search_regex(r"example|Overview")
+```
+
+## Parsing TeX
+
+### `TexSoup`
+
+```python
+TexSoup(tex_code, skip_envs=(), tolerance=0)
+```
+
+Parses TeX source into a navigable and editable tree.
+
+```python
+from texsoup import TexSoup
+
+soup = TexSoup(r"\textbf{Hello}, world!")
+```
+
+The optional parsing controls are:
+
+- `skip_envs`: a collection of environment names to skip while parsing.
+- `tolerance`: a parser-tolerance setting for handling imperfect or incomplete input.
+
+### `read`
+
+```python
+from texsoup.tex import read
+
+soup = read(r"\begin{itemize}\item One\end{itemize}")
+```
+
+`read` provides another public parsing entry point with the same `skip_envs` and `tolerance` options.
+
+### Lower-level reader functions
+
+The `reader` API exposes lower-level functions for applications that need to read particular TeX constructs or work with buffers directly:
+
+- `read_tex`
+- `read_expr`
+- `read_item`
+- `read_env`
+- `read_math_env`
+- `read_command`
+- `read_args`
+- `read_arg`
+- `read_arg_optional`
+- `read_arg_required`
+- `read_raw`
+- `read_raw_brace_arg`
+- `read_verbatim_contents`
+
+These functions accept parsing state and options such as `tolerance`, `skip_envs`, and parsing mode where applicable.
+
+## Document model
+
+`texsoup` represents a TeX document as a hierarchy of nodes and expressions.
+
+### `TexNode`
+
+`TexNode` is the main tree-oriented interface. A parsed `TexSoup` result supports the same node operations.
+
+Important node properties include:
+
+- `name` — node name.
+- `args` — associated arguments.
+- `children` — immediate child nodes.
+- `contents` — contained expressions or content.
+- `string` — string representation or textual value.
+- `text` — text associated with the node.
+- `position` — source position information.
+
+Nodes can be traversed using:
+
+- `all`
+- `children`
+- `descendants`
+
+Nodes can be searched using:
+
+- `find(name=None, **attrs)`
+- `find_all(name=None, **attrs)`
+- `count(name=None, **attrs)`
+- `search_regex(pattern, **kwargs)`
+
+Example:
+
+```python
+soup = TexSoup(r"""
+\section{First}
+Text.
+
+\section{Second}
+More text.
+""")
+
+for section in soup.find_all("section"):
+    print(section.string)
+```
+
+### Editing nodes
+
+The tree is mutable. `TexNode` provides methods to add, remove, replace, copy, and delete nodes:
+
+- `append(*nodes)`
+- `insert(i, *nodes)`
+- `remove(node)`
+- `replace(child, *nodes)`
+- `replace_with(*nodes)`
+- `delete()`
+- `copy()`
+
+For example, remove all matching commands:
+
+```python
+soup = TexSoup(r"Keep this \emph{and remove this emphasis}.")
+
+for command in soup.find_all("emph"):
+    command.delete()
+```
+
+Nodes also provide `char_pos_to_line(char_pos)` for converting a character position to a line-related position.
+
+### `TexExpr`
+
+`TexExpr` is the base expression type used for content-level TeX structures. It exposes:
+
+- `children`
+- `contents`
+- `string`
+- `append(*exprs)`
+- `insert(i, *exprs)`
+- `remove(expr)`
+
+Several specialized expressions inherit from it.
+
+### Environments
+
+Environment-related classes include:
+
+- `TexEnv`
+- `TexNamedEnv`
+- `TexUnNamedEnv`
+- `TexDisplayMathModeEnv`
+- `TexMathModeEnv`
+- `TexDisplayMathEnv`
+- `TexMathEnv`
+
+`TexEnv` exposes `begin` and `end` values, representing the boundaries of an environment.
+
+```python
+soup = TexSoup(r"""
+\begin{document}
+Content here.
+\end{document}
+""")
+
+document = soup.find("document")
+if document is not None:
+    print(document.begin)
+    print(document.end)
+```
+
+### Commands, text, and groups
+
+The library distinguishes several common TeX expression types:
+
+- `TexCmd` — a TeX command.
+- `TexText` — textual content; it is also a subclass of `str`.
+- `TexGroup` — a grouped expression.
+- `BracketGroup` — a bracket-delimited group.
+- `BraceGroup` — a brace-delimited group.
+
+`TexGroup` provides:
+
+- `keyvals`
+- `parse(cls, s)`
+
+For example, grouped text can be parsed directly:
+
+```python
+from texsoup.data import BraceGroup
+
+group = BraceGroup.parse("{title=Example, draft=true}")
+print(group.keyvals)
+```
+
+### Arguments
+
+`TexArgs` is a list-like container for TeX arguments. In addition to normal list behavior, it exposes mutating operations:
+
+- `append(arg)`
+- `extend(args)`
+- `insert(i, arg)`
+- `remove(item)`
+- `pop(i)`
+- `reverse()`
+- `clear()`
+
+Arguments are available through the `args` property of `TexNode` instances.
+
+```python
+soup = TexSoup(r"\section{A heading}")
+
+section = soup.find("section")
+if section is not None:
+    for arg in section.args:
+        print(arg)
+```
+
+## Exporting parsed documents
+
+The export helpers serialize a parsed TeX structure.
+
+```python
+from texsoup import TexSoup
+from texsoup.export import dumps
+
+soup = TexSoup(r"\textbf{Hello}")
+serialized = dumps(soup)
+
+print(serialized)
+```
+
+Available functions:
+
+```python
+dumps(tex, format="json")
+dump(tex, fp, format="json")
+```
+
+`dumps` returns serialized output, while `dump` writes serialized output to `fp`. The default format is `"json"`.
+
+```python
+from texsoup.export import dump
+
+with open("document.json", "w") as fp:
+    dump(soup, fp)
+```
+
+## Tokenization utilities
+
+For token-level TeX processing, `texsoup.tokens` provides a tokenizer and helpers for recognizing TeX syntax:
+
+- `tokenize(text)`
+- `next_token(text, prev=None)`
+- `token(name)`
+- `in_at_letter_mode(text)`
+- `is_command_name_token(token, text)`
+- `update_at_letter_state(text, token)`
+
+Specialized tokenization functions are also available:
+
+- `tokenize_escaped_symbols`
+- `tokenize_line_comment`
+- `tokenize_math_sym_switch`
+- `tokenize_math_asym_switch`
+- `tokenize_line_break`
+- `tokenize_ignore`
+- `tokenize_spacers`
+- `tokenize_symbols`
+- `tokenize_punctuation_command_name`
+- `tokenize_command_name`
+- `tokenize_string`
+
+Example:
+
+```python
+from texsoup.tokens import tokenize
+
+tokens = tokenize(r"\command{value} % comment")
+for item in tokens:
+    print(item)
+```
+
+## Utility types
+
+### `Token`
+
+`Token` is a string-derived type with token-aware string operations:
+
+- `Token.join(tokens, glue="")`
+- `strip(...)`
+- `lstrip(...)`
+- `rstrip(...)`
+
+### Buffers
+
+`Buffer` and `MixedBuffer` support buffered traversal and editing operations used by parsing workflows.
+
+`Buffer` includes methods such as:
+
+- `hasNext(n=1)`
+- `peek(j=0)`
+- `forward(j=1)`
+- `backward(j=1)`
+- `push(*items)`
+- `replace(count, *items)`
+- `position()`
+- `startswith(s)`
+- `endswith(s)`
+- `forward_until(condition, peek=True)`
+
+### Other helpers
+
+The utility API also includes:
+
+- `IntEnum(name, keys, start=1)`
+- `CharToLineOffset`
+- `to_buffer(...)`
+- `to_list(f)`
+
+## Example: inspect and edit a document
+
+```python
+from texsoup import TexSoup
+from texsoup.export import dumps
+
+source = r"""
+\begin{document}
+\section{Draft}
+This is \emph{draft} content.
+\end{document}
+"""
+
+soup = TexSoup(source)
+
+# Inspect sections.
+for section in soup.find_all("section"):
+    print("Section:", section.string)
+
+# Remove selected commands from the document tree.
+for emphasis in soup.find_all("emph"):
+    emphasis.delete()
+
+# Serialize the updated structure.
+result = dumps(soup)
+print(result)
+```
+
+`texsoup` is suited to workflows such as document inspection, structural querying, source transformation, TeX-aware tooling, and exporting parsed TeX structures for downstream processing.

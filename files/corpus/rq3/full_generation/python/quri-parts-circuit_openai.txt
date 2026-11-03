@@ -1,0 +1,601 @@
+# quri-parts-circuit
+
+`quri-parts-circuit` provides circuit-oriented building blocks for quantum applications in Python. Its API centers on quantum circuits, gates, parameterized circuits, parameter mappings, circuit transpilation, Pauli operators, quantum states, sampling, and interoperability with external quantum SDKs and simulators.
+
+The library is designed to support workflows such as:
+
+- Representing immutable and mutable quantum circuits.
+- Creating and binding parameterized circuits.
+- Transforming circuits into target gate sets.
+- Decomposing, normalizing, fusing, or remapping gates.
+- Working with Pauli labels and operator sums.
+- Preparing circuit-based quantum states.
+- Sampling and estimating observables.
+- Converting circuits to and from Qiskit, Cirq, Braket, Qulacs, tket, Stim, OpenQASM, and other supported integrations.
+
+## Core concepts
+
+### Quantum circuits
+
+Circuit protocols define the common interface for quantum circuits:
+
+- `QuantumCircuitProtocol`
+  - `qubit_count()`
+  - `cbit_count()`
+  - `depth()`
+- `MutableQuantumCircuitProtocol`
+  - Adds gate insertion, extension, and measurement operations.
+- `ParametricQuantumCircuitProtocol`
+  - Adds parameter binding and parameter-mapping operations.
+- `MutableParametricQuantumCircuitProtocol`
+  - Combines mutable-circuit and parametric-circuit behavior.
+
+Mutable circuits expose convenience methods for common gates, including:
+
+```python
+circuit.add_H_gate(0)
+circuit.add_CNOT_gate(0, 1)
+circuit.add_RZ_gate(1, 0.5)
+circuit.measure([0, 1], [0, 1])
+```
+
+Supported convenience methods include single-qubit gates such as `X`, `Y`, `Z`, `H`, `S`, `T`, `RX`, `RY`, and `RZ`; multi-qubit gates such as `CNOT`, `CZ`, `SWAP`, and `TOFFOLI`; unitary-matrix gates; Pauli gates; Pauli rotations; and measurements.
+
+### Linear-mapped parameterized circuits
+
+`LinearMappedParametricQuantumCircuit` is a mutable parameterized circuit whose gate parameters may be represented as linear functions of circuit parameters.
+
+Its immutable counterpart is `ImmutableLinearMappedParametricQuantumCircuit`.
+
+Important methods include:
+
+- `add_parameter(name)` and `add_parameters(*names)`
+- `add_ParametricRX_gate(qubit_index, angle)`
+- `add_ParametricRY_gate(qubit_index, angle)`
+- `add_ParametricRZ_gate(qubit_index, angle)`
+- `add_ParametricPauliRotation_gate(qubit_indices, pauli_ids, angle)`
+- `bind_parameters(params)`
+- `param_mapping()`
+- `primitive_circuit()`
+- `freeze()`
+- `get_mutable_copy()`
+
+Parameter mappings are represented by `ParameterMapping` and `LinearParameterMapping`. A mapping describes how input parameters are transformed into the parameters used by an underlying primitive circuit.
+
+### Gates
+
+The library provides factories for standard circuit gates, including:
+
+- Single-qubit gates: `IdentityFactory`, `XFactory`, `YFactory`, `ZFactory`, `HFactory`, `SFactory`, `SdagFactory`, `TFactory`, `TdagFactory`.
+- Rotations: `RXFactory`, `RYFactory`, `RZFactory`, `U1Factory`, `U2Factory`, `U3Factory`.
+- Multi-qubit gates: `CNOTFactory`, `CZFactory`, `SWAPFactory`, `TOFFOLIFactory`.
+- Pauli operations: `PauliFactory`, `PauliRotationFactory`.
+- Parameterized operations: `ParametricRXFactory`, `ParametricRYFactory`, `ParametricRZFactory`, and `ParametricPauliRotationFactory`.
+- Measurement operations: `MeasurementFactory`.
+- Multi-controlled gate factories, including `MCXFactory`, `MCYFactory`, `MCZFactory`, `MCRXFactory`, `MCRYFactory`, and `MCRZFactory`.
+
+Gate-name helper functions can be used to classify gate names:
+
+```python
+from quri_parts.circuit.gate_names import (
+    is_gate_name,
+    is_parametric_gate_name,
+    is_single_qubit_gate_name,
+    is_two_qubit_gate_name,
+)
+
+if is_gate_name(name):
+    print("Recognized gate name")
+
+if is_parametric_gate_name(name):
+    print("Parameterized gate")
+```
+
+## Parameterized-circuit workflow
+
+A parameterized circuit can be constructed and later bound to numerical values.
+
+```python
+from quri_parts.circuit.circuit_linear_mapped import (
+    LinearMappedParametricQuantumCircuit,
+)
+
+# Construction details depend on the circuit creation context.
+# `ansatz` is a mutable linear-mapped parametric circuit.
+ansatz: LinearMappedParametricQuantumCircuit
+
+theta, phi = ansatz.add_parameters("theta", "phi")
+
+ansatz.add_ParametricRY_gate(0, theta)
+ansatz.add_ParametricRZ_gate(0, phi)
+ansatz.add_CNOT_gate(0, 1)
+ansatz.add_ParametricRY_gate(1, theta)
+
+# Freeze the circuit when it should no longer be mutated.
+frozen_ansatz = ansatz.freeze()
+
+# Bind the external parameters to obtain a bound circuit.
+bound_circuit = frozen_ansatz.bind_parameters([0.2, -0.7])
+
+print("Qubits:", frozen_ansatz.qubit_count())
+print("Parameters:", frozen_ansatz.parameter_count())
+print("Depth:", frozen_ansatz.depth())
+print("Gates:", frozen_ansatz.gates())
+```
+
+To inspect the parameter relationship between the exposed circuit parameters and the primitive circuit parameters:
+
+```python
+mapping = frozen_ansatz.param_mapping()
+
+input_parameters = mapping.in_params()
+output_parameters = mapping.out_params()
+parameter_expressions = mapping.mapping()
+
+print("Input parameters:", input_parameters)
+print("Primitive parameters:", output_parameters)
+print("Mapping:", parameter_expressions)
+```
+
+## Circuit transpilation
+
+Circuit transpilers transform circuits while preserving their intended operation. The API provides composable transpiler interfaces:
+
+- `CircuitTranspilerProtocol`
+- `SequentialTranspiler`
+- `ParallelDecomposer`
+- `GateDecomposer`
+- `GateKindDecomposer`
+- `ParametricCircuitTranspilerProtocol`
+- `ParametricTranspiler`
+- `ParametricSequentialTranspiler`
+
+A `GateDecomposer` identifies target gates with `is_target_gate()` and replaces them with a gate sequence through `decompose()`.
+
+### Common transpilers
+
+The available transpilers include:
+
+- Gate conversions:
+  - `CNOT2CZHTranspiler`
+  - `CZ2CNOTHTranspiler`
+  - `SWAP2CNOTTranspiler`
+  - `TOFFOLI2HTTdagCNOTTranspiler`
+  - `TOFFOLI2CNOTTTranspiler`
+- Rotation and named-gate conversions:
+  - `RX2NamedTranspiler`
+  - `RY2NamedTranspiler`
+  - `RZ2NamedTranspiler`
+  - `Rotation2NamedTranspiler`
+  - `NormalizeRotationTranspiler`
+  - `ZeroRotationEliminationTranspiler`
+- Single-qubit gate decompositions:
+  - `H2RZSqrtXTranspiler`
+  - `H2RXRYTranspiler`
+  - `X2RXTranspiler`
+  - `Y2RYTranspiler`
+  - `Z2RZTranspiler`
+  - `S2RZTranspiler`
+  - `T2RZTranspiler`
+- Unitary-matrix decompositions:
+  - `SingleQubitUnitaryMatrix2RYRZTranspiler`
+  - `TwoQubitUnitaryMatrixKAKTranspiler`
+- Pauli decompositions:
+  - `PauliDecomposeTranspiler`
+  - `PauliRotationDecomposeTranspiler`
+  - `ParametricPauliRotationDecomposeTranspiler`
+- Circuit optimization and manipulation:
+  - `FuseRotationTranspiler`
+  - `CNOTHCNOTFusingTranspiler`
+  - `IdentityInsertionTranspiler`
+  - `IdentityEliminationTranspiler`
+  - `QubitRemappingTranspiler`
+
+For example, a custom decomposition workflow can use a gate decomposer directly:
+
+```python
+from quri_parts.circuit.transpile.gate_kind_decomposer import SWAP2CNOTTranspiler
+
+transpiler = SWAP2CNOTTranspiler()
+
+for gate in circuit.gates:
+    if transpiler.is_target_gate(gate):
+        replacement_gates = transpiler.decompose(gate)
+        print("Replace", gate, "with", replacement_gates)
+```
+
+The exact mechanism for applying a transpiler depends on the circuit/transpiler context. Circuit factories can also be decorated with `apply_transpiler()`:
+
+```python
+from quri_algo.circuit.utils.transpile import apply_transpiler
+
+# `circuit_factory_call` is a callable returning a non-parametric circuit.
+transpiled_factory_call = apply_transpiler(circuit_factory_call)
+```
+
+## Pauli operators
+
+`PauliLabel` represents tensor products of Pauli operators, while `Operator` represents a linear combination of Pauli labels.
+
+```python
+from quri_parts.core.operator import Operator, PauliLabel, pauli_label
+
+z0 = PauliLabel.from_str("Z0")
+x0_y1 = pauli_label("X0 Y1")
+
+hamiltonian = Operator()
+hamiltonian.add_term(z0, 0.5)
+hamiltonian.add_term(x0_y1, -0.25)
+
+print("Number of terms:", hamiltonian.n_terms())
+print("Constant term:", hamiltonian.constant())
+print("Hermitian conjugate:", hamiltonian.hermitian_conjugated())
+```
+
+Useful operator functions include:
+
+```python
+from quri_parts.core.operator import (
+    commutator,
+    is_hermitian,
+    is_ops_close,
+    truncate,
+    zero,
+)
+
+comm = commutator(op1, op2)
+is_valid_observable = is_hermitian(hamiltonian)
+reduced_operator = truncate(hamiltonian, atol=1e-10)
+```
+
+Pauli helpers include:
+
+```python
+from quri_parts.core.operator import (
+    pauli_name,
+    pauli_product,
+    pauli_label,
+)
+
+p1 = pauli_label("X0 Z2")
+p2 = pauli_label("Y0")
+
+product_label, phase = pauli_product(p1, p2)
+print(product_label, phase)
+```
+
+## Circuit-based quantum states
+
+Circuit quantum states are represented by:
+
+- `ComputationalBasisState`
+- `GeneralCircuitQuantumState`
+- `QuantumStateVector`
+- `ParametricCircuitQuantumState`
+- `ParametricQuantumStateVector`
+
+The `quantum_state()` helper creates an appropriate state representation from a qubit count together with optional computational-basis bits, circuits, or state vectors.
+
+```python
+from quri_parts.core.state import quantum_state
+from quri_parts.core.state.state_helper import apply_circuit
+
+# |000⟩
+state = quantum_state(3)
+
+# Apply an immutable circuit to the state.
+new_state = apply_circuit(circuit, state)
+
+print(new_state.qubit_count())
+```
+
+A computational-basis state can also be created with an explicit bit pattern:
+
+```python
+from quri_parts.core.state import quantum_state
+
+state = quantum_state(4, bits=0b1010)
+print(state.qubit_count())
+```
+
+## Sampling and estimation
+
+The library provides sampler and estimator adapters for circuit-based workflows.
+
+### Sampling
+
+Sampling helpers include:
+
+- `sample_from_probability_distribution`
+- `sample_from_state_vector`
+- `ideal_sample_from_state_vector`
+- `sample_from_density_matrix`
+- `ideal_sample_from_density_matrix`
+- `create_sampler_from_sampling_backend`
+- `create_concurrent_sampler_from_sampling_backend`
+
+```python
+import numpy as np
+
+from quri_parts.core.sampling import sample_from_probability_distribution
+
+counts = sample_from_probability_distribution(
+    n_sample=1_000,
+    probability_distribution=np.array([0.1, 0.2, 0.3, 0.4]),
+    seed=123,
+)
+
+print(counts)
+```
+
+### Sampling-based expectation estimation
+
+Sampling estimators work with observables, circuit states, samplers, Pauli measurement factories, and shot allocators.
+
+```python
+from quri_parts.core.estimator.sampling import create_sampling_estimator
+from quri_parts.core.sampling.shots_allocator import (
+    create_equipartition_shots_allocator,
+)
+
+shots_allocator = create_equipartition_shots_allocator(shot_unit=100)
+
+# `sampler` and `measurement_factory` are supplied by the execution setup.
+estimator = create_sampling_estimator(
+    total_shots=10_000,
+    sampler=sampler,
+    measurement_factory=measurement_factory,
+    shots_allocator=shots_allocator,
+)
+
+estimate = estimator(observable, state)
+
+print("Expectation value:", estimate.value())
+print("Estimated error:", estimate.error())
+```
+
+Gradient and Hessian estimators are also available:
+
+```python
+from quri_parts.core.estimator.gradient import (
+    create_numerical_gradient_estimator,
+    create_parameter_shift_gradient_estimator,
+)
+from quri_parts.core.estimator.hessian import (
+    create_parameter_shift_hessian_estimator,
+)
+
+numerical_gradient = create_numerical_gradient_estimator(
+    parametric_estimator,
+    delta=1e-5,
+)
+
+parameter_shift_gradient = create_parameter_shift_gradient_estimator(
+    parametric_estimator,
+)
+
+parameter_shift_hessian = create_parameter_shift_hessian_estimator(
+    parametric_estimator,
+)
+```
+
+## Measurement grouping
+
+Pauli terms can be grouped for measurement using functions such as:
+
+- `individual_pauli_grouping`
+- `bitwise_pauli_grouping`
+- `sorted_injection_grouping`
+- `individual_pauli_measurement`
+- `bitwise_commuting_pauli_measurement`
+
+```python
+from quri_parts.core.measurement.bitwise_commuting_pauli import (
+    bitwise_commuting_pauli_measurement,
+)
+from quri_parts.core.operator.grouping.pauli_grouping import (
+    bitwise_pauli_grouping,
+)
+
+groups = bitwise_pauli_grouping(hamiltonian)
+measurements = bitwise_commuting_pauli_measurement(hamiltonian)
+
+for group in groups:
+    print(group)
+
+for measurement in measurements:
+    print(measurement.pauli_set())
+    print(measurement.measurement_circuit())
+```
+
+## Circuit utilities
+
+### Draw a circuit
+
+```python
+from quri_parts.circuit.utils.circuit_drawer import draw_circuit
+
+draw_circuit(circuit, line_length=100)
+```
+
+### Check Clifford gates
+
+```python
+from quri_parts.circuit.clifford_gate import is_clifford
+
+for gate in circuit.gates:
+    print(gate, is_clifford(gate))
+```
+
+### Decompose unitary matrices
+
+```python
+from quri_parts.circuit.transpile.unitary_matrix_decomposer import (
+    su2_decompose,
+    su4_decompose,
+)
+
+single_qubit_angles = su2_decompose(unitary_2x2)
+left, interaction, right = su4_decompose(unitary_4x4)
+```
+
+### Work with a square-lattice topology
+
+`SquareLattice` provides a qubit-coordinate model and path queries useful for topology-aware routing.
+
+```python
+from quri_parts.circuit.topology.square_lattice import SquareLattice
+
+lattice = SquareLattice()
+
+if lattice.is_adjacent(0, 1):
+    print("Qubits 0 and 1 are adjacent")
+
+route = lattice.qubit_path(0, 5)
+print("Routing path:", route)
+```
+
+`SquareLatticeSWAPInsertionTranspiler` can decompose non-local operations using SWAP insertion for a square-lattice topology.
+
+## Noise instructions
+
+Noise instructions can be associated with selected qubits or target gate names.
+
+```python
+from quri_parts.circuit.noise.noise_instruction import (
+    AmplitudeDampingNoise,
+    DepolarizingNoise,
+    PhaseFlipNoise,
+)
+
+depolarizing = DepolarizingNoise(
+    error_prob=0.001,
+    qubit_indices=[0, 1],
+)
+
+phase_flip = PhaseFlipNoise(
+    error_prob=0.002,
+    target_gates=["H", "X"],
+)
+
+amplitude_damping = AmplitudeDampingNoise(
+    amplitude_damping_rate=0.01,
+    excited_state_population=0.0,
+    qubit_indices=[2],
+)
+```
+
+Additional models include bit-flip, bit-phase-flip, Pauli, Kraus, reset, phase-damping, thermal-relaxation, and general depolarizing noise.
+
+## Interoperability
+
+Circuit conversion APIs are provided for several external ecosystems.
+
+### OpenQASM
+
+```python
+from quri_parts.openqasm.circuit import convert_to_qasm_str
+
+qasm_source = convert_to_qasm_str(circuit)
+print(qasm_source)
+```
+
+### Qiskit
+
+```python
+from quri_parts.qiskit.circuit import convert_circuit
+from quri_parts.qiskit.circuit.qiskit_circuit_converter import (
+    circuit_from_qiskit,
+)
+
+qiskit_circuit = convert_circuit(circuit)
+restored_circuit = circuit_from_qiskit(qiskit_circuit)
+```
+
+### Cirq
+
+```python
+from quri_parts.cirq.circuit.circuit_converter import convert_circuit
+from quri_parts.cirq.circuit.cirq_circuit_converter import circuit_from_cirq
+
+cirq_circuit = convert_circuit(circuit)
+restored_circuit = circuit_from_cirq(cirq_circuit)
+```
+
+### Braket
+
+```python
+from quri_parts.braket.circuit import convert_circuit
+from quri_parts.braket.circuit.braket_circuit_converter import (
+    circuit_from_braket,
+)
+
+braket_circuit = convert_circuit(circuit)
+restored_circuit = circuit_from_braket(braket_circuit)
+```
+
+### Qulacs
+
+```python
+from quri_parts.qulacs.circuit import convert_circuit
+from quri_parts.qulacs.circuit.compiled_circuit import compile_circuit
+
+qulacs_circuit = convert_circuit(circuit)
+compiled = compile_circuit(circuit)
+```
+
+### tket
+
+```python
+from quri_parts.tket.circuit.circuit_converter import convert_circuit
+from quri_parts.tket.circuit.tket_circuit_converter import circuit_from_tket
+
+tket_circuit = convert_circuit(circuit)
+restored_circuit = circuit_from_tket(tket_circuit)
+```
+
+## Simulator and backend integrations
+
+The broader API includes samplers, estimators, and backends for several execution environments.
+
+Examples include:
+
+- Qulacs vector and density-matrix estimators and samplers.
+- Stim Clifford estimators and samplers.
+- Tensor-network estimators and samplers.
+- ITensor MPS estimators and samplers.
+- Qiskit and Braket sampling backends.
+- Circuit-to-device analysis through virtual-machine backends.
+
+For example, a Qulacs vector sampler can be created with:
+
+```python
+from quri_parts.qulacs.sampler import create_qulacs_vector_sampler
+
+sampler = create_qulacs_vector_sampler(random_seed=42)
+counts = sampler(circuit, 1_000)
+```
+
+A Qulacs vector estimator can be created with:
+
+```python
+from quri_parts.qulacs.estimator import create_qulacs_vector_estimator
+
+estimator = create_qulacs_vector_estimator()
+estimate = estimator(observable, state)
+
+print(estimate.value())
+print(estimate.error())
+```
+
+## Related algorithm support
+
+Circuit representations can be used by higher-level quantum algorithms, including:
+
+- Quantum approximate quantum compiling through `QAQC`.
+- Quantum phase estimation through `QPE` and `TimeEvolutionQPE`.
+- Statistical phase-estimation variants.
+- Time-evolution circuit factories, including exact-unitary and Trotter-based factories.
+- Variational solvers and optimizers such as `Adam`, `AdaBelief`, `LBFGS`, `NFT`, `NFTfit`, and `SPSA`.
+
+This makes the circuit API suitable both for low-level circuit transformations and for constructing complete quantum-algorithm workflows.

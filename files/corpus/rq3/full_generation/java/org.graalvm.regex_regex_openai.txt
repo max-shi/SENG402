@@ -1,0 +1,622 @@
+# org.graalvm.regex:regex
+
+`org.graalvm.regex:regex` is a Java library for parsing, validating, compiling, and executing regular expressions in a Truffle-based runtime.
+
+The API supports multiple regular-expression flavors, including:
+
+- ECMAScript
+- Java
+- Oracle Database
+- Python
+- Ruby
+
+In addition to the public compilation and runtime objects, the library exposes tools for working with character sets, code-point ranges, flags, regex ASTs, NFAs/DFAs, capture-group results, JSON diagnostics, and automaton export.
+
+## Core concepts
+
+A regular expression is represented by a `RegexSource`, which combines:
+
+- a pattern string;
+- a flags string;
+- `RegexOptions`;
+- an optional Truffle `Source`.
+
+`RegexSource` is compiled by `TRegexCompiler` into a `RegexObject`. A compiled `RegexObject` provides metadata and executable call targets.
+
+```text
+RegexSource
+    │
+    ├── RegexFlavor / parser / validator
+    │
+    └── TRegexCompiler.compile(...)
+              │
+              ▼
+         RegexObject
+              │
+              ├── flags
+              ├── capture-group metadata
+              ├── named capture groups
+              ├── execution call targets
+              └── RegexExecNode
+```
+
+Execution produces a `RegexResult`, which exposes overall match boundaries and capture-group boundaries.
+
+## Quick start
+
+Compile an existing `RegexSource` with a `RegexLanguage`:
+
+```java
+import com.oracle.truffle.regex.RegexLanguage;
+import com.oracle.truffle.regex.RegexObject;
+import com.oracle.truffle.regex.RegexSource;
+import com.oracle.truffle.regex.tregex.TRegexCompiler;
+
+// Construct RegexSource with the pattern, flags, options, and Source
+// appropriate for the embedding application.
+RegexSource source = /* RegexSource instance */;
+
+RegexLanguage language = new RegexLanguage();
+RegexObject regex = TRegexCompiler.compile(language, source);
+
+System.out.println(regex.getSource());
+System.out.println(regex.getNumberOfCaptureGroups());
+System.out.println(regex.getLabel());
+System.out.println(regex.isBacktracking());
+```
+
+A compiled `RegexObject` provides both normal and boolean-match call targets:
+
+```java
+var fullResultTarget = regex.getExecCallTarget();
+var booleanResultTarget = regex.getExecBooleanCallTarget();
+```
+
+The arguments accepted by these Truffle call targets are determined by the embedding runtime. Applications that integrate directly with Truffle should use the call target and execution-node APIs appropriate to their runtime.
+
+## Results and capture groups
+
+`RegexResult` represents the result of a regex execution.
+
+```java
+import com.oracle.truffle.regex.result.RegexResult;
+
+RegexResult noMatch = RegexResult.getNoMatchInstance();
+RegexResult simpleMatch = RegexResult.create(4, 9);
+
+System.out.println(simpleMatch.getStart()); // 4
+System.out.println(simpleMatch.getEnd());   // 9
+```
+
+For patterns with capture groups, use group-number accessors:
+
+```java
+RegexResult result = /* result returned by regex execution */;
+
+int wholeMatchStart = result.getStart();
+int wholeMatchEnd = result.getEnd();
+
+int firstGroupStart = result.getStart(1);
+int firstGroupEnd = result.getEnd(1);
+
+int lastGroup = result.getLastGroup();
+```
+
+`RegexResult` may be lazy. Use `debugForceEvaluation()` when diagnostic code needs to force evaluation of deferred capture-group information:
+
+```java
+result.debugForceEvaluation();
+```
+
+### Constructing pre-calculated results
+
+`PreCalculatedResultFactory` can construct reusable result layouts, including capture-group boundaries.
+
+```java
+import com.oracle.truffle.regex.result.PreCalculatedResultFactory;
+import com.oracle.truffle.regex.result.RegexResult;
+
+PreCalculatedResultFactory factory =
+        new PreCalculatedResultFactory(2, true);
+
+factory.setStart(0, 0);
+factory.setEnd(0, 5);
+factory.setStart(1, 1);
+factory.setEnd(1, 4);
+factory.setLength(5);
+factory.setLastGroup(1);
+
+RegexResult result = factory.createFromStart(10);
+
+System.out.println(result.getStart());    // overall start relative to 10
+System.out.println(result.getEnd());
+System.out.println(result.getStart(1));
+System.out.println(result.getEnd(1));
+```
+
+## Regex flavors
+
+Regex flavors implement `RegexFlavor`. A flavor is responsible for creating the lexer, parser, validator, case-folding behavior, and flavor-specific matching semantics.
+
+Available flavor implementations include:
+
+| Flavor | Class |
+|---|---|
+| ECMAScript | `ECMAScriptFlavor` |
+| Java | `JavaFlavor` |
+| Oracle Database | `OracleDBFlavor` |
+| Python | `PythonFlavor` |
+| Ruby | `RubyFlavor` |
+
+Each flavor also has a provider implementing `RegexFlavorProvider`:
+
+```java
+import com.oracle.truffle.regex.tregex.parser.RegexFlavor;
+import com.oracle.truffle.regex.flavor.RegexFlavorProvider;
+import com.oracle.truffle.regex.flavor.js.JSFlavorProvider;
+
+RegexFlavorProvider provider = new JSFlavorProvider();
+RegexFlavor flavor = provider.get();
+
+System.out.println(flavor.getName());
+```
+
+### Parsing and validation
+
+A flavor creates a `RegexValidator` and `RegexParser` for a `RegexSource`:
+
+```java
+RegexFlavor flavor = /* selected flavor */;
+RegexLanguage language = new RegexLanguage();
+RegexSource source = /* RegexSource instance */;
+CompilationBuffer buffer = new CompilationBuffer(source.getEncoding());
+
+flavor.createValidator(language, source, buffer).validate();
+
+var parser = flavor.createParser(language, source, buffer);
+var ast = parser.parse();
+
+var flags = parser.getFlags();
+var namedGroups = parser.getNamedCaptureGroups();
+```
+
+Invalid patterns and flags are reported as `RegexSyntaxException`:
+
+```java
+try {
+    RegexObject regex = TRegexCompiler.compile(language, source);
+} catch (RegexSyntaxException ex) {
+    System.err.println(ex.getErrorCode());
+}
+```
+
+Patterns that are syntactically valid but unsupported by a selected compilation path may produce `UnsupportedRegexException`.
+
+## Flags
+
+The library includes general ECMAScript-style flags in `RegexFlags` and dedicated flag objects for several flavors.
+
+### ECMAScript-style flags
+
+```java
+import com.oracle.truffle.regex.RegexFlags;
+import com.oracle.truffle.regex.RegexSource;
+
+RegexSource source = /* RegexSource with a flags string */;
+RegexFlags flags = RegexFlags.parseFlags(source);
+
+if (flags.isIgnoreCase()) {
+    System.out.println("Case-insensitive matching is enabled.");
+}
+
+if (flags.isUnicode() || flags.isUnicodeSets()) {
+    System.out.println("Unicode-aware matching is enabled.");
+}
+
+RegexFlags updated = flags.addNewFlagModifier(source, 's');
+System.out.println(updated);
+```
+
+`RegexFlags` exposes predicates for:
+
+- `isIgnoreCase()`
+- `isMultiline()`
+- `isSticky()`
+- `isGlobal()`
+- `isUnicode()`
+- `isDotAll()`
+- `hasIndices()`
+- `isUnicodeSets()`
+
+### Java flags
+
+```java
+import com.oracle.truffle.regex.flavor.java.JavaFlags;
+
+JavaFlags flags = JavaFlags.parseFlags("im");
+
+System.out.println(flags.isIgnoreCase()); // true
+System.out.println(flags.isMultiline());  // true
+System.out.println(flags.isDotAll());     // false
+
+JavaFlags dotAllFlags = flags.addFlag('s');
+System.out.println(dotAllFlags.isDotAll()); // true
+```
+
+### Python flags
+
+```java
+import com.oracle.truffle.regex.flavor.python.PythonFlags;
+import com.oracle.truffle.regex.flavor.python.PythonREMode;
+
+PythonFlags flags = new PythonFlags("im");
+flags = flags.addFlag('s');
+
+System.out.println(flags.isIgnoreCase());
+System.out.println(flags.isMultiLine());
+System.out.println(flags.isDotAll());
+System.out.println(flags.isUnicode(PythonREMode.Str));
+```
+
+### Ruby flags
+
+```java
+import com.oracle.truffle.regex.flavor.ruby.RubyFlags;
+
+RubyFlags flags = new RubyFlags("im");
+
+System.out.println(flags.isIgnoreCase());
+System.out.println(flags.isMultiline());
+
+RubyFlags updated = flags.addFlag('x');
+System.out.println(updated.isExtended());
+```
+
+## Character sets and ranges
+
+The character-set API models Unicode code points as sorted, disjoint ranges.
+
+### `CodePointSet`
+
+`CodePointSet` is an immutable code-point set.
+
+```java
+import com.oracle.truffle.regex.charset.CodePointSet;
+
+CodePointSet digits = CodePointSet.create('0', '9');
+CodePointSet asciiLetters = CodePointSet.create(
+        'A', 'Z',
+        'a', 'z');
+
+System.out.println(digits.contains('5'));       // true
+System.out.println(digits.contains('x'));       // false
+System.out.println(asciiLetters.matchesSomething());
+```
+
+The varargs range representation is a sequence of inclusive low/high pairs:
+
+```java
+CodePointSet hexadecimal = CodePointSet.create(
+        '0', '9',
+        'A', 'F',
+        'a', 'f');
+```
+
+Use `createInverse` to produce the complement within an `Encoding`:
+
+```java
+CodePointSet nonDigits = digits.createInverse(encoding);
+```
+
+### Mutable accumulation
+
+`CodePointSetAccumulator` is useful when building a set incrementally.
+
+```java
+import com.oracle.truffle.regex.charset.CodePointSet;
+import com.oracle.truffle.regex.charset.CodePointSetAccumulator;
+
+CodePointSetAccumulator accumulator = new CodePointSetAccumulator();
+
+accumulator.addRange('a', 'z');
+accumulator.addRange('A', 'Z');
+accumulator.addCodePoint('_');
+
+CodePointSet identifierStart = accumulator.toCodePointSet();
+```
+
+The accumulator supports set operations:
+
+```java
+accumulator.intersectWith(asciiLetters);
+accumulator.subtract(digits, encoding);
+accumulator.invert(encoding);
+```
+
+### Range utilities
+
+`Range` represents one inclusive interval:
+
+```java
+import com.oracle.truffle.regex.charset.Range;
+
+Range lowerCase = new Range('a', 'z');
+
+System.out.println(lowerCase.isSingle()); // false
+System.out.println(lowerCase.size());     // 26
+System.out.println(lowerCase);
+```
+
+`SortedListOfRanges` supplies shared operations for range-backed structures, including containment checks, intersection, inversion, and range statistics.
+
+## Bit sets
+
+Several bit-set implementations are available for compact internal or application-level set operations.
+
+### `TBitSet`
+
+`TBitSet` is a mutable dynamic bit set.
+
+```java
+import com.oracle.truffle.regex.util.TBitSet;
+
+TBitSet groups = new TBitSet(16);
+
+groups.set(1);
+groups.set(4);
+groups.setRange(8, 10);
+
+System.out.println(groups.get(4)); // true
+System.out.println(groups.numberOfSetBits());
+
+groups.clear(1);
+groups.invert();
+```
+
+### 128-bit sets
+
+Use `Immutable128BitSet` for persistent values and `Mutable128BitSet` for in-place mutation.
+
+```java
+import com.oracle.truffle.regex.util.Immutable128BitSet;
+import com.oracle.truffle.regex.util.Mutable128BitSet;
+
+Immutable128BitSet vowels =
+        Immutable128BitSet.create('a', 'e', 'i', 'o', 'u');
+
+Mutable128BitSet working = new Mutable128BitSet();
+working.set('a');
+working.set('b');
+working.set('c');
+
+working.intersect(new Mutable128BitSet(
+        vowels.getLo(),
+        vowels.getHi()));
+
+System.out.println(working.get('a')); // true
+System.out.println(working.get('b')); // false
+```
+
+### General bit-set helpers
+
+`BitSets` provides operations over `long[]` bit-set storage:
+
+```java
+import com.oracle.truffle.regex.util.BitSets;
+
+long[] bits = BitSets.createBitSetArray(256);
+
+BitSets.set(bits, 65);
+BitSets.setRange(bits, 48, 57);
+
+boolean containsA = BitSets.get(bits, 65);
+int count = BitSets.size(bits);
+```
+
+## AST, NFA, and DFA APIs
+
+The library exposes the regex compilation model for advanced tooling, diagnostics, and custom compilation workflows.
+
+### AST
+
+A parsed pattern is represented by `RegexAST`, with nodes such as:
+
+- `Group`
+- `Sequence`
+- `CharacterClass`
+- `BackReference`
+- `LookAheadAssertion`
+- `LookBehindAssertion`
+- `PositionAssertion`
+- `AtomicGroup`
+- `SubexpressionCall`
+
+AST nodes support copying, semantic comparison, structural flags, source information, and JSON export.
+
+```java
+var ast = parser.parse();
+
+var properties = ast.getProperties();
+System.out.println(properties.hasCaptureGroups());
+System.out.println(properties.hasLookAroundAssertions());
+System.out.println(properties.hasBackReferences());
+```
+
+AST utilities include:
+
+```java
+CalcASTPropsVisitor.run(ast, buffer);
+RegexASTPostProcessor postProcessor =
+        new RegexASTPostProcessor(ast, buffer);
+postProcessor.prepareForDFA();
+```
+
+### NFAs and DFAs
+
+`NFA` represents a nondeterministic finite automaton built from a regex AST. `NFAState` and `NFAStateTransition` expose states, transitions, code-point matchers, group boundaries, and transition constraints.
+
+`PureNFA` provides a related NFA representation rooted at AST subtrees.
+
+DFA-related classes include:
+
+- `DFAStateNode`
+- `DFAInitialStateNode`
+- `DFAStateTransitionBuilder`
+- `TRegexDFAExecutorNode`
+- `TRegexDFAExecutorProperties`
+- `TRegexDFAExecutorLocals`
+
+The primary entry points for compilation are:
+
+```java
+import com.oracle.truffle.regex.tregex.TRegexCompilationRequest;
+import com.oracle.truffle.regex.tregex.TRegexCompiler;
+
+RegexObject compiled = TRegexCompiler.compile(language, source);
+
+TRegexCompilationRequest request =
+        new TRegexCompilationRequest(language, source);
+
+var ast = request.getAst();
+var execNode = request.compile();
+```
+
+For specialized workflows, `TRegexCompiler` also exposes eager DFA, lazy DFA, and backtracking-executor compilation methods.
+
+## Named capture groups and interop objects
+
+Regex metadata is represented through `AbstractRegexObject` and related read-only objects. `RegexObject` provides named-capture-group metadata:
+
+```java
+RegexObject regex = /* compiled regex */;
+
+var namedGroups = regex.getNamedCaptureGroups();
+var flags = regex.getFlags();
+```
+
+`AbstractRegexObject.createNamedCaptureGroupMapInt(...)` and `createNamedCaptureGroupMapListInt(...)` create interop-facing named-group mappings from `Map<String, List<Integer>>`.
+
+Other read-only helper objects include:
+
+- `TruffleReadOnlyKeysArray`
+- `TruffleOrderedReadOnlyKeysArray`
+- `TruffleReadOnlyIntArray`
+- `TruffleReadOnlyMap`
+- `TruffleSmallReadOnlyStringToIntMap`
+- `TruffleNull`
+
+These are useful when exposing regex metadata to Truffle interop consumers.
+
+## JSON and diagnostics
+
+Many compiler and automaton objects implement `JsonConvertible`, including:
+
+- `RegexSource`
+- `RegexFlags`
+- `RegexProperties`
+- `CodePointSet`
+- `ClassSetContents`
+- `RegexASTNode` implementations
+- `NFA`
+- `NFAState`
+- `NFAStateTransition`
+- DFA transition builders
+- `PreCalculatedResultFactory`
+
+```java
+import com.oracle.truffle.regex.tregex.util.json.JsonValue;
+
+JsonValue json = source.toJson();
+System.out.println(json);
+```
+
+`JsonValue` can be written to a `TruffleFile`:
+
+```java
+json.dump(path);
+```
+
+Automata can also be exported for visualization:
+
+```java
+import com.oracle.truffle.regex.tregex.util.NFAExport;
+
+NFAExport.exportDot(nfa, path, true, true);
+NFAExport.exportDotReverse(nfa, path, true, true);
+NFAExport.exportLaTex(nfa, path, true, true);
+```
+
+For AST diagnostics:
+
+```java
+import com.oracle.truffle.regex.tregex.parser.ast.visitors.ASTDebugDumpVisitor;
+
+String dump = ASTDebugDumpVisitor.getDump(ast.getRoot().getGroup());
+System.out.println(dump);
+```
+
+## Utility APIs
+
+Useful general-purpose helpers include:
+
+| Class | Purpose |
+|---|---|
+| `DebugUtil` | Character, Java, JavaScript, and regex source escaping |
+| `MathUtil` | Power-of-two and saturating arithmetic helpers |
+| `JavaStringUtil` | String/code-point checks |
+| `Boundaries` | Map and set operations |
+| `Assertions` | Array ordering checks |
+| `InputOps` | Encoded-input length, search, and region comparison |
+| `Counter` | Mutable integer counter |
+| `StateSet` | Set implementation indexed by automaton states |
+| `SimpleStateIndex` | State-to-ID index |
+
+Example:
+
+```java
+import com.oracle.truffle.regex.tregex.util.DebugUtil;
+
+String escaped = DebugUtil.regexSourceEscape("a/b\n", "gi");
+System.out.println(escaped);
+
+String safeName = DebugUtil.pruneToSize("very-long-regex-description", 16);
+System.out.println(safeName);
+```
+
+## Errors
+
+The library uses two main regex-specific exception types:
+
+- `RegexSyntaxException` — invalid options, flags, or pattern syntax.
+- `UnsupportedRegexException` — a regex or requested compilation mode is not supported.
+
+```java
+try {
+    TRegexCompiler.compile(language, source);
+} catch (RegexSyntaxException syntaxError) {
+    System.err.println("Invalid regex: " + syntaxError.getErrorCode());
+} catch (UnsupportedRegexException unsupported) {
+    System.err.println("Unsupported regex: " + unsupported.getReason());
+}
+```
+
+## API organization
+
+The API can be approached in layers:
+
+1. **Embedding layer**  
+   `RegexSource`, `RegexLanguage`, `RegexObject`, `RegexResult`, `TRegexCompiler`.
+
+2. **Flavor layer**  
+   `RegexFlavor`, flavor providers, parsers, validators, and flavor-specific flags.
+
+3. **Character and encoding layer**  
+   `CodePointSet`, `ClassSetContents`, `Range`, `SortedListOfRanges`, and string buffers.
+
+4. **Compilation layer**  
+   `RegexAST`, AST visitors, `NFA`, `PureNFA`, DFA builders, and executor nodes.
+
+5. **Tooling layer**  
+   JSON conversion, AST/NFA/DFA export, debug utilities, and profiling.
+
+For most embedding applications, start with `RegexSource`, `RegexLanguage`, and `TRegexCompiler.compile`. Use the parser, AST, automaton, and executor APIs when building diagnostics, analysis tools, custom compilation flows, or Truffle-based integrations.

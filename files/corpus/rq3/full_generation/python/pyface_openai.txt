@@ -1,0 +1,843 @@
+# pyface
+
+Pyface is a toolkit-neutral Python library for building desktop application user interfaces. Its API provides reusable abstractions for windows, dialogs, widgets, menus and toolbars, actions, images, timers, data views, docking, task-oriented applications, workbenches, undo/redo, trees, viewers, and wizard flows.
+
+The library exposes common interfaces and mixins for UI concepts, with implementations for Qt, wx, and a null toolkit. This lets applications work with high-level UI objects while delegating concrete controls and event-loop behavior to the selected toolkit.
+
+## Highlights
+
+- **Toolkit abstraction** for Qt, wx, and null/headless environments.
+- **Application lifecycle** support with `Application`, `GUIApplication`, and task-based applications.
+- **Actions and menus** with reusable `Action`, `Group`, and action-manager APIs.
+- **Windows and dialogs** including file, directory, color, font, message, confirmation, progress, and choice dialogs.
+- **Widget interfaces** for common controls, fields, layout widgets, layered panels, split widgets, and images.
+- **Data views** with model, index, value-type, export, and drag-and-drop abstractions.
+- **Docking and tasks** for applications with dock panes, editor areas, layouts, and task switching.
+- **Workbench support** for editors, views, perspectives, and persisted window layouts.
+- **Tree and viewer APIs** for model-driven navigation controls.
+- **Undo/redo** command stacks and actions.
+- **Timers and GUI scheduling** helpers.
+- **Resource and image** management utilities.
+
+## Core concepts
+
+### Toolkit selection
+
+Pyface separates toolkit-independent APIs from toolkit-specific implementations. Toolkit discovery is exposed through:
+
+```python
+from pyface.base_toolkit import find_toolkit, import_toolkit
+
+toolkit = find_toolkit()
+```
+
+`find_toolkit()` locates a suitable toolkit implementation, while `import_toolkit()` imports a named toolkit from an entry-point group.
+
+Toolkit-specific APIs are available for:
+
+- Qt
+- wx
+- null
+
+The null toolkit provides non-native implementations useful where a visible GUI is not required.
+
+---
+
+## Applications and GUI lifecycle
+
+`Application` provides a base lifecycle:
+
+- `start()`
+- `stop()`
+- `run()`
+- `exit(force=False)`
+- `initialize_application_home()`
+
+`GUIApplication` extends this model with window management:
+
+- `create_window(**kwargs)`
+- `add_window(window)`
+- `do_about()`
+- `start()`
+
+For multi-task applications, use `TasksApplication`, `TaskWindow`, and `Task`.
+
+```python
+from pyface.application import Application
+
+class MyApplication(Application):
+    def start(self):
+        print("Application started")
+
+    def stop(self):
+        print("Application stopped")
+
+app = MyApplication()
+app.run()
+```
+
+### Scheduling work on the GUI event loop
+
+The `GUI` API supports deferred execution and trait updates:
+
+```python
+from pyface.ui.qt.gui import GUI
+
+def refresh_status():
+    print("Refresh UI state")
+
+GUI.invoke_later(refresh_status)
+GUI.invoke_after(250, refresh_status)
+```
+
+The same family of operations is exposed by `IGUI`:
+
+- `invoke_later(callable, *args, **kw)`
+- `invoke_after(millisecs, callable, *args, **kw)`
+- `set_trait_later(obj, trait_name, new)`
+- `set_trait_after(millisecs, obj, trait_name, new)`
+- `process_events(allow_user_events=True)`
+- `set_busy(busy=True)`
+- `start_event_loop()`
+- `stop_event_loop()`
+
+---
+
+## Windows, widgets, and dialogs
+
+### Base widget and window APIs
+
+`IWidget` defines the fundamental widget lifecycle:
+
+```python
+widget.create(parent=None)
+widget.show(True)
+widget.enable(True)
+widget.focus()
+widget.destroy()
+```
+
+`IWindow` extends the widget API with window-level behavior:
+
+```python
+window.open()
+window.close(force=False)
+window.confirm("Discard changes?")
+window.information("Saved successfully")
+window.warning("This operation may take time")
+window.error("Unable to save file")
+```
+
+The corresponding concrete mixins include `MWidget`, `MWindow`, `MDialog`, and `MApplicationWindow`.
+
+### Convenience message dialogs
+
+Message dialogs are also available as functions:
+
+```python
+from pyface.message_dialog import information, warning, error
+from pyface.confirmation_dialog import confirm
+
+information(None, "The operation completed.")
+warning(None, "The selected file already exists.")
+error(None, "The operation could not be completed.")
+
+accepted = confirm(
+    None,
+    "Do you want to continue?",
+    title="Confirm operation",
+    cancel=True,
+)
+```
+
+### Choosing a value
+
+Use `choose_one()` for a single-choice interaction:
+
+```python
+from pyface.single_choice_dialog import choose_one
+
+choice = choose_one(
+    parent=None,
+    message="Select an output format:",
+    choices=["JSON", "CSV", "NumPy"],
+    title="Export format",
+)
+```
+
+### Colors and fonts
+
+The `Color` and `Font` classes represent toolkit-independent visual values.
+
+```python
+from pyface.color import Color
+from pyface.font import Font
+
+color = Color.from_str("#336699")
+print(color.hex())
+
+toolkit_color = color.to_toolkit()
+
+font = Font()
+toolkit_font = font.to_toolkit()
+```
+
+Color conversion helpers are also available:
+
+```python
+from pyface.util.color_helpers import is_dark, relative_luminance
+
+rgb = (0.2, 0.4, 0.6)
+print(relative_luminance(rgb))
+print(is_dark(rgb))
+```
+
+---
+
+## Actions, menus, and toolbars
+
+The action system models user-triggered commands independently from their graphical presentation.
+
+Key classes include:
+
+- `Action`: a command that can create a control and perform work.
+- `ListeningAction`: an action that participates in application state changes.
+- `Group`: an ordered collection of action-manager items.
+- `Separator`: a group used to separate menu or toolbar items.
+- `ActionItem`: an action placed in a menu, toolbar, or palette.
+- `ActionManager`: manages groups and items.
+- `ActionController`: determines how actions are performed and added to UI containers.
+- `MenuManager`, `MenuBarManager`, `ToolBarManager`, and `StatusBarManager`: toolkit-specific managers.
+
+To implement a command, subclass `Action` and override `perform()`:
+
+```python
+from pyface.action.action import Action
+
+class SaveReportAction(Action):
+    def perform(self, event):
+        print("Saving report")
+```
+
+An `ActionController` can centralize policy for action execution and UI placement:
+
+```python
+from pyface.action.action_controller import ActionController
+
+class LoggingActionController(ActionController):
+    def perform(self, action, event):
+        print(f"Running action: {action}")
+        return super().perform(action, event)
+
+    def can_add_to_menu(self, action):
+        return True
+
+    def can_add_to_toolbar(self, action):
+        return True
+```
+
+`ActionManager` supports incremental construction and inspection:
+
+```python
+manager.append(item)
+manager.insert(0, item)
+
+group = manager.find_group("file")
+item = manager.find_item("file/save")
+
+manager.walk(lambda item: print(item))
+print(manager.dump())
+```
+
+Schemas provide a higher-level way to construct action-manager structures:
+
+- `Schema`
+- `ActionSchema`
+- `GroupSchema`
+- `MenuSchema`
+- `MenuBarSchema`
+- `ToolBarSchema`
+- `ActionManagerBuilder`
+
+---
+
+## Data views
+
+The data-view API separates hierarchical data, index management, presentation, editing, exporting, and toolkit widgets.
+
+### Models
+
+Implement `AbstractDataModel` to expose tabular or hierarchical data:
+
+```python
+from pyface.data_view.abstract_data_model import AbstractDataModel
+
+class SimpleTableModel(AbstractDataModel):
+    def __init__(self, rows):
+        super().__init__()
+        self.rows = rows
+
+    def get_column_count(self):
+        return 2
+
+    def can_have_children(self, row):
+        return False
+
+    def get_row_count(self, row):
+        return len(self.rows)
+
+    def get_value(self, row, column):
+        return self.rows[row[0]][column]
+
+    def can_set_value(self, row, column):
+        return True
+
+    def set_value(self, row, column, value):
+        self.rows[row[0]][column] = value
+
+    def get_value_type(self, row, column):
+        return None
+```
+
+The model API uses row identifiers and columns:
+
+- `get_row_count(row)`
+- `get_column_count()`
+- `get_value(row, column)`
+- `set_value(row, column, value)`
+- `can_set_value(row, column)`
+- `get_value_type(row, column)`
+- `iter_rows(start_row=())`
+- `iter_items(start_row=())`
+
+Built-in model helpers include `ArrayDataModel` and `RowTableDataModel`.
+
+### Value types
+
+`AbstractValueType` controls how a model value is edited and displayed. Value types can provide:
+
+- editor values
+- text values
+- colors
+- images
+- check states
+- tooltips
+
+Available value types include:
+
+- `BoolValue`
+- `ColorValue`
+- `ConstantValue`
+- `EditableValue`
+- `EnumValue`
+- `NoValue`
+- `NumericValue`
+- `IntValue`
+- `FloatValue`
+- `TextValue`
+
+For example, boolean values support check-state editing:
+
+```python
+from pyface.data_view.value_types.bool_value import BoolValue
+
+value_type = BoolValue()
+
+if value_type.has_check_state(model, row, column):
+    value_type.set_check_state(model, row, column, True)
+```
+
+### Data formats
+
+The `data_formats` module provides serialization helpers for common transfer formats:
+
+```python
+from pyface.data_view.data_formats import (
+    from_csv,
+    from_json,
+    from_npy,
+    to_csv,
+    to_json,
+    to_npy,
+)
+
+records = [
+    {"name": "Ada", "active": True},
+    {"name": "Grace", "active": False},
+]
+
+json_data = to_json(records)
+restored_records = from_json(json_data)
+
+csv_data = to_csv([["name", "active"], ["Ada", True]])
+rows = from_csv(csv_data)
+
+binary_data = to_npy([1, 2, 3])
+array = from_npy(binary_data)
+```
+
+### Data wrappers and export
+
+`IDataWrapper` and `MDataWrapper` represent data in multiple formats and MIME types. Exporters extract selected model content:
+
+- `AbstractDataExporter`
+- `ItemExporter`
+- `RowExporter`
+
+```python
+from pyface.data_view.exporters.row_exporter import RowExporter
+
+exporter = RowExporter()
+data = exporter.get_data(model, indices)
+```
+
+### Index management
+
+`AbstractIndexManager` maps between toolkit indexes, IDs, and sequences. Implementations include:
+
+- `IntIndexManager`
+- `TupleIndexManager`
+
+Useful operations include:
+
+```python
+index = index_manager.create_index(parent, row)
+parent, row = index_manager.get_parent_and_row(index)
+
+sequence = index_manager.to_sequence(index)
+index = index_manager.from_sequence(sequence)
+
+identifier = index_manager.id(index)
+index = index_manager.from_id(identifier)
+```
+
+---
+
+## Trees and viewers
+
+Pyface provides two related model-driven UI families:
+
+- **Tree APIs**, based around `TreeModel`, `NodeType`, and `NodeManager`.
+- **Viewer APIs**, based around `Viewer`, content providers, label providers, filters, and sorters.
+
+### Tree models
+
+`TreeModel` defines operations for a tree node:
+
+- determining children
+- retrieving display text and images
+- editing labels
+- drag-and-drop
+- expansion and selection behavior
+- change notification
+
+```python
+from pyface.tree.tree_model import TreeModel
+
+class ProjectTreeModel(TreeModel):
+    def has_children(self, node):
+        return bool(node.get("children"))
+
+    def get_children(self, node):
+        return node.get("children", [])
+
+    def get_text(self, node):
+        return node["name"]
+
+    def get_key(self, node):
+        return node["name"]
+```
+
+`NodeType` and `NodeManager` support behavior that varies by object type. `NodeMonitor` can report changes in an observed node structure.
+
+### Viewer providers
+
+Viewer APIs divide responsibilities into providers:
+
+- `ContentProvider`: returns elements.
+- `TreeContentProvider`: returns parent/child relationships.
+- `LabelProvider`: supplies display text and images.
+- `ColumnProvider`: supplies table-column labels, widths, and alignment.
+- `ViewerFilter`: filters visible elements.
+- `ViewerSorter`: orders elements.
+
+```python
+from pyface.viewer.default_tree_content_provider import DefaultTreeContentProvider
+from pyface.viewer.tree_item import TreeItem
+from pyface.viewer.tree_label_provider import TreeLabelProvider
+
+root = TreeItem()
+child = TreeItem()
+
+root.append(child)
+
+content_provider = DefaultTreeContentProvider()
+label_provider = TreeLabelProvider()
+
+children = content_provider.get_children(root)
+text = label_provider.get_text(None, child)
+```
+
+---
+
+## Tasks and docking
+
+The task framework is intended for applications that organize work into tasks, central editor areas, dock panes, and reusable layouts.
+
+Core classes include:
+
+- `TasksApplication`
+- `TaskFactory`
+- `Task`
+- `TaskWindow`
+- `TaskState`
+- `TaskLayout`
+- `TaskWindowLayout`
+- `PaneItem`
+- `Tabbed`
+- `Splitter`
+- `HSplitter`
+- `VSplitter`
+- `DockLayout`
+
+A task can create central and docked panes:
+
+```python
+from pyface.tasks.task import Task
+
+class AnalysisTask(Task):
+    def create_central_pane(self):
+        return None
+
+    def create_dock_panes(self):
+        return []
+
+    def activated(self):
+        print("Analysis task activated")
+
+    def initialized(self):
+        print("Analysis task initialized")
+```
+
+`TaskWindow` manages a set of tasks:
+
+```python
+window.add_task(task)
+window.activate_task(task)
+
+active_layout = window.get_layout()
+window.set_layout(active_layout)
+
+window.focus_next_pane()
+window.focus_previous_pane()
+```
+
+### Layout objects
+
+Task layouts can be built from layout items. `LayoutItem` supports printable and stream representations:
+
+```python
+layout.pprint()
+layout.pstream(stream)
+```
+
+`LayoutContainer` contains other layout items, while `PaneItem` represents an individual pane. `Tabbed` and splitter classes describe common layout arrangements.
+
+---
+
+## Workbench applications
+
+The workbench API provides an editor/view/perspective architecture for larger desktop applications.
+
+Key objects:
+
+- `Workbench`
+- `WorkbenchWindow`
+- `EditorManager`
+- `Perspective`
+- `PerspectiveItem`
+- `UserPerspectiveManager`
+- `IEditor` / `MEditor`
+- `IView` / `MView`
+- `IWorkbenchPart` / `MWorkbenchPart`
+- `IWorkbenchWindowLayout` / `MWorkbenchWindowLayout`
+
+A workbench can create windows and open editors for application objects:
+
+```python
+from pyface.workbench.workbench import Workbench
+
+workbench = Workbench()
+
+window = workbench.create_window()
+editor = workbench.edit(obj={"document": "report"}, kind="text")
+```
+
+A `WorkbenchWindow` manages views and editors:
+
+```python
+window.add_view(view)
+window.add_editor(editor, title="Report")
+
+window.activate_view(view)
+window.activate_editor(editor)
+
+window.hide_view(view)
+window.show_view(view)
+
+window.close_editor(editor)
+window.close_view(view)
+```
+
+Perspectives can create and show alternative layouts:
+
+```python
+from pyface.workbench.perspective import Perspective
+
+class AnalysisPerspective(Perspective):
+    def create(self, window):
+        pass
+
+    def show(self, window):
+        pass
+```
+
+---
+
+## Undo and redo
+
+The undo framework is command-based.
+
+- `AbstractCommand` defines `do()`, `undo()`, `redo()`, and `merge(other)`.
+- `CommandStack` stores commands and supports macros.
+- `UndoManager` exposes high-level `undo()` and `redo()`.
+- `UndoAction` and `RedoAction` integrate command history with the action system.
+
+```python
+from pyface.undo.abstract_command import AbstractCommand
+from pyface.undo.command_stack import CommandStack
+
+class SetValueCommand(AbstractCommand):
+    def __init__(self, target, old_value, new_value):
+        super().__init__()
+        self.target = target
+        self.old_value = old_value
+        self.new_value = new_value
+
+    def do(self):
+        self.target["value"] = self.new_value
+
+    def undo(self):
+        self.target["value"] = self.old_value
+
+    def redo(self):
+        self.do()
+
+    def merge(self, other):
+        return False
+
+state = {"value": 1}
+stack = CommandStack()
+
+command = SetValueCommand(state, old_value=1, new_value=2)
+stack.push(command)
+
+stack.undo()
+stack.redo()
+```
+
+Use macros to group multiple commands:
+
+```python
+stack.begin_macro("Update document")
+# stack.push(...)
+# stack.push(...)
+stack.end_macro()
+```
+
+---
+
+## Timers
+
+Timer APIs support one-shot and repeating work.
+
+```python
+from pyface.timer.do_later import do_after, do_later
+
+def update():
+    print("Updating")
+
+do_later(update)
+do_after(500, update)
+```
+
+Timer classes include:
+
+- `BaseTimer`
+- `EventTimer`
+- `CallbackTimer`
+- `Timer`
+- `DoLaterTimer`
+
+Common timer operations are:
+
+```python
+timer.start()
+timer.stop()
+timer.perform()
+```
+
+---
+
+## Resources and images
+
+### Resource lookup
+
+`ResourceManager` locates and loads images from configured paths:
+
+```python
+from pyface.resource.resource_manager import ResourceManager
+
+manager = ResourceManager()
+
+reference = manager.locate_image("logo.png", path=["assets"])
+image = manager.load_image("logo.png", path=["assets"])
+```
+
+`ResourceReference` and `ImageReference` provide deferred resource loading:
+
+```python
+resource = reference.load()
+```
+
+### Image abstractions
+
+The image API supports image, bitmap, and icon creation:
+
+```python
+image.create_image(size=(32, 32))
+image.create_bitmap(size=(32, 32))
+image.create_icon(size=(32, 32))
+```
+
+`ArrayImage` creates UI image objects from array-backed image data:
+
+```python
+from pyface.array_image import ArrayImage
+
+array_image = ArrayImage()
+icon = array_image.create_icon(size=(16, 16))
+```
+
+`ImageLibrary`, `ImageVolume`, and related classes manage grouped image resources and image volumes.
+
+---
+
+## Utility APIs
+
+### Filtering and sorting
+
+`Filter` and `Sorter` provide generic item filtering and ordering hooks:
+
+```python
+from pyface.filter import Filter
+from pyface.sorter import Sorter
+
+class ActiveOnlyFilter(Filter):
+    def select(self, widget, parent, node):
+        return node.active
+
+class NameSorter(Sorter):
+    def key(self, widget, parent, node):
+        return node.name
+```
+
+Equivalent viewer-specific classes are `ViewerFilter` and `ViewerSorter`.
+
+### File drop handling
+
+Use a drop handler to test and process dropped data:
+
+```python
+from pyface.drop_handler import BaseDropHandler
+
+class TextDropHandler(BaseDropHandler):
+    def can_handle_drop(self, event, target):
+        return True
+
+    def handle_drop(self, event, target):
+        print("Dropped onto:", target)
+```
+
+### Color parsing
+
+```python
+from pyface.util.color_parser import ColorParseError, parse_text
+
+try:
+    rgba = parse_text("#ff8800")
+except ColorParseError:
+    rgba = None
+```
+
+### Font parsing
+
+```python
+from pyface.util.font_parser import FontParseError, simple_parser
+
+try:
+    properties = simple_parser("12pt Sans")
+except FontParseError:
+    properties = None
+```
+
+---
+
+## Testing helpers
+
+Pyface includes testing support for widgets and GUI event loops.
+
+- `WidgetMixin`
+- `LayoutWidgetMixin`
+- Qt `GuiTestAssistant`
+- Qt `EventLoopHelper`
+- Qt `ModalDialogTester`
+- `filter_tests()`
+- `skip_if_no_traitsui()`
+
+For Qt tests, `GuiTestAssistant` can wait for UI conditions:
+
+```python
+from pyface.ui.qt.util.gui_test_assistant import GuiTestAssistant
+
+class MyWidgetTest(GuiTestAssistant):
+    def test_widget_eventually_updates(self):
+        self.event_loop_until_condition(
+            lambda: True,
+            timeout=1.0,
+        )
+```
+
+---
+
+## API organization
+
+The main API areas are:
+
+| Area | Primary APIs |
+|---|---|
+| Application lifecycle | `Application`, `GUIApplication`, `TasksApplication` |
+| Toolkit management | `Toolkit`, `find_toolkit`, `import_toolkit` |
+| Actions | `Action`, `ActionController`, `Group`, `ActionManager` |
+| UI primitives | `IWidget`, `IWindow`, `IDialog`, `ILayoutWidget` |
+| Dialogs | confirmation, message, file, directory, color, font, progress, choice |
+| Images/resources | `ImageResource`, `ArrayImage`, `ResourceManager`, `ImageLibrary` |
+| Data views | `AbstractDataModel`, `AbstractValueType`, exporters, wrappers, indexes |
+| Trees/viewers | `TreeModel`, `NodeType`, `Viewer`, content and label providers |
+| Docking/tasks | `DockSizer`, `DockWindow`, `Task`, `TaskWindow`, layout classes |
+| Workbench | `Workbench`, `WorkbenchWindow`, perspectives, editors, views |
+| Undo | `AbstractCommand`, `CommandStack`, `UndoManager` |
+| Timers | `Timer`, `EventTimer`, `CallbackTimer`, `do_later`, `do_after` |
+| Testing | widget mixins, GUI event-loop test helpers |
+
+Pyface is designed around extensible base classes and interfaces: applications typically subclass actions, models, panes, editors, views, commands, providers, or controllers to supply domain-specific behavior while retaining toolkit-neutral application structure.

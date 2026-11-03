@@ -1,0 +1,435 @@
+# io.snamp.instrumentation:core
+
+A Java instrumentation API for capturing and reporting application measurements such as counters, floating-point values, booleans, strings, durations, health state, and tracing spans.
+
+The library centers around a `MetricRegistry`, which creates typed reporters. Reporters emit measurement objects to one or more `Reporter` implementations. Measurements carry common metadata including names, component and instance names, timestamps, descriptions, and annotations.
+
+## Dependency
+
+```xml
+<dependency>
+    <groupId>io.snamp.instrumentation</groupId>
+    <artifactId>core</artifactId>
+</dependency>
+```
+
+## Core concepts
+
+### Measurements
+
+`Measurement` is the base type for all reported data. It supports:
+
+- A metric name
+- Component and instance names
+- A timestamp
+- A description/message
+- String annotations (`Map<String, String>`)
+- Java `Externalizable` serialization
+- JSON serialization through `toJsonString(...)`
+
+Concrete measurement types include:
+
+| Type | Represents |
+|---|---|
+| `IntegerMeasurement` | A `long` value |
+| `FloatingPointMeasurement` | A `double` value |
+| `BooleanMeasurement` | A boolean value |
+| `StringMeasurement` | A string value |
+| `TimeMeasurement` | A duration |
+| `Health` | A health status |
+| `Span` | A timed tracing span with correlation and parent IDs |
+
+Value measurements expose a raw comparable value and a `ChangeType`:
+
+```java
+public enum ChangeType {
+    SUM, SUB, MAX, MIN, NEW_VALUE;
+}
+```
+
+Use `NEW_VALUE` when reporting an absolute value, or one of the other change types when the value represents an update operation.
+
+### Metric registry
+
+`MetricRegistry` is the primary entry point for application instrumentation. It creates reporters by metric name and optionally accepts default user-data annotations.
+
+```java
+MetricRegistry registry = new MetricRegistry();
+```
+
+The registry can create reporters for the following metric categories:
+
+```java
+registry.integer("...");
+registry.floatingPoint("...");
+registry.bool("...");
+registry.string("...");
+registry.timer("...");
+registry.tracer("...");
+registry.health("...");
+```
+
+A registry is `Closeable`, iterable over registered `Reporter` instances, and can be configured to close on JVM shutdown with `closeOnShutdown()`.
+
+### Typed measurement reporters
+
+Typed reporters provide convenient `report(...)` methods for their measurement types:
+
+| Reporter | Reports |
+|---|---|
+| `IntegerMeasurementReporter` | `long` values |
+| `FloatingPointMeasurementReporter` | `double` values |
+| `BooleanMeasurementReporter` | boolean values |
+| `StringMeasurementReporter` | strings |
+| `TimeMeasurementReporter` | durations and timed operations |
+| `SpanReporter` | tracing spans |
+| `HealthCheckReporter` | application health states |
+
+Value reporters support per-report annotation maps where applicable.
+
+### Output reporters
+
+The `Reporter` interface defines an output destination for measurements:
+
+```java
+public interface Reporter extends Closeable {
+    boolean isAsynchronous();
+    boolean isConnected();
+    void flush() throws IOException;
+    void report(Measurement... measurements) throws IOException;
+}
+```
+
+Included implementations are:
+
+- `InMemoryReporter` — stores measurements in an in-memory queue.
+- `PrintStreamReporter` — writes measurements to a `PrintStream`.
+- `LazyReporter<R extends Reporter>` — a lazily initialized reporter wrapper.
+
+A registry can be constructed with one or more reporters:
+
+```java
+Reporter output = PrintStreamReporter.toStandardOutput();
+MetricRegistry registry = new MetricRegistry(output);
+```
+
+## Usage
+
+### Report counters, gauges, and values
+
+Create a registry with a reporter, obtain typed metric reporters, and report values.
+
+```java
+import com.bytex.snamp.instrumentation.MetricRegistry;
+import com.bytex.snamp.instrumentation.reporters.PrintStreamReporter;
+
+import java.util.Map;
+
+public final class ServerMetrics {
+    public static void main(String[] args) throws Exception {
+        try (MetricRegistry metrics = new MetricRegistry(
+                PrintStreamReporter.toStandardOutput())) {
+
+            metrics.integer("http.requests")
+                    .report(1L, ChangeType.SUM);
+
+            metrics.integer("queue.depth")
+                    .report(42L);
+
+            metrics.floatingPoint("cpu.load")
+                    .report(0.73d);
+
+            metrics.bool("feature.enabled")
+                    .report(true);
+
+            metrics.string("build.version")
+                    .report("2025.03", ChangeType.NEW_VALUE);
+
+            metrics.integer("http.response.bytes")
+                    .report(2048L, ChangeType.SUM, Map.of(
+                            "endpoint", "/api/orders",
+                            "method", "GET"
+                    ));
+        }
+    }
+}
+```
+
+### Time an operation
+
+`TimeMeasurementReporter` can report known durations, create a timing scope, or execute a `Callable`/`Runnable` while measuring it.
+
+```java
+import com.bytex.snamp.instrumentation.MetricRegistry;
+
+import java.util.concurrent.TimeUnit;
+
+public final class TimedOperation {
+    public void handleRequest(MetricRegistry metrics) throws Exception {
+        // Report an existing duration.
+        metrics.timer("request.duration")
+                .report(125L, TimeUnit.MILLISECONDS);
+
+        // Measure a callable.
+        String result = metrics.timer("database.query.duration")
+                .call(() -> executeQuery());
+
+        // Measure a runnable.
+        metrics.timer("cache.refresh.duration")
+                .run(this::refreshCache);
+
+        // Measure work explicitly with an AutoCloseable scope.
+        try (var ignored = metrics.timer("request.processing.duration").start()) {
+            processRequest(result);
+        }
+    }
+
+    private String executeQuery() {
+        return "result";
+    }
+
+    private void refreshCache() {
+        // Refresh work.
+    }
+
+    private void processRequest(String result) {
+        // Request processing work.
+    }
+}
+```
+
+### Record health state
+
+`HealthCheckReporter` provides concise methods for common health transitions.
+
+```java
+import com.bytex.snamp.instrumentation.MetricRegistry;
+
+public final class HealthReporting {
+    public void checkDatabase(MetricRegistry metrics) {
+        try {
+            verifyDatabaseConnection();
+            metrics.health("database").up();
+        } catch (Exception e) {
+            metrics.health("database").down(e);
+        }
+    }
+
+    public void disableService(MetricRegistry metrics) {
+        metrics.health("background-worker").outOfService();
+    }
+
+    private void verifyDatabaseConnection() {
+        // Validate connectivity.
+    }
+}
+```
+
+A periodic health check can also be registered with a `Callable<Health>`:
+
+```java
+metrics.health(
+        "database",
+        () -> {
+            Health health = new Health();
+            // Configure the Health instance as appropriate.
+            return health;
+        },
+        30L,
+        TimeUnit.SECONDS
+);
+```
+
+### Create tracing spans
+
+`SpanReporter` creates `TraceScope` instances. A scope exposes correlation and span identifiers, supports annotations, and can be used with try-with-resources.
+
+```java
+import com.bytex.snamp.instrumentation.Identifier;
+import com.bytex.snamp.instrumentation.MetricRegistry;
+import com.bytex.snamp.instrumentation.TraceScope;
+
+public final class TracingExample {
+    public void processOrder(MetricRegistry metrics, String orderId) {
+        Identifier correlationId = Identifier.ofString(orderId);
+
+        try (TraceScope trace = metrics.tracer("order.processing")
+                .beginTrace(correlationId)) {
+
+            trace.addAnnotation("order.id", orderId);
+            trace.addAnnotation("operation", "process-order");
+
+            validateOrder();
+            persistOrder();
+        }
+    }
+
+    private void validateOrder() {
+        // Validation work.
+    }
+
+    private void persistOrder() {
+        // Persistence work.
+    }
+}
+```
+
+The current trace scope can be obtained with:
+
+```java
+TraceScope current = TraceScope.current();
+```
+
+`SpanReporter` can also wrap `Runnable` and `Callable` work:
+
+```java
+Runnable tracedTask = metrics.tracer("background.task")
+        .wrap(() -> performBackgroundWork());
+
+executor.execute(tracedTask);
+```
+
+### Use standard measurements directly
+
+`StandardMeasurements` provides factory methods for commonly named resource and performance measurements.
+
+```java
+import com.bytex.snamp.instrumentation.MeasurementReporter;
+import com.bytex.snamp.instrumentation.measurements.Measurement;
+import com.bytex.snamp.instrumentation.measurements.StandardMeasurements;
+import com.bytex.snamp.instrumentation.reporters.Reporter;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
+
+public final class StandardMeasurementExample {
+    public void reportSystemState(Reporter reporter) {
+        Measurement freeRam = StandardMeasurements.freeRam(512L * 1024L * 1024L);
+        Measurement cpuLoad = StandardMeasurements.cpuLoad(0.42d);
+        Measurement responseTime = StandardMeasurements.responseTime(
+                150L,
+                TimeUnit.MILLISECONDS
+        );
+
+        MeasurementReporter.report(
+                List.of(reporter),
+                freeRam
+        );
+
+        try {
+            reporter.report(cpuLoad, responseTime);
+            reporter.flush();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException("Unable to report measurements", e);
+        }
+    }
+}
+```
+
+Available standard factories include:
+
+```java
+StandardMeasurements.freeRam(bytes);
+StandardMeasurements.usedRAM(bytes);
+StandardMeasurements.cpuLoad(load);
+StandardMeasurements.freeDiskSpace(bytes);
+StandardMeasurements.usedDiskSpace(bytes);
+StandardMeasurements.responseTime(duration, unit);
+StandardMeasurements.rps(requests);
+```
+
+## Measurement metadata and JSON
+
+Measurements can be created and enriched directly.
+
+```java
+import com.bytex.snamp.instrumentation.measurements.IntegerMeasurement;
+
+import java.util.Map;
+
+IntegerMeasurement measurement = new IntegerMeasurement(12L);
+
+measurement.setName("active.sessions");
+measurement.setComponentName("web-api");
+measurement.setInstanceName("node-1");
+measurement.setDescription("Current number of active sessions");
+measurement.setAnnotations(Map.of(
+        "region", "us-east",
+        "environment", "production"
+));
+
+String json = measurement.toJsonString(true);
+```
+
+Multiple measurements can be encoded at once:
+
+```java
+String json = Measurement.toJsonString(
+        true,
+        new IntegerMeasurement(10L),
+        new IntegerMeasurement(20L)
+);
+```
+
+## Identifiers
+
+`Identifier` represents serializable IDs suitable for correlation, span, and parent-span values.
+
+```java
+Identifier random = Identifier.randomID();
+Identifier fromText = Identifier.ofString("request-123");
+Identifier fromUuid = Identifier.ofUUID(java.util.UUID.randomUUID());
+Identifier fromNumber = Identifier.ofLong(42L);
+
+String value = random.toString();
+```
+
+Identifiers support binary, character, Java object stream, JSON, writer, and `StringBuilder` serialization APIs.
+
+## JMX notifications
+
+The library includes JMX `Notification` types for measurements:
+
+- `MeasurementNotification<M extends Measurement>`
+- `ValueMeasurementNotification<V extends ValueMeasurement>`
+- `TimeMeasurementNotification`
+- `SpanNotification`
+- `HealthNotification`
+
+`ValueMeasurementNotification` offers convenience factories:
+
+```java
+ValueMeasurementNotification.ofBool(source, true);
+ValueMeasurementNotification.ofInt(source, 100L);
+ValueMeasurementNotification.ofFP(source, 0.95d);
+ValueMeasurementNotification.ofString(source, "ready");
+```
+
+## Reporter buffers
+
+The `reporters.util` package provides `MeasurementBuffer` implementations for buffering measurements:
+
+- `BoundedMeasurementBuffer` — fixed-capacity buffer.
+- `SoftMeasurementBuffer` — buffer implementation with soft-reference-oriented storage behavior.
+- `EmptyMeasurementBuffer` — a buffer that does not retain measurements.
+
+Each buffer supports placement, removal, clearing, and size inspection:
+
+```java
+MeasurementBuffer buffer = new BoundedMeasurementBuffer(100);
+
+PlacementResult result = buffer.place(measurement);
+Measurement next = buffer.remove();
+```
+
+## Application identity
+
+`ApplicationInfo` exposes application and instance identity values:
+
+```java
+String applicationName = ApplicationInfo.getName();
+String instanceName = ApplicationInfo.getInstance();
+
+String defaultApplicationName = ApplicationInfo.getDefaultName();
+String defaultInstanceName = ApplicationInfo.getDefaultInstance();
+```

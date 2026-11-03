@@ -1,0 +1,206 @@
+# rfc3986
+
+`rfc3986` is a Python library for parsing, validating, normalizing, and building URIs and IRIs in accordance with [RFC 3986](https://tools.ietf.org/html/rfc3986) (Uniform Resource Identifier: Generic Syntax) and related standards for Internationalized Resource Identifiers (IRIs).
+
+It provides:
+
+- Parsing of URI/IRI strings into structured, immutable components (scheme, authority, path, query, fragment).
+- Validation of URIs and their individual components, with a fluent `Validator` API for expressing complex rules.
+- Normalization routines for making URIs comparable and canonical.
+- A `URIBuilder` for constructing URIs piece by piece.
+- A `urlparse`-compatible interface for projects migrating from `urllib.parse`.
+
+## Installation
+
+```bash
+pip install rfc3986
+```
+
+## Core Concepts
+
+### Parsing URIs and IRIs
+
+The top-level functions in `rfc3986.api` are the main entry points:
+
+```python
+from rfc3986 import uri_reference, iri_reference, urlparse
+
+uri = uri_reference('https://user:pass@example.com:8080/path?query=value#fragment')
+print(uri.scheme)     # 'https'
+print(uri.authority)  # 'user:pass@example.com:8080'
+print(uri.path)       # '/path'
+print(uri.query)      # 'query=value'
+print(uri.fragment)   # 'fragment'
+
+iri = iri_reference('https://exämple.com/pfad')
+ascii_uri = iri.encode()  # IDNA/percent-encode into a URIReference
+```
+
+`uri_reference` and `iri_reference` return `URIReference` and `IRIReference` objects respectively — both are named tuples that mix in `URIMixin`, giving them a shared set of convenience methods:
+
+- `authority_info()` / `host()` / `port()` / `userinfo()` — decompose the authority component.
+- `is_absolute()` — check whether the reference is an absolute URI.
+- `is_valid(**kwargs)` and the per-component `*_is_valid()` methods — lightweight validity checks.
+- `normalized_equality(other_ref)` — compare two references for equivalence after normalization.
+- `resolve_with(base_uri, strict=False)` — resolve a relative reference against a base URI.
+- `unsplit()` — reassemble the components back into a URI string.
+- `copy_with(...)` — produce a modified copy of the reference with certain components replaced.
+
+`URIReference` additionally provides `normalize()` to return a fully normalized copy, and `from_string(...)` as an alternative constructor.
+
+For a `urllib.parse`-like experience, `urlparse` returns a `ParseResult` (or `ParseResultBytes` when working with bytes), offering `scheme`, `hostname`, `netloc`, `params`, `geturl()`, and similar attributes/methods familiar from the standard library, plus `copy_with(...)` and `unsplit(use_idna=False)` for further manipulation.
+
+### Validation
+
+`is_valid_uri` offers a quick boolean check:
+
+```python
+from rfc3986 import is_valid_uri
+
+is_valid_uri('http://example.com', require_scheme=True)  # True
+```
+
+For more control, use the `Validator` class from `rfc3986.validators`, which supports a fluent, chainable API:
+
+```python
+from rfc3986 import uri_reference
+from rfc3986.validators import Validator
+
+validator = (
+    Validator()
+    .allow_schemes('http', 'https')
+    .allow_hosts('example.com', 'api.example.com')
+    .allow_ports('80', '443')
+    .require_presence_of('scheme', 'host')
+    .check_validity_of('scheme', 'host', 'path', 'query', 'fragment')
+    .forbid_use_of_password()
+)
+
+uri = uri_reference('https://api.example.com:443/v1/resource')
+validator.validate(uri)  # raises rfc3986.exceptions.ValidationError subclasses on failure
+```
+
+Validation failures raise specific exceptions from `rfc3986.exceptions`:
+
+- `MissingComponentError` — a required component is absent.
+- `UnpermittedComponentError` — a component's value is not in an allowed set.
+- `PasswordForbidden` — a password was present when disallowed.
+- `InvalidComponentsError` — one or more components failed syntactic validation.
+- `InvalidAuthority` / `InvalidPort` — authority or port parsing/validation issues.
+- `ResolutionError` — raised when relative reference resolution fails.
+
+Lower-level, functional validators (`scheme_is_valid`, `host_is_valid`, `path_is_valid`, `query_is_valid`, `fragment_is_valid`, `authority_is_valid`, `valid_ipv4_host_address`, etc.) are also available in `rfc3986.validators` for custom validation logic.
+
+### Normalization
+
+`rfc3986.normalizers` contains the functions used internally (and available for direct use) to normalize each URI component: `normalize_scheme`, `normalize_authority`, `normalize_host`, `normalize_path`, `normalize_query`, `normalize_fragment`, `normalize_username`, `normalize_password`, plus helpers like `normalize_percent_characters` and `remove_dot_segments`.
+
+A shortcut for whole-URI normalization is available directly from the top-level API:
+
+```python
+from rfc3986 import normalize_uri
+
+normalize_uri('HTTP://Example.COM/../a/b/../c')
+# 'http://example.com/a/c'
+```
+
+### Building URIs
+
+`URIBuilder` lets you construct a URI incrementally instead of hand-assembling strings:
+
+```python
+from rfc3986.builder import URIBuilder
+
+uri = (
+    URIBuilder()
+    .add_scheme('https')
+    .add_credentials('user', 'password')
+    .add_host('example.com')
+    .add_port(443)
+    .add_path('/search')
+    .add_query_from({'q': 'rfc3986', 'sort': 'relevance'})
+    .add_fragment('results')
+    .finalize()
+)
+
+print(uri.unsplit())
+# 'https://user:password@example.com:443/search?q=rfc3986&sort=relevance#results'
+```
+
+You can also start from an existing reference and modify it:
+
+```python
+builder = URIBuilder.from_uri(uri)
+updated = builder.extend_query_with({'page': '2'}).finalize()
+```
+
+`URIBuilder` also supports `extend_path(path)` to append additional path segments and `add_query(query)` to set a raw, pre-encoded query string.
+
+### Resolving Relative References
+
+```python
+from rfc3986 import uri_reference
+
+base = uri_reference('https://example.com/dir/file.html')
+relative = uri_reference('../other.html')
+
+resolved = relative.resolve_with(base)
+print(resolved.unsplit())
+# 'https://example.com/other.html'
+```
+
+## Working with Parse Results
+
+For compatibility with code written against `urllib.parse.urlparse`:
+
+```python
+from rfc3986 import urlparse
+
+result = urlparse('https://user:pass@example.com:8443/path;params?query=1#frag')
+print(result.hostname)  # 'example.com'
+print(result.netloc)    # 'user:pass@example.com:8443'
+print(result.params)    # 'params'
+print(result.geturl())  # reconstructed URI string
+```
+
+`ParseResult.from_parts(...)` and `ParseResultBytes.from_parts(...)` allow constructing a parse result directly from individual components rather than parsing a string, and both classes support `copy_with(...)` for producing modified copies.
+
+## Encoding Utilities
+
+`rfc3986.compat` provides small helpers used throughout the library for consistent string/bytes handling:
+
+```python
+from rfc3986.compat import to_str, to_bytes
+
+to_bytes('hello', 'utf-8')
+to_str(b'hello', 'utf-8')
+```
+
+## Exception Hierarchy
+
+All exceptions raised by the library derive from `RFC3986Exception`, making it easy to catch any library-specific error:
+
+```python
+from rfc3986.exceptions import RFC3986Exception
+
+try:
+    validator.validate(uri)
+except RFC3986Exception as exc:
+    print(f'URI validation failed: {exc}')
+```
+
+`ValidationError` is the base class for all validation-related failures (`MissingComponentError`, `UnpermittedComponentError`, `PasswordForbidden`, `InvalidComponentsError`), while `MissingDependencyError` indicates an optional dependency (such as an IDNA encoding library) required for a specific operation is not installed.
+
+## Summary
+
+| Task | Entry point |
+|---|---|
+| Parse a URI | `uri_reference()`, `URIReference.from_string()` |
+| Parse an IRI | `iri_reference()`, `IRIReference.from_string()` |
+| `urllib.parse`-style parsing | `urlparse()`, `ParseResult`, `ParseResultBytes` |
+| Validate a URI | `is_valid_uri()`, `Validator` |
+| Normalize a URI | `normalize_uri()`, `rfc3986.normalizers` |
+| Build a URI | `URIBuilder` |
+| Resolve relative references | `URIMixin.resolve_with()` |
+
+For details on RFC 3986 itself, see the [official specification](https://tools.ietf.org/html/rfc3986).

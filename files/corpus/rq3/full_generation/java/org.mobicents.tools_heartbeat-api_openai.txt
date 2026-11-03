@@ -1,0 +1,338 @@
+# Heartbeat API
+
+`org.mobicents.tools:heartbeat-api` provides Java API types for representing nodes and exchanging lifecycle and heartbeat messages with a heartbeat server.
+
+The API is centered around:
+
+- **Nodes**: `Node` and `SIPNode` represent addressable application instances and their runtime state.
+- **Packets**: request packet types represent start, heartbeat, shutdown, and stop events.
+- **Server integration**: `IServerHeartbeatService` and `IServerListener` define the contracts for running a heartbeat server and handling incoming events.
+- **Configuration**: `HeartbeatConfig` identifies a protocol implementation by class name.
+
+This artifact primarily defines contracts and data objects. Applications provide the concrete protocol, service, and listener implementations.
+
+## Dependency
+
+```xml
+<dependency>
+  <groupId>org.mobicents.tools</groupId>
+  <artifactId>heartbeat-api</artifactId>
+</dependency>
+```
+
+## Core concepts
+
+### Nodes
+
+A node identifies an instance by host name and IP address, with a map of additional properties.
+
+```java
+import org.mobicents.tools.heartbeat.api.Node;
+
+Node node = new Node("application-01", "192.0.2.10");
+
+node.getProperties().put("httpPort", "8080");
+node.getProperties().put("udpPort", "5060");
+node.getProperties().put("version", "1.0.0");
+```
+
+`Node` also exposes state commonly useful to health-checking and failure-detection workflows:
+
+- `getTimeStamp()` / `updateTimerStamp()` — access or refresh the node timestamp.
+- `getFailCounter()` / `setFailCounter(int)` — track failures.
+- `isGracefulShutdown()` / `setGracefulShutdown(boolean)` — mark graceful shutdown state.
+- `isBad()` / `setBad(boolean)` — mark a node as unhealthy.
+- `getRequestNumberWithoutResponse()` / `setRequestNumberWithoutResponse(int)` — track unanswered requests.
+- `getLastTimeResponse()` / `setLastTimeResponse(long)` — record response timing.
+- `getLastTimeError()` / `setLastTimeError(long)` — record error timing.
+- `incrementWeightIndex()` / `obtainWeightIndex()` — manage a weight index.
+- `getPorts()` — obtain the node’s port representation.
+
+Nodes implement `Comparable<Node>`, so they can be sorted.
+
+```java
+List<Node> nodes = new ArrayList<>();
+nodes.add(new Node("application-02", "192.0.2.11"));
+nodes.add(new Node("application-01", "192.0.2.10"));
+
+Collections.sort(nodes);
+```
+
+### SIP nodes
+
+`SIPNode` is a serializable node representation with a similar API to `Node`, but its property map accepts serializable values.
+
+```java
+import org.mobicents.tools.sip.balancer.SIPNode;
+
+SIPNode sipNode = new SIPNode("sip-node-01", "198.51.100.20");
+
+sipNode.getProperties().put("udpPort", "5060");
+sipNode.getProperties().put("tcpPort", "5060");
+sipNode.getProperties().put("priority", Integer.valueOf(10));
+
+sipNode.updateTimerStamp();
+sipNode.setFailCounter(0);
+```
+
+Like `Node`, `SIPNode` implements `Comparable<SIPNode>` and provides access to failure counters, response/error times, and request-without-response tracking.
+
+## Packet types
+
+The packet types implement `Packet` and represent node lifecycle or liveness events. Each accepts either a `Node` or a `SIPNode`.
+
+| Packet | Purpose suggested by API |
+|---|---|
+| `StartRequestPacket` | Announces or registers a node starting up. |
+| `HeartbeatRequestPacket` | Sends a heartbeat for an existing node. |
+| `NodeShutdownRequestPacket` | Requests or announces graceful node shutdown. |
+| `NodeStopRequestPacket` | Requests or announces node stop. |
+
+### Start request
+
+`StartRequestPacket` contains explicit fields for node identity, common transport ports, versioning, session information, and a heartbeat port.
+
+```java
+import org.mobicents.tools.heartbeat.api.Node;
+import org.mobicents.tools.heartbeat.api.StartRequestPacket;
+
+Node node = new Node("application-01", "192.0.2.10");
+
+StartRequestPacket start = new StartRequestPacket(node);
+start.setHostName("application-01");
+start.setIp("192.0.2.10");
+
+start.setHttpPort("8080");
+start.setSslPort("8443");
+
+start.setUdpPort("5060");
+start.setTcpPort("5060");
+start.setTlsPort("5061");
+start.setWsPort("8080");
+start.setWssPort("8443");
+
+start.setHeartbeatPort("2610");
+start.setVersion("1.0.0");
+start.setSessionId("startup-session-123");
+start.setRestcommInstanceId("instance-01");
+```
+
+The same packet can be initialized from a `SIPNode`:
+
+```java
+SIPNode sipNode = new SIPNode("sip-node-01", "198.51.100.20");
+StartRequestPacket start = new StartRequestPacket(sipNode);
+```
+
+### Heartbeat request
+
+A heartbeat packet can be associated with a session identifier.
+
+```java
+import org.mobicents.tools.heartbeat.api.HeartbeatRequestPacket;
+
+HeartbeatRequestPacket heartbeat = new HeartbeatRequestPacket(node);
+heartbeat.setSessionId(42L);
+
+Long sessionId = heartbeat.getSessionId();
+```
+
+### Shutdown and stop requests
+
+Use `NodeShutdownRequestPacket` when handling a shutdown workflow and `NodeStopRequestPacket` for a stop workflow.
+
+```java
+import org.mobicents.tools.heartbeat.api.NodeShutdownRequestPacket;
+import org.mobicents.tools.heartbeat.api.NodeStopRequestPacket;
+
+NodeShutdownRequestPacket shutdown = new NodeShutdownRequestPacket(node);
+shutdown.setSessionId(42L);
+
+NodeStopRequestPacket stop = new NodeStopRequestPacket(node);
+stop.setSessionId(42L);
+```
+
+## Server-side integration
+
+### `IServerHeartbeatService`
+
+`IServerHeartbeatService<T>` defines the lifecycle of a heartbeat server and a method for sending a packet to an IP address and port.
+
+```java
+public interface IServerHeartbeatService<T> {
+    void init(IServerListener listener, InetAddress host, T properties);
+    void startServer();
+    void stopServer();
+    void sendPacket(String ip, int port);
+}
+```
+
+The generic type `T` allows a server implementation to accept protocol- or transport-specific properties.
+
+Typical lifecycle:
+
+1. Create an `IServerListener`.
+2. Initialize the service with the listener, bind address, and properties.
+3. Start the server.
+4. Send packets as required by the implementation.
+5. Stop the server during application shutdown.
+
+```java
+import java.net.InetAddress;
+
+IServerHeartbeatService<MyServerProperties> service = createHeartbeatService();
+
+IServerListener listener = new MyServerListener();
+MyServerProperties properties = new MyServerProperties();
+
+service.init(
+    listener,
+    InetAddress.getByName("0.0.0.0"),
+    properties
+);
+
+service.startServer();
+
+try {
+    service.sendPacket("192.0.2.10", 2610);
+} finally {
+    service.stopServer();
+}
+```
+
+`createHeartbeatService()` and `MyServerProperties` represent application-provided types; this API defines the server contract rather than a specific implementation.
+
+### `IServerListener`
+
+`IServerListener` receives heartbeat-server events. It extends `IListener` and includes callbacks for responses and node lifecycle requests.
+
+```java
+import org.jboss.netty.channel.MessageEvent;
+import com.google.gson.JsonObject;
+import org.mobicents.tools.heartbeat.api.IServerListener;
+
+public class MyServerListener implements IServerListener {
+
+    @Override
+    public void responseReceived(JsonObject json) {
+        // Handle a protocol response.
+    }
+
+    @Override
+    public void startRequestReceived(MessageEvent event, JsonObject json) {
+        // Handle a node start request.
+    }
+
+    @Override
+    public void heartbeatRequestReceived(MessageEvent event, JsonObject json) {
+        // Handle a heartbeat request.
+    }
+
+    @Override
+    public void shutdownRequestReceived(MessageEvent event, JsonObject json) {
+        // Handle a shutdown request.
+    }
+
+    @Override
+    public void stopRequestReceived(MessageEvent event, JsonObject json) {
+        // Handle a stop request.
+    }
+
+    @Override
+    public void switchoverRequestReceived(MessageEvent event, JsonObject json) {
+        // Handle a switchover request.
+    }
+
+    // Implement additional methods inherited from IListener.
+}
+```
+
+The callback methods receive JSON payloads. Request-oriented callbacks also receive a `MessageEvent`, enabling a listener implementation to associate the payload with the incoming message event.
+
+## Protocol configuration
+
+`HeartbeatConfig` supplies the class name of a protocol implementation.
+
+```java
+import org.mobicents.tools.heartbeat.api.HeartbeatConfig;
+
+public class MyHeartbeatConfig implements HeartbeatConfig {
+
+    @Override
+    public String getProtocolClassName() {
+        return "com.example.heartbeat.MyHeartbeatProtocol";
+    }
+}
+```
+
+Applications can use this configuration contract where a protocol implementation must be selected dynamically.
+
+## Example: tracking heartbeat state
+
+The following example illustrates a simple listener that records activity for a known node when heartbeat requests are received.
+
+```java
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
+import com.google.gson.JsonObject;
+import org.jboss.netty.channel.MessageEvent;
+import org.mobicents.tools.heartbeat.api.IServerListener;
+import org.mobicents.tools.heartbeat.api.Node;
+
+public class NodeRegistryListener implements IServerListener {
+
+    private final ConcurrentMap<String, Node> nodes = new ConcurrentHashMap<>();
+
+    public void register(Node node) {
+        nodes.put(node.getIp(), node);
+    }
+
+    @Override
+    public void heartbeatRequestReceived(MessageEvent event, JsonObject json) {
+        String ip = json.get("ip").getAsString();
+        Node node = nodes.get(ip);
+
+        if (node != null) {
+            node.updateTimerStamp();
+            node.setFailCounter(0);
+            node.setRequestNumberWithoutResponse(0);
+            node.setBad(false);
+        }
+    }
+
+    @Override
+    public void shutdownRequestReceived(MessageEvent event, JsonObject json) {
+        String ip = json.get("ip").getAsString();
+        Node node = nodes.get(ip);
+
+        if (node != null) {
+            node.setGracefulShutdown(true);
+        }
+    }
+
+    @Override
+    public void startRequestReceived(MessageEvent event, JsonObject json) {
+        // Register or update the node from the received request payload.
+    }
+
+    @Override
+    public void stopRequestReceived(MessageEvent event, JsonObject json) {
+        // Handle a stopped node.
+    }
+
+    @Override
+    public void switchoverRequestReceived(MessageEvent event, JsonObject json) {
+        // Handle a switchover request.
+    }
+
+    @Override
+    public void responseReceived(JsonObject json) {
+        // Handle a received response.
+    }
+
+    // Implement additional methods inherited from IListener.
+}
+```
+
+The precise JSON fields and packet serialization format are determined by the protocol implementation used with the server.

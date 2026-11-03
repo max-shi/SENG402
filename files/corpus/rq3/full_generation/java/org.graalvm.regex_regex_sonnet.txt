@@ -1,0 +1,176 @@
+# TRegex — org.graalvm.regex:regex
+
+TRegex is a regular expression engine designed to run as a Truffle language component within GraalVM. It compiles regular expressions from several different "flavors" (dialects) — including ECMAScript/JavaScript, Python, Ruby, Java, and Oracle DB — into automaton-based execution engines (DFA, NFA, and backtracking executors) that can be embedded into other Truffle-based language runtimes.
+
+TRegex is not a general-purpose Java regex API like `java.util.regex`. Instead, it is a **regex compilation and execution engine** meant to be invoked through the Truffle polyglot infrastructure: a guest language (e.g., a JS or Python implementation running on GraalVM) requests compilation of a source regex/flags string, and TRegex returns a callable `RegexObject` that can be executed against `TruffleString` inputs.
+
+## Key Concepts
+
+### Regex Source & Flavors
+
+- **`RegexSource`** — Represents a regex pattern plus flags plus compilation `RegexOptions`, tied to a Truffle `Source`. This is the fundamental input to compilation.
+- **`RegexFlavor`** (and its subclasses `JavaFlavor`, `ECMAScriptFlavor`, `PythonFlavor`, `RubyFlavor`, `OracleDBFlavor`) — Encapsulates dialect-specific parsing, validation, lexing, and case-folding behavior. Each flavor supplies:
+  - a `RegexLexer` for tokenizing the pattern,
+  - a `RegexParser` for building a `RegexAST`,
+  - a `RegexValidator` for syntax checking without full compilation,
+  - flavor-specific semantics (e.g. whether backreferences to unmatched groups fail, whether lookbehinds must be fixed-width, etc.)
+- **`RegexFlavorProvider`** implementations (`JavaFlavorProvider`, `JSFlavorProvider`, `PythonFlavorProvider`, `RubyFlavorProvider`, `OracleDBFlavorProvider`) — SPI-style lookups that return the appropriate `RegexFlavor`.
+- Flag classes (`RegexFlags`, `JavaFlags`, `PythonFlags`, `RubyFlags`, `OracleDBFlags`) parse and expose flag state (case-insensitivity, multiline, dot-all, sticky, etc.) as Truffle-interoperable objects.
+
+### Parsing Pipeline
+
+1. A `RegexSource` is fed into a flavor-specific `RegexParser` (e.g. `JSRegexParser`, `PythonRegexParser`, `JavaRegexParser`), which produces a `RegexAST` — an abstract syntax tree made of:
+   - `Group`, `Sequence`, `CharacterClass`, `BackReference`, `LookAheadAssertion`, `LookBehindAssertion`, `AtomicGroup`, `ConditionalBackReferenceGroup`, `PositionAssertion`, `MatchFound`, `SubexpressionCall`, etc. (all under `com.oracle.truffle.regex.tregex.parser.ast`).
+2. AST post-processing (`RegexASTPostProcessor`, `CalcASTPropsVisitor`, and various visitor classes in `parser.ast.visitors`) prepares the tree for automaton generation — computing properties like fixed-width-ness, capture group ranges, and dead-code elimination.
+3. `RegexProperties` records global characteristics of the parsed regex (has alternations, has quantifiers, has lookaround, has backreferences, etc.) used to steer compilation strategy.
+
+### Automaton Construction
+
+- **`PureNFAGenerator`** / **`PureNFA`** / **`PureNFAState`** / **`PureNFATransition`** — Build an initial "pure" NFA directly from the AST, including submatchers for lookaround/backreference/atomic-group subtrees.
+- **`NFA`** / **`NFAState`** / **`NFAStateTransition`** — A refined NFA representation used as the basis for DFA generation, including support for trace-finder NFAs (`NFATraceFinderGenerator`) used to recover capture group results after a boolean match.
+- **DFA generation** (package `tregex.dfa`) — `DFAStateTransitionBuilder`, `DFACaptureGroupTransitionBuilder`, `DFACaptureGroupLazyTransitionBuilder`, and `DFATransitionCanonicalizer` merge NFA states into deterministic states and lazily compute capture-group bookkeeping transitions.
+- **Execution nodes** (package `tregex.nodes`) — Compiled automata become Truffle nodes:
+  - `TRegexDFAExecutorNode` / `TRegexDFAExecutorLocals` / `TRegexDFAExecutorProperties` — DFA-driven execution, including specializations like `DFAStateNode`, `DFAInitialStateNode`, `DFAFindInnerLiteralStateNode`, `TraceFinderDFAStateNode`.
+  - `TRegexNFAExecutorNode` — direct NFA simulation for patterns unsuitable for full DFA compilation.
+  - `TRegexBacktrackerSubExecutorNode` and `TRegexBacktrackingNFAExecutorLocals` — a backtracking engine used for lookaround/backreference subexpressions and full-pattern backtracking fallback.
+  - `LiteralRegexExecNode` (via `LiteralRegexEngine`) — a fast path for patterns that reduce to literal string matching.
+  - `DeadRegexExecNode` — represents a pattern that can never match.
+
+### Compilation Entry Points
+
+- **`TRegexCompiler`** — Top-level static entry points:
+  - `compile(RegexLanguage, RegexSource)` → `RegexObject`
+  - `compileEagerDFAExecutor`, `compileLazyDFAExecutor`, `compileBacktrackingExecutor` — lower-level entry points for specific execution strategies.
+- **`TRegexCompilationRequest`** — Orchestrates a single compilation: parses the source into a `RegexAST`, and can produce a `RegexExecNode`, a backtracking executor, or a DFA executor directly.
+
+### Runtime Objects
+
+- **`RegexObject`** — The compiled regex handle exposed to guest languages. Provides:
+  - `getSource()`, `getFlags()`, `getNumberOfCaptureGroups()`, `getNamedCaptureGroups()`
+  - `getExecCallTarget()` / `getExecBooleanCallTarget()` — `CallTarget`s for full matching or boolean-only matching.
+- **`RegexResult`** — Represents a match result (or "no match"), with lazy evaluation of capture group boundaries (`getStart(int)`, `getEnd(int)`, `getLastGroup()`), backed by lazily-invoked `CallTarget`s for expensive computations.
+- **`RegexProfile`** — Runtime profiling used to decide when to promote a lazily-evaluated regex to an eagerly-compiled DFA.
+- **`AbstractRegexObject`** / **`AbstractConstantKeysObject`** — Base classes implementing Truffle interop (`TruffleObject`) member-readable semantics for flags, results, and named capture group maps.
+
+### Character Classes and Sets
+
+- **`CodePointSet`**, **`CodePointSetAccumulator`**, **`ClassSetContents`**, **`ClassSetContentsAccumulator`** — Immutable and mutable representations of Unicode code point ranges (and, for Unicode "class set" syntax, sets that may include multi-character strings), supporting union, intersection, subtraction, inversion, and case-folding.
+- **`SortedListOfRanges`** / **`ImmutableSortedListOfRanges`** / **`RangesBuffer`** / **`IntRangesBuffer`** — Low-level abstractions for efficiently manipulating sorted, non-overlapping integer ranges, used throughout character class handling.
+- **`CompressedCodePointSet`** — A space-efficient representation of large code point sets using range arrays and bitsets, used inside compiled matchers.
+- **`Encoding`** (referenced throughout) — Represents the string encoding (e.g. UTF-8/16/32) that governs how code points are read and matched.
+
+### Diagnostics & Export
+
+- **`NFAExport`**, **`DFAExport`**, **`ASTDotExportVisitor`**, **`ASTLaTexExportVisitor`** — Export automata and ASTs to Graphviz `.dot` or LaTeX files for debugging.
+- **`Json`** / **`JsonValue`** / **`JsonObject`** / **`JsonArray`** and the `JsonConvertible` interface — Nearly all internal data structures (AST nodes, NFA/DFA states, transitions, flags, results) implement `toJson()` for structured debug dumps.
+- **`RegexUnifier`** — Converts a flavor-specific pattern into TRegex's unified internal regex syntax representation.
+
+## Typical Compilation Flow
+
+```
+RegexSource
+   │
+   ▼
+RegexFlavor.createParser() ──► RegexParser.parse() ──► RegexAST
+   │
+   ▼
+RegexASTPostProcessor.prepareForDFA()
+   │
+   ▼
+PureNFAGenerator.mapToNFA() ──► PureNFA
+   │
+   ▼
+NFA construction (tregex.nfa package)
+   │
+   ▼
+DFA generation (tregex.dfa package) ──► TRegexDFAExecutorNode
+   │                                          (or NFA/backtracking executor)
+   ▼
+RegexObject (wraps CallTargets for exec / exec-boolean)
+```
+
+## Usage Example
+
+### Compiling and running a regex directly
+
+```java
+import com.oracle.truffle.regex.RegexLanguage;
+import com.oracle.truffle.regex.RegexObject;
+import com.oracle.truffle.regex.RegexSource;
+import com.oracle.truffle.regex.RegexOptions;
+import com.oracle.truffle.regex.result.RegexResult;
+import com.oracle.truffle.regex.tregex.TRegexCompiler;
+import com.oracle.truffle.api.strings.TruffleString;
+
+// Build a source: pattern, flags, and compilation options (encoding, flavor, etc.)
+RegexSource source = new RegexSource(
+        "a(b+)c",           // pattern
+        "i",                 // flags: case-insensitive
+        RegexOptions.DEFAULT,
+        null /* Truffle Source, if any */);
+
+RegexLanguage language = new RegexLanguage();
+
+// Compile the pattern into a callable RegexObject
+RegexObject regex = TRegexCompiler.compile(language, source);
+
+System.out.println("Capture groups: " + regex.getNumberOfCaptureGroups());
+
+// Executing requires going through the returned CallTarget, as is done
+// by the Truffle runtime when a guest language invokes the regex object.
+CallTarget execTarget = regex.getExecCallTarget();
+
+TruffleString input = TruffleString.fromJavaStringUncached("ABBBC", TruffleString.Encoding.UTF_16);
+
+Object resultObj = execTarget.call(regex, input, 0 /* fromIndex */, input.byteLength(TruffleString.Encoding.UTF_16) /* maxIndex */, 0, input.byteLength(TruffleString.Encoding.UTF_16));
+RegexResult result = (RegexResult) resultObj;
+
+if (result != RegexResult.getNoMatchInstance()) {
+    System.out.println("Match: [" + result.getStart(0) + ", " + result.getEnd(0) + ")");
+    System.out.println("Group 1: [" + result.getStart(1) + ", " + result.getEnd(1) + ")");
+}
+```
+
+### Selecting a flavor explicitly via a provider
+
+```java
+import com.oracle.truffle.regex.flavor.python.PythonFlavorProvider;
+import com.oracle.truffle.regex.tregex.parser.RegexFlavor;
+import com.oracle.truffle.regex.tregex.parser.RegexParser;
+import com.oracle.truffle.regex.tregex.buffer.CompilationBuffer;
+import com.oracle.truffle.regex.charset.Encoding;
+
+RegexFlavor pythonFlavor = new PythonFlavorProvider().get();
+CompilationBuffer buffer = new CompilationBuffer(Encoding.UTF_32 /* pick appropriate Encoding */);
+
+RegexSource pySource = new RegexSource("(?P<name>\\w+)", "", RegexOptions.DEFAULT, null);
+RegexParser parser = pythonFlavor.createParser(language, pySource, buffer);
+
+RegexAST ast = parser.parse();
+System.out.println("Named groups: " + parser.getNamedCaptureGroups());
+```
+
+### Validating a pattern without full compilation
+
+```java
+import com.oracle.truffle.regex.flavor.js.JSRegexValidator;
+import com.oracle.truffle.regex.RegexSyntaxException;
+
+try {
+    JSRegexValidator validator = new JSRegexValidator(language, source, buffer);
+    validator.validate();
+} catch (RegexSyntaxException e) {
+    System.err.println("Invalid pattern: " + e.getMessage() + " (code: " + e.getErrorCode() + ")");
+}
+```
+
+## When to Use This Library
+
+TRegex is intended for language implementers building on GraalVM/Truffle who need a high-performance, dialect-aware regex engine that:
+
+- Supports multiple regex dialects (JavaScript/ECMAScript, Python, Ruby, Java, Oracle DB) behind a common `RegexFlavor` abstraction.
+- Compiles patterns down to specialized automaton executors (DFA, NFA, backtracking) chosen automatically based on pattern complexity and runtime profiling (`RegexProfile`).
+- Exposes results and flags as Truffle interop objects (`RegexObject`, `RegexResult`, `RegexFlags`) so they can be consumed directly from guest language code.
+- Provides rich internal introspection (JSON/DOT/LaTeX export of ASTs, NFAs, and DFAs) for debugging pattern compilation.
+
+It is not intended as a drop-in replacement for `java.util.regex.Pattern`/`Matcher` in ordinary Java applications; its API is oriented around Truffle node execution, `CallTarget`s, and `TruffleString` inputs rather than plain `String`/`CharSequence` matching.

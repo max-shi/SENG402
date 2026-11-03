@@ -1,0 +1,158 @@
+# bitcoin-s-async-utils
+
+Java bindings for [libsecp256k1](https://github.com/bitcoin-core/secp256k1), providing fast, native elliptic curve cryptography operations for secp256k1 — the curve used by Bitcoin and many other cryptocurrencies.
+
+This library exposes a JNI (Java Native Interface) layer over the C `libsecp256k1` implementation, giving JVM applications access to high-performance primitives for ECDSA signing/verification, Schnorr signatures, adaptor signatures, key tweaking, ECDH, and public key manipulation — all backed by constant-time, audited native code rather than pure-JVM cryptography.
+
+## Overview
+
+The public API is organized into three small classes:
+
+### `Secp256k1Context`
+
+A minimal helper for checking whether the native library is loaded and available on the current platform.
+
+- `isEnabled()` — returns `true` if the native secp256k1 context was successfully initialized (i.e., the native library is present and usable on this platform/architecture).
+- `getContext()` — returns a native pointer (as a `long`) to the shared secp256k1 context used internally by `NativeSecp256k1`.
+
+Applications should typically check `isEnabled()` before relying on `NativeSecp256k1` operations, since native library loading can fail on unsupported platforms.
+
+### `NativeSecp256k1`
+
+The main entry point for cryptographic operations. All methods are static and operate on raw byte arrays (private keys, public keys, signatures, message digests, etc.), mirroring the underlying C API closely.
+
+Key categories of functionality:
+
+**ECDSA signatures**
+- `sign(data, seckey)` / `signWithEntropy(data, seckey, entropy)` — produce an ECDSA signature over a 32-byte message digest.
+- `verify(data, signature, pub)` — verify an ECDSA signature against a public key.
+
+**Schnorr signatures (BIP-340 style)**
+- `schnorrSign(data, secKey, auxRand)` — sign using randomized auxiliary data.
+- `schnorrSignWithNonce(data, secKey, nonce)` — sign using an explicit nonce.
+- `schnorrVerify(sig, data, pubx)` — verify a Schnorr signature against an x-only public key.
+
+**Adaptor signatures** (used in protocols such as Discreet Log Contracts and payment channels)
+- `adaptorSign(seckey, adaptorPoint, data, auxRand)` — produce an adaptor signature tied to an adaptor point.
+- `adaptorVerify(adaptorSig, pubKey, data, adaptorPoint)` — verify an adaptor signature.
+- `adaptorAdapt(adaptorSec, adaptorSig)` — complete an adaptor signature into a full signature once the secret is known.
+- `adaptorExtractSecret(sig, adaptorSig, adaptor)` — recover the adaptor secret from a completed signature and its adaptor signature.
+
+**Key management**
+- `secKeyVerify(seckey)` — check that a byte array is a valid private key.
+- `computePubkey(seckey, compressed)` — derive a public key from a private key.
+- `privKeyTweakAdd(seckey, tweak)` / `privKeyTweakMul(seckey, tweak)` — tweak a private key by addition or multiplication.
+- `pubKeyTweakAdd(pubkey, tweak, compressed)` / `pubKeyTweakMul(pubkey, tweak, compressed)` — tweak a public key by addition or multiplication.
+- `pubKeyCombine(pubkeys, compressed)` — combine (sum) multiple public keys into one.
+- `decompress(pubkey)` — expand a compressed public key to its uncompressed form.
+- `isValidPubKey(pubkey)` — validate that a byte array represents a valid public key on the curve.
+
+**Diffie-Hellman**
+- `createECDHSecret(seckey, pubkey)` — compute a shared secret from a private key and a counterparty's public key.
+
+**Context management**
+- `cloneContext()` — obtain a cloned native context pointer, useful for thread-safe usage patterns.
+- `randomize(seed)` — re-randomize the native context to help protect against side-channel attacks.
+- `cleanup()` — release native resources associated with the context.
+
+Most operations that can fail due to invalid native computation throw `NativeSecp256k1Util.AssertFailException`, a checked exception signaling that the underlying C call did not complete as expected.
+
+### `NativeSecp256k1Util`
+
+Internal assertion utilities used to validate results returned from native calls.
+
+- `assertEquals(int, int, String)`, `assertEquals(boolean, boolean, String)`, `assertEquals(String, String, String)` — assert equality of native call results, throwing `AssertFailException` with a descriptive message on failure.
+- `checkArgument(boolean)` — throw an exception if a precondition does not hold.
+
+These are primarily used internally by `NativeSecp256k1` but are public and may be useful when writing additional native-call wrappers.
+
+## Usage Examples
+
+### Checking native library availability
+
+```java
+import org.bitcoin.Secp256k1Context;
+
+if (!Secp256k1Context.isEnabled()) {
+    throw new IllegalStateException("Native secp256k1 library is not available on this platform");
+}
+```
+
+### Signing and verifying an ECDSA signature
+
+```java
+import org.bitcoin.NativeSecp256k1;
+import org.bitcoin.NativeSecp256k1Util.AssertFailException;
+
+byte[] privateKey = /* 32-byte private key */;
+byte[] messageHash = /* 32-byte SHA-256 digest */;
+
+try {
+    boolean isValidKey = NativeSecp256k1.secKeyVerify(privateKey);
+    if (!isValidKey) {
+        throw new IllegalArgumentException("Invalid private key");
+    }
+
+    byte[] publicKey = NativeSecp256k1.computePubkey(privateKey, true);
+    byte[] signature = NativeSecp256k1.sign(messageHash, privateKey);
+
+    boolean valid = NativeSecp256k1.verify(messageHash, signature, publicKey);
+    System.out.println("Signature valid: " + valid);
+} catch (AssertFailException e) {
+    e.printStackTrace();
+}
+```
+
+### Schnorr signing
+
+```java
+byte[] secKey = /* 32-byte private key */;
+byte[] messageHash = /* 32-byte message digest */;
+byte[] auxRand = /* 32 bytes of randomness */;
+
+byte[] sig = NativeSecp256k1.schnorrSign(messageHash, secKey, auxRand);
+
+byte[] xOnlyPubKey = /* 32-byte x-only public key */;
+boolean verified = NativeSecp256k1.schnorrVerify(sig, messageHash, xOnlyPubKey);
+```
+
+### Adaptor signatures
+
+```java
+byte[] seckey = /* signer's private key */;
+byte[] adaptorPoint = /* point used to "lock" the signature */;
+byte[] messageHash = /* message digest */;
+byte[] auxRand = /* randomness */;
+
+// Create an adaptor signature
+byte[] adaptorSig = NativeSecp256k1.adaptorSign(seckey, adaptorPoint, messageHash, auxRand);
+
+byte[] pubKey = NativeSecp256k1.computePubkey(seckey, true);
+boolean valid = NativeSecp256k1.adaptorVerify(adaptorSig, pubKey, messageHash, adaptorPoint);
+
+// Later, once the adaptor secret is revealed:
+byte[] adaptorSecret = /* the discrete log of adaptorPoint */;
+byte[] completedSig = NativeSecp256k1.adaptorAdapt(adaptorSecret, adaptorSig);
+
+// Or, recover the secret from a completed signature:
+byte[] recoveredSecret = NativeSecp256k1.adaptorExtractSecret(completedSig, adaptorSig, adaptorPoint);
+```
+
+### Deriving a shared secret via ECDH
+
+```java
+byte[] mySecKey = /* my private key */;
+byte[] theirPubKey = /* counterparty's public key */;
+
+byte[] sharedSecret = NativeSecp256k1.createECDHSecret(mySecKey, theirPubKey);
+```
+
+## Notes on Resource Management
+
+`NativeSecp256k1` operates against a shared native context. When your application is finished using cryptographic operations (e.g., at shutdown), call:
+
+```java
+NativeSecp256k1.cleanup();
+```
+
+to release the underlying native resources. For applications performing many operations across threads, consider using `cloneContext()` to obtain independent context handles, and periodically call `randomize(seed)` with fresh entropy to harden the context against side-channel leakage.

@@ -1,0 +1,187 @@
+# flaskwebgui
+
+`flaskwebgui` provides utilities for running web applications with a browser-oriented desktop-style workflow. Its API includes:
+
+- Server adapters for Flask, FastAPI, Django, and Flask-SocketIO.
+- A `FlaskUI` controller for browser command discovery, browser startup, and application execution.
+- Helpers for selecting free ports, terminating processes on ports, finding browsers, and closing an application.
+
+## Installation
+
+Install the package with your preferred Python package manager:
+
+```bash
+pip install flaskwebgui
+```
+
+## Main API
+
+### `FlaskUI`
+
+`FlaskUI` is the primary UI/application controller.
+
+```python
+from flaskwebgui import FlaskUI
+```
+
+Available methods:
+
+| Method | Description |
+| --- | --- |
+| `get_browser_command()` | Obtains the command used to launch a browser. |
+| `start_browser(server_process)` | Starts a browser while a server process or thread is running. |
+| `run()` | Runs the configured application workflow. |
+
+`start_browser()` accepts either a `threading.Thread` or `multiprocessing.Process` instance.
+
+### Server adapters
+
+The library exposes server adapter classes for several Python web ecosystems:
+
+- `DefaultServerFastApi`
+- `DefaultServerFlask`
+- `DefaultServerDjango`
+- `DefaultServerFlaskSocketIO`
+
+Each adapter provides the same two methods:
+
+```python
+get_server_kwargs(**kwargs)
+server(**server_kwargs)
+```
+
+`get_server_kwargs()` can be used to prepare or normalize server keyword arguments. `server()` runs the corresponding server using those arguments.
+
+`BaseDefaultServer` is the shared base type for default server implementations.
+
+### Runtime helpers
+
+```python
+from flaskwebgui import (
+    close_application,
+    find_browser_in_paths,
+    get_free_port,
+    kill_port,
+)
+```
+
+| Function | Description |
+| --- | --- |
+| `get_free_port()` | Finds an available port. |
+| `kill_port(port)` | Stops the process associated with a port. |
+| `close_application()` | Closes the current application. |
+| `find_browser_in_paths(browser_paths)` | Searches a list of browser paths. |
+
+## Usage examples
+
+### Find a free port and start a Flask server adapter
+
+```python
+from flaskwebgui import DefaultServerFlask, get_free_port
+
+port = get_free_port()
+
+server_kwargs = DefaultServerFlask.get_server_kwargs(
+    host="127.0.0.1",
+    port=port,
+)
+
+DefaultServerFlask.server(**server_kwargs)
+```
+
+The same pattern can be used with the other server adapters:
+
+```python
+from flaskwebgui import DefaultServerFastApi, get_free_port
+
+port = get_free_port()
+
+server_kwargs = DefaultServerFastApi.get_server_kwargs(
+    host="127.0.0.1",
+    port=port,
+)
+
+DefaultServerFastApi.server(**server_kwargs)
+```
+
+### Use `FlaskUI` to run an application workflow
+
+```python
+from flaskwebgui import FlaskUI
+
+ui = FlaskUI()
+
+browser_command = ui.get_browser_command()
+print(browser_command)
+
+ui.run()
+```
+
+### Start a browser alongside a server thread
+
+```python
+from threading import Thread
+
+from flaskwebgui import DefaultServerFlask, FlaskUI, get_free_port
+
+port = get_free_port()
+
+server_kwargs = DefaultServerFlask.get_server_kwargs(
+    host="127.0.0.1",
+    port=port,
+)
+
+server_thread = Thread(
+    target=DefaultServerFlask.server,
+    kwargs=server_kwargs,
+)
+
+server_thread.start()
+
+ui = FlaskUI()
+ui.start_browser(server_thread)
+```
+
+### Locate a browser executable
+
+```python
+from flaskwebgui import find_browser_in_paths
+
+browser = find_browser_in_paths([
+    "/usr/bin/google-chrome",
+    "/usr/bin/chromium",
+    "/Applications/Google Chrome.app",
+])
+
+if browser:
+    print(f"Browser found: {browser}")
+else:
+    print("No browser found in the supplied locations.")
+```
+
+### Release a port during cleanup
+
+```python
+from flaskwebgui import kill_port
+
+kill_port(5000)
+```
+
+### Close the application
+
+```python
+from flaskwebgui import close_application
+
+close_application()
+```
+
+## Supported server adapter types
+
+| Adapter | Intended framework |
+| --- | --- |
+| `DefaultServerFlask` | Flask |
+| `DefaultServerFastApi` | FastAPI |
+| `DefaultServerDjango` | Django |
+| `DefaultServerFlaskSocketIO` | Flask-SocketIO |
+
+Use the adapter matching your web framework, prepare arguments with `get_server_kwargs()`, and invoke `server()` with the resulting keyword arguments.

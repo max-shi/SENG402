@@ -1,0 +1,151 @@
+# java-utils
+
+`ru.greatbit:java-utils` is a general-purpose Java utility library that bundles a set of small, focused helper packages commonly needed in everyday application development: bean comparison/copying, collection manipulation, math sequences, finance calculations, string helpers, time/cron helpers, network address lookup, reflection-based field access, JSON/XML serialization, and a small tree data-structure toolkit with traversal utilities.
+
+It has no single "main" entry point — instead, it's a toolbox of independent static utility classes and a small object-oriented tree API that you pick and choose from as needed.
+
+## Installation
+
+Add the dependency to your build (Maven coordinates):
+
+```xml
+<dependency>
+    <groupId>ru.greatbit</groupId>
+    <artifactId>java-utils</artifactId>
+    <version>VERSION</version>
+</dependency>
+```
+
+## Overview of modules
+
+### Beans — `ru.greatbit.utils.beans.BeanUtils`
+Utilities for comparing and cloning arbitrary Java objects:
+- `equalByVal(bean1, bean2)` — compares two beans by their field values rather than by reference/`equals()`.
+- `getCopy(source)` — produces a deep copy of an object.
+
+### Collections — `ru.greatbit.utils.collection`
+`CollectionUtils` provides a broad set of list/collection helpers:
+- Merging: `mergeLists`, `mergeListsByValue`.
+- Diffing: `getDiff` / `getDiffAnyObject` return a `Difference<T>` object exposing `getAdded()`, `getRemoved()`, `getEqual()`, and `getMerged()` lists — useful for reconciling two versions of a list.
+- Map conversion: `listToMap`, `listToMD5Map`.
+- Cleanup: `removeByIndex`, `removeDuplicateValues` (list or map-of-lists variants, optionally keyed by a custom "meaning value" function).
+- Ordering: `reorder`, `swap`.
+- Combinatorics: `powerSet`, `permutations`.
+
+`Wrapper<T>` is a small helper class that wraps an object together with a custom `Function<T, Object>` used to define what "equality" means for that object — it backs the custom-equality variants of `removeDuplicateValues` and `mergeListsByValue`.
+
+### Math & Finance
+- `ru.greatbit.utils.math.Prime` — prime number generation (`getPrimes`) and primality testing (`isPrime`).
+- `ru.greatbit.utils.math.Random` — `next(min, max)` for bounded random integers.
+- `ru.greatbit.utils.math.Sequence` — factorial and Fibonacci values and full sequences, throwing `MathException` on invalid input.
+- `ru.greatbit.utils.finance.Loan` — `getAnnuityMonthlyPayment(loanAmt, interest, months)` for computing loan payments.
+
+### Networking — `ru.greatbit.utils.network.AddressUtils`
+Resolves the machine's LAN-facing address (`getLocalHostLANAddress`) as an alternative to the default JVM host resolution (`getLocalHost`), useful in multi-homed environments.
+
+### Reflection — `ru.greatbit.utils.refclection.FieldsFetcher`
+Locates nested field values on arbitrary objects using dotted/list paths (`findValue`), pulls fields by name and type (`getObjectFromField`), and aggregates values from fields that implement a common interface (`mergeListsByInterface`, `getValuesByInterface`). Throws `NullObjectException` when a path segment resolves to `null`.
+
+### Serialization
+- `ru.greatbit.utils.serialize.JsonSerializer` — marshal/unmarshal objects to/from JSON, with optional root element naming.
+- `ru.greatbit.utils.serialize.XmlSerializer` — marshal/unmarshal objects to/from XML via JAXB, including namespace-aware unmarshalling and root namespace lookup.
+- `ru.greatbit.utils.serialize.Serializer` — a generic `unmarshal` entry point.
+- `ru.greatbit.utils.serialize.utils.NamespaceFilter` — a SAX `XMLFilterImpl` used internally to inject/rewrite XML namespaces during parsing.
+
+### Strings — `ru.greatbit.utils.string.StringUtils`
+Common text helpers: transliteration (`translit`), null-safety (`emptyIfNull`), joining collections into strings (`listAsString`, `listAsStringNoSpaces`), MD5 hashing (`getMd5String`), de-duplicated insertion (`addUniqueString`), substring checks (`containsAll`, `containsAny`), trimming (`removeTailing`, `removeHeading`), and longest common subsequence (`lcs`).
+
+### Time — `ru.greatbit.utils.time`
+- `TimeUtils.getStartOfTheDay(...)` — truncate a timestamp or `Date` to midnight.
+- `CronUtils.convertToQuartz(input)` — convert a cron expression into Quartz cron syntax.
+
+### Trees — `ru.greatbit.utils.tree`
+A small, generic tree data-structure toolkit:
+- **Node types** (`ru.greatbit.utils.tree.nodes`): `Node<K,V>` is the base class holding a key/value pair. `BaseBinary<K,V>` and `BaseOriented<K,V>` implement the `Binary` / `Oriented` interfaces respectively for two-child and left/right-list-of-children structures. `NaryNode<K,V>` supports an arbitrary number of children. `AvlNode` adds height tracking for AVL trees, and `RedBlackNode` adds a color flag for red-black trees.
+- **Interfaces** (`ru.greatbit.utils.tree.api`): `Binary` (left/right child accessors) and `Oriented` (left/right *lists* of children).
+- **Processing** (`ru.greatbit.utils.tree.processors`): `Searchable` (`find`, `findByVal`) and `Updatable` (`addNode`, `removeNode`, `removeNodeByVal`, `merge`) define contracts for tree operations; `Visitor` defines a `visit` callback used by traversal.
+- **`Traverse`** — static helpers for walking a tree built from `Node`s: `bfsList`/`bfsVisit` and `dfsList`/`dfsVisit` for breadth-first/depth-first traversal, `getLeafs`/`countLeafs` for leaf collection and counting, and `countMaxHeight` for tree depth.
+
+## Usage examples
+
+### Comparing and copying beans
+
+```java
+Person p1 = new Person("Alice", 30);
+Person p2 = new Person("Alice", 30);
+
+boolean same = BeanUtils.equalByVal(p1, p2); // true, compared by field values
+
+Person copy = BeanUtils.getCopy(p1);
+```
+
+### Diffing two lists
+
+```java
+List<String> oldList = Arrays.asList("a", "b", "c");
+List<String> newList = Arrays.asList("b", "c", "d");
+
+Difference<String> diff = CollectionUtils.getDiff(oldList, newList);
+
+diff.getAdded();   // ["d"]
+diff.getRemoved(); // ["a"]
+diff.getEqual();   // ["b", "c"]
+```
+
+### Removing duplicates by a custom key
+
+```java
+List<Person> people = Arrays.asList(
+    new Person("Alice", 30),
+    new Person("Alice", 45),
+    new Person("Bob", 22)
+);
+
+List<Person> distinctByName = CollectionUtils.removeDuplicateValues(
+    people, person -> person.getName()
+);
+// keeps only one Person per unique name
+```
+
+### Math sequences and loan payments
+
+```java
+List<Long> primes = Prime.getPrimes(20);          // primes up to depth 20
+long fib10 = Sequence.fibonacci(10);               // 10th Fibonacci number
+double payment = Loan.getAnnuityMonthlyPayment(200000, 0.065, 360);
+```
+
+### Serializing to JSON and XML
+
+```java
+String json = JsonSerializer.marshal(person);
+Person fromJson = JsonSerializer.unmarshal(json, Person.class);
+
+String xml = XmlSerializer.marshal(person);
+Person fromXml = XmlSerializer.unmarshal(xml, Person.class);
+```
+
+### Working with a tree
+
+```java
+Node<String, Integer> root = new NaryNode<>("root", 0);
+Node<String, Integer> childA = new NaryNode<>("a", 1);
+Node<String, Integer> childB = new NaryNode<>("b", 2);
+
+root.getChildren().add(childA);
+root.getChildren().add(childB);
+
+List<Node<String, Integer>> breadthFirst = Traverse.bfsList(root);
+long leafCount = Traverse.countLeafs(root);
+int height = Traverse.countMaxHeight(root);
+
+Traverse.dfsVisit(root, new Visitor() {
+    public <K, V> void visit(Node<K, V> node) {
+        System.out.println(node.getKey() + " = " + node.getValue());
+    }
+});
+```
+
+## License
+
+See the repository's license file for details.

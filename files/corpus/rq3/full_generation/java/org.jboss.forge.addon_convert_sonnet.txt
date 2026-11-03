@@ -1,0 +1,175 @@
+# org.jboss.forge.addon:convert
+
+A lightweight type-conversion library for the JBoss Forge addon ecosystem. It provides a simple, extensible API for converting values from one type to another, along with a pluggable factory that discovers or generates converters on demand.
+
+## Overview
+
+The library is built around a few core abstractions:
+
+### `Converter<SOURCE_TYPE, TARGET_TYPE>`
+
+The central interface. A converter knows how to transform a value of `SOURCE_TYPE` into a value of `TARGET_TYPE`:
+
+```java
+public interface Converter<SOURCE_TYPE, TARGET_TYPE> {
+    TARGET_TYPE convert(SOURCE_TYPE source);
+}
+```
+
+### `AbstractConverter<SOURCETYPE, TARGETTYPE>`
+
+A convenient base class for implementing `Converter`. It stores the source and target `Class` references so implementations can introspect the types they operate on via `getSourceType()` and `getTargetType()`.
+
+### `ConverterFactory`
+
+The main entry point for consumers who need a converter but don't want to construct one manually:
+
+```java
+public interface ConverterFactory {
+    <SOURCE, TARGET> Converter<SOURCE, TARGET> getConverter(Class<SOURCE> source, Class<TARGET> target);
+}
+```
+
+Given a source and target type, the factory looks up (or builds) an appropriate `Converter`. If no suitable converter can be found or generated, a `ConverterNotFoundException` is thrown.
+
+### `ConverterGenerator`
+
+An SPI for pluggable converter generation. Implementations declare which source/target type pairs they can handle and produce a `Converter` instance for them:
+
+```java
+public interface ConverterGenerator {
+    boolean handles(Class<?> source, Class<?> target);
+    Converter<?, ?> generateConverter(Class<?> source, Class<?> target);
+    Class<? extends Converter<?, ?>> getConverterType();
+}
+```
+
+This allows the library to support conversions dynamically, without requiring every possible converter to be registered up front. For example, a generator can produce converters that delegate to a target type's constructor or to a static/instance method.
+
+### `CompositeConverter`
+
+Chains multiple converters together into a single conversion pipeline. This is useful when converting from type A to type C requires passing through an intermediate type B:
+
+```java
+public class CompositeConverter implements Converter<Object, Object> {
+    public CompositeConverter(Converter... converters);
+    public Object convert(Object source);
+}
+```
+
+### Exceptions
+
+- **`ConversionException`** — a general runtime exception thrown when a conversion fails.
+- **`ConverterNotFoundException`** — thrown by `ConverterFactory` implementations when no converter can be located or generated for a given source/target type pair.
+
+### Built-in / Internal Converters
+
+The library ships with a handful of ready-made converters and generators, typically wired together via CDI:
+
+- **`ConverterFactoryImpl`** — the default `ConverterFactory` implementation, responsible for resolving and caching converters for requested type pairs.
+- **`ConstructorConverter`** — converts values by invoking a target type's constructor that accepts the source type as an argument.
+- **`MethodConverter`** — converts values by invoking a (static or instance) method that performs the transformation.
+- **`IntegerConverterGenerator`** — a `ConverterGenerator` (and `Converter<String, Integer>`) that supports converting `String` values to `Integer`.
+- **`StringToImportedInstanceConverter`** — converts a `String` into an instance of a target type by resolving that type through Forge's `AddonRegistry`, useful for dynamically constructing objects from addon-provided classes.
+- **`Converters`** — an enum providing simple built-in converters:
+  - `NOOP` — returns the source value unchanged.
+  - `TO_STRING` — converts any object to its `String` representation via `toString()`.
+- **`ConverterProducer`** — a CDI producer that injects a properly resolved `Converter<S, T>` into components based on the injection point's generic type parameters, delegating to a `ConverterFactory`.
+
+## How It Fits Together
+
+1. A consumer requests a converter from `ConverterFactory` for a given source/target type pair.
+2. The factory checks whether a suitable converter already exists (e.g. `IntegerConverterGenerator` for `String → Integer`).
+3. If none is found directly, the factory may consult registered `ConverterGenerator` implementations to build one dynamically (e.g. via a target type's constructor or method).
+4. If multiple steps are required, a `CompositeConverter` can chain converters together.
+5. If no converter can be found or generated, a `ConverterNotFoundException` is thrown.
+
+## Usage Examples
+
+### Basic conversion via the factory
+
+```java
+ConverterFactory converterFactory = ...; // obtained via injection or lookup
+
+Converter<String, Integer> stringToInt = converterFactory.getConverter(String.class, Integer.class);
+Integer value = stringToInt.convert("42");
+```
+
+### Implementing a custom converter
+
+```java
+public class StringToBooleanConverter extends AbstractConverter<String, Boolean> {
+
+    public StringToBooleanConverter() {
+        super(String.class, Boolean.class);
+    }
+
+    @Override
+    public Boolean convert(String source) {
+        return Boolean.parseBoolean(source);
+    }
+}
+```
+
+### Chaining converters with `CompositeConverter`
+
+```java
+Converter<String, Integer> stringToInt = converterFactory.getConverter(String.class, Integer.class);
+Converter<Integer, String> intToString = converterFactory.getConverter(Integer.class, String.class);
+
+CompositeConverter roundTrip = new CompositeConverter(stringToInt, intToString);
+Object result = roundTrip.convert("123"); // "123", after going through Integer
+```
+
+### Injecting a converter via CDI
+
+```java
+public class MyService {
+
+    @Inject
+    private Converter<String, Integer> stringToIntConverter;
+
+    public int parse(String input) {
+        return stringToIntConverter.convert(input);
+    }
+}
+```
+
+Here, `ConverterProducer` inspects the injection point's generic types (`String`, `Integer`) and delegates to the registered `ConverterFactory` to resolve and inject the appropriate `Converter` instance.
+
+### Handling missing converters
+
+```java
+try {
+    Converter<String, java.util.Date> converter = converterFactory.getConverter(String.class, java.util.Date.class);
+    converter.convert("2024-01-01");
+} catch (ConverterNotFoundException e) {
+    // No converter registered or generatable for String -> Date
+}
+```
+
+## Extending the Library
+
+To support new type conversions dynamically, implement `ConverterGenerator`:
+
+```java
+public class MyTypeConverterGenerator implements ConverterGenerator {
+
+    @Override
+    public boolean handles(Class<?> source, Class<?> target) {
+        return source == String.class && target == MyType.class;
+    }
+
+    @Override
+    public Converter<?, ?> generateConverter(Class<?> source, Class<?> target) {
+        return new MyTypeConverter();
+    }
+
+    @Override
+    public Class<? extends Converter<?, ?>> getConverterType() {
+        return MyTypeConverter.class;
+    }
+}
+```
+
+Register the generator with the environment's dependency injection mechanism, and it will be consulted automatically by `ConverterFactory` whenever a matching source/target pair is requested.

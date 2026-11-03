@@ -1,0 +1,304 @@
+# debezium-embedded
+
+`com.tencent.bk.base.datahub:debezium-embedded` provides Java APIs for running a Debezium-style embedded change-event engine, receiving change events in application code, and applying configured record transformations and predicates.
+
+The library exposes two complementary styles of use:
+
+- **Embedded engine execution** with `EmbeddedEngine`, which operates on `SourceRecord` instances.
+- **Converted event execution** through `ConvertingEngineBuilderFactory`, which creates engines that emit typed `ChangeEvent` or `RecordChangeEvent` values according to a selected serialization format.
+
+It also includes utilities for transformation pipelines, predicates, source-connector integration, and offset-commit policies.
+
+## Installation
+
+Add the library to your Maven project:
+
+```xml
+<dependency>
+    <groupId>com.tencent.bk.base.datahub</groupId>
+    <artifactId>debezium-embedded</artifactId>
+    <version><!-- library version --></version>
+</dependency>
+```
+
+## Main components
+
+### `EmbeddedEngine`
+
+`EmbeddedEngine` is an implementation of `DebeziumEngine<SourceRecord>`. It can be run directly and exposes lifecycle operations:
+
+- `isRunning()` — determine whether the engine is currently active.
+- `run()` — start engine processing.
+- `stop()` — request that the engine stop.
+- `close()` — close the engine and release resources.
+- `await(timeout, unit)` — wait for completion.
+- `runWithTask(Consumer<SourceTask>)` — run while receiving the active `SourceTask`.
+
+Create an engine using:
+
+```java
+EmbeddedEngine.Builder builder = EmbeddedEngine.create();
+```
+
+The returned builder is responsible for engine configuration and construction.
+
+### `ConvertingEngineBuilderFactory`
+
+`ConvertingEngineBuilderFactory` creates `DebeziumEngine` builders that produce converted change events rather than raw `SourceRecord` values.
+
+It supports two event shapes:
+
+- `RecordChangeEvent<T>` for value-only change events.
+- `ChangeEvent<S, T>` for key/value change events.
+
+The serialization format determines the output event types:
+
+```java
+Builder<RecordChangeEvent<MyValue>> valueBuilder =
+        factory.builder(valueFormat);
+
+Builder<ChangeEvent<MyKey, MyValue>> keyValueBuilder =
+        factory.builder(keyValueFormat);
+```
+
+### `ConvertingEngineBuilder<R>`
+
+`ConvertingEngineBuilder<R>` configures a converted engine. Its fluent methods return a `Builder<R>` and can be used to supply:
+
+- A record consumer through `notifying(...)`
+- Engine properties through `using(Properties)`
+- A class loader through `using(ClassLoader)`
+- A clock through `using(Clock)`
+- Completion handling through `using(CompletionCallback)`
+- Connector lifecycle handling through `using(ConnectorCallback)`
+- Offset commit behavior through `using(OffsetCommitPolicy)`
+
+Finally, call `build()` to obtain a `DebeziumEngine<R>`.
+
+### `Transformations`
+
+`Transformations` applies configured transformations to `SourceRecord` instances.
+
+```java
+Transformations transformations = new Transformations(configuration);
+
+SourceRecord transformed = transformations.transform(record);
+```
+
+`Transformations` is `Closeable`; close it when processing is complete.
+
+### `Predicates`
+
+`Predicates` manages named predicates for `SourceRecord` instances.
+
+```java
+Predicates predicates = new Predicates(configuration);
+
+Predicate<SourceRecord> predicate = predicates.getPredicate("myPredicate");
+if (predicate.test(record)) {
+    // Process matching record
+}
+```
+
+Like `Transformations`, `Predicates` is `Closeable`.
+
+### `OffsetCommitPolicy`
+
+`OffsetCommitPolicy` controls when offsets are committed.
+
+Available policies include:
+
+- `OffsetCommitPolicy.always()` — commit whenever a commit decision is evaluated.
+- `OffsetCommitPolicy.periodic(Configuration)` — create a policy based on configuration.
+- `or(...)` — commit when either policy requests a commit.
+- `and(...)` — commit only when both policies request a commit.
+
+```java
+OffsetCommitPolicy policy =
+        OffsetCommitPolicy.always()
+                          .and(OffsetCommitPolicy.periodic(configuration));
+```
+
+### `SimpleSourceConnector`
+
+`SimpleSourceConnector` is a `SourceConnector` implementation with standard connector lifecycle methods:
+
+- `start(Map<String, String>)`
+- `taskClass()`
+- `taskConfigs(int)`
+- `stop()`
+- `config()`
+- `version()`
+
+It can be used where a Kafka Connect-compatible `SourceConnector` is required.
+
+### `StopConnectorException`
+
+`StopConnectorException` is a `DebeziumException` that can be used to signal that connector processing should stop.
+
+```java
+throw new StopConnectorException("Stopping connector after application shutdown request");
+```
+
+## Example: build a converted change-event engine
+
+The following example configures a converted engine that delivers `RecordChangeEvent<MyEvent>` values to an application callback.
+
+```java
+import io.debezium.engine.DebeziumEngine;
+import io.debezium.engine.RecordChangeEvent;
+import io.debezium.engine.format.ChangeEventFormat;
+import io.debezium.engine.format.SerializationFormat;
+import io.debezium.embedded.ConvertingEngineBuilderFactory;
+import io.debezium.embedded.spi.OffsetCommitPolicy;
+
+import java.util.Properties;
+import java.util.function.Consumer;
+
+// MyFormat is an application-selected SerializationFormat<MyEvent>.
+SerializationFormat<MyEvent> myFormat = obtainMyFormat();
+
+ChangeEventFormat<SerializationFormat<MyEvent>> eventFormat =
+        obtainChangeEventFormat(myFormat);
+
+Properties properties = new Properties();
+// Add the connector and engine properties required by your deployment.
+
+ConvertingEngineBuilderFactory factory = new ConvertingEngineBuilderFactory();
+
+DebeziumEngine<RecordChangeEvent<MyEvent>> engine =
+        factory.builder(eventFormat)
+               .using(properties)
+               .using(OffsetCommitPolicy.always())
+               .notifying((Consumer<RecordChangeEvent<MyEvent>>) event -> {
+                   MyEvent payload = event.value();
+                   handleEvent(payload);
+               })
+               .build();
+```
+
+In this example:
+
+1. A serialization format determines the Java type produced by the engine.
+2. `notifying(...)` registers application code that receives each converted event.
+3. `using(Properties)` supplies the engine and connector configuration.
+4. `using(OffsetCommitPolicy)` defines offset-commit behavior.
+5. `build()` creates the configured engine.
+
+## Example: consume key/value change events
+
+Use a key/value event format when application logic needs both the event key and value.
+
+```java
+import io.debezium.engine.ChangeEvent;
+import io.debezium.engine.DebeziumEngine;
+import io.debezium.engine.format.KeyValueChangeEventFormat;
+import io.debezium.engine.format.SerializationFormat;
+import io.debezium.embedded.ConvertingEngineBuilderFactory;
+
+import java.util.Properties;
+import java.util.function.Consumer;
+
+SerializationFormat<MyKey> keyFormat = obtainKeyFormat();
+SerializationFormat<MyValue> valueFormat = obtainValueFormat();
+
+KeyValueChangeEventFormat<
+        SerializationFormat<MyKey>,
+        SerializationFormat<MyValue>
+        > eventFormat = obtainKeyValueFormat(keyFormat, valueFormat);
+
+Properties properties = new Properties();
+// Add the connector and engine properties required by your deployment.
+
+ConvertingEngineBuilderFactory factory = new ConvertingEngineBuilderFactory();
+
+DebeziumEngine<ChangeEvent<MyKey, MyValue>> engine =
+        factory.builder(eventFormat)
+               .using(properties)
+               .notifying((Consumer<ChangeEvent<MyKey, MyValue>>) event -> {
+                   MyKey key = event.key();
+                   MyValue value = event.value();
+
+                   handleChange(key, value);
+               })
+               .build();
+```
+
+## Example: apply predicates and transformations to source records
+
+Predicates and transformations can be used together when processing raw `SourceRecord` values.
+
+```java
+import io.debezium.config.Configuration;
+import io.debezium.embedded.Predicates;
+import io.debezium.embedded.Transformations;
+import org.apache.kafka.connect.source.SourceRecord;
+
+import java.util.function.Predicate;
+
+Configuration configuration = obtainConfiguration();
+
+try (Predicates predicates = new Predicates(configuration);
+     Transformations transformations = new Transformations(configuration)) {
+
+    Predicate<SourceRecord> shouldProcess =
+            predicates.getPredicate("processRecords");
+
+    SourceRecord record = obtainSourceRecord();
+
+    if (shouldProcess == null || shouldProcess.test(record)) {
+        SourceRecord transformed = transformations.transform(record);
+
+        if (transformed != null) {
+            handleSourceRecord(transformed);
+        }
+    }
+}
+```
+
+This pattern allows an application to:
+
+1. Look up a configured predicate by name.
+2. Test whether a record should be processed.
+3. Transform the record before delivering it to downstream logic.
+4. Close predicate and transformation resources reliably.
+
+## Example: run and stop an embedded engine
+
+Once an `EmbeddedEngine` has been built, it can be run and controlled through its lifecycle API.
+
+```java
+import io.debezium.embedded.EmbeddedEngine;
+
+EmbeddedEngine engine = obtainConfiguredEmbeddedEngine();
+
+Thread worker = new Thread(engine::run, "embedded-engine");
+worker.start();
+
+// Application code can inspect engine state.
+if (engine.isRunning()) {
+    // Engine is processing records.
+}
+
+// Request shutdown.
+engine.stop();
+
+// Wait for termination.
+boolean finished = engine.await(30, java.util.concurrent.TimeUnit.SECONDS);
+
+if (!finished) {
+    // Apply application-specific timeout handling.
+}
+
+engine.close();
+```
+
+## Resource management
+
+The following types implement `Closeable` or provide explicit shutdown operations:
+
+- `EmbeddedEngine` — call `stop()` and/or `close()`.
+- `Transformations` — call `close()` or use try-with-resources.
+- `Predicates` — call `close()` or use try-with-resources.
+
+Ensure these resources are closed during application shutdown, especially when an engine is running in a background thread.

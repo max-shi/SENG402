@@ -1,0 +1,470 @@
+# org.jboss.forge.addon:convert
+
+A Java conversion library for representing and resolving conversions between source and target types.
+
+The central abstraction is `Converter<SOURCE_TYPE, TARGET_TYPE>`, which converts one value to another. A `ConverterFactory` can locate converters for a requested source/target type pair, while `ConverterGenerator` implementations can advertise and create converters dynamically.
+
+The library also includes reusable converter implementations for constructor- and method-based conversion, converter composition, string conversion, and CDI-based converter injection.
+
+## Core API
+
+### `Converter<SOURCE_TYPE, TARGET_TYPE>`
+
+The basic conversion contract:
+
+```java
+public interface Converter<SOURCE_TYPE, TARGET_TYPE> {
+    TARGET_TYPE convert(SOURCE_TYPE source);
+}
+```
+
+Implement this interface when defining a custom conversion.
+
+```java
+import org.jboss.forge.addon.convert.Converter;
+
+public final class StringLengthConverter implements Converter<String, Integer> {
+    @Override
+    public Integer convert(String source) {
+        return source == null ? 0 : source.length();
+    }
+}
+```
+
+Use it directly:
+
+```java
+Converter<String, Integer> converter = new StringLengthConverter();
+
+Integer length = converter.convert("Forge");
+// 5
+```
+
+---
+
+### `AbstractConverter<SOURCETYPE, TARGETTYPE>`
+
+`AbstractConverter` is a base class for converters that need to expose their source and target types.
+
+```java
+public class AbstractConverter<SOURCETYPE, TARGETTYPE>
+        implements Converter<SOURCETYPE, TARGETTYPE> {
+    public AbstractConverter(Class<SOURCETYPE> sourceType,
+                             Class<TARGETTYPE> targetType);
+
+    public Class<SOURCETYPE> getSourceType();
+    public Class<TARGETTYPE> getTargetType();
+}
+```
+
+A custom converter can extend it to retain type metadata:
+
+```java
+import org.jboss.forge.addon.convert.AbstractConverter;
+
+public final class StringLengthConverter
+        extends AbstractConverter<String, Integer> {
+
+    public StringLengthConverter() {
+        super(String.class, Integer.class);
+    }
+
+    @Override
+    public Integer convert(String source) {
+        return source == null ? 0 : source.length();
+    }
+}
+```
+
+```java
+StringLengthConverter converter = new StringLengthConverter();
+
+Class<String> sourceType = converter.getSourceType();
+Class<Integer> targetType = converter.getTargetType();
+Integer result = converter.convert("convert");
+```
+
+---
+
+### `ConverterFactory`
+
+`ConverterFactory` locates a converter for a pair of Java types.
+
+```java
+public interface ConverterFactory {
+    <SOURCE, TARGET> Converter<SOURCE, TARGET> getConverter(
+            Class<SOURCE> source,
+            Class<TARGET> target);
+}
+```
+
+Example:
+
+```java
+import org.jboss.forge.addon.convert.Converter;
+import org.jboss.forge.addon.convert.ConverterFactory;
+
+ConverterFactory factory = new ConverterFactoryImpl();
+
+Converter<String, Integer> stringToInteger =
+        factory.getConverter(String.class, Integer.class);
+
+Integer value = stringToInteger.convert("42");
+```
+
+If no appropriate converter is available, callers should be prepared for `ConverterNotFoundException`.
+
+---
+
+### `ConverterFactoryImpl`
+
+`ConverterFactoryImpl` is the provided `ConverterFactory` implementation.
+
+```java
+import org.jboss.forge.addon.convert.Converter;
+import org.jboss.forge.addon.convert.impl.ConverterFactoryImpl;
+
+ConverterFactoryImpl factory = new ConverterFactoryImpl();
+
+Converter<String, Integer> converter =
+        factory.getConverter(String.class, Integer.class);
+
+Integer converted = converter.convert("123");
+```
+
+The exact converters available through a factory depend on the converters and generators accessible to that factory.
+
+## Converter implementations
+
+### `CompositeConverter`
+
+`CompositeConverter` combines one or more converters into a single `Converter<Object, Object>`.
+
+```java
+public class CompositeConverter implements Converter<Object, Object> {
+    public CompositeConverter(Converter... converters);
+    public Object convert(Object source);
+}
+```
+
+This is useful when conversion should happen in stages.
+
+```java
+import org.jboss.forge.addon.convert.CompositeConverter;
+import org.jboss.forge.addon.convert.Converter;
+
+Converter<String, String> trim = String::trim;
+Converter<String, Integer> parseInteger = Integer::valueOf;
+
+CompositeConverter converter =
+        new CompositeConverter(trim, parseInteger);
+
+Object result = converter.convert(" 42 ");
+Integer value = (Integer) result;
+```
+
+Because `CompositeConverter` accepts and returns `Object`, callers typically cast the final result to the expected type.
+
+---
+
+### `ConstructorConverter<SOURCETYPE, TARGETTYPE>`
+
+`ConstructorConverter` invokes a supplied target-type constructor as the conversion mechanism.
+
+```java
+public class ConstructorConverter<SOURCETYPE, TARGETTYPE>
+        extends AbstractConverter<SOURCETYPE, TARGETTYPE> {
+
+    public ConstructorConverter(
+            Class<SOURCETYPE> sourceType,
+            Class<TARGETTYPE> targetType,
+            Constructor<TARGETTYPE> constructor);
+
+    public TARGETTYPE convert(SOURCETYPE source);
+}
+```
+
+For example, a target class may expose a constructor that accepts the source value:
+
+```java
+import java.lang.reflect.Constructor;
+import org.jboss.forge.addon.convert.impl.ConstructorConverter;
+
+class UserId {
+    private final String value;
+
+    public UserId(String value) {
+        this.value = value;
+    }
+}
+
+Constructor<UserId> constructor =
+        UserId.class.getConstructor(String.class);
+
+ConstructorConverter<String, UserId> converter =
+        new ConstructorConverter<>(
+                String.class,
+                UserId.class,
+                constructor);
+
+UserId userId = converter.convert("user-123");
+```
+
+---
+
+### `MethodConverter<S, T>`
+
+`MethodConverter` performs conversion by invoking a supplied `Method`. An optional instance can be supplied for instance methods.
+
+```java
+public class MethodConverter<S, T> extends AbstractConverter<S, T> {
+    public MethodConverter(
+            Class<S> sourceType,
+            Class<T> targetType,
+            Object instance,
+            Method method);
+
+    public T convert(S source);
+}
+```
+
+Example using a static method:
+
+```java
+import java.lang.reflect.Method;
+import org.jboss.forge.addon.convert.impl.MethodConverter;
+
+Method parseMethod = Integer.class.getMethod("valueOf", String.class);
+
+MethodConverter<String, Integer> converter =
+        new MethodConverter<>(
+                String.class,
+                Integer.class,
+                null,
+                parseMethod);
+
+Integer value = converter.convert("42");
+```
+
+Example using an instance method:
+
+```java
+import java.lang.reflect.Method;
+import org.jboss.forge.addon.convert.impl.MethodConverter;
+
+class PrefixParser {
+    public Integer parse(String value) {
+        return Integer.valueOf(value.substring(1));
+    }
+}
+
+PrefixParser parser = new PrefixParser();
+Method parseMethod = PrefixParser.class.getMethod("parse", String.class);
+
+MethodConverter<String, Integer> converter =
+        new MethodConverter<>(
+                String.class,
+                Integer.class,
+                parser,
+                parseMethod);
+
+Integer value = converter.convert("#42");
+```
+
+---
+
+### `Converters`
+
+`Converters` is an enum containing built-in `Converter<Object, Object>` values:
+
+```java
+public enum Converters implements Converter<Object, Object> {
+    NOOP,
+    TO_STRING;
+}
+```
+
+`NOOP` is intended for conversions where the value should be passed through unchanged. `TO_STRING` converts a value to a string representation.
+
+```java
+import org.jboss.forge.addon.convert.impl.Converters;
+
+Object original = 42;
+Object unchanged = Converters.NOOP.convert(original);
+
+Object text = Converters.TO_STRING.convert(42);
+String value = (String) text;
+```
+
+## Dynamic converter generation
+
+### `ConverterGenerator`
+
+A `ConverterGenerator` determines whether it can handle a source/target type pair and can create a suitable converter.
+
+```java
+public interface ConverterGenerator {
+    boolean handles(Class<?> source, Class<?> target);
+
+    Converter<?, ?> generateConverter(
+            Class<?> source,
+            Class<?> target);
+
+    Class<? extends Converter<?, ?>> getConverterType();
+}
+```
+
+A generator is useful when a converter does not need to be registered individually for every possible type pair.
+
+Typical usage:
+
+```java
+import org.jboss.forge.addon.convert.Converter;
+import org.jboss.forge.addon.convert.ConverterGenerator;
+
+ConverterGenerator generator = /* obtain a generator */;
+
+if (generator.handles(String.class, Integer.class)) {
+    Converter<?, ?> generated =
+            generator.generateConverter(String.class, Integer.class);
+
+    @SuppressWarnings("unchecked")
+    Converter<String, Integer> converter =
+            (Converter<String, Integer>) generated;
+
+    Integer value = converter.convert("42");
+}
+```
+
+### `IntegerConverterGenerator`
+
+`IntegerConverterGenerator` is both a `ConverterGenerator` and a `Converter<String, Integer>`.
+
+```java
+import org.jboss.forge.addon.convert.Converter;
+import org.jboss.forge.addon.convert.impl.generators.IntegerConverterGenerator;
+
+IntegerConverterGenerator generator =
+        new IntegerConverterGenerator();
+
+boolean supported = generator.handles(String.class, Integer.class);
+
+if (supported) {
+    Integer value = generator.convert("42");
+
+    Converter<?, ?> generated =
+            generator.generateConverter(String.class, Integer.class);
+}
+```
+
+## String-to-instance conversion
+
+### `StringToImportedInstanceConverter<TARGETTYPE>`
+
+`StringToImportedInstanceConverter` converts a `String` to an instance of a requested target type using an `AddonRegistry`.
+
+```java
+public class StringToImportedInstanceConverter<TARGETTYPE>
+        extends AbstractConverter<String, TARGETTYPE> {
+
+    public StringToImportedInstanceConverter(
+            Class<TARGETTYPE> targetType,
+            AddonRegistry addonRegistry);
+
+    public TARGETTYPE convert(String source);
+}
+```
+
+Example:
+
+```java
+import org.jboss.forge.addon.convert.impl.StringToImportedInstanceConverter;
+
+// addonRegistry is an available AddonRegistry instance.
+StringToImportedInstanceConverter<MyService> converter =
+        new StringToImportedInstanceConverter<>(
+                MyService.class,
+                addonRegistry);
+
+MyService service = converter.convert("myService");
+```
+
+## CDI integration
+
+### `ConverterProducer`
+
+`ConverterProducer` can produce typed converter instances from a CDI `InjectionPoint` and a `ConverterFactory`.
+
+```java
+public class ConverterProducer {
+    public <S, T> Converter<S, T> produceConverter(
+            InjectionPoint injectionPoint,
+            ConverterFactory registry);
+}
+```
+
+This allows an application to request a converter with generic type information, such as:
+
+```java
+Converter<String, Integer> converter;
+```
+
+The producer can use the injection point’s requested generic source and target types together with the `ConverterFactory` to obtain the appropriate converter.
+
+## Exceptions
+
+### `ConversionException`
+
+Base runtime exception for conversion-related failures.
+
+```java
+import org.jboss.forge.addon.convert.exception.ConversionException;
+
+try {
+    Integer value = converter.convert("not-a-number");
+}
+catch (ConversionException e) {
+    // Handle a conversion failure.
+}
+```
+
+Available constructors:
+
+```java
+new ConversionException();
+new ConversionException("Conversion failed");
+new ConversionException("Conversion failed", cause);
+```
+
+### `ConverterNotFoundException`
+
+A specialized `ConversionException` indicating that no converter could be found for a requested source and target type.
+
+```java
+import org.jboss.forge.addon.convert.exception.ConverterNotFoundException;
+
+try {
+    Converter<SourceType, TargetType> converter =
+            factory.getConverter(SourceType.class, TargetType.class);
+}
+catch (ConverterNotFoundException e) {
+    // No converter is available for this type pair.
+}
+```
+
+It can also be constructed directly from source and target classes:
+
+```java
+throw new ConverterNotFoundException(
+        SourceType.class,
+        TargetType.class);
+```
+
+## Typical workflow
+
+1. Define or obtain a `Converter<S, T>`.
+2. Convert values directly with `convert(source)`.
+3. Use `ConverterFactory` when the desired conversion is determined by source and target classes at runtime.
+4. Use `CompositeConverter` to chain conversion stages.
+5. Use `ConstructorConverter` or `MethodConverter` when an existing constructor or method already represents the conversion.
+6. Handle `ConversionException`, including `ConverterNotFoundException`, where conversion availability or input validity is not guaranteed.

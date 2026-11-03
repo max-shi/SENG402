@@ -1,0 +1,500 @@
+# json-schema-validator
+
+`com.networknt:json-schema-validator` is a Java library for loading, compiling, and validating JSON Schema documents against JSON or YAML instances.
+
+The API supports multiple JSON Schema specification versions, including Draft 4, Draft 6, Draft 7, Draft 2019-09, and Draft 2020-12. It also exposes OpenAPI 3.0 and 3.1 dialects. Validation produces structured `Error` objects containing instance, schema, and evaluation locations, and can optionally produce custom output through `OutputFormat`.
+
+## Key capabilities
+
+- Load schemas from strings, streams, JSON nodes, or schema locations.
+- Validate JSON and YAML input.
+- Select a default JSON Schema dialect/specification version.
+- Work with reusable `SchemaRegistry` instances.
+- Validate common JSON Schema keywords such as `type`, `properties`, `required`, `items`, `enum`, `const`, numeric/string limits, composition keywords, references, and more.
+- Use built-in formats such as date, time, date-time, email, IPv6, URI, IRI, regular expression, and IDN hostname/email.
+- Resolve schema resources through classpath, IRI, and map-backed resource loaders.
+- Customize validation execution, error localization, paths, regular-expression handling, fail-fast behavior, and walking/listener behavior.
+- Produce flat or hierarchical validation output models.
+
+## Core API
+
+### `SchemaRegistry`
+
+`SchemaRegistry` is the main entry point for loading or creating schemas. Create a registry with a default dialect, then load a schema into a `Schema`.
+
+```java
+SchemaRegistry registry =
+    SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+
+Schema schema = registry.getSchema(schemaText, InputFormat.JSON);
+```
+
+Useful factory methods include:
+
+- `SchemaRegistry.withDefaultDialect(SpecificationVersion)`
+- `SchemaRegistry.withDefaultDialectId(String)`
+- `SchemaRegistry.withDefaultDialect(Dialect)`
+- `SchemaRegistry.withDialect(Dialect)`
+- `SchemaRegistry.withDialects(List<Dialect>)`
+- `SchemaRegistry.builder()`
+
+A registry can load schemas from:
+
+- `String` content
+- `InputStream`
+- Jackson `JsonNode`
+- `SchemaLocation`
+- a `SchemaLocation` plus inline schema content
+
+### `Schema`
+
+A `Schema` is a compiled schema that validates instances.
+
+Common validation methods include:
+
+```java
+List<Error> validate(JsonNode instance);
+List<Error> validate(String input, InputFormat inputFormat);
+List<Error> validate(AbsoluteIri input, InputFormat inputFormat);
+```
+
+`Schema` also supports:
+
+- Validation with an `ExecutionContext`
+- Validation with a custom `ExecutionContextCustomizer`
+- Validation with a `Consumer<ExecutionContext>`
+- Custom output through `OutputFormat<T>`
+- Walking an instance without necessarily validating it
+
+### `Error`
+
+Each validation failure is represented by `com.networknt.schema.Error`.
+
+Important fields include:
+
+- `getMessage()` — rendered validation message.
+- `getMessageKey()` — message identifier.
+- `getKeyword()` — schema keyword that produced the error.
+- `getInstanceLocation()` — location in the instance.
+- `getSchemaLocation()` — location in the schema.
+- `getEvaluationPath()` — evaluation path.
+- `getInstanceNode()` and `getSchemaNode()` — the involved Jackson nodes.
+- `getArguments()` and `getDetails()` — structured error metadata.
+
+### `ExecutionContext`
+
+`ExecutionContext` holds per-validation state, including:
+
+- Collected errors
+- Execution configuration
+- Collector context data
+- Annotations
+- Walk configuration
+- Evaluation paths
+- Fail-fast state
+
+Create one directly when validation state needs to be reused or customized:
+
+```java
+ExecutionContext context = new ExecutionContext();
+List<Error> errors = schema.validate(context, jsonInput, InputFormat.JSON);
+```
+
+### `ExecutionConfig` and `SchemaRegistryConfig`
+
+`ExecutionConfig` controls behavior for a validation execution, including:
+
+- Locale
+- Format assertions
+- Fail-fast mode
+- Annotation collection
+- `readOnly` and `writeOnly` behavior
+
+`SchemaRegistryConfig` controls registry-level behavior, including:
+
+- Default locale and message source
+- Path representation
+- Regular expression factory
+- Schema ID validation
+- Reference caching
+- Strict keyword handling
+- Schema preloading
+- Type handling options
+
+Both types expose `builder()` methods.
+
+## Basic validation example
+
+The following example validates an object requiring a string `name` and a non-negative integer `age`.
+
+```java
+import com.fasterxml.jackson.databind.JsonNode;
+import com.networknt.schema.Error;
+import com.networknt.schema.InputFormat;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
+import com.networknt.schema.serialization.JsonMapperFactory;
+
+import java.util.List;
+
+public class ValidationExample {
+    public static void main(String[] args) {
+        String schemaText = """
+            {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "age":  { "type": "integer", "minimum": 0 }
+              },
+              "required": [ "name", "age" ]
+            }
+            """;
+
+        SchemaRegistry registry =
+            SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+
+        Schema schema = registry.getSchema(schemaText, InputFormat.JSON);
+
+        JsonNode instance = JsonMapperFactory.getInstance().readTree("""
+            {
+              "name": "",
+              "age": -1
+            }
+            """);
+
+        List<Error> errors = schema.validate(instance);
+
+        if (errors.isEmpty()) {
+            System.out.println("Instance is valid");
+        } else {
+            for (Error error : errors) {
+                System.out.println(error.getMessage());
+                System.out.println("  keyword: " + error.getKeyword());
+                System.out.println("  instance: " + error.getInstanceLocation());
+                System.out.println("  schema: " + error.getSchemaLocation());
+            }
+        }
+    }
+}
+```
+
+## Validate JSON or YAML text
+
+Use `InputFormat` when the instance is provided as text.
+
+```java
+import com.networknt.schema.Error;
+import com.networknt.schema.InputFormat;
+import com.networknt.schema.Schema;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SpecificationVersion;
+
+import java.util.List;
+
+SchemaRegistry registry =
+    SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_7);
+
+Schema schema = registry.getSchema("""
+    {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "required": [ "enabled" ]
+    }
+    """, InputFormat.JSON);
+
+String yaml = """
+    enabled: true
+    """;
+
+List<Error> errors = schema.validate(yaml, InputFormat.YAML);
+
+System.out.println(errors.isEmpty() ? "valid" : errors);
+```
+
+`InputFormat` currently exposes:
+
+- `InputFormat.JSON`
+- `InputFormat.YAML`
+
+## Selecting a dialect
+
+Use `SpecificationVersion` for standard JSON Schema drafts:
+
+```java
+SchemaRegistry draft4 =
+    SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_4);
+
+SchemaRegistry draft202012 =
+    SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12);
+```
+
+The API also exposes dialect instances directly:
+
+```java
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.dialect.Dialects;
+
+SchemaRegistry registry = SchemaRegistry.withDialect(Dialects.getOpenApi31());
+```
+
+Available dialect accessors include:
+
+- `Dialects.getDraft4()`
+- `Dialects.getDraft6()`
+- `Dialects.getDraft7()`
+- `Dialects.getDraft201909()`
+- `Dialects.getDraft202012()`
+- `Dialects.getOpenApi30()`
+- `Dialects.getOpenApi31()`
+
+## Validation output formats
+
+For structured output, pass an `OutputFormat<T>` implementation to `Schema.validate`.
+
+```java
+import com.fasterxml.jackson.databind.JsonNode;
+import com.networknt.schema.Error;
+import com.networknt.schema.OutputFormat;
+import com.networknt.schema.Schema;
+
+import java.util.List;
+
+OutputFormat<List<Error>> errorsOnly =
+    (jsonSchema, executionContext, schemaContext) -> executionContext.getErrors();
+
+List<Error> errors = schema.validate(instance, errorsOnly);
+```
+
+The library also provides output model types that can be used when building JSON Schema-style validation reports:
+
+- `OutputUnit`
+- `OutputUnitKey`
+- `OutputUnitData`
+- `OutputFlag`
+- `ListOutputUnitFormatter`
+- `HierarchicalOutputUnitFormatter`
+
+`OutputUnit` can represent validity, instance/schema/evaluation locations, errors, annotations, dropped annotations, and nested details.
+
+## Customizing validation execution
+
+Use an `ExecutionContextCustomizer` or a lambda to configure an `ExecutionContext` for a validation call.
+
+```java
+List<Error> errors = schema.validate(
+    instance,
+    executionContext -> {
+        executionContext.setFailFast(true);
+    }
+);
+```
+
+A customizer can also receive the active `SchemaContext`:
+
+```java
+import com.networknt.schema.ExecutionContextCustomizer;
+
+ExecutionContextCustomizer customizer =
+    (executionContext, schemaContext) -> {
+        executionContext.setFailFast(true);
+    };
+
+List<Error> errors = schema.validate(instance, customizer);
+```
+
+When fail-fast mode is active, validation may raise `FailFastAssertionException`, which provides access to the triggering `Error` and collected errors.
+
+## Format validation
+
+Format implementations are represented by the `Format` interface. Built-in implementations include:
+
+- `DateFormat`
+- `DateTimeFormat`
+- `TimeFormat`
+- `DurationFormat`
+- `EmailFormat`
+- `IdnEmailFormat`
+- `IdnHostnameFormat`
+- `IPv6Format`
+- `UriFormat`
+- `UriReferenceFormat`
+- `IriFormat`
+- `IriReferenceFormat`
+- `RegexFormat`
+- `PatternFormat`
+
+Formats are integrated through `FormatKeyword` and `FormatValidator`.
+
+For standalone validation utilities, the library also exposes:
+
+```java
+import com.networknt.org.apache.commons.validator.routines.EmailValidator;
+import com.networknt.org.apache.commons.validator.routines.InetAddressValidator;
+
+boolean emailValid =
+    EmailValidator.getInstance().isValid("person@example.com");
+
+boolean ipv6Valid =
+    InetAddressValidator.getInstance().isValidInet6Address("2001:db8::1");
+```
+
+## Schema locations and paths
+
+`SchemaLocation`, `AbsoluteIri`, and `NodePath` represent schema and instance locations.
+
+```java
+import com.networknt.schema.SchemaLocation;
+import com.networknt.schema.path.NodePath;
+import com.networknt.schema.path.PathType;
+
+SchemaLocation location =
+    SchemaLocation.of("https://example.com/schemas/user");
+
+NodePath path = new NodePath(PathType.JSON_POINTER)
+    .append("address")
+    .append("postalCode");
+
+System.out.println(location);
+System.out.println(path);
+```
+
+Available path types are:
+
+- `PathType.LEGACY`
+- `PathType.JSON_PATH`
+- `PathType.JSON_POINTER`
+- `PathType.URI_REFERENCE`
+
+## Referenced and external schemas
+
+Schema resource loading is represented by `SchemaLoader`, `ResourceLoader`, and `SchemaIdResolver`.
+
+Available resource loaders include:
+
+- `ClasspathResourceLoader`
+- `IriResourceLoader`
+- `MapResourceLoader`
+
+Available schema ID resolvers include:
+
+- `MapSchemaIdResolver`
+- `MetaSchemaIdResolver`
+- `PrefixSchemaIdResolver`
+
+For example, a map-backed resource loader can provide schema content from application-managed mappings:
+
+```java
+import com.networknt.schema.resource.MapResourceLoader;
+
+MapResourceLoader loader = new MapResourceLoader(
+    java.util.Map.of(
+        "https://example.com/schemas/common",
+        "{ \"type\": \"string\" }"
+    )
+);
+```
+
+`SchemaLoader` can be created with resource loaders and schema ID resolvers, and exposes `getSchemaResource(AbsoluteIri)` for resource retrieval.
+
+## Walking instances
+
+The walk API enables traversal hooks around schema keyword processing.
+
+Relevant types include:
+
+- `WalkListener`
+- `WalkHandler`
+- `WalkEvent`
+- `WalkFlow`
+- `WalkConfig`
+- `PropertyWalkHandler`
+- `ItemWalkHandler`
+- `KeywordWalkHandler`
+- `ApplyDefaultsStrategy`
+
+A `WalkListener` receives a `WalkEvent` at the start and end of a walk operation:
+
+```java
+import com.networknt.schema.walk.WalkFlow;
+import com.networknt.schema.walk.WalkListener;
+import com.networknt.schema.walk.WalkEvent;
+
+WalkListener listener = new WalkListener() {
+    @Override
+    public WalkFlow onWalkStart(WalkEvent event) {
+        System.out.println("Walking keyword: " + event.getKeyword());
+        return WalkFlow.CONTINUE;
+    }
+
+    @Override
+    public void onWalkEnd(WalkEvent event, java.util.List<com.networknt.schema.Error> errors) {
+        System.out.println("Errors: " + errors.size());
+    }
+};
+```
+
+`WalkFlow` supports:
+
+- `CONTINUE`
+- `SKIP`
+- `ABORT`
+
+## Error localization
+
+Messages are provided through the `MessageSource` API.
+
+```java
+import com.networknt.schema.i18n.MessageSource;
+import com.networknt.schema.i18n.ResourceBundleMessageSource;
+
+MessageSource messages =
+    new ResourceBundleMessageSource("messages");
+
+String message = messages.getMessage(
+    "validation.required",
+    "Required property is missing",
+    java.util.Locale.ENGLISH,
+    "name"
+);
+```
+
+`DefaultMessageSource.getInstance()` provides a default message source, while `Locales` provides locale selection helpers.
+
+## Extension points
+
+The API supports extension in several areas:
+
+| Area | Primary types |
+|---|---|
+| Custom keywords | `Keyword`, `KeywordFactory`, `KeywordValidator` |
+| Custom dialects | `Dialect`, `DialectRegistry`, `Vocabulary` |
+| Custom formats | `Format`, `FormatKeyword` |
+| Regular expressions | `RegularExpression`, `RegularExpressionFactory` |
+| Resource resolution | `ResourceLoader`, `SchemaIdResolver` |
+| Message resolution | `MessageSource`, `MessageFormatter` |
+| Validation traversal | `WalkListener`, `WalkHandler` |
+| Validation output | `OutputFormat<T>` |
+| Execution customization | `ExecutionContextCustomizer` |
+
+For custom regular-expression behavior, available factories include:
+
+- `JDKRegularExpressionFactory`
+- `ECMAScriptRegularExpressionFactory`
+- `GraalJSRegularExpressionFactory`
+- `JoniRegularExpressionFactory`
+- `AllowRegularExpressionFactory`
+
+## Exceptions
+
+Schema-related failures are represented by:
+
+- `SchemaException`
+- `InvalidSchemaException`
+- `InvalidSchemaRefException`
+- `MissingSchemaKeywordException`
+- `FailFastAssertionException`
+
+`SchemaException` exposes both a primary `Error` and a list of errors where applicable.

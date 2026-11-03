@@ -1,0 +1,229 @@
+# Vert.x DB2 Client
+
+`io.vertx:vertx-db2-client` is an asynchronous Java client for connecting Vert.x applications to DB2 databases. It integrates with the Vert.x SQL client abstractions, providing DB2-specific connection options, connections, pooling/client builders, and DB2 error handling.
+
+The primary application-facing API consists of:
+
+- `DB2ConnectOptions` — DB2 connection configuration.
+- `DB2Connection` — an asynchronous DB2 SQL connection.
+- `DB2Builder` — factory methods for creating SQL clients and pools.
+- `DB2Exception` — database exception type carrying DB2 error-code and SQL-state information.
+
+## Dependency
+
+```xml
+<dependency>
+  <groupId>io.vertx</groupId>
+  <artifactId>vertx-db2-client</artifactId>
+  <version><!-- version --></version>
+</dependency>
+```
+
+## Core API
+
+### `DB2ConnectOptions`
+
+`DB2ConnectOptions` extends `SqlConnectOptions` and configures a DB2 connection.
+
+```java
+DB2ConnectOptions options = new DB2ConnectOptions()
+  .setHost("db2.example.net")
+  .setPort(50000)
+  .setDatabase("SAMPLE")
+  .setUser("app_user")
+  .setPassword("secret")
+  .setSsl(true);
+```
+
+Available configuration includes:
+
+- Server location: `setHost`, `setPort`
+- Credentials: `setUser`, `setPassword`
+- Database name: `setDatabase`
+- TLS/SSL: `setSsl` and `setSslOptions`
+- Prepared-statement caching:
+  - `setCachePreparedStatements`
+  - `setPreparedStatementCacheMaxSize`
+  - `setPreparedStatementCacheSqlFilter`
+  - `setPreparedStatementCacheSqlLimit`
+- Request pipelining: `setPipeliningLimit`
+- Tracing: `setTracingPolicy`
+- Additional connection properties: `setProperties` and `addProperty`
+
+Options can also be created from JSON, copied from other SQL connection options, or parsed from a connection URI:
+
+```java
+DB2ConnectOptions copied = new DB2ConnectOptions(options);
+
+DB2ConnectOptions fromJson = new DB2ConnectOptions(json);
+
+DB2ConnectOptions fromUri = DB2ConnectOptions.fromUri(connectionUri);
+```
+
+Use `toJson()` when configuration needs to be represented as a `JsonObject`.
+
+### `DB2Connection`
+
+`DB2Connection` extends Vert.x `SqlConnection` and represents a live DB2 connection.
+
+Create a connection with either explicit options or a connection URI:
+
+```java
+Future<DB2Connection> connectionFuture =
+  DB2Connection.connect(vertx, options);
+```
+
+```java
+Future<DB2Connection> connectionFuture =
+  DB2Connection.connect(vertx, connectionUri);
+```
+
+The connection supports DB2-specific utility operations:
+
+- `ping()` checks that the connection remains usable.
+- `debug()` performs a DB2-specific debug operation.
+- `exceptionHandler(...)` receives connection exceptions.
+- `closeHandler(...)` receives connection-close notifications.
+
+Because `DB2Connection` is also a `SqlConnection`, it can be used anywhere a Vert.x SQL connection is expected.
+
+### `DB2Builder`
+
+`DB2Builder` provides builder entry points for Vert.x SQL clients and pools.
+
+```java
+ClientBuilder<Pool> poolBuilder = DB2Builder.pool();
+
+ClientBuilder<SqlClient> clientBuilder = DB2Builder.client();
+```
+
+Convenience overloads accept a handler that configures the corresponding `ClientBuilder`:
+
+```java
+Pool pool = DB2Builder.pool(builder -> {
+  // Configure the ClientBuilder here.
+});
+
+SqlClient client = DB2Builder.client(builder -> {
+  // Configure the ClientBuilder here.
+});
+```
+
+Use a `Pool` when the application needs to share database connections across concurrent operations. Use a `SqlClient` when a general SQL-client abstraction is sufficient.
+
+## Examples
+
+### Connect with explicit options
+
+```java
+import io.vertx.core.Future;
+import io.vertx.core.Vertx;
+import io.vertx.db2client.DB2ConnectOptions;
+import io.vertx.db2client.DB2Connection;
+
+Vertx vertx = Vertx.vertx();
+
+DB2ConnectOptions options = new DB2ConnectOptions()
+  .setHost("localhost")
+  .setPort(50000)
+  .setDatabase("SAMPLE")
+  .setUser("db2user")
+  .setPassword("db2password")
+  .setCachePreparedStatements(true)
+  .setPreparedStatementCacheMaxSize(100);
+
+DB2Connection.connect(vertx, options)
+  .onSuccess(connection -> {
+    connection
+      .exceptionHandler(err ->
+        System.err.println("DB2 connection error: " + err.getMessage()))
+      .closeHandler(ignored ->
+        System.out.println("DB2 connection closed"));
+
+    connection.ping()
+      .onSuccess(ignored -> System.out.println("DB2 connection is available"))
+      .onFailure(err -> System.err.println("Ping failed: " + err.getMessage()));
+  })
+  .onFailure(err ->
+    System.err.println("Unable to connect to DB2: " + err.getMessage()));
+```
+
+### Connect from a URI
+
+When a connection URI is already available from application configuration or an environment variable, parse it into `DB2ConnectOptions` or connect directly.
+
+```java
+String connectionUri = System.getenv("DB2_CONNECTION_URI");
+
+DB2ConnectOptions options = DB2ConnectOptions.fromUri(connectionUri);
+
+DB2Connection.connect(vertx, options)
+  .onSuccess(connection ->
+    connection.ping().onComplete(result -> {
+      if (result.succeeded()) {
+        System.out.println("Connected to DB2");
+      } else {
+        System.err.println("DB2 is unavailable: " + result.cause().getMessage());
+      }
+    })
+  )
+  .onFailure(err ->
+    System.err.println("Connection failed: " + err.getMessage()));
+```
+
+The direct URI overload is also available:
+
+```java
+DB2Connection.connect(vertx, connectionUri)
+  .onSuccess(connection -> {
+    // Use this DB2Connection as a SqlConnection.
+  });
+```
+
+### Add DB2 connection properties
+
+Additional DB2-specific connection properties can be provided as a map or added one at a time.
+
+```java
+Map<String, String> properties = new HashMap<>();
+properties.put("propertyA", "valueA");
+properties.put("propertyB", "valueB");
+
+DB2ConnectOptions options = new DB2ConnectOptions()
+  .setHost("db2.example.net")
+  .setDatabase("SAMPLE")
+  .setUser("app_user")
+  .setPassword("secret")
+  .setProperties(properties)
+  .addProperty("propertyC", "valueC");
+```
+
+## Errors
+
+DB2-related database failures may be represented by `DB2Exception`, which is a `DatabaseException` with DB2 error-code and SQL-state values supplied at construction time.
+
+```java
+DB2Exception error = new DB2Exception(
+  "Database operation failed",
+  errorCode,
+  sqlState
+);
+```
+
+Handle failures from connection and SQL operations through Vert.x `Future` failure handlers, and use a connection-level `exceptionHandler` to observe asynchronous connection errors.
+
+## Notes on Advanced Types
+
+The library also exposes public DB2 protocol, metadata, row, cursor, and type-conversion classes, including:
+
+- `DB2DatabaseMetadata`
+- `DB2RowImpl`
+- `DB2RowId`
+- `DB2Package`
+- `Section` and `SectionManager`
+- `ColumnMetaData` and `ConnectionMetaData`
+- `Cursor`
+- `NetSqlca`
+- DRDA request and response classes
+
+Most application code should start with `DB2ConnectOptions`, `DB2Connection`, and `DB2Builder`.

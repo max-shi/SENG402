@@ -1,0 +1,179 @@
+# selenium-safari-driver
+
+Part of the [Selenium](https://www.selenium.dev) project, `selenium-safari-driver` provides the Java bindings for automating Apple's Safari browser (including Safari Technology Preview) via WebDriver. It integrates with `safaridriver`, Apple's own WebDriver implementation, and exposes Safari-specific capabilities such as permissions management and remote debugger attachment on top of the standard `RemoteWebDriver` API.
+
+## Overview
+
+The library is built around a small set of cooperating classes:
+
+### `SafariDriver`
+
+`org.openqa.selenium.safari.SafariDriver` is the main entry point for automating Safari. It extends `RemoteWebDriver` and implements two Safari-specific interfaces:
+
+- **`HasPermissions`** — get/set browser permissions (e.g. enabling/disabling features exposed by Safari).
+- **`HasDebugger`** — attach Safari's remote Web Inspector/debugger to the current session.
+
+`SafariDriver` can be constructed directly, optionally with a `SafariOptions` instance and/or a `ClientConfig`, or with an explicit `DriverService`/`SafariDriverService` if you want control over how the underlying `safaridriver` process is launched. A `RemoteWebDriverBuilder` is also available via `SafariDriver.builder()` for a fluent, more flexible construction path (as provided by `selenium-remote-driver`).
+
+### `SafariOptions`
+
+`org.openqa.selenium.safari.SafariOptions` extends `AbstractDriverOptions<SafariOptions>` and lets you configure Safari-specific capabilities before starting a session:
+
+- `setAutomaticInspection(boolean)` / `getAutomaticInspection()` — enable automatic Web Inspector attachment.
+- `setAutomaticProfiling(boolean)` / `getAutomaticProfiling()` — enable automatic timeline profiling.
+- `setUseTechnologyPreview(boolean)` / `getUseTechnologyPreview()` — target Safari Technology Preview instead of the standard Safari build.
+- `enableBiDi()` — turn on WebDriver BiDi support for the session.
+- `merge(Capabilities)` — merge in extra capabilities.
+- `SafariOptions.fromCapabilities(Capabilities)` — construct options from an existing `Capabilities` object.
+
+Being a subclass of `AbstractDriverOptions`, `SafariOptions` also inherits general options such as `setBrowserVersion`, `setPlatformName`, `setPageLoadStrategy`, `setProxy`, `setAcceptInsecureCerts`, timeouts, and more.
+
+### `SafariDriverService` / `SafariTechPreviewDriverService`
+
+`org.openqa.selenium.safari.SafariDriverService` (and its counterpart `SafariTechPreviewDriverService`) extend `DriverService` and model the lifecycle of the local `safaridriver` executable process — the executable path, port, timeout, arguments and environment. Use `SafariDriverService.createDefaultService()` (or the Technology Preview equivalent) to get a sensibly-configured default service, or construct one manually if you need custom arguments or environment variables.
+
+### `HasPermissions` and `HasDebugger`
+
+Two small capability interfaces expose Safari-only behavior:
+
+```java
+public interface HasPermissions {
+    void setPermissions(String permission, boolean value);
+    Map<String, Boolean> getPermissions();
+}
+
+public interface HasDebugger {
+    void attachDebugger();
+}
+```
+
+`SafariDriver` implements both directly, so these features are available without any extra casting when you're working with a `SafariDriver` instance. If instead you have a driver obtained via remote/augmented means, `AddHasPermissions` and `AddHasDebugger` (implementing `AugmenterProvider`) allow the Selenium `Augmenter` to attach these interfaces to a `WebDriver` instance whose capabilities indicate Safari support.
+
+### Driver discovery
+
+`SafariDriverInfo` and `SafariTechPreviewDriverInfo` implement `WebDriverInfo`, allowing Selenium's driver-discovery mechanisms (such as Selenium Manager integration and the `RemoteWebDriverBuilder`) to detect whether Safari or Safari Technology Preview is available on the current machine, report canonical capabilities, and create driver instances on demand.
+
+### Error handling
+
+`ConnectionClosedException` is thrown when the connection to `safaridriver` is unexpectedly closed, surfacing as a `WebDriverException`.
+
+## Usage Examples
+
+### Basic session
+
+```java
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.WebDriver;
+
+public class BasicSafariExample {
+    public static void main(String[] args) {
+        WebDriver driver = new SafariDriver();
+        try {
+            driver.get("https://www.selenium.dev");
+            System.out.println(driver.getTitle());
+        } finally {
+            driver.quit();
+        }
+    }
+}
+```
+
+### Configuring Safari with `SafariOptions`
+
+```java
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariOptions;
+
+public class ConfiguredSafariExample {
+    public static void main(String[] args) {
+        SafariOptions options = new SafariOptions();
+        options.setAutomaticInspection(true);
+        options.setUseTechnologyPreview(false);
+        options.enableBiDi();
+
+        SafariDriver driver = new SafariDriver(options);
+        try {
+            driver.get("https://example.com");
+        } finally {
+            driver.quit();
+        }
+    }
+}
+```
+
+### Managing permissions and attaching the debugger
+
+```java
+import org.openqa.selenium.safari.SafariDriver;
+import java.util.Map;
+
+public class SafariPermissionsExample {
+    public static void main(String[] args) {
+        SafariDriver driver = new SafariDriver();
+        try {
+            driver.get("https://example.com");
+
+            // Inspect and toggle Safari permissions
+            Map<String, Boolean> permissions = driver.getPermissions();
+            System.out.println("Current permissions: " + permissions);
+
+            driver.setPermissions("getUserMedia", false);
+
+            // Attach the Safari Web Inspector/debugger for this session
+            driver.attachDebugger();
+        } finally {
+            driver.quit();
+        }
+    }
+}
+```
+
+### Using a custom `SafariDriverService`
+
+```java
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariDriverService;
+import org.openqa.selenium.safari.SafariOptions;
+
+public class CustomServiceExample {
+    public static void main(String[] args) {
+        SafariDriverService service = SafariDriverService.createDefaultService();
+        SafariOptions options = new SafariOptions();
+
+        SafariDriver driver = new SafariDriver(service, options);
+        try {
+            driver.get("https://example.com");
+        } finally {
+            driver.quit();
+        }
+    }
+}
+```
+
+### Building via `RemoteWebDriverBuilder`
+
+```java
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariOptions;
+
+public class BuilderExample {
+    public static void main(String[] args) {
+        WebDriver driver = SafariDriver.builder()
+            .oneOf(new SafariOptions())
+            .build();
+
+        try {
+            driver.get("https://example.com");
+        } finally {
+            driver.quit();
+        }
+    }
+}
+```
+
+## Notes
+
+- `SafariDriver` requires Safari's WebDriver support to be enabled on macOS (via `safaridriver --enable`) before a session can be created.
+- `SafariTechPreviewDriverService` and `SafariTechPreviewDriverInfo` target Safari Technology Preview specifically; use `SafariOptions.setUseTechnologyPreview(true)` in conjunction with the appropriate service/driver info when you want to automate the preview build instead of the release build of Safari.
+- Both `HasPermissions` and `HasDebugger` are Safari-specific extensions to the standard WebDriver contract and are not part of the W3C WebDriver specification — use them only when you know you are driving Safari.

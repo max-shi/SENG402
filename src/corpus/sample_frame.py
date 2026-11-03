@@ -1,12 +1,12 @@
 """
-sample_frame — Confirmatory corpus frame pull and seeded draw.
+sample_frame: Confirmatory corpus frame pull and seeded draw.
 
-Implements §7.6 (Confirmatory sampling frame) of
-`files/analysis/methods_and_results.md`. Runs the *frame-stage* portion
-of the pre-registration:
+Implements the confirmatory sampling frame in
+`RULES.md`. Runs the *frame-stage* portion
+of the advance plan:
 
-    1. Snapshot the ecosyste.ms frame for PyPI + Maven Central on the
-       freeze date.
+    1. Snapshot the ecosyste.ms frame for the selected registries
+       (PyPI, Maven Central, and/or Hackage) on the freeze date.
     2. Apply frame-stage inclusion filters F1 (registry listing),
        F2 (license present), F3 (dependent_packages_count >= 5).
     3. Draw a seeded random sample of ~500 candidates per ecosystem
@@ -19,7 +19,7 @@ manual stub-fork-mirror review) are applied later in the pipeline by
 the crawler / preprocessor / shortlist-review step, which append to
 the same exclusion log.
 
-Outputs (all under files/corpus/frame_YYYYMMDD/):
+Outputs (all under files/corpus/frame_<name>/):
 
     frame_python.jsonl.gz       The drawn packages only (500 per ecosystem,
                                 primary + reserve), gzipped JSONL. Stored
@@ -36,7 +36,7 @@ Outputs (all under files/corpus/frame_YYYYMMDD/):
     exclusion_log.csv           Initialised; frame-stage exclusions
                                 (F1-F3) are not individually logged
                                 because the frame is enumerated with
-                                a filter query — only individually
+                                a filter query, only individually
                                 sampled packages that later fail
                                 F4-F7 appear here.
     frame_metadata.json         Freeze date, seed, source registry
@@ -62,22 +62,23 @@ from typing import Any, Iterator
 import requests
 
 # ---------------------------------------------------------------------------
-# Configuration — locked to §7.6 of methods_and_results.md
+# Configuration, locked to RULES.md
 # ---------------------------------------------------------------------------
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_DIR = ROOT / "files" / "corpus"
 
-# ecosyste.ms registry names for the two confirmatory ecosystems.
+# ecosyste.ms registry names for the confirmatory ecosystems.
 REGISTRIES = {
-    "python": "pypi.org",
-    "java":   "repo1.maven.org",
+    "python":  "pypi.org",
+    "java":    "repo1.maven.org",
+    "haskell": "hackage.haskell.org",
 }
 
-# §7.6.4 F3 threshold.
+# F3 threshold.
 MIN_DEPENDENTS = 5
 
-# §7.6.3 draw protocol.
+# Draw protocol.
 DEFAULT_TARGET_N = 200
 DEFAULT_OVERDRAW_FACTOR = 2.5   # -> ~500 candidates
 DEFAULT_SEED = 402
@@ -90,7 +91,7 @@ PER_PAGE = 500                  # ecosyste.ms allows up to 1000 but 500 is the s
 REQUEST_TIMEOUT = 180           # ecosyste.ms's dep-count-sorted queries can take 30-60s
 RETRY_BACKOFF = [5, 15, 30, 60] # seconds between retry attempts; server needs recovery time
 
-USER_AGENT = "seng402-corpus-frame/1.0 (research; msh254@uclive.ac.nz)"
+USER_AGENT = "seng402-corpus-frame/1.0 (research)"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -273,8 +274,12 @@ def write_frame_snapshot(out_dir: Path, ecosystem: str, packages: list[dict]) ->
     return path
 
 
+DOMAIN_COLS = ("domain_tag", "domain_tag_source")
+
+
 def build_manifest_rows(
-    ecosystem: str, drawn: list[dict], n_target: int
+    ecosystem: str, drawn: list[dict], n_target: int,
+    include_domain_cols: bool = True,
 ) -> list[dict]:
     rows = []
     for i, pkg in enumerate(drawn):
@@ -297,13 +302,20 @@ def build_manifest_rows(
             "word_capped": "",
             "status": "primary_pending" if i < n_target else "reserve_pending",
         })
+    if not include_domain_cols:
+        for r in rows:
+            for col in DOMAIN_COLS:
+                del r[col]
     return rows
 
 
-def write_manifest(out_dir: Path, rows: list[dict]) -> Path:
+def write_manifest(out_dir: Path, rows: list[dict],
+                   include_domain_cols: bool = True) -> Path:
     path = out_dir / "sample_manifest.csv"
+    cols = MANIFEST_COLS if include_domain_cols else [
+        c for c in MANIFEST_COLS if c not in DOMAIN_COLS]
     with open(path, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=MANIFEST_COLS)
+        w = csv.DictWriter(fh, fieldnames=cols)
         w.writeheader()
         w.writerows(rows)
     log.info("wrote %s (%d rows)", path, len(rows))
@@ -346,7 +358,7 @@ def write_metadata(
         "api_base": API_BASE,
         "frame_counts_after_F1_F3": frame_counts,
         "git_commit": _git_commit(),
-        "spec_reference": "files/analysis/methods_and_results.md §7.6 (locked 2026-07-12)",
+        "spec_reference": "RULES.md",
     }
     path = out_dir / "frame_metadata.json"
     with open(path, "w", encoding="utf-8") as fh:
@@ -362,6 +374,7 @@ def write_metadata(
 def run_for_ecosystem(
     ecosystem: str, registry: str, out_dir: Path,
     n_target: int, n_draw: int, min_dependents: int, seed: int,
+    include_domain_cols: bool = True,
 ) -> tuple[int, list[dict]]:
     """Fetch frame, filter, draw, and return (frame_size, manifest_rows)."""
     log.info("=== %s (registry=%s) ===", ecosystem, registry)
@@ -404,13 +417,14 @@ def run_for_ecosystem(
     # Persist only the drawn subset (see write_frame_snapshot docstring).
     write_frame_snapshot(out_dir, ecosystem, drawn)
 
-    rows = build_manifest_rows(ecosystem, drawn, n_target)
+    rows = build_manifest_rows(ecosystem, drawn, n_target,
+                               include_domain_cols=include_domain_cols)
     return len(frame), rows
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Confirmatory-corpus frame pull and seeded draw (§7.6)"
+        description="Confirmatory-corpus frame pull and seeded draw"
     )
     parser.add_argument(
         "--freeze-date", default=datetime.now(timezone.utc).strftime("%Y%m%d"),
@@ -432,6 +446,11 @@ def main() -> None:
         "--out-dir", type=Path, default=None,
         help="Override output directory (default: files/corpus/frame_<freeze-date>/).",
     )
+    parser.add_argument(
+        "--no-domain-cols", action="store_true",
+        help="Omit domain_tag/domain_tag_source manifest columns "
+             "(7.8.5: the n=2000 extended frame carries no domain tags).",
+    )
     args = parser.parse_args()
 
     n_draw = int(round(args.n_target * args.overdraw))
@@ -449,11 +468,13 @@ def main() -> None:
         size, rows = run_for_ecosystem(
             eco, registry, out_dir,
             args.n_target, n_draw, args.min_dependents, args.seed,
+            include_domain_cols=not args.no_domain_cols,
         )
         frame_counts[eco] = size
         all_rows.extend(rows)
 
-    write_manifest(out_dir, all_rows)
+    write_manifest(out_dir, all_rows,
+                   include_domain_cols=not args.no_domain_cols)
     init_exclusion_log(out_dir)
     write_metadata(
         out_dir, args.freeze_date, args.seed,

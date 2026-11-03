@@ -1,0 +1,175 @@
+# jargon2-api
+
+`jargon2-api` is a Java API for hashing and verifying passwords using the [Argon2](https://en.wikipedia.org/wiki/Argon2) key derivation function. It provides a clean, fluent builder-style interface for configuring Argon2 parameters (type, version, memory cost, time cost, parallelism, salt, secret, associated data, etc.) and produces either raw byte-array hashes or encoded hash strings suitable for storage.
+
+The library itself is backend-agnostic: it defines the public API and a Service Provider Interface (SPI) that concrete Argon2 implementations (backends) must implement. At runtime, `jargon2-api` discovers an available backend implementation on the classpath, or you can explicitly select one.
+
+This artifact contains **only the API and SPI** — you'll need to add a backend implementation dependency (e.g., a JNI-based or pure-Java Argon2 implementation that implements `Jargon2Backend`) for the library to actually perform hashing.
+
+## Key Concepts
+
+### Entry point: `Jargon2`
+
+`Jargon2` is the main entry point of the library. It exposes static factory methods to obtain the core API objects:
+
+- `Jargon2.jargon2Hasher()` — creates a `Hasher` for computing password hashes.
+- `Jargon2.jargon2Verifier()` — creates a `Verifier` for checking passwords against existing hashes.
+- `Jargon2.jargon2LowLevelApi()` — creates a `LowLevelApi` for direct, low-level access to hashing/verification operations without the fluent builder state.
+- A family of `toByteArray(...)` overloads that wrap `String`, `char[]`, `byte[]`, `InputStream`, and `Reader` inputs into `ByteArray`/`CharSeqByteArray` wrappers, which can carry sensitive data (like passwords) and support clearing memory after use (`ClearableSourceByteArray`, `ClearableSourceCharSeqByteArray`).
+
+### `Hasher`
+
+A fluent builder used to configure and compute an Argon2 hash. Typical configuration includes:
+
+- `type(Type)` — Argon2 variant (e.g., Argon2d, Argon2i, Argon2id, depending on backend support).
+- `version(Version)` — Argon2 version.
+- `timeCost(int)`, `memoryCost(int)`, `parallelism(int)` / `parallelism(int lanes, int threads)` — the core Argon2 cost parameters.
+- `hashLength(int)`, `saltLength(int)` — output and salt sizing.
+- `salt(byte[] | ByteArray)` or `saltGenerator(...)` — explicit salt or a `SaltGenerator` (optionally backed by a named `SecureRandom` algorithm/provider).
+- `password(byte[] | ByteArray)` — the password to hash.
+- `secret(byte[] | ByteArray)` and `ad(byte[] | ByteArray)` — optional keyed secret and associated data, per the Argon2 spec.
+- `backend(...)` — explicitly select a `Jargon2Backend` implementation instead of relying on auto-discovery.
+- `options(Map<String, Object>)` — backend-specific extra options.
+
+Once configured, call:
+
+- `rawHash()` — returns the raw hash bytes.
+- `encodedHash()` — returns a self-describing encoded string (containing parameters, salt, and hash) suitable for storage.
+- `propertiesMatch(String encodedHash)` — checks whether the hasher's current configuration (type, version, costs, etc.) matches the parameters embedded in an existing encoded hash.
+
+### `Verifier`
+
+A fluent builder used to verify a password against a previously computed hash. It shares most configuration methods with `Hasher` (`type`, `version`, `timeCost`, `memoryCost`, `parallelism`, `threads`, `salt`, `secret`, `ad`, `backend`, `options`), plus:
+
+- `password(byte[] | ByteArray)` — the password to check.
+- `hash(String encodedHash)` — supply an encoded hash to verify against; returns an `EncodedVerifierImpl` to complete the check.
+- `hash(byte[] rawHash)` — supply a raw hash to verify against; returns a `RawVerifierImpl` to complete the check.
+
+When verifying against an encoded hash, most Argon2 parameters (type, version, costs, salt) are typically read from the encoded string itself, so you often only need to supply the password and, if used, `secret`/`ad`.
+
+### `LowLevelApi`
+
+For advanced use cases, `Jargon2.jargon2LowLevelApi()` gives you direct, stateless access to hashing and verification without the builder pattern — you pass every parameter explicitly on each call (type, version, memory/time cost, lanes/threads, hash length, secret, ad, salt, password, options). This mirrors the `Jargon2Backend` SPI closely and is useful when you need full control or are integrating jargon2 into another framework.
+
+### Backend discovery and the SPI
+
+- `Jargon2Backend` is the SPI interface that a concrete Argon2 implementation must implement (`rawHash`, `encodedHash`, `verifyRaw`, `verifyEncoded`).
+- `Jargon2BackendDiscovery` (an internal singleton enum) locates an available `Jargon2Backend` implementation on the classpath automatically, so that `Hasher`, `Verifier`, and `LowLevelApi` can be used without explicitly wiring a backend.
+- You can override auto-discovery by explicitly specifying a backend via `backend(Jargon2Backend)`, `backend(String backendClass)`, or `backend(Class<? extends Jargon2Backend>)` on `Hasher`/`Verifier`, or via the corresponding `Jargon2.jargon2LowLevelApi(...)` overloads.
+
+### Exceptions
+
+- `Jargon2Exception` — the general runtime exception type thrown by the API for configuration or usage errors.
+- `Jargon2BackendException` — thrown by backend implementations (extends `Jargon2Exception`) to signal failures originating from the underlying Argon2 implementation.
+
+## Usage Examples
+
+### Hashing a password and storing the encoded result
+
+```java
+import com.kosprov.jargon2.api.Jargon2;
+import static com.kosprov.jargon2.api.Jargon2.*;
+
+String encodedHash = jargon2Hasher()
+        .type(Type.ARGON2id)
+        .memoryCost(65536)
+        .timeCost(3)
+        .parallelism(4)
+        .hashLength(32)
+        .saltLength(16)
+        .password(toByteArray("correct horse battery staple".toCharArray()))
+        .encodedHash();
+
+// Persist `encodedHash` in your user store
+```
+
+### Verifying a password against a stored encoded hash
+
+```java
+boolean matches = jargon2Verifier()
+        .hash(encodedHash)
+        .password(toByteArray("correct horse battery staple".toCharArray()))
+        .verifyEncoded(); // conceptually — call the verification method exposed by the returned verifier
+```
+
+*(In practice, `hash(String)` returns an object dedicated to verifying against that encoded hash; configure the password and any `secret`/`ad` used at hash time before triggering verification.)*
+
+### Using a secret (pepper) and associated data
+
+```java
+byte[] secretKey = loadApplicationSecret(); // e.g., from a keystore or config
+
+String encodedHash = jargon2Hasher()
+        .type(Type.ARGON2id)
+        .memoryCost(1 << 16)
+        .timeCost(4)
+        .parallelism(2)
+        .hashLength(32)
+        .secret(secretKey)
+        .ad("login-form".getBytes())
+        .password(toByteArray("s3cr3t-password".toCharArray()))
+        .encodedHash();
+
+boolean ok = jargon2Verifier()
+        .secret(secretKey)
+        .ad("login-form".getBytes())
+        .password(toByteArray("s3cr3t-password".toCharArray()))
+        .hash(encodedHash)
+        .verifyEncoded();
+```
+
+### Checking whether hash parameters need upgrading
+
+```java
+Hasher hasher = jargon2Hasher()
+        .type(Type.ARGON2id)
+        .memoryCost(1 << 17)   // stronger than what was used before
+        .timeCost(4)
+        .parallelism(4)
+        .hashLength(32);
+
+if (!hasher.propertiesMatch(storedEncodedHash)) {
+    // Re-hash the password with the new, stronger parameters
+    // after successful verification against the old hash.
+}
+```
+
+### Explicitly selecting a backend
+
+```java
+LowLevelApi api = Jargon2.jargon2LowLevelApi("com.example.argon2.SomeBackendImpl");
+
+byte[] rawHash = api.rawHash(
+        Type.ARGON2id,
+        Version.V13,
+        65536,   // memory cost
+        3,       // time cost
+        4,       // parallelism
+        32,      // hash length
+        saltBytes,
+        passwordBytes
+);
+```
+
+### Clearing sensitive data from memory
+
+```java
+import com.kosprov.jargon2.api.Jargon2.ClearableSourceCharSeqByteArray;
+
+char[] rawPassword = readPasswordFromUserInput();
+ClearableSourceCharSeqByteArray passwordBytes = Jargon2.toByteArray(rawPassword);
+
+try {
+    String hash = jargon2Hasher()
+            .password(passwordBytes)
+            .encodedHash();
+} finally {
+    passwordBytes.clear(); // wipes the underlying char[]/byte[] data
+}
+```
+
+## Notes
+
+- This artifact provides the API surface only. A compatible `Jargon2Backend` implementation must be present on the classpath (either auto-discovered via `Jargon2BackendDiscovery` or explicitly configured) for hashing and verification calls to succeed.
+- Prefer the `ByteArray`/`ClearableSourceByteArray` wrappers for passwords and secrets when you need to proactively clear sensitive data from memory after use.
+- Use `Hasher.propertiesMatch(String)` as part of a password-upgrade strategy: verify with old parameters, then re-hash with updated parameters if they no longer match.

@@ -1,0 +1,20 @@
+{
+  "freeze_date": "locked",
+  "generated_at": "2026-07-12T06:42:21.208870+00:00",
+  "seed": 402,
+  "n_target_per_ecosystem": 200,
+  "n_draw_per_ecosystem": 500,
+  "min_dependents": 5,
+  "registries": {
+    "python": "pypi.org",
+    "java": "repo1.maven.org"
+  },
+  "api_base": "https://packages.ecosyste.ms/api/v1",
+  "frame_counts_after_F1_F3": {
+    "python": 11774,
+    "java": 68662
+  },
+  "git_commit": "dc36de14cd491110c1fb658d715365bd53eefc66",
+  "spec_reference": "RULES.md \u00a77.6 (locked 2026-07-12)",
+  "_dedup_check_note": "Derived from frame_locked on 2026-08-05 to re-clone/re-process, with monorepo subpackage scoping, only the rows whose repository_url is shared by >1 of the original 400 final libraries. See confirmatory_preprocessor.py's find_scoped_root."
+}

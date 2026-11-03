@@ -1,0 +1,297 @@
+# xclim
+
+**xclim** is a Python library for computing climate indices and indicators from
+gridded climate data represented as `xarray` `DataArray` and `Dataset` objects.
+It provides a large catalogue of scientifically standardized climate indices
+(temperature, precipitation, hydrology, agroclimatology, fire weather, sea
+ice, wind, and more), along with the infrastructure needed to build
+CF-compliant, unit-aware, missing-data-aware climate indicators on top of
+raw numerical computations.
+
+xclim is built around a separation between:
+
+- **`xclim.indices`** — plain functions that compute a climate index from one
+  or more `DataArray`/`Dataset` inputs and return a result. These are the
+  numerical "engines."
+- **`xclim.indicators`** — wrappers (`Indicator` subclasses) around indices
+  that add unit checking, CF metadata, missing-value handling, localization,
+  and provenance tracking (`history` attributes).
+- **`xclim.core`** — the supporting machinery: unit conversion, calendar
+  handling, missing-data detection, data-quality flags, localization,
+  bootstrapping, and indicator-building tools.
+- **`xclim.ensembles`** — tools for combining, reducing, and analyzing
+  multi-model/multi-realization ensembles, including uncertainty
+  partitioning and robustness assessment.
+- **`xclim.analog`** — tools for spatial analog analysis (finding locations
+  whose climate best matches a target climate).
+
+## Installation
+
+```bash
+pip install xclim
+```
+
+## Core concepts
+
+### Indices vs. Indicators
+
+Most computations are available in two forms:
+
+- A **generic index function**, e.g. `xclim.indices.tg_mean`, which operates
+  directly on `xarray` objects and returns a raw result.
+- A **CF-aware Indicator**, e.g. `xclim.indicators.atmos.tg_mean` (via the
+  `Daily`/`ResamplingIndicator` machinery), which wraps the index function,
+  validates units, checks for missing data, applies calendar-aware
+  resampling, and attaches standard attributes (`long_name`, `units`,
+  `cell_methods`, `history`, etc.).
+
+Indicators are built through classes such as:
+
+- `Indicator` / `IndicatorRegistrar` — base classes providing `.compute()`,
+  `.cfcheck()`, `.datacheck()`, JSON export (`.json()`), and locale
+  translation (`.translate_attrs()`).
+- `CheckMissingIndicator`, `ReducingIndicator`, `ResamplingIndicator`,
+  `IndexingIndicator`, `ResamplingIndicatorWithIndexing` — mixins that add
+  missing-value policies, temporal resampling, and sub-annual indexing
+  (e.g. restricting computations to a season or set of months).
+- `Daily`, `Hourly` — indicators specialized for daily or hourly input
+  frequency checks.
+- `build_indicator_module` / `build_indicator_module_from_yaml` — tools to
+  create new custom indicator modules programmatically or from YAML
+  definitions (in the style of clix-meta).
+
+### Units
+
+`xclim.core.units` provides a full unit-handling layer built on `pint`:
+
+- `units2pint`, `pint2cfunits`, `str2pint` — conversions between string
+  units, CF unit strings, and `pint` objects.
+- `convert_units_to` — convert a `DataArray`/`Dataset` to target units,
+  optionally using a hydrological or other physical context.
+- `rate2amount`, `amount2rate`, `rate2flux`, `flux2rate`,
+  `amount2lwethickness`, `lwethickness2amount` — conversions between fluxes,
+  rates, and accumulated amounts commonly needed for precipitation and
+  snow variables.
+- `declare_units` — a decorator used throughout `xclim.indices` to declare
+  and enforce expected input/output units on index functions.
+
+### Calendars and time handling
+
+`xclim.core.calendar` handles the complexities of different climate model
+calendars (360-day, noleap, all-leap, standard, etc.):
+
+- `percentile_doy` — compute day-of-year percentile thresholds used by many
+  percentile-based indices (e.g. `tx90p`, `tg10p`).
+- `convert_doy`, `doy_to_days_since`, `days_since_to_doy` — day-of-year
+  conversions across calendars.
+- `select_time`, `mask_between_doys` — subset data by season, month, or
+  day-of-year bounds.
+- `stack_periods` / `unstack_periods` — reshape time series into fixed-length
+  windows (e.g. for bootstrapping or windowed analyses) and back.
+
+### Missing data
+
+`xclim.core.missing` defines pluggable strategies for flagging periods with
+too much missing data before computing an indicator:
+
+- `missing_any`, `missing_some_but_not_all`, `missing_wmo`, `missing_pct`,
+  `at_least_n_valid` — ready-made policies.
+- `MissingBase` and subclasses — the extensible base classes behind these
+  policies, configurable via `xclim.core.options.set_options`.
+
+### Data quality flags
+
+`xclim.core.dataflags` implements ECAD-style automated quality control:
+
+- `data_flags` — run a battery of checks (e.g.
+  `tasmax_below_tasmin`, `temperature_extremely_high`,
+  `values_repeating_for_n_or_more_days`,
+  `outside_n_standard_deviations_of_climatology`) on a `DataArray`.
+- `ecad_compliant` — check whether a full `Dataset` passes ECAD-style
+  compliance checks, optionally raising a `DataQualityException`.
+
+## Indices catalogue
+
+The `xclim.indices` subpackage groups functions by theme:
+
+- **`_simple`** — basic statistics (`tg_mean`, `tx_max`, `tn_min`,
+  `max_1day_precipitation_amount`, `sfcWind_mean`, etc.)
+- **`_threshold`** — threshold-crossing and spell-based indices
+  (`hot_spell_frequency`, `growing_degree_days`, `dry_spell_max_length`,
+  `frost_free_season_length`, `heat_wave_index`, `wetdays`, etc.)
+- **`_multivariate`** — indices combining multiple variables
+  (`heat_wave_frequency`, `tg90p`, `days_over_precip_thresh`,
+  `rain_on_frozen_ground_days`, `daily_temperature_range`)
+- **`_agro`** — agroclimatic indices (`huglin_index`,
+  `biologically_effective_degree_days`, `standardized_precipitation_index`,
+  `chill_portions`, `rain_season`, `hardiness_zones`)
+- **`_hydrology`** — streamflow and snow-related indices
+  (`base_flow_index`, `standardized_streamflow_index`, `snow_melt_we_max`,
+  `high_flow_frequency`, `flow_index`)
+- **`_anuclim`** — ANUCLIM-style bioclimatic indices
+  (`isothermality`, `temperature_seasonality`, `prcptot_wetdry_quarter`)
+- **`_synoptic`** — synoptic diagnostics (`jetstream_metric_woollings`)
+- **`fire._cffwis`** and **`fire._ffdi`** — fire weather indices, including
+  the full Canadian Forest Fire Weather Index System
+  (`fire_weather_ufunc`, `cffwis_indices`, `drought_code`,
+  `duff_moisture_code`, `fire_season`) and the McArthur Forest Fire Danger
+  Index (`mcarthur_forest_fire_danger_index`, `keetch_byram_drought_index`).
+- **`converters`** — variable transformations (`tas_from_tasmin_tasmax`,
+  `relative_humidity`, `specific_humidity`, `wind_chill_index`,
+  `potential_evapotranspiration`, `universal_thermal_climate_index`,
+  `uas_vas_to_sfcwind`).
+- **`generic`** — reusable building blocks used across many indices
+  (`threshold_count`, `spell_length_statistics`, `season`,
+  `aggregate_between_dates`, `get_zones`).
+- **`run_length`** — low-level run-length encoding utilities
+  (`rle`, `longest_run`, `windowed_run_count`, `first_run`, `find_events`)
+  used internally to implement spell- and streak-based indices.
+- **`stats`** — statistical fitting and frequency analysis
+  (`fit`, `parametric_quantile`, `frequency_analysis`,
+  `standardized_index`) used by SPI/SPEI-style indices.
+
+## Indicators
+
+The `xclim.indicators` subpackage exposes the same computations as
+CF-aware, unit-checked `Indicator` instances, organized by realm:
+
+- `xclim.indicators.atmos` — temperature (`Temp`, `TempHourly`,
+  `TempWithIndexing`), precipitation (`Precip`, `PrecipWithIndexing`,
+  `HrPrecip`), wind (`Wind`), fire weather (`FireWeather`), and synoptic
+  (`JetStream`) indicators.
+- `xclim.indicators.land` — hydrological and snow indicators
+  (`Streamflow`, `Snow`, `SnowWithIndexing`), plus converters like
+  `snd_to_snw` / `snw_to_snd`.
+- `xclim.indicators.seaIce` — sea ice indicators (`SiconcAreacello`).
+- `xclim.indicators.generic` — generic reducing/resampling indicators
+  (`Generic`, `GenericResampling`) usable to build custom indicators from
+  arbitrary reduction operations.
+- `xclim.indicators.convert` — variable conversion indicators
+  (`Converter`).
+
+## Ensembles
+
+`xclim.ensembles` provides tools for working with multi-model ensembles:
+
+- `create_ensemble` — combine multiple datasets/files into a single
+  ensemble `Dataset` with a `realization` dimension.
+- `ensemble_mean_std_max_min`, `ensemble_percentiles` — summary statistics
+  across ensemble members.
+- `kmeans_reduce_ensemble`, `kkz_reduce_ensemble` — select a representative
+  subset of ensemble members.
+- `hawkins_sutton`, `lafferty_sriver`, `general_partition` — partition
+  total uncertainty into components (model, scenario, internal
+  variability).
+- `robustness_fractions`, `robustness_categories`,
+  `robustness_coefficient` — assess agreement/significance of a projected
+  change across ensemble members.
+
+## Spatial analogs
+
+`xclim.analog.spatial_analogs` compares a target climate against a set of
+candidate locations/simulations using one of several statistical distance
+measures (`seuclidean`, `nearest_neighbor`, `zech_aslan`,
+`kolmogorov_smirnov`, `friedman_rafsky`, `kldiv`), helping identify
+locations whose present or historical climate resembles a target
+(e.g. future) climate.
+
+## Command-line interface
+
+xclim installs a `xclim` command-line tool (see `xclim.cli`) for common
+tasks: listing available indices (`indices`), showing indicator
+documentation (`info`), computing data quality flags on a file
+(`dataflags`), prefetching test data, and generating release notes.
+
+```bash
+xclim indices
+xclim info -i tg_mean
+xclim dataflags myfile.nc
+```
+
+## Usage examples
+
+### Computing a simple indicator
+
+```python
+import xclim
+from xclim.testing import helpers
+
+ds = helpers.test_timeseries(
+    values=[20, 22, 25, 27, 30, 18, 15],
+    variable="tas",
+    units="degC",
+    as_dataset=True,
+)
+
+# Using the CF-aware indicator (unit checks, metadata, missing-data checks)
+tg_mean = xclim.indicators.atmos.tg_mean(tas=ds.tas, freq="YS")
+print(tg_mean.attrs["units"], tg_mean.attrs["long_name"])
+```
+
+### Using the raw index function directly
+
+```python
+from xclim.indices import growing_degree_days
+
+gdd = growing_degree_days(tas=ds.tas, thresh="4.0 degC", freq="YS")
+```
+
+### Percentile-based indices with bootstrapping
+
+```python
+from xclim.core.calendar import percentile_doy
+from xclim.indices import tg90p
+
+tas_per = percentile_doy(ds.tas, window=5, per=90)
+result = tg90p(tas=ds.tas, tas_per=tas_per, freq="MS", bootstrap=True)
+```
+
+### Unit conversion
+
+```python
+from xclim.core.units import convert_units_to, rate2amount
+
+pr_mm = convert_units_to(pr_dataset.pr, "mm/d")
+total_precip = rate2amount(pr_mm, out_units="mm")
+```
+
+### Building an ensemble and computing percentiles
+
+```python
+from xclim.ensembles import create_ensemble, ensemble_percentiles
+
+ens = create_ensemble(["model1.nc", "model2.nc", "model3.nc"])
+percentiles = ensemble_percentiles(ens, values=[10, 50, 90])
+```
+
+### Data quality flags
+
+```python
+from xclim.core.dataflags import ecad_compliant
+
+flags = ecad_compliant(ds, append=False)
+```
+
+### Spatial analogs
+
+```python
+from xclim.analog import spatial_analogs
+
+analogs = spatial_analogs(target_ds, candidates_ds, method="kldiv")
+```
+
+## Configuration
+
+Global and context-local behavior (e.g. which missing-data check to use,
+whether to run CF/data checks, keep attributes) can be controlled via:
+
+```python
+from xclim.core.options import set_options
+
+with set_options(check_missing="pct", metadata_locales=["fr"]):
+    result = xclim.indicators.atmos.tg_mean(tas=ds.tas, freq="YS")
+```
+
+## License
+
+See the project repository for license and contribution information.

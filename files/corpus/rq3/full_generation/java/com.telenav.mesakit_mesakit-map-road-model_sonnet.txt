@@ -1,0 +1,128 @@
+# mesakit-map-road-model
+
+## Overview
+
+`mesakit-map-road-model` provides a set of core domain types for representing and classifying road segments in a map data model. It captures the attributes that typically describe a road feature in a digital map dataset: its functional classification, physical type, surface, traffic direction, state (open/closed, one-way/two-way), bridge/overpass/underpass characteristics, naming, shield iconography, exit numbering, and speed categorization.
+
+This library does not provide map rendering or routing logic itself — instead, it defines the vocabulary and value types that higher-level MesaKit map libraries (such as road network graph or data-import libraries) use to describe road properties. It also includes string converters for parsing these types from textual map data formats (such as DeCarta-style road type codes), and utility classes for aggregating road mileage statistics by type and by name.
+
+## Key Concepts
+
+### Road Classification
+
+- **`RoadType`** — A primary classification of a road's importance and use, e.g. `FREEWAY`, `URBAN_HIGHWAY`, `HIGHWAY`, `THROUGHWAY`, `LOCAL_ROAD`, `FRONTAGE_ROAD`, `LOW_SPEED_ROAD`, `PRIVATE_ROAD`, `WALKWAY`, `FERRY`, `TRAIN`, and others. Provides comparison methods (`isMoreImportantThan`, `isLessImportantThan`, `maximum`) and importance traversal (`nextLeastImportant`, `nextMostImportant`), as well as `maximumDoubleDigitizationSeparation()` for map-matching heuristics.
+- **`HighwayType`** — A much finer-grained enumeration modeled after common tagging schemes (e.g. OpenStreetMap-style values like `MOTORWAY`, `RESIDENTIAL`, `FOOTWAY`, `CYCLEWAY`, `PEDESTRIAN`, etc.), each with a stable `identifier()` and a string `value()`.
+- **`RoadSubType`** — A secondary classification describing structural aspects of a road segment, such as `ROUNDABOUT`, `RAMP`, `SERVICE_ROAD`, `TUNNEL`, `BRIDGE`, `OVERBRIDGE`, `UNDERPASS`.
+- **`RoadFunctionalClass`** — A functional-class hierarchy (`MAIN`, `FIRST_CLASS`, `SECOND_CLASS`, `THIRD_CLASS`, `FOURTH_CLASS`, `UNKNOWN`) with importance comparisons (`isMoreImportantThan`, etc.) and level navigation (`nextLevel`, `atOrBelow`).
+- **`DeCartaRoadType`** — An integer-coded road type used by DeCarta-format data sources, with importance comparison (`isMoreImportantThan`) and a notion of least-important type.
+
+### Road Physical / Traffic Attributes
+
+- **`RoadState`** — Whether a road is `ONE_WAY`, `TWO_WAY`, `CLOSED`, or `NULL` (unknown), with convenience predicates (`isOpen`, `isClosed`, `isOneWay`, `isTwoWay`).
+- **`DirectionOfTrafficFlow`** — Direction of allowed traffic flow (`POSITIVE`, `NEGATIVE`, `BOTH`, `CLOSED`, `UNKNOWN`), with `reversed()`, `isOneWay()`, `isTwoWay()`, `isClosed()`, and a compact `symbol()` representation.
+- **`RoadSurface`** — Physical surface condition: `PAVED`, `UNPAVED`, `POOR_CONDITION`, `NOT_APPLICABLE`.
+- **`BridgeType`** — `NONE`, `BRIDGE`, `OVERBRIDGE`, `TUNNEL`, `UNDERPASS`.
+- **`OverpassUnderpassType`** — `NONE`, `OVERPASS`, `UNDERPASS`.
+- **`RampType`** — `BOTH`, `NONE`, `OFFRAMP`, `ONRAMP`.
+- **`SpeedCategory`** — Buckets a `Speed` value into a category, exposing `minimum()`, `maximum()`, `average()`, and `includes(Speed)`, plus lookup via `forSpeed(Speed)` or `forIdentifier(int)`.
+
+### Naming and Identification
+
+- **`RoadName`** *(referenced, converted via `RoadNameConverter`)* — Represents the name of a road.
+- **`ExitNumber`** — Represents highway exit numbers, parsed via `forIdentifier(String)`.
+- **`ShieldIcon`** — Represents a route shield icon identifier (e.g., for interstate/highway shield graphics), parsed via `forIdentifier(String)`.
+
+### Mileage Aggregation
+
+- **`RoadTypeMileages`** — Accumulates total `Distance` mileage per `RoadType`, and can report percentage breakdowns (`roadTypMileagePercent`) and sorted summaries.
+- **`NamedRoadTypeMileages`** — Aggregates `RoadTypeMileages` per road name, useful for reporting mileage statistics grouped by both name and road type.
+
+### Converters
+
+String-based converters (extending `BaseStringConverter`) are provided for parsing textual representations into strongly typed values, for use in configuration, command-line tools, or data import pipelines:
+
+- `DeCartaRoadTypeConverter`
+- `TrafficDeCartaRoadTypeStringConverter`
+- `DirectionOfTrafficFlowConverter`
+- `RoadNameConverter`
+- `RoadShapeConverter` — converts a delimited string of coordinates into a `Polyline`, with a configurable number of columns and coordinate `Type`.
+
+## Example Usage
+
+### Classifying and comparing road importance
+
+```java
+import com.telenav.mesakit.map.road.model.RoadType;
+import com.telenav.mesakit.map.road.model.RoadFunctionalClass;
+
+RoadType a = RoadType.FREEWAY;
+RoadType b = RoadType.LOCAL_ROAD;
+
+if (a.isMoreImportantThan(b))
+{
+    System.out.println(a + " is more important than " + b);
+}
+
+RoadType lessImportant = a.nextLeastImportant();
+
+RoadFunctionalClass functionalClass = RoadFunctionalClass.forIdentifier(2);
+if (functionalClass.isMoreImportantThanOrEqual(RoadFunctionalClass.THIRD_CLASS))
+{
+    System.out.println("Road qualifies for higher-tier routing");
+}
+```
+
+### Working with traffic direction and road state
+
+```java
+import com.telenav.mesakit.map.road.model.DirectionOfTrafficFlow;
+import com.telenav.mesakit.map.road.model.RoadState;
+
+DirectionOfTrafficFlow flow = DirectionOfTrafficFlow.POSITIVE;
+DirectionOfTrafficFlow reversed = flow.reversed();
+
+RoadState state = RoadState.forIdentifier(1);
+if (state.isOpen() && state.isOneWay())
+{
+    System.out.println("Road is open and one-way, flow: " + flow.symbol());
+}
+```
+
+### Parsing road types and names from data
+
+```java
+import com.telenav.mesakit.map.road.model.converters.DeCartaRoadTypeConverter;
+import com.telenav.mesakit.map.road.model.converters.RoadNameConverter;
+import com.telenav.mesakit.map.road.model.DeCartaRoadType;
+import com.telenav.mesakit.map.road.model.RoadName;
+
+DeCartaRoadTypeConverter typeConverter = new DeCartaRoadTypeConverter(listener);
+DeCartaRoadType roadType = typeConverter.convert("3");
+
+RoadNameConverter nameConverter = new RoadNameConverter(listener);
+RoadName name = nameConverter.convert("Main Street");
+```
+
+### Categorizing speed and computing road mileage statistics
+
+```java
+import com.telenav.mesakit.map.road.model.SpeedCategory;
+import com.telenav.mesakit.map.road.model.RoadType;
+import com.telenav.mesakit.map.road.model.RoadTypeMileages;
+import com.telenav.kivakit.core.value.Speed;
+import com.telenav.kivakit.core.value.Distance;
+
+SpeedCategory category = SpeedCategory.forSpeed(Speed.milesPerHour(65));
+System.out.println("Category speed range: " + category.minimum() + " - " + category.maximum());
+
+RoadTypeMileages mileages = new RoadTypeMileages();
+mileages.add(RoadType.FREEWAY, Distance.miles(120));
+mileages.add(RoadType.LOCAL_ROAD, Distance.miles(45));
+
+System.out.println("Freeway share: " + mileages.roadTypMileagePercent(RoadType.FREEWAY));
+System.out.println(mileages);
+```
+
+## Summary
+
+`mesakit-map-road-model` is a foundational data-modeling library for representing road classification, traffic behavior, physical characteristics, and naming conventions used across the MesaKit mapping ecosystem. It is designed to be combined with other MesaKit libraries responsible for graph construction, map data import, and routing, providing them with a consistent, strongly-typed vocabulary for describing roads.

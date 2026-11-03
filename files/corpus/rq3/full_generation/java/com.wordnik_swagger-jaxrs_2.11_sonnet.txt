@@ -1,0 +1,108 @@
+# swagger-jaxrs
+
+`com.wordnik:swagger-jaxrs_2.11` provides JAX-RS integration support for the Swagger ecosystem, allowing JAX-RS based web services to serialize and deserialize JSON payloads using Jackson with sensible defaults for JAX-RS/JAXB-annotated resources.
+
+## Overview
+
+This module ships a single, ready-to-use JSON provider:
+
+### `JacksonJsonProvider`
+
+`com.wordnik.swagger.jaxrs.json.JacksonJsonProvider` is a thin extension of Jackson's `JacksonJaxbJsonProvider`. It is designed to be registered with your JAX-RS runtime (e.g. Jersey, RESTEasy, CXF) as a `MessageBodyReader`/`MessageBodyWriter` for JSON media types, giving you Jackson-powered (de)serialization out of the box, along with JAXB annotation introspection inherited from `JacksonJaxbJsonProvider`.
+
+Because it extends `JacksonJaxbJsonProvider`, it can be dropped in anywhere a JAX-RS `Provider` is expected, and it benefits from all the JAX-RS message body reader/writer machinery, content negotiation, and Jackson configuration options available on its parent class.
+
+This provider is commonly used in Swagger-enabled JAX-RS applications to ensure that both your API's request/response bodies and the Swagger-generated API documentation JSON are serialized consistently.
+
+## Installation
+
+Add the dependency to your build:
+
+**Maven**
+```xml
+<dependency>
+    <groupId>com.wordnik</groupId>
+    <artifactId>swagger-jaxrs_2.11</artifactId>
+    <version>${swagger.version}</version>
+</dependency>
+```
+
+**SBT**
+```scala
+libraryDependencies += "com.wordnik" %% "swagger-jaxrs" % swaggerVersion
+```
+
+## Usage
+
+### Registering the provider directly
+
+If you're using a JAX-RS implementation that supports manual provider registration (such as Jersey), you can instantiate and register the provider directly:
+
+```java
+import com.wordnik.swagger.jaxrs.json.JacksonJsonProvider;
+import javax.ws.rs.core.Application;
+import java.util.HashSet;
+import java.util.Set;
+
+public class MyApplication extends Application {
+
+    @Override
+    public Set<Object> getSingletons() {
+        Set<Object> singletons = new HashSet<Object>();
+        singletons.add(new JacksonJsonProvider());
+        // register your resource classes here as well
+        return singletons;
+    }
+}
+```
+
+### Registering via a resource config
+
+```java
+import com.wordnik.swagger.jaxrs.json.JacksonJsonProvider;
+import org.glassfish.jersey.server.ResourceConfig;
+
+public class MyResourceConfig extends ResourceConfig {
+
+    public MyResourceConfig() {
+        register(new JacksonJsonProvider());
+        packages("com.example.resources");
+    }
+}
+```
+
+### Using it alongside JAX-RS resources
+
+Once registered, any resource method that produces or consumes `application/json` will automatically use `JacksonJsonProvider` for marshalling:
+
+```java
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+
+@Path("/pets")
+public class PetResource {
+
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Pet getPet() {
+        Pet pet = new Pet();
+        pet.setId(1L);
+        pet.setName("Rex");
+        return pet;
+    }
+}
+```
+
+With `JacksonJsonProvider` registered, the `Pet` object returned above will be serialized to JSON automatically, using Jackson's data-binding combined with JAXB annotation support.
+
+## Why use this provider?
+
+- **Drop-in JAX-RS integration** — implements the standard JAX-RS provider contract via `JacksonJaxbJsonProvider`.
+- **Consistent JSON handling** — ensures your API responses and Swagger documentation are serialized using the same underlying Jackson configuration.
+- **Minimal setup** — no configuration required to get started; simply instantiate and register.
+
+## License
+
+This project is part of the Swagger open-source toolset. Refer to the repository's LICENSE file for licensing details.

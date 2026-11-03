@@ -1,0 +1,439 @@
+# agate
+
+`agate` is a Python library for working with tabular data. Its API centers on `Table` and `TableSet` objects and provides tools for:
+
+- Reading and writing CSV, JSON, and fixed-width data.
+- Selecting, filtering, sorting, joining, grouping, and reshaping tables.
+- Computing derived columns and aggregate summaries.
+- Working with typed values such as numbers, dates, datetimes, booleans, and text.
+- Printing tables and exporting simple charts.
+- Managing collections of related tables.
+
+## Quick start
+
+```python
+import agate
+
+table = agate.Table.from_csv("sales.csv")
+
+recent_sales = (
+    table
+    .where(lambda row: row["year"] >= 2024)
+    .select(["region", "year", "sales"])
+    .order_by("sales", reverse=True)
+)
+
+recent_sales.print_table()
+```
+
+Load a CSV file, filter rows with `where`, retain selected columns with `select`, sort the result with `order_by`, and print it using `print_table`.
+
+## Core concepts
+
+### `Table`
+
+`Table` represents a rectangular dataset with named columns and rows. It exposes metadata and collection-style access through:
+
+- `column_names()`
+- `column_types()`
+- `row_names()`
+- `columns()`
+- `rows()`
+
+Tables can be created from several common input formats:
+
+```python
+table = agate.Table.from_csv("data.csv")
+table = agate.Table.from_json("data.json")
+table = agate.Table.from_fixed("data.txt", "schema.json")
+table = agate.Table.from_object(records)
+```
+
+Tables can be exported as CSV or JSON:
+
+```python
+table.to_csv("output.csv")
+table.to_json("output.json", indent=2)
+
+table.print_csv()
+table.print_json(indent=2)
+```
+
+### `Row`, `Column`, and `MappedSequence`
+
+Rows and columns are mapping-like sequences. They support the operations provided by `MappedSequence`:
+
+- `keys()`
+- `values()`
+- `items()`
+- `get(key, default=None)`
+- `dict()`
+
+For example, row values can be accessed by a column name:
+
+```python
+for row in table.rows():
+    print(row["name"], row.get("email"))
+```
+
+A `Column` also provides helpers for inspecting its values:
+
+```python
+sales = table.columns()["sales"]
+
+all_values = sales.values()
+distinct_values = sales.values_distinct()
+non_null_values = sales.values_without_nulls()
+sorted_values = sales.values_sorted()
+```
+
+## Transforming tables
+
+Most `Table` operations return a transformed result that can be used in another operation.
+
+### Filter rows
+
+Use `where` to retain rows that satisfy a test, or `exclude` to remove rows matching a key or test.
+
+```python
+active_customers = table.where(lambda row: row["status"] == "active")
+```
+
+Use `find` to locate a matching row:
+
+```python
+first_high_value = table.find(lambda row: row["sales"] > 10000)
+```
+
+### Select and rename columns
+
+```python
+summary = table.select(["region", "sales"])
+
+renamed = summary.rename(
+    column_names={
+        "region": "sales_region",
+        "sales": "total_sales",
+    }
+)
+```
+
+`rename` can also rename rows and supports slugging column or row names:
+
+```python
+slugged = table.rename(slug_columns=True, slug_rows=True)
+```
+
+### Sort, limit, and remove duplicates
+
+```python
+top_ten = (
+    table
+    .order_by("sales", reverse=True)
+    .limit(10)
+)
+
+unique_regions = table.distinct("region")
+```
+
+### Compute columns
+
+Computations derive new values from existing table data. Available computation classes include:
+
+- `Formula`
+- `Change`
+- `Percent`
+- `PercentChange`
+- `Rank`
+- `PercentileRank`
+- `Slug`
+
+Use `compute` to add computed values to a table:
+
+```python
+# The exact computation configuration depends on the computation class.
+result = table.compute({
+    "sales_rank": agate.Rank(),
+})
+```
+
+Set `replace=True` when computed columns should replace existing columns of the same name:
+
+```python
+result = table.compute({
+    "sales_rank": agate.Rank(),
+}, replace=True)
+```
+
+### Group data
+
+`group_by` creates a `TableSet`: a collection of tables organized by a grouping key.
+
+```python
+by_region = table.group_by("region")
+
+for region, region_table in by_region.items():
+    print(region)
+    region_table.print_table()
+```
+
+A grouped table set can be merged back into one table:
+
+```python
+combined = by_region.merge(group_name="region")
+```
+
+### Join tables
+
+Use `join` to combine a table with another table.
+
+```python
+orders = agate.Table.from_csv("orders.csv")
+customers = agate.Table.from_csv("customers.csv")
+
+orders_with_customers = orders.join(
+    customers,
+    left_key="customer_id",
+    right_key="id",
+)
+```
+
+The join API supports inner joins, full outer joins, required matches, and explicit column selection:
+
+```python
+matched_orders = orders.join(
+    customers,
+    left_key="customer_id",
+    right_key="id",
+    inner=True,
+    require_match=True,
+    columns=["name", "segment"],
+)
+```
+
+### Reshape data
+
+`agate` includes several operations for changing table shape.
+
+- `normalize` converts properties into rows.
+- `denormalize` converts property/value rows into columns.
+- `pivot` creates pivoted summary tables.
+- `homogenize` ensures a set of comparison values is represented.
+- `bins` groups a column into ranges.
+
+```python
+long_form = table.normalize(
+    key="region",
+    properties=["sales", "profit"],
+)
+
+wide_form = long_form.denormalize(
+    key="region",
+    property_column="property",
+    value_column="value",
+)
+```
+
+## Aggregation
+
+Aggregations summarize table data. The base class is `Aggregation`; available aggregations include:
+
+- `Count`
+- `Sum`
+- `Mean`
+- `Median`
+- `Mode`
+- `Min`
+- `Max`
+- `First`
+- `All`
+- `Any`
+- `HasNulls`
+- `MaxLength`
+- `MaxPrecision`
+- `Variance`
+- `PopulationVariance`
+- `StDev`
+- `PopulationStDev`
+- `MAD`
+- `IQR`
+- `Quartiles`
+- `Quintiles`
+- `Deciles`
+- `Percentiles`
+- `Summary`
+
+Use `Table.aggregate` to calculate one or more aggregate values:
+
+```python
+summary = table.aggregate({
+    "row_count": agate.Count(),
+})
+
+summary.print_table()
+```
+
+Grouped tables can also be aggregated:
+
+```python
+by_region = table.group_by("region")
+
+regional_summary = by_region.aggregate({
+    "row_count": agate.Count(),
+})
+
+regional_summary.print_table()
+```
+
+`TableSet.having` can filter groups using aggregate values and a test:
+
+```python
+large_groups = by_region.having(
+    {"row_count": agate.Count()},
+    lambda row: row["row_count"] >= 10,
+)
+```
+
+## Data types
+
+The `DataType` base class defines value conversion and serialization behavior:
+
+- `test(d)`
+- `cast(d)`
+- `csvify(d)`
+- `jsonify(d)`
+
+Built-in data types include:
+
+- `Boolean`
+- `Date`
+- `DateTime`
+- `Number`
+- `Text`
+- `TimeDelta`
+
+Column types can be supplied while loading data:
+
+```python
+table = agate.Table.from_csv(
+    "sales.csv",
+    column_types={
+        "year": agate.Number(),
+        "sales": agate.Number(),
+        "active": agate.Boolean(),
+    },
+)
+```
+
+## Working with multiple tables
+
+`TableSet` is a keyed collection of tables. In addition to `MappedSequence` methods, it exposes:
+
+- `key_name()`
+- `key_type()`
+- `column_names()`
+- `column_types()`
+
+Many table transformations are available directly on a `TableSet` and are applied to its contained tables, including:
+
+- `compute`
+- `distinct`
+- `exclude`
+- `group_by`
+- `join`
+- `limit`
+- `normalize`
+- `order_by`
+- `pivot`
+- `select`
+- `where`
+
+A `TableSet` can also be read from or written to CSV and JSON:
+
+```python
+tables = agate.TableSet.from_csv("input-directory")
+
+tables.to_csv("output-directory")
+tables.to_json("tables.json", nested=True, indent=2)
+```
+
+## Display and charting
+
+### Terminal and HTML output
+
+```python
+table.print_table(max_rows=25, max_columns=8)
+table.print_structure()
+table.print_html()
+table.print_bars(
+    label_column_name="region",
+    value_column_name="sales",
+)
+```
+
+### Charts
+
+Tables and table sets provide basic chart methods:
+
+```python
+table.bar_chart(label="region", value="sales", path="sales-bar-chart.svg")
+table.column_chart(label="region", value="sales", path="sales-columns.svg")
+table.line_chart(x="date", y="sales", path="sales-line-chart.svg")
+table.scatterplot(x="advertising_cost", y="sales", path="sales-scatter.svg")
+```
+
+Each chart method accepts optional `path`, `width`, and `height` arguments.
+
+## Configuration
+
+Global options can be read or changed with:
+
+```python
+value = agate.get_option("some_option")
+
+agate.set_option("some_option", value)
+
+agate.set_options({
+    "some_option": value,
+})
+```
+
+## Utilities
+
+The library exposes several utilities for common tabular-data tasks:
+
+- `median(data_sorted)`
+- `max_precision(values)`
+- `round_limits(minimum, maximum)`
+- `letter_name(index)`
+- `parse_object(obj, path='')`
+- `issequence(obj)`
+- `deduplicate(values, column_names=False, separator='_')`
+- `slugify(values, ensure_unique=False, **kwargs)`
+- `make_number_formatter(decimal_places, add_ellipsis=False)`
+
+For example:
+
+```python
+clean_names = agate.slugify(
+    ["Customer Name", "Customer Name", "Total Sales"],
+    ensure_unique=True,
+)
+```
+
+## Exceptions and warnings
+
+Errors specific to data conversion and aggregation include:
+
+- `DataTypeError`
+- `UnsupportedAggregationError`
+- `CastError`
+- `FieldSizeLimitError`
+
+Warnings include:
+
+- `NullCalculationWarning`
+- `DuplicateColumnWarning`
+- `UnnamedColumnWarning`
+
+These types can be used when handling invalid data, unsupported operations, or naming issues in table-processing workflows.

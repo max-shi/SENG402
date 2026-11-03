@@ -1,0 +1,221 @@
+# Make It Easy
+
+Make It Easy is a small Java library for building test data using the
+**Object Mother** / **Test Data Builder** pattern. It lets you define
+declarative "recipes" for constructing objects, with sensible defaults for
+properties that aren't important to a particular test, while making it easy
+to override just the properties that are.
+
+Instead of writing constructors or builder methods by hand for every
+variation of test object you need, you describe how to build a type once
+(an `Instantiator`), and then create as many customized instances of it as
+you like using `Maker`s and `PropertyValue`s.
+
+## Core concepts
+
+### `Instantiator<T>`
+
+An `Instantiator<T>` knows how to build a value of type `T`, given a
+`PropertyLookup<T>` from which it can read the properties it needs. You
+typically write one `Instantiator` per class you want to create test
+instances of.
+
+```java
+public class PersonInstantiator implements Instantiator<Person> {
+    public static final Property<Person, String> NAME = newProperty();
+    public static final Property<Person, Integer> AGE = newProperty();
+
+    public Person instantiate(PropertyLookup<Person> lookup) {
+        return new Person(
+            lookup.valueOf(NAME, "John Doe"),
+            lookup.valueOf(AGE, 30));
+    }
+}
+```
+
+### `Property<T, V>`
+
+A `Property<T, V>` is a typed key identifying a property of type `V`
+belonging to objects of type `T`. Properties are created with the static
+factory method `Property.newProperty()` and are usually declared as
+constants alongside the `Instantiator` that uses them.
+
+### `PropertyValue<T, V>`
+
+A `PropertyValue<T, V>` pairs a `Property<T, V>` with a `Donor<V>` that
+supplies its value. These are what you pass to `a`/`an`/`but` to override
+defaults.
+
+### `PropertyLookup<T>`
+
+Passed to an `Instantiator` when a `Maker` builds an object. It resolves the
+value of a given `Property`, falling back to a supplied default (a plain
+value or a `Donor`) if no override was specified.
+
+### `Donor<T>`
+
+A `Donor<T>` supplies a value of type `T` via `value()`. Donors are the
+building block used everywhere a value is needed: as property overrides, as
+elements of collections, or as reusable references to the same instance.
+Several kinds of donors are provided:
+
+- **`SameValueDonor<T>`** — always returns the same fixed value.
+- **`Maker<T>`** — itself a `Donor<T>`; calling `value()` builds a new
+  instance using the maker's instantiator and properties.
+- **`NewCollectionDonor<T, E>`** — builds a new collection of type `T`
+  from a sequence of element donors.
+- **`SequenceDonor<T>` / `IndexedSequence<T>` / `ElementsSequence<T>` /
+  `ChainedSequence<T>`** — donors that hand out a different value each time
+  they are asked, useful for generating unique or varying data across
+  several instances (e.g. incrementing IDs, cycling through a fixed list of
+  values, or chaining several sequences together).
+
+### `Maker<T>`
+
+A `Maker<T>` combines an `Instantiator<T>` with a set of `PropertyValue`s.
+It implements both `PropertyLookup<T>` (so the instantiator can query
+property values) and `Donor<T>` (so a `Maker` can itself be used as a value
+donor elsewhere). Calling `make()` or `value()` builds a new instance.
+
+The `but(...)` method returns a new `Maker<T>` with the same instantiator
+and properties, plus (or overriding with) the given `PropertyValue`s — this
+is the mechanism for deriving variations of a base recipe without mutating
+it.
+
+### `MakeItEasy`
+
+The `MakeItEasy` class is the main entry point, providing static factory
+methods that are intended to be statically imported so recipes read like a
+small DSL:
+
+- `a(instantiator, propertyValues...)` / `an(instantiator, propertyValues...)`
+  — create a `Maker<T>`. `a` and `an` are identical; use whichever reads
+  better grammatically.
+- `with(property, value)` / `with(value, property)` — create a
+  `PropertyValue`, either from a plain value or from a `Donor`.
+- `withNull(property)` — create a `PropertyValue` whose value is `null`.
+- `theSame(instantiator, propertyValues...)` / `theSame(donor)` — create a
+  `Donor` that builds a value once and then always returns that same
+  instance, useful for sharing one built object across multiple properties.
+- `make(maker)` — build the object described by a `Maker`.
+- `listOf(...)`, `setOf(...)`, `sortedSetOf(...)` — build `Donor`s producing
+  collections from a series of element donors.
+- `from(values...)` / `from(iterable)` — a `Donor` that yields the given
+  values in order, once each.
+- `fromRepeating(values...)` / `fromRepeating(iterable)` — like `from`, but
+  cycles back to the start after exhausting the values, yielding an
+  infinite repeating sequence.
+
+## Usage
+
+### Defining an instantiator
+
+```java
+import com.natpryce.makeiteasy.Instantiator;
+import com.natpryce.makeiteasy.Property;
+import com.natpryce.makeiteasy.PropertyLookup;
+
+import static com.natpryce.makeiteasy.Property.newProperty;
+
+public class Person {
+    public final String name;
+    public final int age;
+
+    public Person(String name, int age) {
+        this.name = name;
+        this.age = age;
+    }
+}
+
+public class PersonMaker {
+    public static final Property<Person, String> NAME = newProperty();
+    public static final Property<Person, Integer> AGE = newProperty();
+
+    public static final Instantiator<Person> Person = new Instantiator<Person>() {
+        public Person instantiate(PropertyLookup<Person> lookup) {
+            return new Person(
+                lookup.valueOf(NAME, "John Doe"),
+                lookup.valueOf(AGE, 30));
+        }
+    };
+}
+```
+
+### Making objects
+
+```java
+import static com.natpryce.makeiteasy.MakeItEasy.*;
+import static PersonMaker.*;
+
+// Build with all defaults
+Person defaultPerson = make(a(Person));
+
+// Override a property
+Person namedPerson = make(a(Person, with(NAME, "Alice")));
+
+// Derive a variation from an existing recipe with `but`
+Maker<Person> alice = a(Person, with(NAME, "Alice"), with(AGE, 25));
+Maker<Person> olderAlice = alice.but(with(AGE, 26));
+
+Person alicePerson = make(alice);
+Person olderAlicePerson = make(olderAlice);
+```
+
+### Sharing an instance across properties
+
+```java
+public class Employment {
+    public final Person employee;
+    public final Person emergencyContact;
+    // ...
+}
+
+Donor<Person> sharedPerson = theSame(a(Person, with(NAME, "Alice")));
+
+Maker<Employment> employment = a(Employment,
+    with(EMPLOYEE, sharedPerson),
+    with(EMERGENCY_CONTACT, sharedPerson));
+```
+
+Because `sharedPerson` is wrapped with `theSame`, both properties receive
+the exact same `Person` instance rather than two separately built ones.
+
+### Generating sequences of values
+
+```java
+import static com.natpryce.makeiteasy.MakeItEasy.from;
+import static com.natpryce.makeiteasy.MakeItEasy.fromRepeating;
+
+// Distinct names, one per call, then exhausted
+Donor<String> names = from("Alice", "Bob", "Carol");
+
+// Ages cycling forever
+Donor<Integer> ages = fromRepeating(20, 30, 40);
+
+Maker<Person> personSequence = a(Person, with(NAME, names), with(AGE, ages));
+
+Person p1 = make(personSequence); // Alice, 20
+Person p2 = make(personSequence); // Bob, 30
+Person p3 = make(personSequence); // Carol, 40
+```
+
+### Building collections
+
+```java
+import static com.natpryce.makeiteasy.MakeItEasy.listOf;
+
+Donor<List<Person>> people = listOf(
+    a(Person, with(NAME, "Alice")),
+    a(Person, with(NAME, "Bob")));
+
+List<Person> peopleList = people.value();
+```
+
+## Summary
+
+Make It Easy provides a compact set of building blocks —
+`Instantiator`, `Property`, `PropertyValue`, `Donor`, and `Maker` — combined
+with a static DSL in `MakeItEasy` for declaring how to construct test
+objects with default and overridable properties, sharing instances,
+generating sequences, and assembling collections, all without hand-rolled
+builder boilerplate.

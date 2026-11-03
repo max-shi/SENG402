@@ -1,0 +1,67 @@
+# xsdata
+
+**xsdata** is a Python library and code generator for working with XML, JSON, WSDL, and XML Schema (XSD) / DTD definitions. It can generate Python dataclasses from XSD/DTD/WSDL sources, and it provides a full runtime for serializing and parsing XML and JSON documents to and from those dataclasses.
+
+## What it does
+
+xsdata is split into two complementary halves:
+
+1. **Code generation (`xsdata.codegen`)** — parses XML Schema, DTD, or WSDL definitions and transforms them into an internal model (`Class`, `Attr`, `AttrType`, `Extension`) through a pipeline of *handlers* orchestrated by `ClassContainer`. The result is rendered into Python dataclasses (or other formats) by a pluggable `AbstractGenerator`, with `DataclassGenerator` as the default implementation using Jinja2 templates and `Filters` for code formatting.
+2. **Runtime (`xsdata.formats.dataclass`)** — parses and serializes XML/JSON data into/out of plain Python dataclasses, using `XmlContext` to introspect dataclass metadata (`XmlMeta`, `XmlVar`) built via `XmlMetaBuilder`.
+
+## Key components
+
+- **`xsdata.cli`** — the `xsdata` command line tool (`generate`, `download`, `init-config`) drives schema-to-code generation from the shell.
+- **`ResourceTransformer`** — orchestrates downloading/parsing schema, DTD, and WSDL sources and converting them into `Class` objects.
+- **`ClassContainer` / handlers** — a pipeline of transformation steps (flattening extensions, resolving references, disambiguating choices, renaming duplicates, etc.) that normalize the raw parsed classes into clean, generateable models.
+- **`DependenciesResolver`** — computes imports and generation order between classes.
+- **`CodeWriter` / `DataclassGenerator`** — renders final Python source files from `Class` definitions, using `GeneratorConfig` for style/output preferences.
+- **`XmlContext`, `XmlParser` family (`NodeParser`, `XmlParser`, `TreeParser`), `JsonParser`** — parse XML/JSON into dataclass instances.
+- **`XmlSerializer`, `JsonSerializer`, `PycodeSerializer`** — serialize dataclass instances back into XML, JSON, or Python source code.
+- **`Client`** — a simple SOAP/WSDL-based client built on `Config` and `Transport`.
+- **`Converter` / `ConverterFactory`** — pluggable type conversion between Python types and XML Schema datatypes (dates, decimals, QNames, enums, etc.).
+
+## Usage: generating code from an XSD
+
+```bash
+xsdata generate schema.xsd --package myapp.models
+```
+
+## Usage: parsing and serializing XML
+
+```python
+from xsdata.formats.dataclass.parsers import XmlParser
+from xsdata.formats.dataclass.serializers import XmlSerializer
+from xsdata.formats.dataclass.serializers.config import SerializerConfig
+from myapp.models import PurchaseOrder
+
+parser = XmlParser()
+order = parser.parse("order.xml", PurchaseOrder)
+
+config = SerializerConfig(pretty_print=True)
+serializer = XmlSerializer(config=config)
+print(serializer.render(order))
+```
+
+## Usage: JSON binding
+
+```python
+from xsdata.formats.dataclass.parsers import JsonParser
+from xsdata.formats.dataclass.serializers import JsonSerializer
+from myapp.models import PurchaseOrder
+
+order = JsonParser().parse("order.json", PurchaseOrder)
+print(JsonSerializer().render(order))
+```
+
+## Usage: calling a SOAP service
+
+```python
+from xsdata.formats.dataclass.client import Client, Config
+
+config = Config.from_service(MyServicePort)
+client = Client(config=config)
+response = client.send(request_obj)
+```
+
+xsdata aims to be a complete toolkit for teams that need to bridge XML Schema/WSDL contracts and idiomatic, type-safe Python data models.

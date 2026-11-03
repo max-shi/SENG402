@@ -1,0 +1,179 @@
+# randomgen
+
+`randomgen` provides utilities related to random-number generation, sampling sequences, generator state handling, and test execution.
+
+The available API includes:
+
+- A package-level test runner.
+- A `SequenceSampled` helper with methods for producing bits and words, refilling sampled data, selecting bounded values, and shuffling arrays.
+- Version-information helpers.
+- Utilities for saving an `MT19937` generator state and parsing generated output.
+
+## Quick start
+
+Run the library's test entry point:
+
+```python
+import randomgen
+
+randomgen.test()
+```
+
+To pass additional arguments to the test runner:
+
+```python
+import randomgen
+
+randomgen.test(extra_args=["-q"], exit=False)
+```
+
+`extra_args` may be a single string, a list of strings, or `None`. Set `exit=False` when calling the test runner from an application or another test process where terminating the interpreter is not desired.
+
+## API overview
+
+### Testing
+
+```python
+randomgen.test(extra_args=None, exit=True)
+```
+
+Runs the library test entry point.
+
+| Parameter | Description |
+|---|---|
+| `extra_args` | Optional test arguments, supplied as a string or list of strings. |
+| `exit` | Controls whether the test invocation may exit the current process. |
+
+---
+
+### `SequenceSampled`
+
+`SequenceSampled` represents a sampled sequence with operations commonly useful when consuming random bits or words.
+
+```python
+class SequenceSampled:
+    def refill(self):
+    def gen_bits(self, nbits):
+    def random_inverval(self, max_value):
+    def shuffle(self, array):
+    def next_word(self):
+```
+
+Available methods:
+
+| Method | Description |
+|---|---|
+| `refill()` | Refill the sequence or its current source of sampled values. |
+| `gen_bits(nbits)` | Generate or retrieve a requested number of bits. |
+| `random_inverval(max_value)` | Produce a bounded value using `max_value`. The public method name is spelled `random_inverval`. |
+| `shuffle(array)` | Shuffle the provided array-like object. |
+| `next_word()` | Retrieve the next word from the sequence. |
+
+### Example: consume sampled values
+
+```python
+sampler = SequenceSampled()
+
+# Ensure sampled data is available.
+sampler.refill()
+
+# Request a fixed number of bits.
+bits = sampler.gen_bits(16)
+
+# Retrieve the next word.
+word = sampler.next_word()
+
+# Select a value using an upper bound.
+value = sampler.random_inverval(100)
+
+# Shuffle a mutable array.
+values = [10, 20, 30, 40]
+sampler.shuffle(values)
+```
+
+The return values of these methods are determined by the sequence implementation in use. Code using `shuffle` should retain and inspect the original array object, since the method's return type is not specified.
+
+---
+
+### Version helpers
+
+Two functions provide version information and support writing it to a file.
+
+```python
+get_version() -> tuple[str, tuple[int | str, ...]]
+```
+
+Returns a pair containing:
+
+1. A version string.
+2. A tuple of version fields, where each field is an integer or string.
+
+```python
+write_version_file(
+    filename: str,
+    version: str,
+    version_fields: tuple[int | str, ...],
+) -> None
+```
+
+Writes version information to the specified file.
+
+### Example: read and write version information
+
+```python
+version, fields = get_version()
+
+print(f"Version: {version}")
+print(f"Fields: {fields}")
+
+write_version_file(
+    filename="VERSION",
+    version=version,
+    version_fields=fields,
+)
+```
+
+---
+
+### Generator-state and output utilities
+
+The library also exposes utilities intended for working with `MT19937` generator state and generated output.
+
+```python
+save_state(bit_gen: MT19937, file_name: str) -> None
+```
+
+Saves the state of an `MT19937` bit generator to `file_name`.
+
+```python
+parse_output(text: str) -> tuple[list[dict[str, list | int]], list[int]]
+```
+
+Parses text into a two-part result:
+
+1. A list of dictionaries whose values are lists or integers.
+2. A list of integers.
+
+### Example: parse generated text
+
+```python
+text = """
+... generated output ...
+"""
+
+records, values = parse_output(text)
+
+for record in records:
+    print(record)
+
+print(values)
+```
+
+### Example: save generator state
+
+```python
+# bit_gen must be an MT19937 instance.
+save_state(bit_gen, "mt19937-state.txt")
+```
+
+This can be useful when preserving a generator state for later inspection, comparison, or repeatable workflows.

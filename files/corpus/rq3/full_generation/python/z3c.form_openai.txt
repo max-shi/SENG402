@@ -1,0 +1,615 @@
+# z3c.form
+
+`z3c.form` is a Python form framework built around fields, widgets, data conversion, validation, actions, and browser-oriented rendering.
+
+The library provides building blocks for:
+
+- Display, add, and edit forms
+- Field and widget management
+- HTML widgets for text, selection, files, buttons, images, and compound values
+- Conversion between field values and browser/widget values
+- Validation and error rendering
+- Form actions and button handlers
+- Nested object, multi-value, and grouped forms
+- Terms and vocabularies for choice and collection fields
+- ZCML-style template registration for widgets
+
+The public API is organized so that forms coordinate fields, widgets, actions, validators, and data managers, while adapters and factories allow applications to choose appropriate widgets, converters, terms, and templates.
+
+## Core concepts
+
+### Forms
+
+The central form types are:
+
+- `form.BaseForm` — base browser form with widget updating, extraction, rendering, and JSON support.
+- `form.DisplayForm` — a form intended for display-oriented use.
+- `form.Form` — an input form with actions.
+- `form.AddForm` — a form that creates and adds content.
+- `form.EditForm` — a form that applies changes to existing content.
+- `group.Group` — a form-like unit that can be composed into grouped forms.
+- `group.GroupForm` — coordinates multiple groups.
+- `subform.EditSubForm` — an edit-oriented subform.
+
+A normal form lifecycle is:
+
+1. Update widgets and actions with `update()`.
+2. Extract submitted data with `extractData()`.
+3. Validate data through the field-widget manager.
+4. Apply, create, or add content in an action handler.
+5. Render HTML with `render()` or obtain widget/form JSON with `json()`.
+
+```python
+class ProfileEditForm(form.EditForm):
+    def update(self):
+        super().update()
+        # Additional view setup can happen here.
+
+    def applyChanges(self, data):
+        # Apply data to the edited object.
+        return super().applyChanges(data)
+```
+
+Useful `BaseForm` methods include:
+
+```python
+content = view.getContent()
+
+view.updateWidgets()
+data, errors = view.extractData()
+
+html = view.render()
+payload = view.json()
+```
+
+`extractData(setErrors=True)` supports collecting data while optionally attaching extraction and validation errors to widgets.
+
+### Fields and field widgets
+
+`field.Field` represents a field in a form, while `field.Fields` manages a selectable collection of fields. Field selection can be refined with `select()` and `omit()`.
+
+```python
+selected_fields = fields.select("title", "description")
+visible_fields = selected_fields.omit("internal_notes")
+```
+
+`field.FieldWidgets` manages the widgets created for a form's fields. It is responsible for updating, extracting, validating, and copying widget collections:
+
+```python
+widgets.update()
+
+raw_data = widgets.extractRaw()
+data, errors = widgets.extract()
+
+widgets.validate(data)
+widgets_copy = widgets.copy()
+```
+
+`field.WidgetFactories` and `field.WidgetFactoryProperty` support resolving widget factories for fields.
+
+### Widgets
+
+The base widget type is `widget.Widget`. It defines a consistent widget lifecycle:
+
+```python
+widget.update()
+
+value = widget.extract()
+html = widget.render()
+json_data = widget.json_data()
+```
+
+`widget.SequenceWidget` is the base for widgets backed by a set of terms, such as selects, radio buttons, and checkboxes. It can update terms and return a display value:
+
+```python
+widget.updateTerms()
+display = widget.displayValue()
+```
+
+`widget.MultiWidget` manages a sequence or dictionary of child widgets. It supports dynamic add/remove behavior and can be used for compound, repeated values:
+
+```python
+multi.update()
+
+child = multi.getWidget(0)
+multi.appendAddingWidget()
+multi.removeWidgets(["field.0", "field.2"])
+
+data = multi.extract()
+```
+
+`widget.FieldWidget(field, widget)` connects a field with a widget instance or widget factory.
+
+## Browser widgets
+
+The browser widget package provides HTML-oriented widget classes and field-widget factories.
+
+| Widget | Field-widget factory | Typical purpose |
+|---|---|---|
+| `text.TextWidget` | `TextFieldWidget()` | Single-line text input |
+| `textarea.TextAreaWidget` | `TextAreaFieldWidget()` | Multi-line text input |
+| `textlines.TextLinesWidget` | `TextLinesFieldWidget()` | Text lines |
+| `password.PasswordWidget` | `PasswordFieldWidget()` | Password input |
+| `file.FileWidget` | `FileFieldWidget()` | File upload input |
+| `checkbox.CheckBoxWidget` | `CheckBoxFieldWidget()` | Multiple checkbox choices |
+| `checkbox.SingleCheckBoxWidget` | `SingleCheckBoxFieldWidget()` | Boolean-style checkbox |
+| `radio.RadioWidget` | `RadioFieldWidget()` | Radio-button choice input |
+| `select.SelectWidget` | `SelectFieldWidget()` | Select input |
+| `orderedselect.OrderedSelectWidget` | `OrderedSelectFieldWidget()` | Ordered selection |
+| `submit.SubmitWidget` | `SubmitFieldWidget()` | Submit button |
+| `button.ButtonWidget` | `ButtonFieldWidget()` | Generic button |
+| `image.ImageWidget` | `ImageFieldWidget()` | Image-style button/input |
+| `object.ObjectWidget` | `ObjectFieldWidget()` | Nested object editing |
+| `multi.MultiWidget` | `MultiFieldWidget()` | Repeated child widgets |
+
+For example, selection widgets expose selection state and item data:
+
+```python
+select_widget.update()
+
+items = select_widget.items()
+is_selected = select_widget.isSelected(term)
+json_data = select_widget.json_data()
+```
+
+Checkbox and radio widgets provide similar APIs:
+
+```python
+checked = checkbox_widget.isChecked(term)
+checkbox_items = checkbox_widget.items()
+
+radio_html = radio_widget.renderForValue(value)
+radio_items = radio_widget.items()
+```
+
+### HTML attributes and CSS classes
+
+Browser widgets inherit from HTML form element classes such as:
+
+- `browser.widget.HTMLFormElement`
+- `browser.widget.HTMLInputWidget`
+- `browser.widget.HTMLTextInputWidget`
+- `browser.widget.HTMLTextAreaWidget`
+- `browser.widget.HTMLSelectWidget`
+
+`HTMLFormElement` supports reading and writing HTML attributes:
+
+```python
+attrs = widget.attributes()
+
+widget.attributes({
+    "data-component": "profile-editor",
+    "aria-describedby": "help-profile-name",
+})
+```
+
+Use `addClass()` and `getCSSClass()` to add or calculate CSS classes:
+
+```python
+widget.addClass("profile-field")
+
+css_class = widget.getCSSClass(
+    klass="profile-field",
+    error=True,
+    required=True,
+)
+```
+
+The `browser.interfaces.IWidgetLayoutSupport` interface describes the same layout-related API for widget implementations.
+
+## Data conversion
+
+Converters translate between values appropriate for fields and values appropriate for widgets or submitted form input.
+
+The base converter API is `converter.BaseDataConverter`:
+
+```python
+widget_value = converter.toWidgetValue(field_value)
+field_value = converter.toFieldValue(widget_value)
+```
+
+Available converter types include:
+
+- `FieldDataConverter`
+- `NumberDataConverter`
+- `IntegerDataConverter`
+- `FloatDataConverter`
+- `DecimalDataConverter`
+- `CalendarDataConverter`
+- `DateDataConverter`
+- `TimeDataConverter`
+- `DatetimeDataConverter`
+- `TimedeltaDataConverter`
+- `FileUploadDataConverter`
+- `SequenceDataConverter`
+- `CollectionSequenceDataConverter`
+- `TextLinesConverter`
+- `MultiConverter`
+- `DictMultiConverter`
+- `BoolSingleCheckboxDataConverter`
+- `object.ObjectConverter`
+
+`converter.FieldWidgetDataConverter(widget)` resolves a converter for a widget.
+
+### Example: custom converter
+
+A custom converter can implement `toWidgetValue()` and `toFieldValue()` by subclassing `BaseDataConverter`.
+
+```python
+from z3c.form.converter import BaseDataConverter
+
+
+class UppercaseConverter(BaseDataConverter):
+    def toWidgetValue(self, value):
+        if value is None:
+            return ""
+        return value.upper()
+
+    def toFieldValue(self, value):
+        if value is None:
+            return None
+        return value.upper()
+```
+
+A converter may raise or use `converter.FormatterValidationError` when a submitted representation cannot be converted to a valid field value.
+
+## Terms, choices, and collections
+
+Terms provide the mapping between stored values, browser tokens, and term objects. The base API is `term.Terms`:
+
+```python
+term_object = terms.getTerm(value)
+term_object = terms.getTermByToken(token)
+value = terms.getValue(token)
+```
+
+Choice and collection support is provided by:
+
+- `ChoiceTerms(context, request, form, field, widget)`
+- `CollectionTerms(context, request, form, field, widget)`
+- `ChoiceTermsVocabulary`
+- `ChoiceTermsSource`
+- `CollectionTermsVocabulary`
+- `CollectionTermsSource`
+- `BoolTerms`
+
+Missing-value-aware variants include:
+
+- `MissingChoiceTermsVocabulary`
+- `MissingChoiceTermsSource`
+- `MissingCollectionTermsVocabulary`
+- `MissingCollectionTermsSource`
+
+Selection widgets use terms to render available values and to convert submitted tokens back to field values.
+
+## Validation and errors
+
+Validation APIs are centered on `validator.IValidator` and `validator.IManagerValidator`.
+
+Single-value validators implement:
+
+```python
+validator.validate(value, force=False)
+```
+
+Manager-level validators validate a complete data mapping or object:
+
+```python
+validator.validate(data)
+validator.validateObject(obj)
+```
+
+Built-in validator classes include:
+
+- `StrictSimpleFieldValidator`
+- `SimpleFieldValidator`
+- `FileUploadValidator`
+- `InvariantsValidator`
+
+`validator.NoInputData` represents a condition where no input data was supplied.
+
+Errors can be rendered through error view snippets:
+
+- `error.ErrorViewSnippet`
+- `error.ValueErrorViewSnippet`
+- `error.InvalidErrorViewSnippet`
+- `error.MultipleErrorViewSnippet`
+
+```python
+snippet.update()
+message_html = snippet.render()
+```
+
+`error.MultipleErrors` represents multiple errors as an exception type.
+
+## Actions, buttons, and handlers
+
+Actions are represented by `action.Action`, which exposes:
+
+```python
+executed = action.isExecuted()
+```
+
+`action.Actions` manages a collection of actions:
+
+```python
+actions.update()
+actions.execute()
+
+executed_actions = actions.executedActions()
+```
+
+Action execution is represented by events:
+
+- `action.ActionEvent`
+- `action.ActionSuccessful`
+- `action.ActionErrorOccurred`
+
+Errors during action execution can use:
+
+- `interfaces.ActionExecutionError`
+- `interfaces.WidgetActionExecutionError`
+
+### Buttons
+
+`button.Button` and `button.ImageButton` are field types for form actions. `button.Buttons` manages button selections, while `button.Handlers` maps buttons to handlers.
+
+```python
+handlers.addHandler(button, handler)
+handler_for_button = handlers.getHandler(button)
+
+copied_handlers = handlers.copy()
+```
+
+The `button.handler(button)` decorator associates a callable with a button:
+
+```python
+from z3c.form.button import handler
+
+
+@handler(save_button)
+def save_profile(form, action):
+    data, errors = form.extractData()
+
+    if errors:
+        return
+
+    form.applyChanges(data)
+```
+
+`button.buttonAndHandler(title, **kwargs)` creates a button-and-handler pairing.
+
+`button.ButtonAction` combines an action, submit widget, location, and field-widget behavior. It provides button-specific metadata:
+
+```python
+key = button_action.accesskey()
+caption = button_action.value()
+html_id = button_action.id()
+```
+
+`button.ImageButtonAction` adds image button behavior through `src()`.
+
+## Add and edit workflows
+
+### Editing existing content
+
+`form.EditForm` exposes `applyChanges(data)` and `handleApply(action)`.
+
+```python
+class SettingsForm(form.EditForm):
+    def applyChanges(self, data):
+        changed = super().applyChanges(data)
+
+        if changed:
+            # Perform post-save work here.
+            pass
+
+        return changed
+```
+
+The top-level helper `form.applyChanges(form, content, data)` applies a data mapping to content.
+
+### Adding content
+
+`form.AddForm` supplies an add-oriented lifecycle:
+
+```python
+class ItemAddForm(form.AddForm):
+    def create(self, data):
+        # Construct an object from extracted form data.
+        return Item(**data)
+
+    def add(self, object):
+        # Store the object in a container or other persistence layer.
+        self.context.add(object)
+
+    def nextURL(self):
+        return "/items"
+```
+
+The standard add flow can be invoked through:
+
+```python
+created = view.createAndAdd(data)
+```
+
+`adding.AddForm` is an add-form specialization that also provides `add()` and `nextURL()`.
+
+## Nested objects and multi-value fields
+
+`object.ObjectWidget` supports editing nested object values. It can create, retrieve, update, render, and extract object-backed values.
+
+```python
+object_widget.setupFields()
+object_widget.setupWidgets()
+
+object_widget.updateWidgets()
+value = object_widget.extract()
+
+html = object_widget.render()
+```
+
+It also supports a configurable mode:
+
+```python
+object_widget.mode("input")
+current_mode = object_widget.mode()
+```
+
+`object.ObjectConverter` converts object values between field and widget representations:
+
+```python
+widget_value = object_converter.toWidgetValue(obj)
+obj = object_converter.toFieldValue(widget_value)
+```
+
+`object.makeDummyObject(iface)` creates a dummy object for an interface, while `object.getIfName(iface)` returns an interface-related name.
+
+For repeated fields, use `widget.MultiWidget` or the browser-specific `browser.multi.MultiWidget`. The browser multi widget additionally supports add/remove actions:
+
+```python
+multi_widget.updateActions()
+multi_widget.handleAdd(action)
+multi_widget.handleRemove(action)
+```
+
+## Data managers
+
+Data managers mediate access to values stored on an object or mapping.
+
+`datamanager.AttributeField` works with attributes:
+
+```python
+value = manager.get()
+value_or_default = manager.query(default=None)
+
+manager.set("new value")
+
+readable = manager.canAccess()
+writable = manager.canWrite()
+```
+
+`datamanager.DictionaryField` provides the same API for dictionary-like storage.
+
+Use the `interfaces.IDataManager` interface when writing code that accepts either kind of data manager.
+
+## Values
+
+The value helpers provide static and computed values:
+
+- `value.StaticValue`
+- `value.ComputedValue`
+- `value.ValueFactory`
+- `value.ValueCreator`
+- `value.StaticValueCreator`
+- `value.ComputedValueCreator`
+
+Both static and computed values expose:
+
+```python
+value = value_provider.get()
+```
+
+These types are useful when a field or widget needs a value source that may either be fixed or evaluated dynamically.
+
+## Templates and layout registration
+
+Widget templates and layout templates can be registered with the functions in `zcml`:
+
+```python
+widgetTemplateDirective(
+    _context,
+    template,
+    for_=...,
+    layer=...,
+    view=...,
+    field=...,
+    widget=...,
+    mode=...,
+    contentType="text/html",
+)
+```
+
+Related directives are:
+
+- `widgetTemplateDirective()`
+- `widgetLayoutTemplateDirective()`
+- `objectWidgetTemplateDirective()`
+
+The template registration APIs support matching by context interface, request layer, view, field, widget, mode, and content type.
+
+Template factory classes include:
+
+- `widget.WidgetTemplateFactory`
+- `widget.WidgetLayoutFactory`
+- `form.FormTemplateFactory`
+- `object.ObjectWidgetTemplateFactory`
+- `error.ErrorViewTemplateFactory`
+
+## Events
+
+The library exposes events for widget updating and data extraction:
+
+- `widget.WidgetEvent`
+- `widget.AfterWidgetUpdateEvent`
+- `events.DataExtractedEvent`
+- `interfaces.IWidgetEvent`
+- `interfaces.IAfterWidgetUpdateEvent`
+- `interfaces.IDataExtractedEvent`
+
+These events allow integration code to react to form processing stages.
+
+## Utilities
+
+`util` contains helpers commonly useful when working with fields and widgets:
+
+```python
+from z3c.form import util
+
+text = util.toUnicode(value)
+data = util.toBytes(value)
+
+html_id = util.createId("profile.name")
+css_id = util.createCSSId("profile.name")
+
+prefix = util.expandPrefix("profile")
+widget = util.getWidgetById(form, "profile.name")
+```
+
+File-related request helpers include:
+
+```python
+content_type = util.extractContentType(form, "attachment")
+filename = util.extractFileName(form, "attachment")
+```
+
+Change detection helpers are available for fields and widgets:
+
+```python
+field_changed = util.changedField(field, value, context)
+widget_changed = util.changedWidget(widget, value, field, context)
+```
+
+`util.Manager` and `util.SelectionManager` provide ordered manager behavior. `SelectionManager` is the basis for collections such as fields and buttons:
+
+```python
+manager.select("name", "email")
+manager.omit("internal_id")
+
+copied_manager = manager.copy()
+```
+
+## Interfaces
+
+The `interfaces` module defines the contracts used across the library. Important interfaces include:
+
+- Form contracts: `IForm`, `IDisplayForm`, `IAddForm`, `IEditForm`, `IGroup`, `IGroupForm`
+- Field contracts: `IField`, `IFields`, `IFieldWidget`
+- Widget contracts: `IWidget`, `ISequenceWidget`, `IMultiWidget`, `ISelectWidget`, `ICheckBoxWidget`, `IRadioWidget`, `IObjectWidget`
+- Action contracts: `IAction`, `IActions`, `IActionHandler`, `IButtonAction`, `IButtonHandlers`
+- Data contracts: `IDataManager`, `IDataConverter`, `IValue`
+- Validation contracts: `IValidator`, `IManagerValidator`
+- Terms contracts: `ITerms`, `IBoolTerms`
+- Error contracts: `IErrorViewSnippet`, `IMultipleErrors`
+
+Applications can use these interfaces to write integrations that remain independent of specific widget, form, converter, or validator implementations.

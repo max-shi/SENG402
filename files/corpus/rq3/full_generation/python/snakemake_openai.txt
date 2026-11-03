@@ -1,0 +1,714 @@
+# snakemake
+
+`snakemake` is a Python workflow-management library. Its API supports defining and processing rule-based workflows, building dependency graphs, scheduling and executing jobs, managing files and storage, creating software environments, generating reports, and inspecting workflow provenance.
+
+The library can be used at multiple levels:
+
+- **Workflow authoring utilities** for file patterns, wildcards, input/output annotations, configuration, and rule support.
+- **Programmatic workflow execution APIs** that move from a workflow definition to a DAG and then to execution.
+- **Operational tooling** for reports, summaries, archives, cleanup, graph output, unit-test generation, and environment management.
+- **Integration components** for storage, caching, containers, Conda environments, scripts, notebooks, templates, and remote sources.
+
+## Core API flow
+
+The high-level execution API is organized in three layers:
+
+```text
+SnakemakeApi
+  └── WorkflowApi
+        └── DAGApi
+              └── execute_workflow(...)
+```
+
+1. Create or obtain a `SnakemakeApi`.
+2. Call `SnakemakeApi.workflow(...)` with resource and optional workflow/configuration settings.
+3. Call `WorkflowApi.dag(...)` to build a DAG-oriented API.
+4. Call `DAGApi.execute_workflow(...)` to execute with an executor and scheduling settings.
+
+The API also provides actions that do not execute jobs, including linting, listing rules or resources, visualizing the DAG, cleanup operations, reporting, archiving, and CWL export.
+
+```python
+from snakemake.api import SnakemakeApi
+from snakemake.settings.types import ResourceSettings
+
+# Configure resource settings as appropriate for the embedding application.
+resource_settings = ResourceSettings()
+
+api = SnakemakeApi()
+
+workflow_api = api.workflow(
+    resource_settings=resource_settings,
+)
+
+dag_api = workflow_api.dag()
+
+dag_api.execute_workflow(
+    executor="local",
+)
+```
+
+Additional settings can be supplied while constructing the workflow and DAG APIs:
+
+```python
+from pathlib import Path
+
+from snakemake.api import SnakemakeApi
+from snakemake.settings.types import (
+    ConfigSettings,
+    DAGSettings,
+    DeploymentSettings,
+    ExecutionSettings,
+    ResourceSettings,
+    SchedulingSettings,
+    StorageSettings,
+    WorkflowSettings,
+)
+
+api = SnakemakeApi()
+
+workflow_api = api.workflow(
+    resource_settings=ResourceSettings(),
+    config_settings=ConfigSettings(),
+    storage_settings=StorageSettings(),
+    workflow_settings=WorkflowSettings(),
+    deployment_settings=DeploymentSettings(),
+    snakefile=Path("Snakefile"),
+    workdir=Path("."),
+)
+
+dag_api = workflow_api.dag(
+    dag_settings=DAGSettings(),
+)
+
+dag_api.execute_workflow(
+    executor="local",
+    execution_settings=ExecutionSettings(),
+    scheduling_settings=SchedulingSettings(),
+)
+```
+
+## High-level APIs
+
+### `SnakemakeApi`
+
+`SnakemakeApi` is the top-level programmatic entry point.
+
+| Method | Purpose |
+|---|---|
+| `workflow(...)` | Create a `WorkflowApi` using resource, configuration, storage, deployment, and workflow settings. |
+| `deploy_sources(...)` | Deploy workflow sources identified by a query and checksum. |
+| `setup_logger()` | Configure logging. |
+| `print_exception(ex)` | Render an exception through the library’s exception-reporting facilities. |
+
+Use `resolve_snakefile(path, allow_missing=False)` to resolve a workflow file path before creating a workflow API.
+
+### `WorkflowApi`
+
+`WorkflowApi` provides operations on a configured workflow before execution.
+
+| Method | Purpose |
+|---|---|
+| `dag(dag_settings=None)` | Create a `DAGApi`. |
+| `lint(json=False)` | Run workflow linting. |
+| `list_rules(only_targets=False)` | List workflow rules. |
+| `list_resources()` | List declared resources. |
+| `print_compilation()` | Print the compiled workflow representation. |
+
+Example: inspect a workflow without running it.
+
+```python
+workflow_api.lint(json=True)
+workflow_api.list_rules()
+workflow_api.list_resources()
+workflow_api.print_compilation()
+```
+
+### `DAGApi`
+
+`DAGApi` provides execution and DAG-management operations.
+
+#### Execute a workflow
+
+```python
+dag_api.execute_workflow(
+    executor="local",
+    updated_files=["config/settings.yaml"],
+)
+```
+
+Execution can be customized with:
+
+- `ExecutionSettings`
+- `RemoteExecutionSettings`
+- `SchedulingSettings`
+- `GroupSettings`
+- executor-specific settings via `ExecutorSettingsBase`
+- scheduler-specific settings via `SchedulerSettingsBase`
+- `GreedySchedulerSettings`
+
+#### Inspect workflow graphs
+
+```python
+dag_api.printdag()
+dag_api.printrulegraph()
+dag_api.printfilegraph()
+dag_api.printd3dag()
+```
+
+#### Produce reports and artifacts
+
+```python
+from pathlib import Path
+
+dag_api.create_report(reporter="html")
+dag_api.generate_unit_tests(Path("tests"))
+dag_api.archive(Path("workflow-archive"))
+dag_api.export_to_cwl(Path("workflow.cwl"))
+dag_api.containerize()
+```
+
+#### Inspect state and provenance
+
+```python
+from snakemake.settings.enums import ChangeType
+
+dag_api.summary(detailed=True)
+dag_api.list_untracked()
+dag_api.list_changes(ChangeType.CODE)
+```
+
+#### Cleanup and maintenance
+
+```python
+from pathlib import Path
+
+dag_api.unlock()
+dag_api.cleanup_metadata([Path("results/output.txt")])
+dag_api.cleanup_shadow()
+dag_api.conda_create_envs()
+dag_api.conda_list_envs()
+dag_api.conda_cleanup_envs()
+dag_api.container_cleanup_images()
+
+# Remove generated output, optionally restricted to temporary files.
+dag_api.delete_output(only_temp=True, dryrun=True)
+```
+
+## File patterns, wildcards, and file annotations
+
+The `snakemake.io` API contains utilities for defining file patterns, expanding wildcard combinations, discovering matching files, and annotating file paths with workflow behavior.
+
+### Expand wildcard patterns
+
+```python
+from snakemake.io import expand
+
+outputs = expand(
+    "results/{sample}/{replicate}.txt",
+    sample=["sample-a", "sample-b"],
+    replicate=[1, 2],
+)
+
+print(outputs)
+# [
+#   "results/sample-a/1.txt",
+#   "results/sample-a/2.txt",
+#   "results/sample-b/1.txt",
+#   "results/sample-b/2.txt",
+# ]
+```
+
+### Discover wildcard values from files
+
+```python
+from snakemake.io import glob_wildcards
+
+matches = glob_wildcards("data/{sample}.fastq")
+
+# Wildcard values are available through the returned wildcard collection.
+samples = matches.sample
+```
+
+### Apply wildcard values to a pattern
+
+```python
+from snakemake.io import apply_wildcards
+
+path = apply_wildcards(
+    "results/{sample}.bam",
+    {"sample": "sample-a"},
+)
+```
+
+### Annotate input or output paths
+
+Several helpers wrap a path with workflow-oriented flags:
+
+```python
+from snakemake.io import (
+    ancient,
+    directory,
+    ensure,
+    local,
+    pipe,
+    protected,
+    temp,
+    touch,
+)
+
+temporary_output = temp("work/intermediate.txt")
+protected_output = protected("results/final.txt")
+output_directory = directory("results/report")
+verified_output = ensure("results/checksum.txt", sha256="...")
+local_input = local("inputs/data.txt")
+marker_output = touch("results/complete.marker")
+streaming_output = pipe("work/stream")
+old_input = ancient("reference/genome.fa")
+```
+
+Available annotations include:
+
+- `ancient(...)`
+- `directory(...)`
+- `temp(...)` and `temporary(...)`
+- `protected(...)`
+- `touch(...)`
+- `pipe(...)`
+- `service(...)`
+- `local(...)`
+- `ensure(...)`
+- `report(...)`
+- `checkpoint_target(...)`
+- `from_queue(...)`
+- `repeat(...)`
+- `unpack(...)`
+
+Use `is_flagged(value, flag)` and `get_flag_value(value, flag_type)` to inspect annotations, or `remove_flag(value, flag)` to remove one.
+
+## Conditional and data-driven rule helpers
+
+The `snakemake.ioutils` package contains helpers intended for dynamic rule inputs and other rule items.
+
+### Choose values conditionally
+
+```python
+from snakemake.ioutils.branch import branch
+
+input_file = branch(
+    condition=True,
+    then="inputs/treated.tsv",
+    otherwise="inputs/control.tsv",
+)
+```
+
+A mapping-based form is also available through the `cases` argument.
+
+### Evaluate an expression
+
+```python
+from snakemake.ioutils.evaluate import evaluate
+
+value = evaluate("1 + 2")
+```
+
+### Check path availability
+
+```python
+from snakemake.ioutils.exists import exists
+
+if exists("config/settings.yaml"):
+    print("Configuration is available")
+```
+
+### Derive portions of a path
+
+```python
+from snakemake.ioutils.subpath import subpath
+
+filename = subpath("results/sample.txt", basename=True)
+parent = subpath("results/sample.txt", parent=True)
+without_suffix = subpath("results/sample.txt", strip_suffix=".txt")
+```
+
+### Look up values from structured data
+
+`lookup(...)` supports query- and path-oriented lookups, optional columns, defaults, nested data, and a supplied namespace.
+
+```python
+from snakemake.ioutils.lookup import lookup
+
+value = lookup(
+    query="sample == 'sample-a'",
+    cols="path",
+    within={"sample": "sample-a", "path": "inputs/sample-a.txt"},
+)
+```
+
+## Workflow-building objects
+
+The lower-level workflow model centers on `Workflow`, `Rule`, jobs, and the DAG.
+
+### `Workflow`
+
+`Workflow` represents a workflow definition and its runtime state. It can:
+
+- include workflow sources;
+- register configuration files, resources, environment variables, and path variables;
+- define rules and checkpoints;
+- manage modules and imported rules;
+- create DAGs;
+- execute workflows;
+- produce summaries, reports, archives, graph output, and CWL exports.
+
+It exposes methods corresponding to rule components such as:
+
+- `input(...)`
+- `output(...)`
+- `params(...)`
+- `resources(...)`
+- `threads(...)`
+- `log(...)`
+- `benchmark(...)`
+- `conda(...)`
+- `container(...)`
+- `shellcmd(...)`
+- `script(...)`
+- `notebook(...)`
+- `wrapper(...)`
+- `template_engine(...)`
+- `run(...)`
+
+### `Rule`
+
+`Rule` models an individual workflow rule. It manages:
+
+- input, output, log, benchmark, parameter, and resource declarations;
+- wildcard registration and constraints;
+- expansion of inputs, outputs, resources, parameters, logs, and software definitions;
+- rule execution mode, such as shell, script, notebook, wrapper, CWL, template engine, or Python `run`;
+- Conda environments, container images, environment modules, caching, priority, groups, retries, and shadow behavior.
+
+### Jobs and DAGs
+
+`Job` and `GroupJob` represent executable rule instances. `DAG` represents their dependency graph and exposes operations for:
+
+- finding jobs that need to run;
+- checking output and input state;
+- updating dependencies;
+- handling temporary, protected, shadowed, and storage-backed files;
+- graph generation;
+- provenance summaries;
+- cleanup and archiving;
+- execution preparation and post-processing.
+
+Most application code should use `DAGApi` rather than constructing `DAG`, `Job`, or `GroupJob` directly.
+
+## Configuration and settings
+
+Settings classes in `snakemake.settings.types` separate configuration concerns:
+
+| Settings type | Area |
+|---|---|
+| `ResourceSettings` | Cores, jobs, resources, and resource-related configuration. |
+| `ConfigSettings` | Workflow configuration settings. |
+| `WorkflowSettings` | Workflow-level behavior. |
+| `DAGSettings` | DAG construction and target-selection behavior. |
+| `ExecutionSettings` | Execution behavior. |
+| `SchedulingSettings` | Job scheduling behavior. |
+| `StorageSettings` | Storage behavior. |
+| `DeploymentSettings` | Environment and deployment behavior. |
+| `RemoteExecutionSettings` | Remote executor behavior. |
+| `GroupSettings` | Grouped-job configuration. |
+| `GlobalReportSettings` | Global report generation settings. |
+| `OutputSettings` | Logging and output configuration. |
+
+Related enumerations include:
+
+- `RerunTrigger`
+- `ChangeType`
+- `CondaCleanupPkgs`
+- `Quietness`
+- `StrictDagEvaluation`
+- `PrintDag`
+
+## Resource utilities
+
+The `snakemake.resources` API supports parsing, representing, and evaluating resource values.
+
+```python
+from snakemake.resources import (
+    eval_resource_expression,
+    infer_resources,
+    parse_resources,
+)
+
+resources = parse_resources(["mem_mb=4096", "runtime=60"])
+memory = eval_resource_expression("1024 * 4")
+
+infer_resources("disk_mb", "1000", resources)
+```
+
+`DefaultResources` can encode and decode resource arguments and construct CLI-style resource arguments. `ResourceScopes` models local, global, excluded, and default resource scope behavior. `GroupResources.basic_layered(...)` provides grouped-resource calculation for topologically sorted jobs.
+
+## Storage and caching
+
+The library includes abstractions for local and storage-backed output caching.
+
+- `AbstractOutputFileCache` defines asynchronous `store`, `fetch`, and `exists` operations.
+- `snakemake.caching.local.OutputFileCache` manages local cache entries.
+- `snakemake.caching.storage.OutputFileCache` manages storage-backed cache entries.
+- `ProvenanceHashMap.get_provenance_hash(...)` derives provenance hashes for jobs.
+- `hash_file(...)` computes a file hash.
+- `StorageRegistry` registers storage providers and can infer a provider from a query.
+
+Cache operations are asynchronous:
+
+```python
+# cache is an AbstractOutputFileCache-compatible object and job is a Job.
+await cache.store(job, cache_mode="all")
+await cache.fetch(job, cache_mode="all")
+
+if await cache.exists(job):
+    print("Cached outputs are available")
+```
+
+## Conda and container support
+
+### Conda environments
+
+`snakemake.deployment.conda` provides `Env`, `Conda`, and `CondaEnvSpec` abstractions.
+
+`Env` supports operations such as:
+
+- obtaining environment content and hashes;
+- checking file-based or containerized environments;
+- creating environments and archives;
+- running deployment scripts;
+- retrieving container image information.
+
+```python
+# env is an Env instance.
+env.create(dryrun=False)
+archive = env.create_archive()
+```
+
+Conda environment specifications can be represented by:
+
+- `CondaEnvFileSpec`
+- `CondaEnvDirSpec`
+- `CondaEnvNameSpec`
+
+All derive from `CondaEnvSpec`.
+
+### Singularity-compatible container support
+
+`Image` represents a container image and can test locality, calculate a hash, pull the image, and obtain its path.
+
+```python
+# image is an Image instance.
+if not image.is_local():
+    image.pull()
+
+image_path = image.path()
+```
+
+Use `shellcmd(...)` to build or execute a command in a container context with optional bind paths, arguments, environment variables, shell selection, and container work directory.
+
+## Scripts, notebooks, wrappers, and templates
+
+The scripting API supports several rule execution formats.
+
+### Scripts
+
+`ScriptBase` is the common base for script implementations. Supported classes include:
+
+- `PythonScript`
+- `RScript`
+- `RMarkdown`
+- `JuliaScript`
+- `RustScript`
+- `BashScript`
+- `XonshScript`
+- `HyScript`
+
+The `script(...)` function is the runtime entry point for executing a script-backed rule.
+
+### Notebooks
+
+`JupyterNotebook`, `PythonJupyterNotebook`, and `RJupyterNotebook` support notebook-backed rules. Notebook objects can draft, edit, write, and execute notebooks.
+
+### Wrappers
+
+The wrapper API provides utilities for resolving wrapper content and environments:
+
+```python
+from snakemake.wrapper import get_conda_env, get_path, get_script
+
+wrapper_path = get_path("example")
+```
+
+### Templates
+
+`render_template(...)` renders template-backed outputs. Built-in renderer abstractions include:
+
+- `TemplateRenderer`
+- `Jinja2Renderer`
+- `YteRenderer`
+
+```python
+from snakemake.template_rendering import render_template
+
+render_template(
+    engine="jinja2",
+    input=[],
+    output=["results/rendered.txt"],
+    params={},
+    wildcards={},
+    config={},
+    rule=None,
+)
+```
+
+## Reporting
+
+The reporting API can generate standalone reports and expand report-specific file annotations.
+
+```python
+from snakemake.report import report
+
+report(
+    text="# Workflow report\n\nResults are available.",
+    path="report.html",
+)
+```
+
+For DAG-based reports, use `DAGApi.create_report(...)` or `Workflow.create_report(...)`.
+
+The report package also provides utilities for:
+
+- embedding images and figures;
+- rendering file records and workflow records;
+- rendering metadata;
+- constructing data URIs;
+- expanding labels and report arguments;
+- generating rule graph specifications.
+
+## Utilities
+
+Useful general helpers include:
+
+```python
+from snakemake.common import (
+    get_file_hash,
+    get_uuid,
+    parse_key_value_arg,
+    smart_join,
+)
+from snakemake.utils import (
+    available_cpu_count,
+    format,
+    linecount,
+    makedirs,
+    min_version,
+    validate,
+)
+
+checksum = get_file_hash("results/output.txt")
+identifier = get_uuid("results/output.txt")
+key, value = parse_key_value_arg("threads=8", "Expected key=value")
+joined = smart_join("results", "sample.txt")
+
+makedirs(["results", "logs"])
+n_lines = linecount("results/output.txt")
+cpu_count = available_cpu_count()
+
+message = format("Processing {sample}", sample="sample-a")
+min_version("1.0")
+```
+
+`validate(data, schema, set_default=True)` validates data against a schema and can apply schema defaults.
+
+## Logging and exceptions
+
+### Logging
+
+The logging API provides formatters, filters, terminal handlers, and a logger manager.
+
+- `DefaultFormatter` formats workflow, job, group, progress, shell-command, DAG-debug, and error events.
+- `ColorizingTextHandler` supports colorized terminal output.
+- `LoggerManager` configures handlers and optional logfile management.
+- `format_percentage`, `format_dict`, and `format_resource_names` provide reusable formatting helpers.
+
+### Exceptions
+
+The library defines specialized exceptions for workflow, input/output, remote access, rule resolution, locking, caching, and environment creation failures.
+
+Examples include:
+
+- `WorkflowError`
+- `RuleException`
+- `MissingInputException`
+- `MissingOutputException`
+- `AmbiguousRuleException`
+- `CyclicGraphException`
+- `IncompleteFilesException`
+- `CacheMissException`
+- `LockException`
+- `CreateCondaEnvironmentException`
+
+Use the exception-formatting helpers when embedding the library:
+
+```python
+from snakemake.exceptions import format_exception_to_string, print_exception
+
+try:
+    # Invoke workflow-related code.
+    ...
+except Exception as ex:
+    print(format_exception_to_string(ex))
+    # Or write a formatted exception through the configured logger:
+    print_exception(ex)
+```
+
+## Command-line parsing helpers
+
+The `snakemake.cli` module exposes parsing utilities that are useful when building an application around compatible command-line options.
+
+```python
+from snakemake.cli import (
+    parse_cores,
+    parse_size_in_bytes,
+    parse_timespan,
+    parse_config,
+)
+
+cores = parse_cores("8")
+memory = parse_size_in_bytes("4G")
+timeout = parse_timespan("2h")
+config = parse_config(["sample=sample-a", "threads=8"])
+```
+
+Other helpers parse resources, groups, batch selection, target jobs, resource scopes, quietness, rerun triggers, notebook editing options, profiles, and waiting-file lists.
+
+## Unit-test generation
+
+Generate workflow-oriented unit-test material from a DAG:
+
+```python
+from pathlib import Path
+
+dag_api.generate_unit_tests(Path("tests"))
+```
+
+The lower-level generator is also available:
+
+```python
+from snakemake.unit_tests import generate
+
+# dag must be a DAG instance.
+generate(dag, Path("tests"))
+```
+
+## License
+
+See the repository license for licensing information.

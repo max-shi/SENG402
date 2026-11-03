@@ -1,0 +1,220 @@
+# pyscss
+
+`pyscss` is a pure-Python implementation of a Sass/SCSS compiler. It parses `.scss` (and `.sass`) source files, evaluates expressions, variables, mixins, functions, and control structures, and produces plain CSS output. It supports the core Sass language (variables, nesting, `@extend`, interpolation, control directives, maps, lists, colors, arithmetic with units) as well as an extension system that adds compatibility layers for popular Sass frameworks such as Compass and Bootstrap, plus custom helper functions for images, sprites, gradients, and fonts.
+
+## Installation
+
+```bash
+pip install pyscss
+```
+
+## Quick start
+
+The simplest way to compile Sass/SCSS is through the top-level convenience functions:
+
+```python
+from scss.compiler import compile_string, compile_file
+
+css = compile_string("""
+$primary: #336699;
+
+.button {
+    color: $primary;
+    &:hover {
+        color: darken($primary, 10%);
+    }
+}
+""")
+print(css)
+
+css = compile_file("styles.scss")
+```
+
+Both functions accept a `compiler_class` keyword (defaulting to `Compiler`) and any additional keyword arguments accepted by `Compiler`, letting you customize search paths, output style, or the set of extensions in use.
+
+## Core concepts
+
+### `Compiler`
+
+`scss.compiler.Compiler` is the main entry point for turning Sass source into CSS. A `Compiler` instance holds configuration—things like import search paths and output style—and is reusable across multiple compilations.
+
+```python
+from scss.compiler import Compiler
+
+compiler = Compiler(search_path=["./scss", "./vendor"])
+css = compiler.compile("main.scss")
+```
+
+Key methods:
+
+- `normalize_path(path)` — resolves a path against the compiler's search paths.
+- `make_compilation()` — builds a `Compilation` object representing one compile run.
+- `compile(*filenames)` — compiles one or more files to CSS.
+- `compile_sources(*sources)` — compiles pre-built `SourceFile` objects.
+- `compile_string(string)` — compiles a raw string of Sass/SCSS.
+- `call_and_catch_errors(f, *args, **kwargs)` — runs a callable, converting internal exceptions into friendly `SassBaseError` messages.
+
+`OutputStyle` is an `Enum` describing the available CSS formatting modes (e.g. compact vs. expanded output), passed to `Compiler` to control how the final CSS is rendered.
+
+### `Compilation`
+
+`scss.compiler.Compilation`, produced by `Compiler.make_compilation()`, represents the state of a single compile pass: it tracks source files, parses selectors, expands nested rules, applies `@extend` rules, and finally renders the resulting CSS.
+
+- `add_source(source)` — registers a `SourceFile` to be compiled.
+- `run()` — executes the full compilation pipeline.
+- `parse_selectors(raw_selectors)` — turns raw selector text into `Selector` objects.
+- `manage_children(rule, scope)` — recursively processes a rule's nested block.
+- `apply_extends(rules)` — resolves `@extend` relationships between rules.
+- `create_css(rules)` — renders the final list of rules to a CSS string.
+
+### `SourceFile`
+
+`scss.source.SourceFile` represents a single unit of Sass/SCSS/CSS source, whether loaded from disk, a file-like object, or an in-memory string:
+
+```python
+from scss.source import SourceFile
+
+source = SourceFile.from_filename("styles.scss")
+# or
+source = SourceFile.from_string("$x: 1; .a { width: $x; }")
+```
+
+Class methods `from_path`, `from_file`, `from_filename`, and `from_string` all construct a `SourceFile`; `read` is the lower-level loader used internally. `SourceFile` also knows how to pre-process raw `.scss`/`.sass` lines via `parse_scss_line` / `parse_sass_line` and `prepare_source`.
+
+### Expression evaluation
+
+Under the hood, Sass expressions (arithmetic, boolean logic, function calls, string interpolation, lists, and maps) are parsed into an AST defined in `scss.ast`, with node types like `BinaryOp`, `UnaryOp`, `AnyOp`, `AllOp`, `NotOp`, `CallOp`, `TernaryOp`, `Interpolation`, `Literal`, `Variable`, `ListLiteral`, `MapLiteral`, `FunctionLiteral`, and `ArgspecLiteral`. Each node implements `evaluate(calculator, divide=False)`, returning a `scss.types.Value` instance.
+
+Parsing text into these AST nodes and evaluating them is handled by `scss.calculator.Calculator`, which also performs variable substitution and interpolation:
+
+```python
+from scss.calculator import Calculator
+from scss.namespace import Namespace
+
+ns = Namespace()
+calc = Calculator(ns)
+value = calc.evaluate_expression(calc.parse_expression("1px + 2px"))
+print(value.render())  # "3px"
+```
+
+### `Namespace` and scopes
+
+`scss.namespace.Namespace` holds variables, functions, and mixins available during compilation, organized into `Scope` subclasses (`VariableScope`, `FunctionScope`, `MixinScope`, `ImportScope`). Namespaces can be derived or extended:
+
+```python
+from scss.namespace import Namespace
+
+parent_ns = Namespace()
+parent_ns.set_variable("$brand-color", some_color_value)
+
+child_ns = parent_ns.derive()
+```
+
+Methods like `declare`, `declare_alias`, and `declare_internal` register Python functions as callable Sass functions; `mixin`/`set_mixin` and `function`/`set_function` manage mixin and function lookups by name and arity.
+
+### `scss.types`
+
+All Sass values—numbers, colors, strings, lists, maps, booleans, and null—are represented by subclasses of `scss.types.Value`:
+
+- `Number` — numeric values with unit tracking and conversion (`to_base_units`, `is_unitless`, `has_simple_unit`).
+- `Color` — colors, constructible via `from_rgb`, `from_hsl`, `from_hex`, or `from_name`, with accessors like `rgb()`, `hsl()`, `alpha()`.
+- `String` / `Function` / `Url` — quoted/unquoted strings and CSS function-call-like values such as `url(...)`.
+- `List` / `Arglist` — ordered collections, with helpers like `List.maybe_new`, `List.from_maybe`, and keyword-argument extraction via `Arglist.extract_keywords`.
+- `Map` — key/value Sass maps, convertible via `to_dict` / `to_pairs`.
+- `Null` / `Undefined` / `Boolean` — singleton-like scalar values.
+
+These types are what built-in and extension functions receive as arguments and must return.
+
+### Selectors and rules
+
+`scss.selector.Selector` and `SimpleSelector` parse and manipulate CSS selector syntax, supporting parent-selector references (`&`), placeholder selectors (`%foo`), and set-like operations (`is_superset_of`, `difference`, `merge_into`) used to implement `@extend`. `scss.rule.SassRule` represents a single parsed block of CSS (selectors + declarations + nested rules), with `RuleAncestry` tracking how nested selectors combine with their parents, and `BlockHeader` subclasses (`BlockAtRuleHeader`, `BlockSelectorHeader`, `BlockScopeHeader`) modeling the different kinds of block openings (`@media`, plain selectors, `@if`/`@each` scopes, etc.).
+
+### Errors
+
+Compilation failures surface as subclasses of `scss.errors.SassBaseError`:
+
+- `SassSyntaxError` — malformed Sass/SCSS syntax.
+- `SassParseError` / `SassEvaluationError` — errors during expression parsing or evaluation, with rich formatting (`format_message`, `format_sass_stack`, `format_python_stack`) that includes file/line context via `add_error_marker`.
+- `SassImportError` / `SassMissingDependency` — problems resolving `@import`s or missing optional dependencies (e.g. Pillow for image functions).
+
+`Compiler.call_and_catch_errors` wraps compilation so these errors are caught and rendered as readable messages rather than raw tracebacks.
+
+## Extensions
+
+`scss.extension.api.Extension` is the base class for pluggable functionality. Extensions can hook into import resolution via `handle_import(name, compilation, rule)` and register additional Sass functions. `NamespaceAdapterExtension` adapts a plain `Namespace` into an `Extension`. `Cache` provides a simple get/set/clear interface used by extensions (e.g. sprite generation) to memoize expensive work like image processing.
+
+Built-in extensions include:
+
+- **`CoreExtension`** (`scss.extension.core`) — the standard Sass built-in function library: color manipulation (`rgb`, `hsl`, `mix`, `lighten`, `darken`, `adjust_color`, `scale_color`, `change_color`, etc.), string functions (`str_length`, `str_slice`, `to_upper_case`, …), list/map functions (`nth`, `join`, `map_get`, `map_merge`, `zip_`, …), introspection (`type_of`, `unit`, `inspect`, `variable_exists`, `function_exists`, `mixin_exists`), and more.
+- **`CompassExtension`** (`scss.extension.compass`) — partial support for the Compass framework, including gradients (`linear_gradient`, `radial_gradient`), sprite-map generation (`sprite_map`, `sprite`, `sprite_url`), image helpers (`image_url`, `inline_image`, `image_width`), layout helpers, and general Compass utility functions (`pi`, `enumerate_`, `headers`, `nest`, `prefixed`, etc.).
+- **`FontsExtension`** (`scss.extension.fonts`) — webfont packaging helpers (`font_sheet`, `glyphs`, `ttf2eot`, `ttfautohint`, `font_format`, `has_glyph`).
+- **`ExtraExtension`** (`scss.extension.extra`) — miscellaneous image-generation helpers (`background_noise`, `background_brushed`, `grid_image`, `image_color`).
+- **`BootstrapExtension`** (`scss.extension.bootstrap`) — path helpers (`twbs_font_path`, `twbs_image_path`) for compiling Bootstrap's Sass sources.
+
+Extensions are passed to `Compiler` (or attached to a `Namespace`) to make their functions and import handlers available during compilation.
+
+## Command-line tool
+
+`scss.tool` implements the `pyscss` command-line interface, exposing:
+
+- Building `.scss` files to `.css` (`do_build`).
+- Watching source files for changes and recompiling (`watch_sources`).
+- An interactive REPL for experimenting with Sass expressions (`run_repl`, backed by `SassRepl` and `readline_history`).
+- Basic housekeeping commands: `print_version`, `run_tests`.
+
+Run `pyscss --help` after installation for the full list of flags.
+
+## Legacy API
+
+For backward compatibility, `scss.legacy.Scss` offers an older-style, stateful API:
+
+```python
+from scss.legacy import Scss
+
+compiler = Scss()
+css = compiler.compile(scss_string="$x: 1; .a { width: $x; }")
+print(compiler.get_scss_vars())
+print(compiler.get_scss_constants())
+```
+
+`Scss.compile` accepts either a raw string, a file path, or a list of source files, along with options like `is_sass`, `line_numbers`, and `import_static_css`.
+
+## Converting LESS to SCSS
+
+`scss.less2scss.Less2Scss` provides best-effort conversion of LESS stylesheets into SCSS syntax:
+
+```python
+from scss.less2scss import Less2Scss
+
+converter = Less2Scss()
+scss_source = converter.convert(less_source)
+```
+
+Internally this rewrites LESS variable syntax, mixin definitions/usages, and functions into their SCSS equivalents (`convertVariables`, `convertMixins`, `includeMixins`, `convertFunctions`).
+
+## Example: compiling with custom extensions and error handling
+
+```python
+from scss.compiler import Compiler, OutputStyle
+from scss.errors import SassBaseError
+from scss.extension.compass import CompassExtension
+from scss.extension.bootstrap import BootstrapExtension
+
+compiler = Compiler(
+    search_path=["./scss"],
+    output_style=OutputStyle.COMPRESSED,
+    extensions=[CompassExtension(), BootstrapExtension()],
+)
+
+try:
+    css = compiler.compile("app.scss")
+except SassBaseError as e:
+    print(e.format_message())
+else:
+    with open("app.css", "w") as f:
+        f.write(css)
+```
+
+## License
+
+See `LICENSE` for details.

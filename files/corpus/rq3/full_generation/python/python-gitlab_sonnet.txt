@@ -1,0 +1,191 @@
+# python-gitlab
+
+`python-gitlab` is a Python client library for the GitLab REST and GraphQL APIs. It provides a Pythonic, object-oriented interface for managing GitLab resources — projects, groups, issues, merge requests, pipelines, users, and much more — as well as a command-line interface (`gitlab`) for scripting common operations.
+
+The library maps GitLab API endpoints onto Python objects and managers, so that interacting with GitLab feels like working with native Python collections rather than raw HTTP requests.
+
+## Installation
+
+```bash
+pip install python-gitlab
+```
+
+## Core Concepts
+
+### `Gitlab` — the entry point
+
+Every interaction starts with a `Gitlab` client instance, which wraps HTTP communication with a GitLab server.
+
+```python
+import gitlab
+
+gl = gitlab.Gitlab("https://gitlab.com", private_token="your_token_here")
+gl.auth()  # authenticate and populate gl.user
+```
+
+`Gitlab` can also be constructed from a config file:
+
+```python
+gl = gitlab.Gitlab.from_config("mygitlab", ["/etc/python-gitlab.cfg"])
+```
+
+Key methods on `Gitlab`:
+
+- `auth()` — authenticate the current user.
+- `version()` — fetch the GitLab server version.
+- `markdown()`, `get_license()`, `set_license()` — misc server-level operations.
+- `http_get`, `http_post`, `http_put`, `http_patch`, `http_delete`, `http_list` — low-level HTTP helpers used internally by higher-level objects, but also usable directly for endpoints not yet wrapped by a dedicated class.
+- `enable_debug()` — turn on verbose request/response logging.
+
+The client also exposes GraphQL support via `GraphQL` (sync) and `AsyncGraphQL` (async) classes, layered over pluggable transport backends (`GitlabTransport`, `GitlabAsyncTransport`).
+
+### Managers and Objects
+
+The library follows a consistent pattern throughout:
+
+- **`RESTObject`** — represents a single resource (a project, an issue, a user, etc.). Offers helpers like `asdict()`, `to_json()`, `pprint()`, and `get_id()`.
+- **`RESTManager`** — represents a collection of resources of a given type, reachable via an attribute on a parent object or the `Gitlab` client itself (e.g. `gl.projects`, `project.issues`).
+- **`RESTObjectList`** — a lazy, paginated iterator over a listing, exposing pagination metadata (`current_page()`, `next_page()`, `total()`, etc.).
+
+Managers gain their capabilities from mixins in `gitlab.mixins`:
+
+| Mixin | Capability |
+|---|---|
+| `ListMixin` | `.list()` |
+| `GetMixin` / `GetWithoutIdMixin` | `.get()` |
+| `CreateMixin` | `.create()` |
+| `UpdateMixin` | `.update()` |
+| `DeleteMixin` | `.delete()` |
+| `CRUDMixin` | combines Get/List/Create/Update/Delete |
+| `RetrieveMixin` | combines List/Get |
+| `SaveMixin` | adds `.save()` to objects that were fetched and modified |
+| `ObjectDeleteMixin` | adds `.delete()` directly on an object |
+| `SubscribableMixin` | `.subscribe()` / `.unsubscribe()` |
+| `TodoMixin` | `.todo()` |
+| `TimeTrackingMixin` | time estimate / spent time helpers |
+| `DownloadMixin` | streaming downloads (artifacts, exports, snapshots) |
+| `RotateMixin` / `ObjectRotateMixin` | token/credential rotation |
+| `ParticipantsMixin`, `PromoteMixin`, `UploadMixin`, `BadgeRenderMixin`, etc. | resource-specific extras |
+
+Every concrete resource in `gitlab.v4.objects` (there are hundreds: `Project`, `Group`, `Issue`, `MergeRequest`, `Pipeline`, `User`, `Runner`, `Variable`, `Branch`, `Snippet`, and so on) combines one or more of these mixins with `RESTObject`/`RESTManager` to expose the exact set of operations GitLab supports for that resource.
+
+### Errors
+
+All API errors derive from `GitlabError`, with specific subclasses for common failure modes: `GitlabAuthenticationError`, `GitlabGetError`, `GitlabCreateError`, `GitlabUpdateError`, `GitlabDeleteError`, `GitlabListError`, `GitlabOperationError`, and many action-specific errors (`GitlabMRApprovalError`, `GitlabPipelineCancelError`, `GitlabHousekeepingError`, etc.), letting you catch precisely the failure you care about.
+
+```python
+from gitlab.exceptions import GitlabGetError
+
+try:
+    project = gl.projects.get("nonexistent/project")
+except GitlabGetError as e:
+    print("Could not find project:", e)
+```
+
+### Command-line interface
+
+Installing the package also installs a `gitlab` CLI command, built on the same manager/object model, supporting generic resource/action invocation (`gitlab project list`, `gitlab project-issue create`, etc.) as well as output formatting in JSON, YAML, or a legacy human-readable format.
+
+## Usage Examples
+
+### Working with projects
+
+```python
+import gitlab
+
+gl = gitlab.Gitlab("https://gitlab.com", private_token="your_token_here")
+
+# List projects (returns a lazy iterator by default when iterator=True)
+for project in gl.projects.list(iterator=True, owned=True):
+    print(project.id, project.name)
+
+# Get a single project
+project = gl.projects.get("group/my-project")
+
+# Update and save
+project.description = "Updated via python-gitlab"
+project.save()
+
+# Star / archive a project
+project.star()
+project.archive()
+```
+
+### Issues and merge requests
+
+```python
+project = gl.projects.get(1234)
+
+# Create an issue
+issue = project.issues.create({"title": "Bug report", "description": "Something broke"})
+
+# List open merge requests
+mrs = project.mergerequests.list(state="opened", iterator=True)
+
+for mr in mrs:
+    print(mr.iid, mr.title)
+
+# Approve and merge a merge request
+mr = project.mergerequests.get(42)
+mr.approve()
+mr.merge(merge_commit_message="Merging via API")
+```
+
+### Pipelines and jobs
+
+```python
+pipeline = project.pipelines.create({"ref": "main"})
+pipeline.cancel()
+
+latest = project.pipelines.latest(ref="main")
+for job in latest.jobs.list(iterator=True):
+    print(job.name, job.status)
+
+# Download job artifacts
+job = project.jobs.get(job.id)
+job.artifacts(streamed=True, action=lambda chunk: open("artifacts.zip", "ab").write(chunk))
+```
+
+### Groups and members
+
+```python
+group = gl.groups.get("my-group")
+
+group.members.create({"user_id": 123, "access_level": gitlab.const.AccessLevel.DEVELOPER})
+
+for member in group.members.list(iterator=True):
+    print(member.username, member.access_level)
+```
+
+### Variables and CI/CD configuration
+
+```python
+project.variables.create({"key": "DEPLOY_TOKEN", "value": "secret", "protected": True})
+
+for variable in project.variables.list(iterator=True):
+    print(variable.key)
+```
+
+### GraphQL
+
+```python
+from gitlab.client import GraphQL
+
+gql = GraphQL(url="https://gitlab.com", token="your_token_here")
+result = gql.execute("""
+    query {
+      currentUser {
+        username
+      }
+    }
+""")
+print(result)
+```
+
+## Constants
+
+`gitlab.const` provides enums used throughout the API, such as `AccessLevel` (Guest, Reporter, Developer, Maintainer, Owner), `Visibility` (private/internal/public), `NotificationLevel`, `SearchScope`, `DetailedMergeStatus`, and `PipelineStatus` — use these instead of raw strings/ints when creating or filtering resources.
+
+## Configuration Files
+
+`gitlab.config.GitlabConfigParser` reads `python-gitlab.cfg`-style INI files so that connection details (URL, token, SSL verification, timeouts) can be kept out of application code and referenced by a `gitlab_id`, as used by `Gitlab.from_config()` and the CLI.

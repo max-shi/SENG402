@@ -1,0 +1,217 @@
+# directories
+
+`io.github.soc:directories` is a Java library for discovering and constructing operating-system-specific directory paths.
+
+It provides entry points for:
+
+- Base directory information for the current platform
+- User-oriented directories
+- Application/project-specific directory locations
+- Linux, macOS, and Windows helper functions
+- Small string-normalization utilities used when building directory names
+
+The API is designed around static factory and helper methods, making it straightforward to obtain directory information for the current environment.
+
+## Main API
+
+### `BaseDirectories`
+
+`BaseDirectories` represents base directory information for the current operating system.
+
+```java
+import dev.dirs.BaseDirectories;
+
+BaseDirectories baseDirectories = BaseDirectories.get();
+System.out.println(baseDirectories);
+```
+
+Use `BaseDirectories.get()` to retrieve an instance for the active platform.
+
+Instances support `toString()`, `equals(...)`, and `hashCode()`.
+
+---
+
+### `UserDirectories`
+
+`UserDirectories` represents user-facing directory information for the current environment.
+
+```java
+import dev.dirs.UserDirectories;
+
+UserDirectories userDirectories = UserDirectories.get();
+System.out.println(userDirectories);
+```
+
+Like `BaseDirectories`, instances are obtained with a static `get()` method and support value-style comparison through `equals(...)` and `hashCode()`.
+
+---
+
+### `ProjectDirectories`
+
+`ProjectDirectories` is intended for application- or project-specific directory locations.
+
+Create an instance from an existing path:
+
+```java
+import dev.dirs.ProjectDirectories;
+
+ProjectDirectories directories =
+    ProjectDirectories.fromPath("/opt/example-app");
+
+System.out.println(directories);
+```
+
+Or construct one from application-identifying components:
+
+```java
+import dev.dirs.ProjectDirectories;
+
+ProjectDirectories directories =
+    ProjectDirectories.from(
+        "com.example",
+        "Example Organization",
+        "Example App"
+    );
+
+System.out.println(directories);
+```
+
+The arguments accepted by `from(...)` are:
+
+- `qualifier`
+- `organization`
+- `application`
+
+These values can be used to identify and organize an application's directory location in a platform-aware way.
+
+---
+
+## Platform Helpers
+
+The `dev.dirs.impl` package exposes platform-specific helper classes. These can be useful when an application needs a particular platform-oriented path calculation.
+
+### Linux
+
+```java
+import dev.dirs.impl.Linux;
+
+String runtime = Linux.runtimeDir("/run/user/1000");
+String executableDirectory =
+    Linux.executableDir("/home/alice", "/home/alice/.local/share");
+
+String[] userDirectories = Linux.getXDGUserDirs(
+    "DESKTOP",
+    "DOCUMENTS",
+    "DOWNLOAD"
+);
+```
+
+Available helpers:
+
+- `Linux.runtimeDir(String path)`
+- `Linux.executableDir(String homeDir, String dataDir)`
+- `Linux.getXDGUserDirs(String... dirs)`
+
+---
+
+### macOS
+
+```java
+import dev.dirs.impl.MacOs;
+
+String applicationPath = MacOs.applicationPath(
+    "com.example",
+    "Example Organization",
+    "Example App"
+);
+```
+
+Available helper:
+
+- `MacOs.applicationPath(String qualifier, String organization, String application)`
+
+---
+
+### Windows
+
+```java
+import dev.dirs.impl.Windows;
+
+String profile = Windows.getProfileDir();
+String documents = Windows.getDocumentsDir();
+String downloads = Windows.getDownloadsDir();
+
+String applicationPath = Windows.applicationPath(
+    "com.example",
+    "Example Organization",
+    "Example App"
+);
+```
+
+Available directory helpers:
+
+- `Windows.getProfileDir()`
+- `Windows.getMusicDir()`
+- `Windows.getDesktopDir()`
+- `Windows.getDocumentsDir()`
+- `Windows.getDownloadsDir()`
+- `Windows.getPicturesDir()`
+- `Windows.getPublicDir()`
+- `Windows.getTemplatesDir()`
+- `Windows.getVideosDir()`
+- `Windows.getRoamingAppDataDir()`
+- `Windows.getLocalAppDataDir()`
+- `Windows.applicationPath(String qualifier, String organization, String application)`
+
+---
+
+## String Utilities
+
+`dev.dirs.impl.Util` contains utility methods for checking and normalizing string values.
+
+```java
+import dev.dirs.impl.Util;
+
+boolean missing = Util.isNullOrEmpty(applicationName);
+
+String name = Util.defaultIfNullOrEmpty(
+    applicationName,
+    "Example App",
+    "applicationName"
+);
+
+String normalized = Util.trimLowercaseReplaceWhitespace(
+    "Example App",
+    "-",
+    true
+);
+```
+
+Available utilities:
+
+- `Util.isNullOrEmpty(String value)`
+- `Util.defaultIfNullOrEmpty(String value, String fallbackValue, String fallbackArg)`
+- `Util.defaultIfNullOrEmptyExtended(String value, String valueArg, String fallbackValue, String fallbackArg)`
+- `Util.stripQualification(String value)`
+- `Util.trimLowercaseReplaceWhitespace(String value, String replacement, boolean lowerCase)`
+
+---
+
+## Handling Unsupported Platforms
+
+The library defines `UnsupportedOperatingSystemException`, a subclass of `UnsupportedOperationException`.
+
+```java
+import dev.dirs.UnsupportedOperatingSystemException;
+
+try {
+    ProjectDirectories directories =
+        ProjectDirectories.from("com.example", "Example Organization", "Example App");
+
+    System.out.println(directories);
+} catch (UnsupportedOperatingSystemException e) {
+    System.err.println("The current operating system is not supported: " + e.getMessage());
+}
+```
+
+This exception can be used to handle environments where a requested directory operation is unavailable.

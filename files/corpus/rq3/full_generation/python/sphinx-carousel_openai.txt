@@ -1,0 +1,232 @@
+# sphinx-carousel
+
+`sphinx-carousel` is a Python library for integrating image carousel content into Sphinx documentation builds.
+
+Its public API centers on:
+
+- a `Carousel` Sphinx directive that collects images and creates carousel document-tree nodes;
+- custom node classes that render carousel markup through Sphinx’s HTML translator;
+- setup and static-asset hooks for registering the extension with a Sphinx application.
+
+The library is designed to participate in Sphinx’s normal parsing and build lifecycle rather than act as a standalone carousel renderer.
+
+## Overview
+
+### Sphinx integration
+
+The top-level integration functions work with a `Sphinx` application instance:
+
+- `setup(app)` — registers the extension with Sphinx and returns extension metadata.
+- `copy_static(app)` — handles copying static resources for a build.
+- `include_static_on_demand(app, _, __, ___, doctree)` — processes a document tree and can include static resources when carousel-related content is present.
+
+In a normal Sphinx extension workflow, Sphinx invokes `setup()` when loading the extension. The static-resource functions are intended for use as Sphinx event callbacks.
+
+### The `Carousel` directive
+
+`Carousel` extends `SphinxDirective` and is responsible for turning directive content into carousel nodes.
+
+Its main methods are:
+
+- `images() -> List[ImageTuple]` — obtains the images associated with the directive.
+- `config_read_flag(name: str) -> bool` — reads a boolean configuration flag.
+- `create_inner_node(images) -> Element` — creates the inner carousel node structure from collected images.
+- `run() -> List[Element]` — Sphinx directive entry point; returns the generated document-tree elements.
+
+The directive’s `run()` method is the main method invoked by docutils/Sphinx while parsing source documents.
+
+### Carousel node hierarchy
+
+The carousel is represented by custom docutils nodes:
+
+| Class | Purpose |
+| --- | --- |
+| `BaseNode` | Common base class for carousel-related nodes. Provides CSS-class handling, HTML visit/depart hooks, and node registration. |
+| `CarouselMainNode` | The top-level carousel node. |
+| `SubNode` | Base class for nodes belonging to a main carousel node. |
+| `CarouselInnerNode` | Represents the carousel’s inner container. |
+| `CarouselItemNode` | Represents an individual carousel item. |
+| `CarouselControlNode` | Represents carousel controls. |
+| `CarouselIndicatorsNode` | Represents carousel indicators. |
+| `CarouselCaptionNode` | Represents an item caption. |
+
+Each node class supplies HTML translator hooks where appropriate:
+
+- `html_visit(writer, node)` is called when HTML rendering enters the node.
+- `html_depart(writer, node)` is called when HTML rendering leaves the node.
+
+`SubNode` instances can locate their containing carousel through `main_node()` and derive a related prefix through `prefix()`.
+
+## Installation
+
+Install the package with your preferred Python package manager:
+
+```bash
+python -m pip install sphinx-carousel
+```
+
+Then load the extension through your Sphinx configuration or through an extension setup function.
+
+## Usage
+
+### Delegate extension setup
+
+If you are composing Sphinx extensions programmatically, delegate setup to `sphinx-carousel`:
+
+```python
+from sphinx_carousel.carousel import setup as setup_carousel
+
+
+def setup(app):
+    """Register this extension and sphinx-carousel together."""
+    return setup_carousel(app)
+```
+
+`setup_carousel(app)` returns a dictionary of extension metadata suitable for Sphinx’s extension setup protocol.
+
+### Register carousel node types
+
+When integrating carousel nodes manually, register each node class with the Sphinx application before producing documents that contain those nodes.
+
+```python
+from sphinx_carousel.nodes import (
+    CarouselCaptionNode,
+    CarouselControlNode,
+    CarouselIndicatorsNode,
+    CarouselInnerNode,
+    CarouselItemNode,
+    CarouselMainNode,
+)
+
+
+def register_carousel_nodes(app):
+    CarouselMainNode.add_node(app)
+    CarouselInnerNode.add_node(app)
+    CarouselItemNode.add_node(app)
+    CarouselControlNode.add_node(app)
+    CarouselIndicatorsNode.add_node(app)
+    CarouselCaptionNode.add_node(app)
+```
+
+`add_node()` is inherited from `BaseNode` and provides the Sphinx registration point for the custom node classes.
+
+### Use static-resource build hooks
+
+The static hooks accept the objects passed by Sphinx during its build lifecycle. They can be connected from another extension that needs to coordinate carousel resources.
+
+```python
+from sphinx_carousel.carousel import copy_static, include_static_on_demand
+
+
+def setup(app):
+    app.connect("builder-inited", copy_static)
+    app.connect("doctree-resolved", include_static_on_demand)
+
+    return {
+        "parallel_read_safe": True,
+    }
+```
+
+The exact event choices should match the lifecycle needs of the surrounding extension. `copy_static()` receives the Sphinx application, while `include_static_on_demand()` receives the application, document-related event values, and the resolved doctree.
+
+### Extend the directive
+
+For custom behavior, subclass `Carousel` and override the image collection or node-generation steps.
+
+```python
+from sphinx_carousel.directives import Carousel
+
+
+class CustomCarousel(Carousel):
+    def images(self):
+        images = super().images()
+
+        # Filter, reorder, or otherwise transform the image collection here.
+        return images
+
+    def create_inner_node(self, images):
+        # Customize the generated inner carousel structure if needed.
+        return super().create_inner_node(images)
+```
+
+The directive lifecycle is:
+
+1. `run()` is called by Sphinx/docutils.
+2. `images()` collects image data.
+3. `config_read_flag()` can inspect relevant boolean configuration.
+4. `create_inner_node(images)` builds the carousel’s inner node structure.
+5. The resulting nodes are rendered through their HTML visit/depart methods.
+
+## HTML rendering model
+
+The custom nodes integrate with Sphinx’s `HTML5Translator`. During HTML output generation, the translator calls each node’s `html_visit()` and `html_depart()` methods.
+
+For example, `CarouselMainNode` represents the outer carousel structure, while nested nodes such as `CarouselInnerNode`, `CarouselItemNode`, and `CarouselCaptionNode` provide the inner structure rendered within it.
+
+`BaseNode.classes()` is available to node implementations for working with CSS classes:
+
+```python
+# Inside a BaseNode subclass implementation:
+class_names = node.classes(["carousel", "carousel-item"])
+```
+
+By default, `classes()` returns a single joined class string. Passing `join=False` returns a list instead.
+
+## API reference
+
+### Integration functions
+
+```python
+copy_static(app: Sphinx)
+```
+
+```python
+include_static_on_demand(
+    app: Sphinx,
+    _: str,
+    __: str,
+    ___: dict,
+    doctree: document,
+)
+```
+
+```python
+setup(app: Sphinx) -> Dict[str, str]
+```
+
+### Directive
+
+```python
+class Carousel(SphinxDirective):
+    def images(self) -> List[ImageTuple]
+    def config_read_flag(self, name: str) -> bool
+    def create_inner_node(self, images: List[ImageTuple]) -> Element
+    def run(self) -> List[Element]
+```
+
+### Nodes
+
+```python
+class BaseNode(nodes.Element, nodes.General):
+    def classes(self, *classes_in, join: bool = True)
+    def html_visit(writer: HTML5Translator, node: BaseNode)
+    def html_depart(writer: HTML5Translator, node)
+    def add_node(cls, app: Sphinx)
+```
+
+```python
+class CarouselMainNode(BaseNode)
+class CarouselInnerNode(SubNode)
+class CarouselItemNode(SubNode)
+class CarouselControlNode(SubNode)
+class CarouselIndicatorsNode(SubNode)
+class CarouselCaptionNode(SubNode)
+```
+
+`SubNode` additionally provides:
+
+```python
+def main_node(self) -> CarouselMainNode
+def prefix(self) -> str
+```
+

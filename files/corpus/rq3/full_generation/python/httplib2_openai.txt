@@ -1,0 +1,361 @@
+# httplib2
+
+`httplib2` is a Python HTTP-oriented library with support for making requests, managing credentials and certificates, configuring proxies, handling authentication schemes, normalizing URIs, caching data, and decoding compressed content.
+
+The central entry point is the `Http` class, which provides request execution and credential-management methods. Supporting APIs provide reusable authentication handlers, proxy configuration, response containers, URI utilities, and a hierarchy of HTTP-related exceptions.
+
+## Quick start
+
+```python
+import httplib2
+
+client = httplib2.Http()
+
+result = client.request(
+    "https://api.example.com/widgets",
+    method="GET",
+    headers={
+        "Accept": "application/json",
+    },
+)
+
+# `result` contains the value returned by the request operation.
+print(result)
+```
+
+Send a request with a body:
+
+```python
+import httplib2
+
+client = httplib2.Http()
+
+result = client.request(
+    "https://api.example.com/widgets",
+    method="POST",
+    body=b'{"name": "example"}',
+    headers={
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    },
+)
+
+print(result)
+```
+
+## Main API
+
+### `Http`
+
+`Http` is the primary HTTP client interface.
+
+```python
+client = httplib2.Http()
+```
+
+Available methods:
+
+```python
+client.request(
+    uri,
+    method="GET",
+    body=None,
+    headers=None,
+    redirections=DEFAULT_MAX_REDIRECTS,
+    connection_type=None,
+)
+
+client.close()
+
+client.add_credentials(name, password, domain="")
+client.add_certificate(key, cert, domain, password=None)
+client.clear_credentials()
+```
+
+Use `request()` to perform an HTTP request. It accepts:
+
+- `uri`: the target URI.
+- `method`: an HTTP method such as `"GET"`, `"POST"`, `"PUT"`, or `"DELETE"`.
+- `body`: optional request content.
+- `headers`: optional request headers.
+- `redirections`: a redirect limit.
+- `connection_type`: an optional connection type override.
+
+Use `close()` when the client is no longer needed.
+
+### Credentials and certificates
+
+`Http` can store credentials for later use:
+
+```python
+import httplib2
+
+client = httplib2.Http()
+
+client.add_credentials(
+    name="alice",
+    password="correct-horse-battery-staple",
+    domain="example.com",
+)
+
+result = client.request("https://example.com/private")
+```
+
+Clear stored credentials when they should no longer be used:
+
+```python
+client.clear_credentials()
+```
+
+Client certificates can be registered with `add_certificate()`:
+
+```python
+client.add_certificate(
+    key="/path/to/client-key.pem",
+    cert="/path/to/client-cert.pem",
+    domain="secure.example.com",
+    password=None,
+)
+```
+
+For direct credential storage and lookup, use `Credentials` or `KeyCerts`:
+
+```python
+import httplib2
+
+credentials = httplib2.Credentials()
+credentials.add("alice", "secret", domain="example.com")
+
+for credential in credentials.iter("example.com"):
+    print(credential)
+
+credentials.clear()
+```
+
+`KeyCerts` extends `Credentials` for key/certificate information:
+
+```python
+import httplib2
+
+certificates = httplib2.KeyCerts()
+certificates.add(
+    key="/path/to/key.pem",
+    cert="/path/to/cert.pem",
+    domain="secure.example.com",
+    password="key-password",
+)
+```
+
+## Authentication handlers
+
+The authentication API is represented by the `Authentication` base class. Authentication implementations expose request and, where applicable, response hooks.
+
+Available implementations include:
+
+- `BasicAuthentication`
+- `DigestAuthentication`
+- `HmacDigestAuthentication`
+- `WsseAuthentication`
+- `GoogleLoginAuthentication`
+
+The shared authentication interface includes:
+
+```python
+authentication.depth(request_uri)
+authentication.inscope(host, request_uri)
+authentication.request(method, request_uri, headers, content)
+authentication.response(response, content)
+```
+
+Some implementations provide only request processing, while digest-based handlers also expose response processing.
+
+`DigestAuthentication.request()` additionally accepts an optional `cnonce` value:
+
+```python
+authentication.request(
+    method,
+    request_uri,
+    headers,
+    content,
+    cnonce=None,
+)
+```
+
+## Proxy configuration
+
+`ProxyInfo` represents proxy-related configuration and exposes helpers for checking and applying that configuration:
+
+```python
+proxy.astuple()
+proxy.isgood()
+proxy.applies_to(hostname)
+proxy.bypass_host(hostname)
+```
+
+Proxy information can be derived from environment settings:
+
+```python
+import httplib2
+
+proxy = httplib2.proxy_info_from_environment(method="http")
+```
+
+Or it can be derived from a proxy URL:
+
+```python
+import httplib2
+
+proxy = httplib2.proxy_info_from_url(
+    "http://proxy.example.com:8080",
+    method="http",
+    noproxy=["localhost", "127.0.0.1"],
+)
+```
+
+`AllHosts` is also available for host-matching scenarios.
+
+## URI and filename utilities
+
+The library provides several helpers for working with URIs and safe filenames.
+
+```python
+import httplib2
+
+parts = httplib2.parse_uri("https://example.com/path?item=1")
+
+normalized = httplib2.urlnorm("https://example.com/path")
+
+safe_filename = httplib2.safename("report:2024/summary.txt")
+
+has_timeout_value = httplib2.has_timeout(30)
+```
+
+For Internationalized Resource Identifiers, use `iri2uri()`:
+
+```python
+from httplib2.iri2uri import iri2uri
+
+uri = iri2uri("https://example.com/пример")
+```
+
+The lower-level `encode()` helper is also available:
+
+```python
+from httplib2.iri2uri import encode
+
+encoded = encode(" ")
+```
+
+## Caching
+
+`FileCache` provides a key/value cache interface:
+
+```python
+import httplib2
+
+cache = httplib2.FileCache()
+
+cache.set("request-key", b"cached response")
+value = cache.get("request-key")
+
+cache.delete("request-key")
+```
+
+## Responses
+
+`Response` is a dictionary-based response type:
+
+```python
+import httplib2
+
+response = httplib2.Response()
+response["status"] = "200"
+```
+
+## Content decoding
+
+The decoding API defines `DecoderProtocol`, which can be used by decoders that consume bytes incrementally.
+
+```python
+decoder.needs_input()
+decoder.decode(data)
+decoder.flush()
+decoder.consume_bytes(data, chunk_size=64 << 10)
+```
+
+Available decoder types include:
+
+- `ZlibDecoder`
+- `DeflateDecoder()`
+- `LimitDecoder`
+
+Example protocol usage:
+
+```python
+from httplib2.decode import DeflateDecoder
+
+decoder = DeflateDecoder()
+
+decoded_part = decoder.decode(b"...")
+remaining = decoder.flush()
+```
+
+Decoding-related failures may raise:
+
+- `DecodeRatioError`
+- `DecodeLimitError`
+
+## Certificate helper
+
+The certificate helper exposes `where()`:
+
+```python
+from httplib2.certs import where
+
+certificate_location = where()
+```
+
+## Configuration helper
+
+`try_value_or_env()` can be used when a value may come from either an explicit argument or an environment variable:
+
+```python
+import httplib2
+
+value = httplib2.try_value_or_env(
+    to=str,
+    value=None,
+    env_key="EXAMPLE_SETTING",
+    default="fallback",
+)
+```
+
+## Errors
+
+All library-specific HTTP errors derive from `HttpLib2Error`.
+
+```python
+import httplib2
+
+try:
+    client = httplib2.Http()
+    client.request("https://example.com")
+except httplib2.HttpLib2Error as exc:
+    print(f"Request failed: {exc}")
+```
+
+Available exception types include:
+
+- `HttpLib2Error`
+- `HttpLib2ErrorWithResponse`
+- `RedirectMissingLocation`
+- `RedirectLimit`
+- `FailedToDecompressContent`
+- `UnimplementedDigestAuthOptionError`
+- `UnimplementedHmacDigestAuthOptionError`
+- `MalformedHeader`
+- `RelativeURIError`
+- `ServerNotFoundError`
+- `ProxiesUnavailableError`
+
+Exceptions related to redirects, decompression, and unsupported digest-authentication options inherit from `HttpLib2ErrorWithResponse`, allowing callers to distinguish failures associated with a response from other library errors.

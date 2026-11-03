@@ -1,0 +1,287 @@
+# xsdata
+
+**xsdata** is a Python library and command-line toolkit for generating Python
+dataclasses (and other code) from XML Schema (XSD), DTD, WSDL, and sample
+XML/JSON documents, along with a full-featured runtime for binding XML and
+JSON data to and from those generated models.
+
+It covers the complete round trip:
+
+1. **Parse** schema-like sources (XSD, DTD, WSDL definitions, or raw XML/JSON
+   samples) into an intermediate code-generation model.
+2. **Transform** that model through a pipeline of handlers that resolve
+   references, flatten inheritance, deduplicate names, and otherwise clean up
+   the class graph.
+3. **Generate** Python source code (dataclasses by default, but the generator
+   architecture is pluggable) using Jinja2-style filters and templates.
+4. **Bind** real data at runtime: parse XML or JSON into instances of the
+   generated dataclasses, and serialize dataclass instances back into XML,
+   JSON, element trees, or plain Python code.
+
+---
+
+## Installation
+
+```bash
+pip install xsdata
+```
+
+xsdata exposes both a Python API and a `cli` console script.
+
+---
+
+## Command Line Interface
+
+The CLI is built with `click` and is the most common entry point:
+
+```bash
+# Generate dataclasses from a schema
+xsdata generate schema.xsd --package my_models
+
+# Generate from a directory of schemas, recursively
+xsdata generate ./schemas --recursive
+
+# Download a schema and all its imports/includes locally
+xsdata download http://example.com/schema.xsd
+
+# Write out a generator config file (.xsdata.xml)
+xsdata init-config
+```
+
+Internally, `cli()` dispatches to `generate()`, `download()`, and
+`init_config()`, which in turn use `ResourceTransformer` and `Downloader`
+to do the actual work. `resolve_source()` expands a path or URI into a list
+of concrete source URIs, optionally recursing into directories.
+
+---
+
+## Code Generation Pipeline
+
+### Parsing sources
+
+- `SchemaParser` / `DefinitionsParser` (in `xsdata.codegen.parsers`) parse XSD
+  and WSDL XML documents into `xsdata.models.xsd` / `xsdata.models.wsdl`
+  object trees (`Schema`, `Definitions`, `ComplexType`, `Element`, `Binding`,
+  etc.).
+- `DtdParser` parses DTD documents into `Dtd`, `DtdElement`, `DtdAttribute`,
+  and `DtdContent` models.
+
+### Mapping to the codegen model
+
+Each source type has a mapper that turns its object tree into a list of
+`Class` instances (the common intermediate representation):
+
+- `SchemaMapper` — XSD `Schema` → `Class`
+- `DefinitionsMapper` — WSDL `Definitions` → `Class` (services, envelopes,
+  bindings)
+- `DtdMapper` — `Dtd` → `Class`
+- `ElementMapper` — a sample XML document (`AnyElement`) → `Class`
+- `DictMapper` — a sample JSON/dict document → `Class`
+
+The core model, defined in `xsdata.codegen.models`, includes:
+
+- **`Class`** — a generated type, with `attrs` (fields), `extensions` (base
+  types), inner classes, namespace info, and helpers like
+  `is_enumeration()`, `is_complex_type()`, `dependencies()`, `references()`.
+- **`Attr`** — a single field/attribute on a class, with type info,
+  restrictions, and helpers like `is_list()`, `is_optional()`,
+  `is_wildcard()`.
+- **`AttrType`** — a reference to a type (native Python type, `DataType`, or
+  another `Class`).
+- **`Extension`** — a base-type relationship for a `Class`.
+- **`Restrictions`** — facets such as min/max occurs, length, pattern, etc.
+
+### Processing and validation
+
+`ClassContainer` (implementing `ContainerInterface`) holds all generated
+`Class` objects and runs them through an ordered pipeline of **handlers**
+(`xsdata.codegen.handlers`), each implementing `HandlerInterface`,
+`RelativeHandlerInterface`, or `ContainerHandlerInterface`. Handlers perform
+tasks such as:
+
+- Flattening class extensions and attribute groups
+  (`FlattenClassExtensions`, `FlattenAttributeGroups`)
+- Resolving attribute types to real classes or native types
+  (`ProcessAttributeTypes`)
+- Renaming duplicate attributes/classes
+  (`RenameDuplicateAttributes`, `RenameDuplicateClasses`)
+- Building compound/wrapper/choice fields
+  (`CreateCompoundFields`, `CreateWrapperFields`, `DisambiguateChoices`)
+- Detecting circular references (`DetectCircularReferences`)
+- Validating parent/child attribute overrides and references
+  (`ValidateAttributesOverrides`, `ValidateReferences`)
+
+`ClassValidator` performs an earlier pass to remove invalid/duplicate classes
+before the handler pipeline runs.
+
+### Resolving dependencies and writing output
+
+- `DependenciesResolver` computes import statements and a topologically
+  sorted class order for each generated module.
+- `CodeWriter` drives one or more `AbstractGenerator` implementations (the
+  built-in one being `DataclassGenerator`) to render `Class` objects into
+  source files, using `Filters` (Jinja2 filters for naming, type hints,
+  docstrings, metadata, etc.) and a `GeneratorConfig`.
+
+### Putting it together: `ResourceTransformer`
+
+`ResourceTransformer` is the high-level orchestrator used by the CLI:
+
+```python
+from xsdata.codegen.transformer import ResourceTransformer
+from xsdata.models.config import GeneratorConfig
+
+config = GeneratorConfig.create()
+config.output.package = "generated"
+
+transformer = ResourceTransformer(config=config)
+transformer.process(["path/to/schema.xsd"])
+```
+
+This will parse the schema(s), build `Class` objects, run them through
+`ClassContainer.process()`, resolve dependencies, and write generated Python
+files to disk.
+
+---
+
+## Runtime Data Binding
+
+Once dataclasses are generated (or hand-written using the same conventions),
+xsdata provides parsers and serializers to bind data at runtime.
+
+### `XmlContext`
+
+`XmlContext` inspects dataclasses (via `ClassType`/`ClassTypes`, e.g.
+`Dataclasses`) and builds `XmlMeta`/`XmlVar` metadata describing how each
+field maps to XML elements, attributes, wildcards, and choices. It is shared
+between parsers and serializers.
+
+### Parsing XML
+
+```python
+from xsdata.formats.dataclass.parsers import XmlParser
+from xsdata.formats.dataclass.context import XmlContext
+
+from generated.models import PurchaseOrder
+
+context = XmlContext()
+parser = XmlParser(context=context)
+
+order = parser.parse("order.xml", PurchaseOrder)
+print(order.items)
+```
+
+`XmlParser` (built on `NodeParser`/`PushParser`) supports parsing from a path,
+string, bytes, or file-like object, and can use either the native
+`xml.sax`-based handler (`XmlEventHandler`) or `lxml`
+(`LxmlEventHandler`) under the hood. `RecordParser` and `TreeParser` offer
+variants for retaining source location info or building an `ElementTree`.
+
+### Serializing to XML
+
+```python
+from xsdata.formats.dataclass.serializers import XmlSerializer
+from xsdata.formats.dataclass.serializers.config import SerializerConfig
+
+serializer = XmlSerializer(config=SerializerConfig(pretty_print=True))
+xml_string = serializer.render(order)
+```
+
+### JSON binding
+
+```python
+from xsdata.formats.dataclass.parsers import JsonParser
+from xsdata.formats.dataclass.serializers import JsonSerializer
+
+json_parser = JsonParser()
+order = json_parser.from_path(Path("order.json"), PurchaseOrder)
+
+json_serializer = JsonSerializer()
+print(json_serializer.render(order))
+```
+
+### Other serialization targets
+
+- `TreeSerializer` renders a dataclass instance into an `ElementTree`.
+- `PycodeSerializer` renders a Python object as executable/reproducible
+  Python source (`obj = PurchaseOrder(...)`), useful for generating fixtures
+  or debugging.
+- `DictEncoder`/`DictDecoder` convert dataclasses to/from plain
+  dictionaries.
+
+### SOAP-style clients
+
+`Client` and `Config` (in `xsdata.formats.dataclass.client`) wrap generated
+WSDL-derived service classes so you can send requests over a `Transport`
+(`DefaultTransport` by default) and receive parsed responses:
+
+```python
+from xsdata.formats.dataclass.client import Client
+
+client = Client.from_service(MyServicePort)
+response = client.send(my_request_obj)
+```
+
+---
+
+## Configuration
+
+`GeneratorConfig` (and nested settings like `GeneratorOutput`,
+`OutputFormat`, `CompoundFields`, `NameConvention`, `GeneratorAliases`,
+`GeneratorSubstitutions`, `GeneratorExtensions`) controls generation
+behavior — output package/format, structure style, docstring style, naming
+conventions, and more. It can be created fresh with
+`GeneratorConfig.create()`, loaded from disk with `GeneratorConfig.read()`,
+or serialized with `GeneratorConfig.write()`, matching the `.xsdata.xml` file
+produced by `xsdata init-config`.
+
+`SerializerConfig` and `ParserConfig` similarly control runtime formatting
+(pretty printing, encoding, xml declaration, indentation) and parsing
+behavior (fail-on-unknown-properties, class factories, etc.).
+
+---
+
+## Supporting Utilities
+
+- `xsdata.formats.converter` — a pluggable `ConverterFactory`/`Converter`
+  registry for converting between XML text and Python types (`int`, `bool`,
+  `Decimal`, `QName`, `Enum`, date/time types, and custom types).
+- `xsdata.models.datatype` — XML Schema date/time/duration value types
+  (`XmlDate`, `XmlDateTime`, `XmlTime`, `XmlDuration`, `XmlPeriod`,
+  `XmlHexBinary`, `XmlBase64Binary`) used as field types in generated
+  dataclasses.
+- `xsdata.models.enums` — enumerations for XML Schema concepts (`DataType`,
+  `Tag`, `Namespace`, `FormType`, `UseType`, etc.) shared across the codebase.
+- `xsdata.utils.testing` — factory helpers (`ClassFactory`, `AttrFactory`,
+  `AttrTypeFactory`, `XmlVarFactory`, `XmlMetaFactory`, etc.) for building
+  test fixtures of the codegen and runtime models.
+- `xsdata.utils.namespaces`, `xsdata.utils.text`, `xsdata.utils.collections`
+  — general-purpose helpers for QName handling, string case conversion, and
+  collection operations used throughout the generator.
+
+---
+
+## Typical Workflow Summary
+
+```
+schema.xsd / definitions.wsdl / sample.xml / sample.json
+        │
+        ▼  (SchemaParser / DefinitionsParser / DtdParser / raw parse)
+Schema / Definitions / Dtd / AnyElement / dict
+        │
+        ▼  (SchemaMapper / DefinitionsMapper / DtdMapper / ElementMapper / DictMapper)
+List[Class]
+        │
+        ▼  (ClassValidator, ClassContainer + handlers)
+List[Class]  (cleaned, resolved, deduplicated)
+        │
+        ▼  (DependenciesResolver, CodeWriter, DataclassGenerator, Filters)
+generated_package/*.py  (Python dataclasses)
+        │
+        ▼  (XmlContext, XmlParser / JsonParser, XmlSerializer / JsonSerializer)
+Runtime objects  <──────────────────────────────────────────────────────►  XML / JSON
+```
+
+This makes xsdata suitable both as a one-time code generator for schema-driven
+projects and as an ongoing runtime binding layer for XML/JSON APIs and
+document formats.

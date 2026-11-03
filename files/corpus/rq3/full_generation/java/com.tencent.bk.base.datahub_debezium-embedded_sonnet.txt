@@ -1,0 +1,174 @@
+# debezium-embedded
+
+`debezium-embedded` provides an embedded runtime for running Debezium (Kafka Connect) source connectors inside a standalone Java application, without requiring a full Kafka Connect cluster. It wraps connector, task, transformation, and predicate configuration into a simple, programmatic API so that change events can be consumed directly by application code.
+
+## Overview
+
+The library is built around a few core concepts:
+
+### `DebeziumEngine` implementations
+
+- **`EmbeddedEngine`** — the original embedded engine implementation. It implements `DebeziumEngine<SourceRecord>`, meaning it emits raw Kafka Connect `SourceRecord` instances. It is built via its static `create()` method, which returns a `Builder` that can be configured with connector properties, callbacks, and consumers. Once built, the engine is a `Runnable` you drive by calling `run()`; it can be interrupted via `stop()`, monitored with `isRunning()`, waited on with `await(...)`, and shut down with `close()`. The `runWithTask(Consumer<SourceTask>)` method exposes the underlying `SourceTask` for advanced use cases.
+
+- **`ConvertingEngineBuilder<R>`** — an implementation of `DebeziumEngine.Builder<R>` that converts internal records into a target format `R` before delivering them to consumers. It supports registering plain `Consumer<R>` callbacks or full `ChangeConsumer<R>` handlers, along with configuration via `Properties`, a custom `ClassLoader`, a `Clock`, a `CompletionCallback`, a `ConnectorCallback`, and an `OffsetCommitPolicy`. Calling `build()` produces a ready-to-run `DebeziumEngine<R>`.
+
+- **`ConvertingEngineBuilderFactory`** — a `BuilderFactory` implementation that produces `ConvertingEngineBuilder` instances pre-wired for specific serialization formats. It exposes two factory methods:
+  - `builder(ChangeEventFormat<V> format)` — for engines emitting `RecordChangeEvent<T>` in a single serialization format.
+  - `builder(KeyValueChangeEventFormat<K, V> format)` — for engines emitting `ChangeEvent<S, T>` with independent key/value serialization formats.
+
+  This factory is typically discovered and used through the generic `DebeziumEngine.create(...)` entry points, letting you choose the desired output format (e.g., JSON, Avro) without directly instantiating engine internals.
+
+### Connector
+
+- **`SimpleSourceConnector`** — a minimal `SourceConnector` implementation. It exposes the standard Kafka Connect connector lifecycle (`start`, `stop`, `taskConfigs`, `taskClass`, `config`, `version`) and can be used as a lightweight or example source connector when embedding Debezium, or as a basis for testing the embedded engine without depending on a specific database connector.
+
+### Supporting utilities
+
+- **`Predicates`** — loads and manages named record predicates from a `Configuration`. Use `getPredicate(String name)` to retrieve a `Predicate<SourceRecord>` that can be used to filter records (for example, before passing them to a transformation or consumer). Implements `Closeable` to release any resources held by predicate instances.
+
+- **`Transformations`** — loads and applies a configured chain of Kafka Connect single message transformations (SMTs) to `SourceRecord` instances. Call `transform(SourceRecord)` to apply the configured transformation pipeline to a single record. Also `Closeable`, to release transformation resources.
+
+- **`OffsetCommitPolicy`** (`io.debezium.embedded.spi`) — governs when the engine commits offsets back to the offset store. Static factories `always()` and `periodic(Configuration config)` provide ready-made policies, and the `and`/`or` default methods let you compose multiple policies into more complex commit strategies.
+
+- **`StopConnectorException`** — a `DebeziumException` subclass that can be thrown from consumer/handler code to signal that the embedded engine should stop processing and shut down gracefully.
+
+## How the pieces fit together
+
+1. You configure connector properties (database connection info, connector class, offset storage, transformations, predicates, etc.) as a `Properties`/`Configuration` object.
+2. You build a `DebeziumEngine` — either the classic `EmbeddedEngine` (raw `SourceRecord`s) or a format-specific engine via `ConvertingEngineBuilder`/`ConvertingEngineBuilderFactory` (converted `ChangeEvent`/`RecordChangeEvent` objects).
+3. You attach a consumer (`Consumer<R>` or `ChangeConsumer<R>`) to receive events, optionally supplying an `OffsetCommitPolicy`, `CompletionCallback`, and `ConnectorCallback` for lifecycle management.
+4. Internally, the engine may apply `Transformations` and `Predicates` configured for the connector before delivering records to your consumer.
+5. You run the engine (directly, or on an `ExecutorService`), and stop it via `stop()`/`close()`, or by throwing a `StopConnectorException` from your consumer.
+
+## Usage Examples
+
+### Running the classic embedded engine with raw `SourceRecord`s
+
+```java
+import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.engine.DebeziumEngine;
+import org.apache.kafka.connect.source.SourceRecord;
+
+import java.util.Properties;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+
+public class SimpleRunner {
+
+    public static void main(String[] args) throws Exception {
+        Properties config = new Properties();
+        config.setProperty("name", "my-connector");
+        config.setProperty("connector.class",
+                "io.debezium.connector.simple.SimpleSourceConnector");
+        config.setProperty("offset.storage",
+                "org.apache.kafka.connect.storage.FileOffsetBackingStore");
+        config.setProperty("offset.storage.file.filename", "/tmp/offsets.dat");
+        config.setProperty("offset.flush.interval.ms", "60000");
+
+        DebeziumEngine<SourceRecord> engine = EmbeddedEngine.create()
+                .using(config)
+                .notifying(record -> {
+                    System.out.println("Received change: " + record);
+                })
+                .build();
+
+        Executor executor = Executors.newSingleThreadExecutor();
+        executor.execute(engine::run);
+
+        // Later, to shut the engine down cleanly:
+        // engine.close();
+    }
+}
+```
+
+### Building a format-converting engine
+
+```java
+import io.debezium.engine.ChangeEvent;
+import io.debezium.engine.DebeziumEngine;
+import io.debezium.engine.format.Json;
+
+import java.util.Properties;
+
+public class JsonEngineRunner {
+
+    public static void main(String[] args) throws Exception {
+        Properties config = new Properties();
+        config.setProperty("name", "json-connector");
+        config.setProperty("connector.class",
+                "io.debezium.connector.simple.SimpleSourceConnector");
+
+        DebeziumEngine<ChangeEvent<String, String>> engine =
+                DebeziumEngine.create(Json.class)
+                        .using(config)
+                        .notifying((records, committer) -> {
+                            for (ChangeEvent<String, String> record : records) {
+                                System.out.println("key=" + record.key()
+                                        + ", value=" + record.value());
+                                committer.markProcessed(record);
+                            }
+                            committer.markBatchFinished();
+                        })
+                        .build();
+
+        engine.run();
+    }
+}
+```
+
+### Using an `OffsetCommitPolicy`
+
+```java
+import io.debezium.config.Configuration;
+import io.debezium.embedded.EmbeddedEngine;
+import io.debezium.embedded.spi.OffsetCommitPolicy;
+
+OffsetCommitPolicy policy = OffsetCommitPolicy
+        .periodic(Configuration.from(new java.util.Properties()))
+        .or(OffsetCommitPolicy.always());
+
+EmbeddedEngine.create()
+        .using(new java.util.Properties())
+        .using(policy)
+        .notifying(record -> System.out.println(record))
+        .build();
+```
+
+### Stopping processing from within a consumer
+
+```java
+import io.debezium.embedded.StopConnectorException;
+
+record -> {
+    if (shouldStop(record)) {
+        throw new StopConnectorException("Stopping engine on request");
+    }
+    process(record);
+};
+```
+
+### Applying transformations and predicates manually
+
+```java
+import io.debezium.config.Configuration;
+import io.debezium.embedded.Predicates;
+import io.debezium.embedded.Transformations;
+import org.apache.kafka.connect.source.SourceRecord;
+
+Configuration config = Configuration.from(new java.util.Properties());
+
+try (Transformations transformations = new Transformations(config);
+     Predicates predicates = new Predicates(config)) {
+
+    SourceRecord raw = getSourceRecordSomehow();
+
+    if (predicates.getPredicate("my-predicate").test(raw)) {
+        SourceRecord transformed = transformations.transform(raw);
+        System.out.println(transformed);
+    }
+}
+```
+
+## License
+
+See the repository's `LICENSE` file for licensing details.

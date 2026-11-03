@@ -1,0 +1,122 @@
+# grpc-runtime
+
+## Overview
+
+`io.buoyant:grpc-runtime_2.12` is a runtime support library that provides ZooKeeper-based leader election primitives, intended for coordinating distributed processes that need to elect a single leader among a group of candidates. It is used within the Buoyant/Linkerd ecosystem to support naming and service discovery components that rely on ZooKeeper for coordination.
+
+The library exposes a small, focused API centered around the concept of a "candidate" that can offer itself for leadership within a ZooKeeper-backed group, along with a simple abstraction for exceptional (checked-exception-throwing) commands.
+
+## Main Components
+
+### `Candidate`
+
+`Candidate` is the core interface representing a participant that can compete to become the leader within a ZooKeeper group. It exposes two operations:
+
+- **`getLeaderData()`** — Retrieves the data currently published by the elected leader, if any. Returns an `Optional<byte[]>`, allowing callers to determine whether a leader currently exists and what data it has published. This method can throw `ZooKeeperConnectionException`, `KeeperException`, or `InterruptedException` since it interacts directly with ZooKeeper.
+
+- **`offerLeadership(Leader leader)`** — Registers the given `Leader` implementation as a candidate for leadership. Returns a `Supplier<Boolean>` that can be used to check or control the candidate's leadership status. This method can throw `JoinException`, `WatchException`, or `InterruptedException` if the candidate fails to join the group or establish a watch.
+
+### `CandidateImpl`
+
+`CandidateImpl` is the concrete implementation of `Candidate`. It is constructed around a ZooKeeper `Group`, and offers several constructors depending on how much control you need:
+
+- **`CandidateImpl(Group group)`** — Basic constructor using default behavior for determining leadership and data.
+- **`CandidateImpl(Group group, Supplier<byte[]> dataSupplier)`** — Allows specifying the data this candidate will publish if it becomes leader.
+- **`CandidateImpl(Group group, Function<Iterable<String>, String> judge, Supplier<byte[]> dataSupplier)`** — Allows full customization: a "judge" function determines which member of the group should be considered the leader given the current group membership, in addition to a custom data supplier.
+
+`CandidateImpl` implements both methods from `Candidate`, using the underlying `Group` to coordinate membership and leadership election via ZooKeeper.
+
+### `ExceptionalCommand<E extends Exception>`
+
+`ExceptionalCommand` is a small functional interface representing a command/operation that may throw a checked exception of type `E` when executed:
+
+```java
+public void execute() throws E;
+```
+
+This abstraction is used throughout the leader-election machinery (and can be reused by consumers) to represent operations — such as leadership callbacks — that need to signal failure via checked exceptions rather than unchecked ones.
+
+## How the Pieces Fit Together
+
+1. You create a ZooKeeper `Group` representing the pool of processes competing for leadership.
+2. You wrap that group in a `CandidateImpl`, optionally supplying data to publish when elected leader and/or custom leader-selection logic.
+3. You implement a `Leader` callback that will be invoked when your candidate is elected leader.
+4. You call `offerLeadership(leader)` to enter the election. The returned `Supplier<Boolean>` lets you check whether your candidate is currently the leader.
+5. Any process (leader or not) can call `getLeaderData()` to discover what the current leader has published, if a leader exists.
+
+## Usage Example
+
+```java
+import com.twitter.common.zookeeper.Candidate;
+import com.twitter.common.zookeeper.CandidateImpl;
+import com.twitter.common.zookeeper.Group;
+import com.twitter.common.zookeeper.Leader;
+
+import java.util.Optional;
+import java.util.function.Supplier;
+
+public class LeaderElectionExample {
+
+    public static void main(String[] args) throws Exception {
+        // Assume `group` is a previously constructed ZooKeeper Group
+        // representing this service's candidate pool.
+        Group group = createZooKeeperGroup();
+
+        // Data this process will publish if it becomes leader.
+        Supplier<byte[]> myData = () -> "leader-info".getBytes();
+
+        Candidate candidate = new CandidateImpl(group, myData);
+
+        // Define what happens when this process becomes leader.
+        Leader leader = new Leader() {
+            @Override
+            public void onElected(ExceptionalCommand<?> abdicate) {
+                System.out.println("I am now the leader!");
+                // Perform leader duties here...
+            }
+
+            @Override
+            public void onDefeated() {
+                System.out.println("Lost leadership or failed to acquire it.");
+            }
+        };
+
+        // Offer this candidate for leadership.
+        Supplier<Boolean> isLeader = candidate.offerLeadership(leader);
+
+        // Later, check leadership status.
+        if (isLeader.get()) {
+            System.out.println("This process is currently the leader.");
+        }
+
+        // Any process can query the current leader's published data.
+        Optional<byte[]> leaderData = candidate.getLeaderData();
+        leaderData.ifPresent(data ->
+            System.out.println("Current leader data: " + new String(data)));
+    }
+}
+```
+
+### Custom Leader Selection
+
+If you need custom logic for determining which group member should be treated as the leader (for example, based on naming conventions or priority ordering of ephemeral node IDs), use the three-argument constructor:
+
+```java
+Function<Iterable<String>, String> lowestIdWins = memberIds -> {
+    return memberIds.iterator().next(); // e.g. lowest sequence number first
+};
+
+Candidate customCandidate = new CandidateImpl(group, lowestIdWins, myData);
+```
+
+## Exception Handling
+
+Because leader election is inherently dependent on network and ZooKeeper session state, most operations declare checked exceptions:
+
+- `ZooKeeperConnectionException` — Raised when the ZooKeeper client cannot connect.
+- `KeeperException` — General ZooKeeper operational errors.
+- `InterruptedException` — Raised if the current thread is interrupted while waiting on ZooKeeper operations.
+- `JoinException` — Raised when a candidate fails to join its group.
+- `WatchException` — Raised when a candidate fails to establish a watch necessary for detecting leadership changes.
+
+Callers should be prepared to handle these exceptions, particularly around transient connectivity issues with the ZooKeeper ensemble.

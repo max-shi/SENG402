@@ -1,6 +1,6 @@
 """
-apply_f7_manual_review — Interactive terminal helper for the manual
-F7 pass (§7.6.4).
+apply_f7_manual_review: Interactive terminal helper for the manual
+F7 pass.
 
 Two modes:
 
@@ -11,9 +11,9 @@ Two modes:
   spotcheck   --n N:      draw N random unreviewed rows from
                           sample_manifest_final.csv (seeded so the
                           draw is reproducible), and prompt the same
-                          way. Use this to defend "F7 was applied to
-                          all 400 rows, not only the 23 the heuristic
-                          flagged".
+                          way. This shows F7 was applied to all 400
+                          rows, not only the 23 the heuristic flagged.
+
 
 All decisions are written back into the WORKING manifest
 (sample_manifest.csv), not the final snapshot. This matters:
@@ -34,10 +34,11 @@ with `q` and pick up where you left off.
 
 Usage:
     venv/bin/python3 src/corpus/apply_f7_manual_review.py candidates \\
-        [--freeze-date YYYYMMDD] [--head-lines 40]
+        [--freeze-date <name>] [--head-lines 40]
 
     venv/bin/python3 src/corpus/apply_f7_manual_review.py spotcheck \\
-        --n 20 [--seed 402] [--freeze-date YYYYMMDD] [--head-lines 40]
+        --n 20 [--seed 402] [--freeze-date <name>] [--head-lines 40]
+
 """
 
 from __future__ import annotations

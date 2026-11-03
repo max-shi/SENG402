@@ -1,0 +1,167 @@
+# PyKafka
+
+PyKafka is a Python client library for [Apache Kafka](https://kafka.apache.org/). It provides a Pythonic interface for producing and consuming messages, managing topics and partitions, and interacting with Kafka's cluster metadata, consumer group coordination, and administrative APIs. PyKafka supports both a pure-Python implementation and an optional high-performance backend based on `librdkafka` (via the `rdkafka` module) for producers and simple consumers.
+
+## Features
+
+- Producing messages to Kafka topics, synchronously or asynchronously, with optional compression and custom partitioning
+- Consuming messages via a `SimpleConsumer` (single-process, direct partition ownership) or a `BalancedConsumer` (partition ownership balanced across a consumer group, optionally using Kafka's native group membership protocol)
+- Cluster and topic metadata discovery and refresh
+- Offset management: fetching, committing, and resetting consumer offsets
+- Administrative operations: creating/deleting topics, listing and describing consumer groups
+- Low-level protocol request/response objects for direct Kafka wire-protocol interaction
+- Pluggable I/O handling (threading-based by default) and SSL support for broker connections
+- Optional `librdkafka`-backed producer and consumer for improved throughput
+
+## Installation
+
+```bash
+pip install pykafka
+```
+
+To enable the `librdkafka`-based producer/consumer, install `librdkafka` and its Python bindings, then use the `use_rdkafka=True` option where available.
+
+## Core Concepts
+
+### `KafkaClient`
+
+The entry point for most applications. A `KafkaClient` connects to a Kafka cluster and exposes discovered topics.
+
+```python
+from pykafka import KafkaClient
+
+client = KafkaClient(hosts="127.0.0.1:9092,127.0.0.1:9093")
+client.update_cluster()  # refresh cluster/topic metadata
+
+print(client.cluster.topics.keys())
+```
+
+### `Cluster` and `Broker`
+
+`Cluster` maintains the current view of the Kafka cluster: known brokers (`Broker` instances) and topics (`TopicDict`). It handles metadata refresh, locating the offset-management coordinator for a consumer group, and negotiating supported API versions with brokers.
+
+`Broker` represents a single Kafka broker connection. It exposes low-level operations such as fetching messages, producing messages, requesting metadata, requesting offset limits, and coordinating consumer group membership (`join_group`, `sync_group`, `heartbeat`, `leave_group`), as well as administrative calls (`create_topics`, `delete_topics`, `list_groups`, `describe_groups`).
+
+### `Topic` and `Partition`
+
+A `Topic` (obtained from `client.cluster.topics['my-topic']` via `TopicDict`) represents a Kafka topic and its partitions. From a `Topic` you can:
+
+- Create a producer: `get_producer()` or `get_sync_producer()`
+- Create a consumer: `get_simple_consumer()` or `get_balanced_consumer()`
+- Inspect offset boundaries: `earliest_available_offsets()`, `latest_available_offsets()`, `fetch_offset_limits()`
+
+Each `Partition` represents a single topic partition, exposing its id, leader broker, replica set, in-sync replica set, and offset boundary lookups.
+
+### Producers
+
+`Producer` is the standard asynchronous/batching producer. It manages one `OwnedBroker` per destination broker, queuing messages and flushing them according to configured linger/batch settings. Use `produce()` to enqueue a message and `get_delivery_report()` to retrieve delivery acknowledgements.
+
+`RdKafkaProducer` is a drop-in, `librdkafka`-backed alternative with the same `start()`/`stop()` interface, created via `topic.get_producer(use_rdkafka=True)`.
+
+Partitioning strategies (`RandomPartitioner`, `HashingPartitioner`, `GroupHashingPartitioner`) determine which partition a message is routed to; a custom subclass of `BasePartitioner` can also be supplied.
+
+### Consumers
+
+- **`SimpleConsumer`**: consumes directly from a fixed set of partitions owned by this process. Supports manual offset management (`fetch_offsets`, `commit_offsets`, `reset_offsets`) and blocking or non-blocking `consume()`.
+- **`BalancedConsumer`**: coordinates with other consumers in the same consumer group to divide partitions among them, using either a legacy Zookeeper-based scheme or Kafka's native group membership protocol. Exposes `start()`, `stop()`, `consume()`, `commit_offsets()`, `reset_offsets()`, and `held_offsets()`.
+- **`ManagedBalancedConsumer`**: a `BalancedConsumer` variant that relies fully on Kafka's built-in consumer group management (join/sync/heartbeat/leave group), rather than external coordination.
+- **`RdKafkaSimpleConsumer`**: a `librdkafka`-backed variant of `SimpleConsumer` with the same high-level interface.
+
+Partition assignment for group-managed consumers is computed with `decide_partitions_range` or `decide_partitions_roundrobin`.
+
+### Protocol Layer
+
+The `pykafka.protocol` package contains request/response classes mirroring the Kafka wire protocol — metadata, produce, fetch, offset, offset commit/fetch, group membership (join/sync/heartbeat/leave), and administrative requests (create/delete topics, list/describe groups, API versions). These are primarily used internally by `Broker` and `Cluster`, but are available for advanced use cases requiring direct protocol access.
+
+### Connections and Handlers
+
+`BrokerConnection` manages the raw socket connection to a broker, optionally wrapped in TLS via `SslConfig`. `Handler` (and its default `ThreadingHandler` implementation) abstracts concurrency primitives (thread spawning, locking, sleeping) used throughout the library, allowing alternative execution models to be plugged in. `RequestHandler` sends requests over a connection and dispatches responses via `ResponseFuture` objects.
+
+### Exceptions
+
+All library-specific errors derive from `KafkaException`. Protocol-level errors returned by Kafka (e.g. `OffsetOutOfRangeError`, `NotLeaderForPartition`, `GroupCoordinatorNotAvailable`, `TopicAuthorizationFailed`) derive from `ProtocolClientError` and are raised automatically when a broker response indicates failure.
+
+### Utilities
+
+The `pykafka.utils` package provides supporting functionality: UTF-8 (de)serialization helpers, gzip/snappy/LZ4 (de)compression codecs, socket helpers, struct packing/unpacking helpers for the binary protocol, and error-handling utilities for processing per-partition responses.
+
+## Usage Examples
+
+### Connecting and Producing
+
+```python
+from pykafka import KafkaClient
+
+client = KafkaClient(hosts="127.0.0.1:9092")
+topic = client.topics['my-topic']
+
+with topic.get_sync_producer() as producer:
+    for i in range(10):
+        producer.produce(b'message %d' % i)
+```
+
+### Asynchronous Producer with Delivery Reports
+
+```python
+producer = topic.get_producer(delivery_reports=True)
+producer.start()
+
+for i in range(100):
+    producer.produce(b'payload-%d' % i, partition_key=b'key-%d' % (i % 4))
+
+for _ in range(100):
+    msg, exc = producer.get_delivery_report(block=True)
+    if exc is not None:
+        print("Failed to deliver message: %s" % exc)
+
+producer.stop()
+```
+
+### Simple Consumer
+
+```python
+consumer = topic.get_simple_consumer(consumer_group=b'my-group')
+
+for message in consumer:
+    if message is not None:
+        print(message.offset, message.value)
+```
+
+### Balanced Consumer (Consumer Group)
+
+```python
+balanced_consumer = topic.get_balanced_consumer(
+    consumer_group=b'my-group',
+    managed=True,          # use Kafka's native group membership protocol
+    auto_commit_enable=True,
+)
+
+balanced_consumer.start()
+try:
+    while True:
+        message = balanced_consumer.consume()
+        if message is not None:
+            print(message.partition_id, message.offset, message.value)
+finally:
+    balanced_consumer.stop()
+```
+
+### Inspecting Cluster Metadata
+
+```python
+client.update_cluster()
+
+for name, topic in client.cluster.topics.values():
+    print(name, [p.id for p in topic.partitions.values()])
+```
+
+### Using librdkafka-backed Components
+
+```python
+producer = topic.get_producer(use_rdkafka=True)
+consumer = topic.get_simple_consumer(use_rdkafka=True, consumer_group=b'my-group')
+```
+
+## License
+
+See the `LICENSE` file for details.

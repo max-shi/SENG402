@@ -1,0 +1,179 @@
+timestamp,package_name,ecosystem,safe_name,n_prose_files,raw_char_count,word_count_post_clean,word_capped,english_fraction,paragraphs_checked,status,reason
+2026-08-05T08:22:42.951168+00:00,opentelemetry-instrumentation-falcon,python,opentelemetry-instrumentation-falcon,1,1392,168,false,0.0,0,F5_fail,word_count_post_clean=168 < 500
+2026-08-05T08:22:43.120867+00:00,apache-airflow-providers-docker,python,apache-airflow-providers-docker,7,8646,1222,false,0.987,79,ready,
+2026-08-05T08:22:43.658888+00:00,google-cloud-securitycenter,python,google-cloud-securitycenter,18,13471,1953,false,0.917,109,ready,
+2026-08-05T08:22:44.391007+00:00,google-cloud-kms,python,google-cloud-kms,18,13778,1994,false,0.917,108,ready,
+2026-08-05T08:22:45.235269+00:00,odoo-addon-l10n-it-fatturapa-out,python,odoo-addon-l10n-it-fatturapa-out,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:45.280170+00:00,azure-mgmt-containerregistry,python,azure-mgmt-containerregistry,1,1209,173,false,0.0,0,F5_fail,word_count_post_clean=173 < 500
+2026-08-05T08:22:45.659833+00:00,apache-airflow-providers-imap,python,apache-airflow-providers-imap,7,3810,520,false,1.0,30,ready,
+2026-08-05T08:22:45.932347+00:00,cupy-cuda90,python,cupy-cuda90,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:45.951091+00:00,google-cloud-runtimeconfig,python,google-cloud-runtimeconfig,9,10325,1562,false,0.844,77,ready,
+2026-08-05T08:22:46.647754+00:00,opentelemetry-instrumentation-kafka-python,python,opentelemetry-instrumentation-kafka-python,1,162,13,false,0.0,0,F5_fail,word_count_post_clean=13 < 500
+2026-08-05T08:22:46.692806+00:00,opentelemetry-instrumentation-starlette,python,opentelemetry-instrumentation-starlette,1,373,38,false,0.0,0,F5_fail,word_count_post_clean=38 < 500
+2026-08-05T08:22:46.741406+00:00,cupy-cuda100,python,cupy-cuda100,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:46.762124+00:00,azure-mgmt-authorization,python,azure-mgmt-authorization,1,1226,174,false,0.0,0,F5_fail,word_count_post_clean=174 < 500
+2026-08-05T08:22:47.071486+00:00,types-cachetools,python,types-cachetools,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:47.192070+00:00,odoo14-addon-l10n-it-fatturapa-out,python,odoo14-addon-l10n-it-fatturapa-out,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:47.240875+00:00,types-decorator,python,types-decorator,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:47.360061+00:00,org.sonatype.nexus:nexus-swagger,java,org.sonatype.nexus_nexus-swagger,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:47.393485+00:00,org.neo4j:neo4j-schema,java,org.neo4j_neo4j-schema,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:47.436626+00:00,io.arrow-kt:arrow-mtl,java,io.arrow-kt_arrow-mtl,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:47.449429+00:00,io.fabric8:crd-generator-apt,java,io.fabric8_crd-generator-apt,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:47.496770+00:00,org.apache.camel.quarkus:camel-quarkus-file,java,org.apache.camel.quarkus_camel-quarkus-file,1,197,27,false,0.0,0,F5_fail,word_count_post_clean=27 < 500
+2026-08-05T08:22:47.724246+00:00,org.jboss.weld.environment:weld-environment-common,java,org.jboss.weld.environment_weld-environment-common,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:47.734803+00:00,org.apereo.cas:cas-server-support-webauthn,java,org.apereo.cas_cas-server-support-webauthn,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:47.893496+00:00,io.openliberty.features:openidConnectServer-1.0,java,io.openliberty.features_openidConnectServer-1.0,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:49.273064+00:00,li.strolch:li.strolch.model,java,li.strolch_li.strolch.model,1,126,17,false,0.0,0,F5_fail,word_count_post_clean=17 < 500
+2026-08-05T08:22:49.289894+00:00,io.openliberty.features:io.openliberty.openidConnectServer1.0.internal.ee-6.0,java,io.openliberty.features_io.openliberty.openidConnectServer1.0.internal.ee-6.0,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:50.779061+00:00,io.fabric8:volumesnapshot-server-mock,java,io.fabric8_volumesnapshot-server-mock,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:50.821796+00:00,org.neo4j:neo4j-cypher-commons,java,org.neo4j_neo4j-cypher-commons,1,1468,194,false,0.0,0,F5_fail,word_count_post_clean=194 < 500
+2026-08-05T08:22:50.848602+00:00,org.glassfish.main.jdbc.jdbc-ra.jdbc-ra-distribution:jdbc-ra,java,org.glassfish.main.jdbc.jdbc-ra.jdbc-ra-distribution_jdbc-ra,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:50.900487+00:00,dev.zio:zio-test-sbt_native0.4_2.11,java,dev.zio_zio-test-sbt_native0.4_2.11,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:50.921511+00:00,io.kotest:kotest-property-tvossimulatorarm64,java,io.kotest_kotest-property-tvossimulatorarm64,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:50.971207+00:00,org.apache.camel.quarkus:camel-quarkus-jgroups-raft,java,org.apache.camel.quarkus_camel-quarkus-jgroups-raft,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:51.122817+00:00,org.apache.camel.quarkus:camel-quarkus-etcd3,java,org.apache.camel.quarkus_camel-quarkus-etcd3,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:51.273417+00:00,org.eclipse.che.core:che-core-commons-test,java,org.eclipse.che.core_che-core-commons-test,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:51.296928+00:00,org.spark-project.akka:akka-actor_2.10,java,org.spark-project.akka_akka-actor_2.10,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:51.330693+00:00,org.locationtech.geotrellis:geotrellis-s3_2.11,java,org.locationtech.geotrellis_geotrellis-s3_2.11,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:51.354074+00:00,software.amazon.awssdk:iot,java,software.amazon.awssdk_iot,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:51.498113+00:00,org.apereo.cas:cas-server-support-ws-idp-api,java,org.apereo.cas_cas-server-support-ws-idp-api,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:51.636016+00:00,com.google.api.grpc:grpc-google-cloud-orgpolicy-v2,java,com.google.api.grpc_grpc-google-cloud-orgpolicy-v2,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:51.986215+00:00,com.typesafe.akka:akka-persistence_2.12.0-RC1,java,com.typesafe.akka_akka-persistence_2.12.0-RC1,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.025514+00:00,org.apache.shardingsphere:shardingsphere-infra-context,java,org.apache.shardingsphere_shardingsphere-infra-context,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.058574+00:00,org.apache.shardingsphere:shardingsphere-transaction-core,java,org.apache.shardingsphere_shardingsphere-transaction-core,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.090921+00:00,io.arrow-kt:arrow-core-js,java,io.arrow-kt_arrow-core-js,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.102078+00:00,org.sonatype.nexus.plugins:nexus-rapture-plugin,java,org.sonatype.nexus.plugins_nexus-rapture-plugin,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.109251+00:00,org.apache.camel.quarkus:camel-quarkus-jooq-deployment,java,org.apache.camel.quarkus_camel-quarkus-jooq-deployment,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.289905+00:00,org.locationtech.geotrellis:geotrellis-vector_2.13,java,org.locationtech.geotrellis_geotrellis-vector_2.13,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.310786+00:00,org.jboss.weld:weld-core-test,java,org.jboss.weld_weld-core-test,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.318246+00:00,org.apache.camel.quarkus:camel-quarkus-protobuf,java,org.apache.camel.quarkus_camel-quarkus-protobuf,1,1507,139,false,0.0,0,F5_fail,word_count_post_clean=139 < 500
+2026-08-05T08:22:52.446643+00:00,io.kotest:kotest-framework-discovery-jvm,java,io.kotest_kotest-framework-discovery-jvm,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.469998+00:00,org.neo4j:neo4j-consistency-check,java,org.neo4j_neo4j-consistency-check,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:52.497408+00:00,dev.zio:zio-streams_sjs0.6_2.12,java,dev.zio_zio-streams_sjs0.6_2.12,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.505553+00:00,org.apereo.cas:cas-server-core-authentication-mfa,java,org.apereo.cas_cas-server-core-authentication-mfa,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:52.600713+00:00,org.apache.camel.quarkus:camel-quarkus-kudu-deployment,java,org.apache.camel.quarkus_camel-quarkus-kudu-deployment,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:52.734016+00:00,io.openliberty.features:io.openliberty.jakarta.activation-2.0,java,io.openliberty.features_io.openliberty.jakarta.activation-2.0,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:53.714265+00:00,io.arrow-kt:arrow-effects,java,io.arrow-kt_arrow-effects,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:53.723427+00:00,org.eclipse.che.plugin:org.eclipse.core.filebuffers,java,org.eclipse.che.plugin_org.eclipse.core.filebuffers,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:53.772883+00:00,com.google.api.grpc:proto-google-cloud-networkconnectivity-v1alpha1,java,com.google.api.grpc_proto-google-cloud-networkconnectivity-v1alpha1,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:22:53.808888+00:00,li.strolch:li.strolch.privilege,java,li.strolch_li.strolch.privilege,1,3281,532,false,1.0,15,ready,
+2026-08-05T08:22:53.849334+00:00,org.glassfish.main.common:container-common,java,org.glassfish.main.common_container-common,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:53.885301+00:00,org.apereo.cas:cas-server-support-throttle,java,org.apereo.cas_cas-server-support-throttle,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:22:53.975180+00:00,software.amazon.awssdk:aws-sdk-java,java,software.amazon.awssdk_aws-sdk-java,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:29:01.014220+00:00,sphinx-paramlinks,python,sphinx-paramlinks,1,4440,708,false,1.0,38,ready,
+2026-08-05T08:29:01.406083+00:00,sahi,python,sahi,34,28103,3926,false,0.93,115,ready,
+2026-08-05T08:29:01.932377+00:00,speechrecognition,python,speechrecognition,2,18240,2604,false,0.975,119,ready,
+2026-08-05T08:29:02.355330+00:00,flaskwebgui,python,flaskwebgui,1,4607,739,false,1.0,53,ready,
+2026-08-05T08:29:02.483539+00:00,plumbum,python,plumbum,22,70543,11107,false,1.0,61,ready,
+2026-08-05T08:29:02.984329+00:00,openshift,python,openshift,7,7199,1115,false,1.0,48,ready,
+2026-08-05T08:29:03.086828+00:00,pyqrcode,python,pyqrcode,10,18635,3148,false,1.0,87,ready,
+2026-08-05T08:29:03.286328+00:00,mkdocs-git-revision-date-plugin,python,mkdocs-git-revision-date-plugin,1,1307,216,false,0.0,0,F5_fail,word_count_post_clean=216 < 500
+2026-08-05T08:29:03.291388+00:00,pykafka,python,pykafka,24,14267,2139,false,0.975,79,ready,
+2026-08-05T08:29:03.573236+00:00,mf2py,python,mf2py,3,2556,393,false,0.0,0,F5_fail,word_count_post_clean=393 < 500
+2026-08-05T08:29:03.586213+00:00,visvalingamwyatt,python,visvalingamwyatt,1,517,78,false,0.0,0,F5_fail,word_count_post_clean=78 < 500
+2026-08-05T08:29:03.590762+00:00,org.bitbucket.bradleysmithllc.etlunit:core,java,org.bitbucket.bradleysmithllc.etlunit_core,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:29:03.643461+00:00,au.csiro:elk-owl-implementation,java,au.csiro_elk-owl-implementation,5,9219,1314,false,0.962,53,ready,
+2026-08-05T08:29:04.011500+00:00,org.typelevel:munit-cats-effect-2_3,java,org.typelevel_munit-cats-effect-2_3,1,1241,201,false,0.0,0,F5_fail,word_count_post_clean=201 < 500
+2026-08-05T08:29:04.026091+00:00,site.morn.boot:morn-boot-data,java,site.morn.boot_morn-boot-data,1,1229,76,false,0.0,0,F5_fail,word_count_post_clean=76 < 500
+2026-08-05T08:29:04.065335+00:00,org.apache.oodt:cas-cli,java,org.apache.oodt_cas-cli,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:29:04.068027+00:00,org.jasig.resourceserver:resource-server-utils,java,org.jasig.resourceserver_resource-server-utils,4,3365,527,false,1.0,26,ready,
+2026-08-05T08:29:04.298532+00:00,com.thesamet.scalapb:protoc-gen_2.13,java,com.thesamet.scalapb_protoc-gen_2.13,1,82,13,false,0.0,0,F5_fail,word_count_post_clean=13 < 500
+2026-08-05T08:29:04.304315+00:00,org.jgrapht:jgrapht-guava,java,org.jgrapht_jgrapht-guava,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:29:04.314372+00:00,org.wso2.carbon.identity.inbound.auth.saml2:org.wso2.carbon.identity.sso.saml,java,org.wso2.carbon.identity.inbound.auth.saml2_org.wso2.carbon.identity.sso.saml,1,389,44,false,0.0,0,F5_fail,word_count_post_clean=44 < 500
+2026-08-05T08:29:04.333892+00:00,com.softwaremill.sttp.tapir:tapir-core_native0.4_3,java,com.softwaremill.sttp.tapir_tapir-core_native0.4_3,75,200937,28692,false,0.937,126,ready,
+2026-08-05T08:29:05.029827+00:00,com.whisk:docker-testkit-scalatest_2.13,java,com.whisk_docker-testkit-scalatest_2.13,1,1608,227,false,0.0,0,F5_fail,word_count_post_clean=227 < 500
+2026-08-05T08:29:05.041212+00:00,io.shulie.takin:takin-cloud-biz-service,java,io.shulie.takin_takin-cloud-biz-service,1,59,7,false,0.0,0,F5_fail,word_count_post_clean=7 < 500
+2026-08-05T08:29:05.059101+00:00,org.eclipse.jetty.websocket:websocket-core-common,java,org.eclipse.jetty.websocket_websocket-core-common,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:29:05.146476+00:00,com.gwtplatform:gwtp-tester,java,com.gwtplatform_gwtp-tester,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:29:05.155112+00:00,io.opencensus:opencensus-api,java,io.opencensus_opencensus-api,39,40974,6112,false,0.916,131,ready,
+2026-08-05T08:29:05.645179+00:00,com.soywiz:korui,java,com.soywiz_korui,1,57,3,false,0.0,0,F5_fail,word_count_post_clean=3 < 500
+2026-08-05T08:29:05.648249+00:00,io.openliberty.features:microProfile-3.3,java,io.openliberty.features_microProfile-3.3,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:29:06.742265+00:00,org.jboss.ironjacamar:ironjacamar-common-impl,java,org.jboss.ironjacamar_ironjacamar-common-impl,1,19600,2648,false,0.967,122,ready,
+2026-08-05T08:29:07.126267+00:00,org.wildfly:wildfly-cmp,java,org.wildfly_wildfly-cmp,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:29:07.186687+00:00,org.sakaiproject.taggable:sakai-taggable-api,java,org.sakaiproject.taggable_sakai-taggable-api,204,486976,73004,false,0.951,122,ready,
+2026-08-05T08:29:08.771375+00:00,io.nuls.protocol-module:protocol,java,io.nuls.protocol-module_protocol,8,2128,310,false,0.0,0,F5_fail,word_count_post_clean=310 < 500
+2026-08-05T08:29:08.847849+00:00,org.sonatype.nexus.plugins:nexus-blobstore-tasks,java,org.sonatype.nexus.plugins_nexus-blobstore-tasks,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:29:08.877195+00:00,io.github.autumn-framework:autumn-reporting,java,io.github.autumn-framework_autumn-reporting,1,2411,346,false,0.0,0,F5_fail,word_count_post_clean=346 < 500
+2026-08-05T08:29:08.891334+00:00,com.oracle.oci.sdk:oci-java-sdk-resourcemanager,java,com.oracle.oci.sdk_oci-java-sdk-resourcemanager,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:29:08.972157+00:00,org.ops4j.pax.cdi:pax-cdi-extension,java,org.ops4j.pax.cdi_pax-cdi-extension,2,1047,132,false,0.0,0,F5_fail,word_count_post_clean=132 < 500
+2026-08-05T08:29:09.013719+00:00,org.gjgr.pig:pig-chivalrous-exclude,java,org.gjgr.pig_pig-chivalrous-exclude,4,1551,182,false,0.0,0,F5_fail,word_count_post_clean=182 < 500
+2026-08-05T08:29:09.062967+00:00,com.arpnetworking.metrics.extras:apache-http-sink-extra,java,com.arpnetworking.metrics.extras_apache-http-sink-extra,1,1403,215,false,0.0,0,F5_fail,word_count_post_clean=215 < 500
+2026-08-05T08:29:09.069670+00:00,io.ktor:ktor-http-watchosx64,java,io.ktor_ktor-http-watchosx64,4,4315,657,false,0.971,34,ready,
+2026-08-05T08:29:09.443602+00:00,org.mobicents.tools:heartbeat-api,java,org.mobicents.tools_heartbeat-api,16,111011,14321,false,0.975,160,ready,
+2026-08-05T08:29:10.015861+00:00,wtf.metio.yosql.internals:yosql-internals-jdk-utils,java,wtf.metio.yosql.internals_yosql-internals-jdk-utils,38,88119,15301,false,0.97,135,ready,
+2026-08-05T08:29:10.593747+00:00,org.ifinal.finalframework.auto:final-auto-spring,java,org.ifinal.finalframework.auto_final-auto-spring,39,9934,1231,false,0.565,23,ready,
+2026-08-05T08:29:10.924206+00:00,org.openl:org.openl.grammars,java,org.openl_org.openl.grammars,13,12093,1683,false,0.966,88,ready,
+2026-08-05T08:29:11.882137+00:00,org.jboss.arquillian.container:arquillian-container-osgi-tests,java,org.jboss.arquillian.container_arquillian-container-osgi-tests,1,1391,200,false,0.0,0,F5_fail,word_count_post_clean=200 < 500
+2026-08-05T08:29:11.902143+00:00,com.natpryce:make-it-easy,java,com.natpryce_make-it-easy,1,1378,231,false,0.0,0,F5_fail,word_count_post_clean=231 < 500
+2026-08-05T08:29:11.916441+00:00,org.locationtech.geomesa:geomesa-accumulo-datastore_2.12,java,org.locationtech.geomesa_geomesa-accumulo-datastore_2.12,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:29:11.970299+00:00,com.faasadmin:faas-excel,java,com.faasadmin_faas-excel,2,3564,278,false,0.0,0,F5_fail,word_count_post_clean=278 < 500
+2026-08-05T08:29:12.032715+00:00,org.webjars.npm:etag,java,org.webjars.npm_etag,1,798,137,false,0.0,0,F5_fail,word_count_post_clean=137 < 500
+2026-08-05T08:29:12.038716+00:00,com.cedarsoft.commons:exceptions,java,com.cedarsoft.commons_exceptions,5,7305,947,false,0.885,61,ready,
+2026-08-05T08:29:12.403361+00:00,org.jboss.as:jboss-as-naming,java,org.jboss.as_jboss-as-naming,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:29:12.450720+00:00,org.brightify.hyperdrive:krpc-annotations-tvossimulatorarm64,java,org.brightify.hyperdrive_krpc-annotations-tvossimulatorarm64,18,12008,1754,false,0.925,107,ready,
+2026-08-05T08:29:12.839414+00:00,io.github.microutils:kotlin-logging-mingwx64,java,io.github.microutils_kotlin-logging-mingwx64,3,6094,843,false,0.911,45,ready,
+2026-08-05T08:29:12.982248+00:00,cn.leancloud:realtime-core,java,cn.leancloud_realtime-core,1,2961,379,false,0.0,0,F5_fail,word_count_post_clean=379 < 500
+2026-08-05T08:29:13.053154+00:00,org.scalatestplus:scalacheck-1-17_sjs1_2.12,java,org.scalatestplus_scalacheck-1-17_sjs1_2.12,1,1446,206,false,0.0,0,F5_fail,word_count_post_clean=206 < 500
+2026-08-05T08:29:13.061976+00:00,org.jboss.forge.addon:environment,java,org.jboss.forge.addon_environment,1,2195,279,false,0.0,0,F5_fail,word_count_post_clean=279 < 500
+2026-08-05T08:32:39.899633+00:00,bashlex,python,bashlex,1,1640,251,false,0.0,0,F5_fail,word_count_post_clean=251 < 500
+2026-08-05T08:32:39.938391+00:00,nbconvert,python,nbconvert,26,53355,8331,false,0.985,132,ready,
+2026-08-05T08:32:40.785990+00:00,xgbse,python,xgbse,18,42930,6383,false,1.0,19,ready,
+2026-08-05T08:32:41.036634+00:00,org.apache.tomee:tomee-webservices,java,org.apache.tomee_tomee-webservices,215,856308,100000,true,1.0,1,ready,
+2026-08-05T08:32:41.912177+00:00,org.apache.camel.quarkus:camel-quarkus-aws2-iam,java,org.apache.camel.quarkus_camel-quarkus-aws2-iam,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:32:42.175899+00:00,com.lihaoyi:pprint_2.10,java,com.lihaoyi_pprint_2.10,1,71,10,false,0.0,0,F5_fail,word_count_post_clean=10 < 500
+2026-08-05T08:32:42.181516+00:00,com.ibm.icu:icu4j-localespi,java,com.ibm.icu_icu4j-localespi,169,1261476,100000,true,1.0,1,ready,
+2026-08-05T08:32:44.339170+00:00,org.activiti:activiti-common-rest,java,org.activiti_activiti-common-rest,8,7948,1179,false,0.952,83,ready,
+2026-08-05T08:32:44.965748+00:00,org.ctoolkit.test:ctoolkit-test,java,org.ctoolkit.test_ctoolkit-test,1,95,13,false,0.0,0,F5_fail,word_count_post_clean=13 < 500
+2026-08-05T08:32:44.974193+00:00,org.wso2.carbon.identity.governance:org.wso2.carbon.identity.tenant.resource.manager,java,org.wso2.carbon.identity.governance_org.wso2.carbon.identity.tenant.resource.manager,1,368,44,false,0.0,0,F5_fail,word_count_post_clean=44 < 500
+2026-08-05T08:32:45.030745+00:00,org.noear:solon.sessionstate.local,java,org.noear_solon.sessionstate.local,65,17622,1786,false,0.533,15,ready,
+2026-08-05T08:32:45.490313+00:00,com.lihaoyi:acyclic_2.12.10,java,com.lihaoyi_acyclic_2.12.10,1,11333,1594,false,0.928,83,ready,
+2026-08-05T08:32:45.765726+00:00,com.vaadin:vaadin-themes,java,com.vaadin_vaadin-themes,259,1510439,100000,true,1.0,1,ready,
+2026-08-05T08:32:46.376593+00:00,org.bitcoin-s:bitcoin-s-async-utils_2.13,java,org.bitcoin-s_bitcoin-s-async-utils_2.13,75,184261,26847,false,0.965,143,ready,
+2026-08-05T08:32:47.180269+00:00,org.jvnet.hyperjaxb3:hyperjaxb3-ejb-plugin,java,org.jvnet.hyperjaxb3_hyperjaxb3-ejb-plugin,1,71,8,false,0.0,0,F5_fail,word_count_post_clean=8 < 500
+2026-08-05T08:32:47.392993+00:00,co.touchlab:stately-concurrency-mingwx64,java,co.touchlab_stately-concurrency-mingwx64,2,4744,772,false,1.0,30,ready,
+2026-08-05T08:32:47.516285+00:00,ru.sbtqa.tag.datajack.providers:json-provider,java,ru.sbtqa.tag.datajack.providers_json-provider,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:32:47.521227+00:00,org.powermock:powermock,java,org.powermock_powermock,2,10764,1563,false,0.922,116,ready,
+2026-08-05T08:32:48.036807+00:00,com.github.javafaker:javafaker,java,com.github.javafaker_javafaker,1,1894,257,false,0.0,0,F5_fail,word_count_post_clean=257 < 500
+2026-08-05T08:32:48.064497+00:00,org.eclipse.dataspaceconnector:s3-core,java,org.eclipse.dataspaceconnector_s3-core,148,277226,42204,false,0.966,117,ready,
+2026-08-05T08:32:49.065921+00:00,com.google.api.grpc:proto-google-common-protos,java,com.google.api.grpc_proto-google-common-protos,15,33515,4911,false,0.93,115,ready,
+2026-08-05T08:32:49.878980+00:00,com.alibaba.nacos:nacos-api,java,com.alibaba.nacos_nacos-api,7,13112,1941,false,0.926,94,ready,
+2026-08-05T08:32:50.436343+00:00,com.buschmais.jqassistant.plugin:common,java,com.buschmais.jqassistant.plugin_common,5,18940,2036,false,0.85,80,ready,
+2026-08-05T08:32:50.847941+00:00,org.geomajas.widget:geomajas-widget-featureinfo-gwt,java,org.geomajas.widget_geomajas-widget-featureinfo-gwt,2,1406,220,false,0.0,0,F5_fail,word_count_post_clean=220 < 500
+2026-08-05T08:32:51.040024+00:00,org.comroid:interfaces,java,org.comroid_interfaces,1,57,7,false,0.0,0,F5_fail,word_count_post_clean=7 < 500
+2026-08-05T08:32:51.052075+00:00,net.jsign:jsign-core,java,net.jsign_jsign-core,5,40973,6385,false,0.985,134,ready,
+2026-08-05T08:32:51.461642+00:00,org.jbundle.util:org.jbundle.util.muffinmanager,java,org.jbundle.util_org.jbundle.util.muffinmanager,3,279,36,false,0.0,0,F5_fail,word_count_post_clean=36 < 500
+2026-08-05T08:32:51.466694+00:00,org.jboss.arquillian.extension:arquillian-warp-impl,java,org.jboss.arquillian.extension_arquillian-warp-impl,7,19088,2700,false,0.927,151,ready,
+2026-08-05T08:32:52.028825+00:00,org.apache.activemq:artemis-jms-server,java,org.apache.activemq_artemis-jms-server,122,1046233,100000,true,1.0,1,ready,
+2026-08-05T08:32:52.534116+00:00,org.openscience.cdk:cdk-core,java,org.openscience.cdk_cdk-core,3,2920,452,false,0.0,0,F5_fail,word_count_post_clean=452 < 500
+2026-08-05T08:32:52.839965+00:00,io.quarkus:quarkus-jackson-deployment,java,io.quarkus_quarkus-jackson-deployment,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:32:52.992546+00:00,org.jboss.forge.addon:convert,java,org.jboss.forge.addon_convert,1,3896,487,false,0.0,0,F5_fail,word_count_post_clean=487 < 500
+2026-08-05T08:32:53.026704+00:00,io.fabric8:fabric-project-deployer,java,io.fabric8_fabric-project-deployer,1,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:34:31.337491+00:00,pyston,python,pyston,53,174280,26362,false,0.955,176,ready,
+2026-08-05T08:34:31.938422+00:00,org.netbeans.api:org-netbeans-modules-editor-plain-lib,java,org.netbeans.api_org-netbeans-modules-editor-plain-lib,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:34:31.940517+00:00,org.ton:ton-kotlin-tlb-macosx64,java,org.ton_ton-kotlin-tlb-macosx64,1,591,69,false,0.0,0,F5_fail,word_count_post_clean=69 < 500
+2026-08-05T08:34:31.966175+00:00,com.github.xingePush:xinge,java,com.github.xingePush_xinge,99,88726,9644,false,0.632,19,ready,
+2026-08-05T08:34:32.570630+00:00,org.mobicents.protocols.ss7.sccp:sccp-impl,java,org.mobicents.protocols.ss7.sccp_sccp-impl,59,589308,75349,false,0.943,122,ready,
+2026-08-05T08:34:33.174982+00:00,com.thoughtworks.dsl:dsl_sjs0.6_2.11,java,com.thoughtworks.dsl_dsl_sjs0.6_2.11,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:34:33.188210+00:00,org.hibernate.ogm:hibernate-ogm-bom,java,org.hibernate.ogm_hibernate-ogm-bom,17,299707,39563,false,0.881,151,ready,
+2026-08-05T08:34:33.738196+00:00,net.jkcode.jkmvc:jkmvc-orm,java,net.jkcode.jkmvc_jkmvc-orm,42,57478,7968,false,0.719,57,ready,
+2026-08-05T08:34:34.044606+00:00,org.eclipse.jetty.websocket:websocket-core-server,java,org.eclipse.jetty.websocket_websocket-core-server,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:34:34.127100+00:00,org.knowm.xchart:xchart,java,org.knowm.xchart_xchart,1,15624,2634,false,0.952,84,ready,
+2026-08-05T08:34:34.354333+00:00,dev.binis:code-generator-core,java,dev.binis_code-generator-core,1,973,67,false,0.0,0,F5_fail,word_count_post_clean=67 < 500
+2026-08-05T08:34:34.363473+00:00,dev.zio:zio-streams_3,java,dev.zio_zio-streams_3,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:34:34.388058+00:00,org.codelibs:xpp3,java,org.codelibs_xpp3,1,877,145,false,0.0,0,F5_fail,word_count_post_clean=145 < 500
+2026-08-05T08:34:34.394828+00:00,de.julielab:jcore-mallet-2.0.9,java,de.julielab_jcore-mallet-2.0.9,412,1374720,100000,true,1.0,1,ready,
+2026-08-05T08:34:37.363340+00:00,net.katsstuff:scammander_2.12,java,net.katsstuff_scammander_2.12,1,3631,638,false,1.0,16,ready,
+2026-08-05T08:35:27.728518+00:00,org.drools:drools-ruleunits-engine,java,org.drools_drools-ruleunits-engine,27,46142,7005,false,0.952,146,ready,
+2026-08-05T08:35:28.528014+00:00,org.openidentityplatform.openam:openam-license-manager-cli,java,org.openidentityplatform.openam_openam-license-manager-cli,0,0,0,false,0.0,0,F5_fail,no prose files extracted
+2026-08-05T08:35:28.555340+00:00,cz.seznam.euphoria:euphoria-operator-testkit,java,cz.seznam.euphoria_euphoria-operator-testkit,2,3693,561,false,0.871,31,ready,
+2026-08-05T08:35:28.659624+00:00,com.seanshubin.detangler:detangler-collection,java,com.seanshubin.detangler_detangler-collection,1,924,128,false,0.0,0,F5_fail,word_count_post_clean=128 < 500
+2026-08-05T08:35:28.675226+00:00,io.github.neofreko:graphwalker-io,java,io.github.neofreko_graphwalker-io,13,14514,2055,false,0.934,76,ready,
+2026-08-05T08:35:28.882221+00:00,com.twitter:bijection-avro_2.10,java,com.twitter_bijection-avro_2.10,2,3727,564,false,0.971,34,ready,
+2026-08-05T08:35:28.957952+00:00,org.jboss.spec.javax.security.auth.message:jboss-jaspi-api_1.1_spec,java,org.jboss.spec.javax.security.auth.message_jboss-jaspi-api_1.1_spec,2,1070,151,false,0.0,0,F5_fail,word_count_post_clean=151 < 500
+2026-08-05T08:35:53.416995+00:00,org.springframework.xd:spring-xd-module-spi,java,org.springframework.xd_spring-xd-module-spi,25,22375,3343,false,0.948,116,ready,
+2026-08-05T08:35:53.873391+00:00,com.google.api.grpc:proto-google-cloud-apikeys-v2,java,com.google.api.grpc_proto-google-cloud-apikeys-v2,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:35:53.899834+00:00,org.openjdk.jol:jol-core,java,org.openjdk.jol_jol-core,1,1364,203,false,0.0,0,F5_fail,word_count_post_clean=203 < 500
+2026-08-05T08:36:07.595464+00:00,com.manyangled:coulomb-core_sjs1_3,java,com.manyangled_coulomb-core_sjs1_3,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:36:07.598679+00:00,de.fosd.typechef:errorlib_2.10,java,de.fosd.typechef_errorlib_2.10,4,12866,1859,false,0.943,87,ready,
+2026-08-05T08:36:30.957540+00:00,com.oracle.oci.sdk:oci-java-sdk-autoscaling,java,com.oracle.oci.sdk_oci-java-sdk-autoscaling,0,0,0,false,0.0,0,F5_fail,repo shared with other sampled packages; no confident per-package subdirectory match
+2026-08-05T08:37:09.835612+00:00,org.jetbrains.kotlin:kotlin-scripting-dependencies-maven,java,org.jetbrains.kotlin_kotlin-scripting-dependencies-maven,198,465128,72512,false,0.993,142,ready,

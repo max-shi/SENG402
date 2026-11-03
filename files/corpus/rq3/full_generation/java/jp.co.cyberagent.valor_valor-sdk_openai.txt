@@ -1,0 +1,631 @@
+# Valor SDK
+
+`jp.co.cyberagent.valor:valor-sdk` is a Java SDK for defining relations and schemas, mapping tuples to storage records, planning and executing queries, and integrating storage backends.
+
+The API is organized around a logical data model:
+
+- **Relations** define attributes.
+- **Schemas** describe how relations are represented in a particular storage layout.
+- **Formatters** encode, decode, transform, split, or combine attribute values.
+- **Holders** wrap formatters with structural rules such as fixed length, optionality, suffixes, regular expressions, or size prefixes.
+- **Serializers and deserializers** convert between tuples, records, query predicates, and storage scans.
+- **Planners** choose query plans for scans and joins.
+- **Storage implementations** provide filesystem, key/value, and JDBC-backed integrations.
+- **Metadata repositories** manage relations and schemas across namespaces.
+
+## Dependency
+
+```xml
+<dependency>
+  <groupId>jp.co.cyberagent.valor</groupId>
+  <artifactId>valor-sdk</artifactId>
+</dependency>
+```
+
+## Quick start
+
+Create a `ValorContext`, then use it to create a `ValorConnection`.
+
+```java
+import jp.co.cyberagent.valor.sdk.StandardContextFactory;
+import jp.co.cyberagent.valor.sdk.ValorConnectionFactory;
+
+// Types supplied by the broader Valor API
+import jp.co.cyberagent.valor.ValorConnection;
+import jp.co.cyberagent.valor.ValorContext;
+
+ValorContext context = StandardContextFactory.create();
+ValorConnection connection = ValorConnectionFactory.create(context);
+
+try {
+    // Work with relations, schemas, queries, scans, and mutations here.
+} finally {
+    connection.close();
+}
+```
+
+A context can also be created from configuration values:
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+Map<String, String> configuration = new HashMap<>();
+// Populate configuration with the settings appropriate for the configured
+// schema repositories and storage implementations.
+
+ValorContext context = StandardContextFactory.create(configuration);
+ValorConnection connection = ValorConnectionFactory.create(context);
+```
+
+## Core API
+
+### `ValorConnection`
+
+`ValorConnectionImpl` is the primary implementation of `ValorConnection`. It coordinates metadata lookup, schema selection, query planning, scanning, and storage mutations.
+
+Its public operations include:
+
+| Operation | Purpose |
+|---|---|
+| `getSchemaRepository()` | Access relation and schema metadata. |
+| `getNamespaces()` | List available namespaces. |
+| `createConnection(Schema)` | Create a storage connection for a schema. |
+| `select(...)` | Execute a relation query and return tuples. |
+| `scan(RelationScan)` | Execute a relation scan. |
+| `plan(Query)` | Build a `QueryPlan`. |
+| `compile(RelationScan)` | Compile a scan to a `TupleScanner`. |
+| `insert(...)` | Insert tuples into a relation. |
+| `delete(...)` | Delete matching tuples, optionally limited. |
+| `update(...)` | Update attributes on matching tuples. |
+| `isRelationAvailable(...)` | Check relation availability. |
+| `buildScanner(SchemaScan)` | Build a schema-level scanner. |
+| `submit(Schema, StorageMutation)` | Submit a storage mutation directly. |
+
+### Selecting tuples
+
+The `select` method accepts a namespace, relation identifier, projected attribute names, and a `PredicativeExpression`.
+
+```java
+import java.util.Arrays;
+import java.util.List;
+
+import jp.co.cyberagent.valor.Tuple;
+import jp.co.cyberagent.valor.plan.PredicativeExpression;
+
+List<String> columns = Arrays.asList("id", "name", "createdAt");
+
+// Build a PredicativeExpression using the logical-plan API for a filtered
+// query. Use null only where an unfiltered scan is supported by your setup.
+PredicativeExpression condition = null;
+
+List<Tuple> rows = connection.select(
+    "default",
+    "users",
+    columns,
+    condition
+);
+```
+
+For scan-oriented workflows, use `scan` or compile a `RelationScan` into a `TupleScanner`:
+
+```java
+import jp.co.cyberagent.valor.RelationScan;
+import jp.co.cyberagent.valor.Tuple;
+import jp.co.cyberagent.valor.TupleScanner;
+
+// RelationScan scan = ...;
+RelationScan scan = null;
+
+TupleScanner scanner = connection.compile(scan);
+```
+
+### Writing, updating, and deleting tuples
+
+`ValorConnectionImpl` exposes tuple-oriented write operations:
+
+```java
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
+import jp.co.cyberagent.valor.Tuple;
+import jp.co.cyberagent.valor.plan.PredicativeExpression;
+
+Collection<Tuple> tuples = null; // Build tuples according to the relation definition.
+connection.insert("default", "users", tuples);
+
+Map<String, Object> changes = new HashMap<>();
+changes.put("status", "inactive");
+
+PredicativeExpression condition = null; // Build a predicate for the target rows.
+
+int updated = connection.update(
+    "default",
+    "users",
+    changes,
+    condition,
+    100
+);
+
+int deleted = connection.delete(
+    "default",
+    "users",
+    condition,
+    100
+);
+```
+
+## Metadata and schema repositories
+
+A `SchemaRepository` is responsible for namespace, relation, and schema metadata. The SDK includes several repository implementations:
+
+| Class | Role |
+|---|---|
+| `InMemorySchemaRepository` | In-memory metadata repository. |
+| `FileSchemaRepository` | File-backed repository implementation. |
+| `HttpsSchemaRepository` | HTTPS-oriented repository implementation. |
+| `CompositeSchemaRepository` | Routes namespaces to multiple repositories. |
+| `SchemaRepositoryBase` | Base implementation of `SchemaRepository`. |
+| `SchemaRepositoryCache<K, V>` | TTL-aware map-like metadata cache. |
+
+Repositories expose a common relation and schema lifecycle:
+
+```java
+import java.util.Collection;
+
+import jp.co.cyberagent.valor.Relation;
+import jp.co.cyberagent.valor.Schema;
+import jp.co.cyberagent.valor.SchemaDescriptor;
+import jp.co.cyberagent.valor.SchemaRepository;
+
+// SchemaRepository repository = connection.getSchemaRepository();
+
+Collection<String> namespaces = repository.getNamespaces();
+Collection<String> relationIds = repository.listRelationIds("default");
+
+Relation relation = repository.findRelation("default", "users");
+
+Collection<Schema> schemas = repository.listSchemas("default", "users");
+
+// Relation and SchemaDescriptor instances are constructed by the surrounding
+// Valor model API.
+Relation newRelation = null;
+SchemaDescriptor descriptor = null;
+
+repository.createRelation("default", newRelation, false);
+repository.createSchema("default", "users", descriptor, false);
+```
+
+A schema has a mode that can be changed through the repository:
+
+```java
+Schema.Mode previousOrCurrentMode = repository.setSchemaMode(
+    "default",
+    "users",
+    "primary-schema",
+    Schema.Mode.ACTIVE
+);
+```
+
+## Schemas and storage layouts
+
+`SchemaBase` is the common schema implementation base. It associates a relation with a `SchemaDescriptor` and a `StorageConnectionFactory`.
+
+Important schema operations include:
+
+- `serialize(Tuple)` — convert a tuple into storage `Record` objects.
+- `buildScan(...)` — create a `SchemaScan` from selected attributes and predicates.
+- `getTupleSerializer()` / `getTupleDeserializer(...)` — obtain tuple codecs.
+- `getQuerySerializer()` — obtain a serializer for storage filters.
+- `getScanner(...)` — scan a schema through a storage connection.
+- `buildInsertMutation(...)`, `buildDeleteMutation(...)`, and `buildUpdateMutation(...)` — generate storage mutations.
+
+Available schema implementations include:
+
+| Class | Layout family |
+|---|---|
+| `SortedKeyValueSchema` | Sorted key/value schema base. |
+| `SortedMonoKeyValueSchema` | Sorted key/value schema with a mono-value layout. |
+| `SortedMultiKeyValuesSchema` | Sorted key/value schema with multiple values. |
+| `SortedCumulativeKeyValuesSchema` | Sorted key/value schema with cumulative values. |
+| `RelationalSchema` | Relational-storage schema. |
+
+### Storage types
+
+The SDK exposes storage abstractions and implementations for several styles of backend.
+
+| Class | Role |
+|---|---|
+| `StorageBase` | Base storage implementation. |
+| `KeyValueStorage` | Builds key/value-oriented schemas. |
+| `RelationalStorage` | Builds relational schemas. |
+| `FsStorage` | Filesystem-oriented key/value storage. |
+| `JdbcStorage` | JDBC-backed relational storage. |
+
+Connection factories create storage connections:
+
+- `KeyValueStorageConnectionFactory`
+- `FsConnectionFactory`
+- `JdbcConnectionFactory`
+
+Storage connections provide operations such as insertion, deletion, counting, scanning, availability checks, and closing.
+
+```java
+import java.util.Optional;
+
+import jp.co.cyberagent.valor.Schema;
+import jp.co.cyberagent.valor.SchemaScan;
+import jp.co.cyberagent.valor.StorageConnection;
+
+Schema schema = null;
+SchemaScan scan = null;
+
+StorageConnection storageConnection = connection.createConnection(schema);
+try {
+    Optional<Long> count = storageConnection.count(scan);
+} finally {
+    storageConnection.close();
+}
+```
+
+`StorageConnectionWrapper` can wrap an existing `StorageConnection` while preserving the storage connection interface.
+
+## Formatters
+
+Formatters are the building blocks used in field layouts. They serialize tuple values, deserialize byte segments, and contribute query filter fragments.
+
+Every formatter is a subtype of `Formatter` and generally supports operations such as:
+
+- `getOrder()`
+- `cutAndSet(...)`
+- `accept(TupleSerializer, Tuple)`
+- `accept(QuerySerializer, Collection<PrimitivePredicate>)`
+- `containsAttribute(...)`
+- `getName()`
+- `getProperties()` / `setProperties(...)`
+
+### Attribute-value formatters
+
+These formatters operate on a named attribute and derive from `AbstractAttributeValueFormatter`:
+
+| Formatter | Intended transformation |
+|---|---|
+| `AttributeValueFormatter` | Direct attribute value formatting. |
+| `NullableStringFormatter` | Nullable string representation. |
+| `Number2StringFormatter` | Number-to-string conversion. |
+| `String2NumberFormatter` | String-to-number conversion. |
+| `DateTime2LongFormatter` | Date/time-to-long conversion. |
+| `String2DateTimeFrameFormatter` | String-to-date/time-frame conversion. |
+| `Map2StringFormatter` | Map-to-string conversion. |
+| `ReverseLongFormatter` | Reverse-long representation. |
+| `UrlEncodeFormatter` | URL encoding. |
+| `CurrentTimeFormatter` | Current-time value formatting. |
+
+Example:
+
+```java
+import jp.co.cyberagent.valor.sdk.formatter.AttributeValueFormatter;
+import jp.co.cyberagent.valor.sdk.formatter.Number2StringFormatter;
+import jp.co.cyberagent.valor.sdk.formatter.NullableStringFormatter;
+
+AttributeValueFormatter id = AttributeValueFormatter.create("id");
+Number2StringFormatter accountNumber = new Number2StringFormatter("accountNumber");
+NullableStringFormatter nickname = new NullableStringFormatter("nickname");
+
+String attributeName = id.getAttributeName();
+String formatterName = id.getName();
+```
+
+### Constants, maps, and multi-attribute formatters
+
+| Formatter | Role |
+|---|---|
+| `ConstantFormatter` | Emits a configured string or byte constant. |
+| `MapEntryFormatter` | Works with a specific map attribute entry. |
+| `MapKeyFormatter` | Disassembles map keys. |
+| `MapValueFormatter` | Disassembles map values. |
+| `MultiAttributeNamesFormatter` | Operates on multiple attribute names. |
+| `MultiAttributeValuesFormatter` | Operates on multiple attribute values. |
+| `FilterMapFormatter` | Map-oriented filter formatting. |
+| `JqFormatter` | Configuration-driven formatter. |
+| `JsonFormatter` | JSON-oriented aggregation formatter. |
+
+```java
+import jp.co.cyberagent.valor.sdk.formatter.ConstantFormatter;
+import jp.co.cyberagent.valor.sdk.formatter.MapEntryFormatter;
+import jp.co.cyberagent.valor.sdk.formatter.MapKeyFormatter;
+import jp.co.cyberagent.valor.sdk.formatter.MultiAttributeValuesFormatter;
+
+ConstantFormatter version = ConstantFormatter.create("v1");
+MapEntryFormatter country = MapEntryFormatter.create("metadata", "country");
+MapKeyFormatter metadataKeys = MapKeyFormatter.create("metadata");
+
+MultiAttributeValuesFormatter values =
+    MultiAttributeValuesFormatter.create("internalAttribute");
+```
+
+### Hash and salt formatters
+
+Hash-oriented formatters derive from `AbstractHashFormatter`:
+
+- `Md5AttributeFormatter`
+- `Murmur3AttributeFormatter`
+- `Sha1AttributeFormatter`
+- `Murmur3MapKeyFormatter`
+
+`Murmur3SaltFormatter` is a `SaltFormatter` that exposes `getSaltSize()`.
+
+```java
+import jp.co.cyberagent.valor.sdk.formatter.Md5AttributeFormatter;
+import jp.co.cyberagent.valor.sdk.formatter.Murmur3AttributeFormatter;
+import jp.co.cyberagent.valor.sdk.formatter.Sha1AttributeFormatter;
+
+Md5AttributeFormatter md5 =
+    Md5AttributeFormatter.create(16, "userId", "region");
+
+Murmur3AttributeFormatter murmur =
+    Murmur3AttributeFormatter.create("userId");
+
+Sha1AttributeFormatter sha1 =
+    Sha1AttributeFormatter.create("userId", 20);
+```
+
+## Holders
+
+Holders wrap a formatter or segment and define how it is delimited or recognized in serialized data. They provide tuple-serializer and query-serializer wrappers.
+
+| Holder | Purpose |
+|---|---|
+| `FixedLengthHolder` | Apply a fixed byte length. |
+| `OptionalHolder` | Make a segment optional. |
+| `RegexpHolder` | Match a formatter using a regular expression. |
+| `SuffixHolder` | Add or recognize a suffix. |
+| `VintSizePrefixHolder` | Prefix a formatter with a variable-length size. |
+
+```java
+import jp.co.cyberagent.valor.sdk.formatter.AttributeValueFormatter;
+import jp.co.cyberagent.valor.sdk.holder.FixedLengthHolder;
+import jp.co.cyberagent.valor.sdk.holder.OptionalHolder;
+import jp.co.cyberagent.valor.sdk.holder.SuffixHolder;
+
+AttributeValueFormatter id = AttributeValueFormatter.create("id");
+
+FixedLengthHolder fixedId = FixedLengthHolder.create(16, id);
+SuffixHolder terminatedId = SuffixHolder.create("|", id);
+OptionalHolder optionalId = OptionalHolder.create(id);
+```
+
+## Serialization and deserialization
+
+The SDK supports serializers that emit storage `Record` objects and query `StorageScan` objects.
+
+### Tuple serializers
+
+| Class | Behavior |
+|---|---|
+| `OneToOneTupleSerializer` | Serializes tuple layouts directly to records. |
+| `TreeBasedTupleSerializer` | Builds records using a tree representation. |
+
+Both expose a method named `serailize`:
+
+```java
+import java.util.List;
+
+import jp.co.cyberagent.valor.Record;
+import jp.co.cyberagent.valor.Tuple;
+import jp.co.cyberagent.valor.sdk.serde.OneToOneTupleSerializer;
+
+// Tuple tuple = ...;
+// List<FieldLayout> layouts = ...;
+
+OneToOneTupleSerializer serializer = new OneToOneTupleSerializer();
+List<Record> records = serializer.serailize(tuple, layouts);
+```
+
+### Query serializers
+
+| Class | Behavior |
+|---|---|
+| `OneToOneQuerySerializer` | Produces scans from direct layouts. |
+| `TreeBasedQuerySerialzier` | Produces scans from a tree representation. |
+
+Query serializers accept selected attributes, a conjunction of `PrimitivePredicate` instances, and field layouts.
+
+### Tuple deserializers
+
+| Class | Behavior |
+|---|---|
+| `OneToOneDeserializer` | Reads one-to-one layouts. |
+| `DisassembleDeserializer` | Reconstructs attributes from disassembled segments. |
+| `ContinuousRecordsDeserializer` | Reads tuples across continuous records. |
+| `CumulativeRecordsDeserializer<V>` | Reads and aggregates cumulative record values. |
+
+Deserializer instances receive records through `readRecord(...)`, expose decoded values through `getAttribute(...)`, and return available tuples through `pollTuple()`.
+
+## Predicates and expressions
+
+The `jp.co.cyberagent.valor.sdk.plan.function` package provides `PrimitivePredicate` implementations for common comparisons.
+
+| Predicate | Meaning |
+|---|---|
+| `EqualOperator` | Equality comparison. |
+| `NotEqualOperator` | Inequality comparison. |
+| `GreaterthanOperator` | Greater-than comparison. |
+| `GreaterthanorequalOperator` | Greater-than-or-equal comparison. |
+| `LessthanOperator` | Less-than comparison. |
+| `LessthanorequalOperator` | Less-than-or-equal comparison. |
+| `IsNullOperator` | Null test. |
+| `IsNotNullOperator` | Non-null test. |
+| `RegexpOperator` | Regular-expression match. |
+| `RegexpNotMatchOperator` | Regular-expression non-match. |
+| `LikeOperator` | Like-style pattern match. |
+| `UnlikeOperator` | Unlike-style pattern match. |
+| `ArrayContainsFunction` | Array membership test. |
+
+Comparison predicates can be created from expressions or from an attribute name, attribute type, and literal value:
+
+```java
+import jp.co.cyberagent.valor.AttributeType;
+import jp.co.cyberagent.valor.sdk.plan.function.EqualOperator;
+import jp.co.cyberagent.valor.sdk.plan.function.GreaterthanOperator;
+
+// Obtain the appropriate AttributeType instance for the relation attribute.
+AttributeType type = null;
+
+EqualOperator byId = new EqualOperator("id", type, 42);
+GreaterthanOperator recent = new GreaterthanOperator("createdAt", type, 1700000000000L);
+```
+
+Most predicate implementations provide `getNegation()`, allowing callers to construct the corresponding inverse predicate.
+
+## Built-in UDFs
+
+The SDK includes UDF implementations for array and map access:
+
+| UDF | Return |
+|---|---|
+| `UdfArrayContains` | `Boolean` |
+| `UdfArrayValue` | Array element value |
+| `UdfMapKeys` | `List` of map keys |
+| `UdfMapValue` | Map value |
+
+Each UDF supports `init(List<Expression>)`, `apply(Object...)`, `getName()`, and `getReturnType()`.
+
+## Query planning
+
+The planning API selects executable `QueryPlan` implementations from available schemas.
+
+| Class | Role |
+|---|---|
+| `PrimitivePlanner` | Base planner for `SimplePlan` instances. |
+| `NaivePrimitivePlanner` | Primitive planner with naive evaluation. |
+| `StaticCostBasedPrimitivePlanner` | Primitive planner using `DataStats`. |
+| `JoinablePlanner` | Planner capable of producing joinable scan plans. |
+| `SimplePlan` | Query plan for a single `SchemaScan`. |
+| `HashJoinPlan` | Hash join query plan. |
+| `MergeJoinPlan` | Merge join query plan. |
+| `HeuristicCostSolver` | Chooses scan plans using heuristic cost. |
+| `HeuristicSpaceSolver` | Chooses scan plans using heuristic space. |
+
+Plans can build a `QueryRunner` or return an optional count:
+
+```java
+import java.util.Optional;
+
+import jp.co.cyberagent.valor.QueryPlan;
+import jp.co.cyberagent.valor.QueryRunner;
+
+// Query query = ...;
+QueryPlan plan = connection.plan(query);
+
+QueryRunner runner = plan.buildRunner(connection);
+Optional<Long> count = plan.count(connection);
+```
+
+## Logical-plan visitors
+
+Visitors can inspect or simplify logical expressions before planning.
+
+- `AttributeCollectVisitor` gathers referenced attribute names.
+- `TrimByAttributesVisitor` removes or trims expression content based on a collection of attributes.
+- `LogicalPlanVisitorBase<T>` provides a visitor base implementation.
+
+```java
+import java.util.Set;
+
+import jp.co.cyberagent.valor.LogicalPlanNode;
+import jp.co.cyberagent.valor.sdk.plan.visitor.AttributeCollectVisitor;
+
+LogicalPlanNode expression = null;
+
+AttributeCollectVisitor visitor = new AttributeCollectVisitor();
+Set<String> attributes = visitor.walk(expression);
+```
+
+## Filesystem and JDBC integrations
+
+### Filesystem storage
+
+Filesystem-related types include:
+
+- `FsStorage`
+- `FsConnectionFactory`
+- `FsStorageConnection`
+- `FsScanner`
+- `FsCell`
+- `FsScan`
+
+`FsCell` is a `Record` with byte values for named fields:
+
+```java
+import jp.co.cyberagent.valor.sdk.storage.fs.FsCell;
+
+byte[] directory = "data".getBytes();
+byte[] file = "part-0001".getBytes();
+byte[] value = "payload".getBytes();
+
+FsCell cell = new FsCell(directory, file, value);
+```
+
+### JDBC storage
+
+JDBC-related types include:
+
+- `JdbcPlugin`
+- `JdbcStorage`
+- `JdbcConnectionFactory`
+- `JdbcStorageConnection`
+- `ResultSetRecord`
+
+`JdbcStorage.toValorType(int jdbcType)` converts a JDBC type identifier to an `AttributeType`.
+
+```java
+import java.sql.Types;
+
+import jp.co.cyberagent.valor.AttributeType;
+import jp.co.cyberagent.valor.sdk.storage.jdbc.JdbcStorage;
+
+AttributeType type = JdbcStorage.toValorType(Types.VARCHAR);
+```
+
+`JdbcStorageConnection` additionally exposes `update(Record)` through the `RelationalStorageConnection` interface.
+
+## JSON metadata serialization
+
+`MetadataJsonSerde` serializes relations and schema descriptors, and reads them back from a `Reader` or Jackson `JsonParser`.
+
+```java
+import java.io.Reader;
+
+import jp.co.cyberagent.valor.Relation;
+import jp.co.cyberagent.valor.SchemaDescriptor;
+import jp.co.cyberagent.valor.sdk.metadata.MetadataJsonSerde;
+
+MetadataJsonSerde serde = new MetadataJsonSerde(context);
+
+Relation relation = null;
+SchemaDescriptor descriptor = null;
+
+byte[] relationJson = serde.serialize(relation);
+byte[] schemaJson = serde.serialize(descriptor);
+
+Reader relationReader = null;
+Relation restored = serde.readRelation("users", relationReader);
+```
+
+For Jackson integration, use `RelationDeserializer` and `SchemaDescriptorDeserializer`.
+
+## Resource management
+
+Connections, scanners, and repositories may hold external resources. Close them when they are no longer needed.
+
+```java
+try {
+    // Use connection, repository, scanner, or storage connection.
+} finally {
+    connection.close();
+}
+```
+
+For objects implementing `Closeable`-style behavior, prefer try-with-resources where the surrounding API supports it.

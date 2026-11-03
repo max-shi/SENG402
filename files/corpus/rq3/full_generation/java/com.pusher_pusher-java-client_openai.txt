@@ -1,0 +1,661 @@
+# pusher-java-client
+
+A Java client library for connecting to a Pusher-compatible realtime service over WebSockets.
+
+Use it to:
+
+- Establish and monitor a realtime connection.
+- Subscribe to public, private, private-encrypted, and presence channels.
+- Bind handlers for named events or all channel events.
+- Trigger events on private channels.
+- Authorize private/presence channel subscriptions.
+- Sign in as a user and receive user-scoped events.
+- Configure TLS, hosts, clusters, reconnect behavior, timeouts, and proxies.
+
+## Installation
+
+Add the library to your build using its published coordinates:
+
+```text
+com.pusher:pusher-java-client
+```
+
+## Core concepts
+
+### `Pusher`
+
+`Pusher` is the primary client implementation. Construct it with an API key and, optionally, `PusherOptions`.
+
+```java
+Pusher pusher = new Pusher("APP_KEY");
+```
+
+It implements `Client`, exposing connection management and channel subscription methods.
+
+### `PusherOptions`
+
+`PusherOptions` configures the connection and authentication behavior.
+
+Available configuration includes:
+
+- TLS/encryption settings: `setUseTLS`, `setEncrypted`
+- Endpoint selection: `setHost`, `setCluster`, `setWsPort`, `setWssPort`
+- Connection timing: `setActivityTimeout`, `setPongTimeout`
+- Reconnection policy: `setMaxReconnectionAttempts`, `setMaxReconnectGapInSeconds`
+- HTTP proxy: `setProxy`
+- Channel authorization: `setChannelAuthorizer` or `setAuthorizer`
+- User authentication: `setUserAuthenticator`
+
+Most setters return the same `PusherOptions` instance, allowing fluent configuration.
+
+### Connection
+
+A `Pusher` instance exposes a `Connection` through `getConnection()`.
+
+```java
+Connection connection = pusher.getConnection();
+```
+
+A connection can be started with `connect()` and observed with a `ConnectionEventListener`.
+
+Connection state is represented by `ConnectionState`:
+
+- `CONNECTING`
+- `CONNECTED`
+- `DISCONNECTING`
+- `DISCONNECTED`
+- `RECONNECTING`
+- `ALL`
+
+`ConnectionStateChange` provides the previous and current state.
+
+### Channels
+
+The base `Channel` interface represents a subscription and provides:
+
+- `getName()`
+- `bind(eventName, listener)`
+- `bindGlobal(listener)`
+- `unbind(eventName, listener)`
+- `unbindGlobal(listener)`
+- `isSubscribed()`
+
+The available channel types are:
+
+| Type | Interface | Subscribe with |
+|---|---|---|
+| Public channel | `Channel` | `subscribe(...)` |
+| Private channel | `PrivateChannel` | `subscribePrivate(...)` |
+| Presence channel | `PresenceChannel` | `subscribePresence(...)` |
+| Private encrypted channel | `PrivateEncryptedChannel` | `subscribePrivateEncrypted(...)` |
+
+Private channels add `trigger(eventName, data)`. Presence channels additionally expose the currently known users through `getUsers()` and `getMe()`.
+
+### Events and listeners
+
+Received events are represented by `PusherEvent`.
+
+```java
+String eventName = event.getEventName();
+String channelName = event.getChannelName();
+String data = event.getData();
+String userId = event.getUserId();
+```
+
+Use the listener matching the type of channel:
+
+- `SubscriptionEventListener` — event callbacks, optionally errors.
+- `ChannelEventListener` — event callbacks plus subscription success.
+- `PrivateChannelEventListener` — channel callbacks plus authentication failures.
+- `PresenceChannelEventListener` — private-channel callbacks plus presence member changes.
+- `PrivateEncryptedChannelEventListener` — private-channel callbacks plus decryption failures.
+
+### Authorization and authentication
+
+Private and presence subscriptions use a `ChannelAuthorizer`:
+
+```java
+public interface ChannelAuthorizer {
+    String authorize(String channelName, String socketId)
+        throws AuthorizationFailureException;
+}
+```
+
+For HTTP-backed authorization, use `HttpChannelAuthorizer` or `HttpAuthorizer`.
+
+User sign-in uses a `UserAuthenticator`:
+
+```java
+public interface UserAuthenticator {
+    String authenticate(String socketId)
+        throws AuthenticationFailureException;
+}
+```
+
+`HttpUserAuthenticator` provides an HTTP-backed implementation.
+
+### User events
+
+`Pusher.user()` returns a `com.pusher.client.user.User`, which can bind to named or global user events.
+
+```java
+com.pusher.client.user.User user = pusher.user();
+
+user.bind("account-updated", event -> {
+    System.out.println(event.getData());
+});
+```
+
+Call `pusher.signin()` to initiate user sign-in.
+
+> Note: Presence-channel members use `com.pusher.client.channel.User`, while signed-in client users use `com.pusher.client.user.User`.
+
+---
+
+## Quick start
+
+Create a client, listen for connection state changes, connect, subscribe, and bind an event handler.
+
+```java
+import com.pusher.client.Pusher;
+import com.pusher.client.connection.ConnectionEventListener;
+import com.pusher.client.connection.ConnectionState;
+import com.pusher.client.connection.ConnectionStateChange;
+import com.pusher.client.channel.Channel;
+import com.pusher.client.channel.ChannelEventListener;
+import com.pusher.client.channel.PusherEvent;
+
+Pusher pusher = new Pusher("APP_KEY");
+
+pusher.connect(new ConnectionEventListener() {
+    @Override
+    public void onConnectionStateChange(ConnectionStateChange change) {
+        System.out.println(
+            "Connection changed from "
+                + change.getPreviousState()
+                + " to "
+                + change.getCurrentState()
+        );
+    }
+
+    @Override
+    public void onError(String message, String code, Exception e) {
+        System.err.println("Connection error: " + message + " (" + code + ")");
+        if (e != null) {
+            e.printStackTrace();
+        }
+    }
+}, ConnectionState.ALL);
+
+Channel channel = pusher.subscribe("example-channel", new ChannelEventListener() {
+    @Override
+    public void onSubscriptionSucceeded(String channelName) {
+        System.out.println("Subscribed to " + channelName);
+    }
+
+    @Override
+    public void onEvent(PusherEvent event) {
+        System.out.println(
+            "Received " + event.getEventName() + ": " + event.getData()
+        );
+    }
+
+    @Override
+    public void onError(String message, Exception e) {
+        System.err.println("Channel error: " + message);
+    }
+}, "new-message");
+```
+
+The returned `Channel` can also be used to add handlers later:
+
+```java
+channel.bind("message-edited", event -> {
+    System.out.println("Edited message: " + event.getData());
+});
+
+channel.bindGlobal(event -> {
+    System.out.println(
+        "[" + event.getChannelName() + "] "
+            + event.getEventName()
+            + ": "
+            + event.getData()
+    );
+});
+```
+
+Unsubscribe when the channel is no longer needed:
+
+```java
+pusher.unsubscribe("example-channel");
+```
+
+Disconnect when the application is finished with the client:
+
+```java
+pusher.disconnect();
+```
+
+---
+
+## Configuring connection options
+
+```java
+import com.pusher.client.Pusher;
+import com.pusher.client.PusherOptions;
+
+PusherOptions options = new PusherOptions()
+    .setUseTLS(true)
+    .setCluster("example-cluster")
+    .setActivityTimeout(120_000)
+    .setPongTimeout(30_000)
+    .setMaxReconnectionAttempts(5)
+    .setMaxReconnectGapInSeconds(10);
+
+Pusher pusher = new Pusher("APP_KEY", options);
+```
+
+To use an explicit host and port configuration:
+
+```java
+PusherOptions options = new PusherOptions()
+    .setUseTLS(true)
+    .setHost("realtime.example.com")
+    .setWsPort(80)
+    .setWssPort(443);
+```
+
+A `Proxy` may also be supplied:
+
+```java
+import java.net.Proxy;
+
+PusherOptions options = new PusherOptions()
+    .setProxy(Proxy.NO_PROXY);
+```
+
+---
+
+## Public channels
+
+Public channels do not require a channel authorizer.
+
+```java
+import com.pusher.client.channel.Channel;
+import com.pusher.client.channel.SubscriptionEventListener;
+
+Channel notifications = pusher.subscribe("notifications");
+
+SubscriptionEventListener listener = event -> {
+    System.out.println("Notification: " + event.getData());
+};
+
+notifications.bind("notification-created", listener);
+
+// Later:
+notifications.unbind("notification-created", listener);
+```
+
+Check whether a returned channel reports itself as subscribed:
+
+```java
+if (notifications.isSubscribed()) {
+    System.out.println("Subscription is active");
+}
+```
+
+---
+
+## Private channels
+
+Private channel subscriptions require a `ChannelAuthorizer`. The library includes `HttpChannelAuthorizer` and `HttpAuthorizer` for authorization through an HTTP endpoint.
+
+```java
+import com.pusher.client.Pusher;
+import com.pusher.client.PusherOptions;
+import com.pusher.client.channel.PrivateChannel;
+import com.pusher.client.channel.PrivateChannelEventListener;
+import com.pusher.client.channel.PusherEvent;
+import com.pusher.client.util.HttpChannelAuthorizer;
+
+PusherOptions options = new PusherOptions()
+    .setChannelAuthorizer(
+        new HttpChannelAuthorizer("https://example.com/pusher/auth")
+    );
+
+Pusher pusher = new Pusher("APP_KEY", options);
+
+pusher.connect();
+
+PrivateChannel chat = pusher.subscribePrivate(
+    "private-chat",
+    new PrivateChannelEventListener() {
+        @Override
+        public void onSubscriptionSucceeded(String channelName) {
+            System.out.println("Subscribed to " + channelName);
+        }
+
+        @Override
+        public void onAuthenticationFailure(String message, Exception e) {
+            System.err.println("Authorization failed: " + message);
+            if (e != null) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void onEvent(PusherEvent event) {
+            System.out.println("Chat event: " + event.getData());
+        }
+
+        @Override
+        public void onError(String message, Exception e) {
+            System.err.println("Channel error: " + message);
+        }
+    },
+    "new-message"
+);
+```
+
+Private channels can trigger events:
+
+```java
+chat.trigger("client-message", "{\"text\":\"Hello from Java\"}");
+```
+
+You may also provide a custom authorizer:
+
+```java
+import com.pusher.client.ChannelAuthorizer;
+
+ChannelAuthorizer authorizer = (channelName, socketId) -> {
+    // Obtain and return the authorization response for this channel/socket.
+    return "{...}";
+};
+
+PusherOptions options = new PusherOptions()
+    .setChannelAuthorizer(authorizer);
+```
+
+Authorization implementations can throw `AuthorizationFailureException` when authorization cannot be completed.
+
+---
+
+## Presence channels
+
+Presence channels are private channels that track users.
+
+```java
+import com.pusher.client.channel.PresenceChannel;
+import com.pusher.client.channel.PresenceChannelEventListener;
+import com.pusher.client.channel.PusherEvent;
+import com.pusher.client.channel.User;
+
+PresenceChannel presence = pusher.subscribePresence(
+    "presence-room",
+    new PresenceChannelEventListener() {
+        @Override
+        public void onSubscriptionSucceeded(String channelName) {
+            System.out.println("Joined " + channelName);
+        }
+
+        @Override
+        public void onUsersInformationReceived(
+            String channelName,
+            java.util.Set<User> users
+        ) {
+            System.out.println(
+                "Users currently in " + channelName + ": " + users.size()
+            );
+        }
+
+        @Override
+        public void userSubscribed(String channelName, User user) {
+            System.out.println(user.getId() + " joined " + channelName);
+        }
+
+        @Override
+        public void userUnsubscribed(String channelName, User user) {
+            System.out.println(user.getId() + " left " + channelName);
+        }
+
+        @Override
+        public void onAuthenticationFailure(String message, Exception e) {
+            System.err.println("Presence authorization failed: " + message);
+        }
+
+        @Override
+        public void onEvent(PusherEvent event) {
+            System.out.println("Presence event: " + event.getData());
+        }
+    },
+    "message"
+);
+```
+
+Retrieve presence information from the subscribed channel:
+
+```java
+for (User user : presence.getUsers()) {
+    System.out.println("Present user: " + user.getId());
+}
+
+User me = presence.getMe();
+if (me != null) {
+    System.out.println("Current user: " + me.getId());
+}
+```
+
+A presence `User` provides an ID and JSON-backed information:
+
+```java
+String id = user.getId();
+String rawInfo = user.getInfo();
+
+// Deserialize user info into an application-specific class.
+MyUserInfo info = user.getInfo(MyUserInfo.class);
+```
+
+---
+
+## Private encrypted channels
+
+Private encrypted channels are subscribed through `subscribePrivateEncrypted`. Their listener receives the usual private-channel callbacks and decryption-failure notifications.
+
+```java
+import com.pusher.client.channel.PrivateEncryptedChannel;
+import com.pusher.client.channel.PrivateEncryptedChannelEventListener;
+import com.pusher.client.channel.PusherEvent;
+
+PrivateEncryptedChannel encrypted = pusher.subscribePrivateEncrypted(
+    "private-encrypted-documents",
+    new PrivateEncryptedChannelEventListener() {
+        @Override
+        public void onSubscriptionSucceeded(String channelName) {
+            System.out.println("Subscribed to " + channelName);
+        }
+
+        @Override
+        public void onAuthenticationFailure(String message, Exception e) {
+            System.err.println("Authorization failed: " + message);
+        }
+
+        @Override
+        public void onDecryptionFailure(String event, String reason) {
+            System.err.println(
+                "Could not decrypt event " + event + ": " + reason
+            );
+        }
+
+        @Override
+        public void onEvent(PusherEvent event) {
+            System.out.println("Decrypted data: " + event.getData());
+        }
+    },
+    "document-updated"
+);
+```
+
+---
+
+## Signing in a user
+
+Configure a `UserAuthenticator`, connect, then call `signin()`.
+
+```java
+import com.pusher.client.Pusher;
+import com.pusher.client.PusherOptions;
+import com.pusher.client.user.User;
+import com.pusher.client.util.HttpUserAuthenticator;
+
+PusherOptions options = new PusherOptions()
+    .setUserAuthenticator(
+        new HttpUserAuthenticator("https://example.com/pusher/user-auth")
+    );
+
+Pusher pusher = new Pusher("APP_KEY", options);
+
+pusher.connect();
+pusher.signin();
+
+User user = pusher.user();
+
+user.bind("account-updated", event -> {
+    System.out.println("Account update: " + event.getData());
+});
+
+user.bindGlobal(event -> {
+    System.out.println(
+        "User event " + event.getEventName() + ": " + event.getData()
+    );
+});
+```
+
+A custom authenticator can be supplied when authentication is not HTTP-based:
+
+```java
+import com.pusher.client.UserAuthenticator;
+
+UserAuthenticator authenticator = socketId -> {
+    // Obtain and return the authentication response for this socket.
+    return "{...}";
+};
+
+PusherOptions options = new PusherOptions()
+    .setUserAuthenticator(authenticator);
+```
+
+Authentication implementations can throw `AuthenticationFailureException`.
+
+---
+
+## HTTP authorization customization
+
+`HttpChannelAuthorizer`, `HttpUserAuthenticator`, and `HttpAuthorizer` accept an optional `ConnectionFactory`.
+
+`UrlEncodedConnectionFactory` is a concrete factory that can include additional query-string parameters.
+
+```java
+import com.pusher.client.PusherOptions;
+import com.pusher.client.util.HttpChannelAuthorizer;
+import com.pusher.client.util.UrlEncodedConnectionFactory;
+
+import java.util.Map;
+
+UrlEncodedConnectionFactory connectionFactory =
+    new UrlEncodedConnectionFactory(
+        Map.of("application", "desktop-client")
+    );
+
+PusherOptions options = new PusherOptions()
+    .setChannelAuthorizer(
+        new HttpChannelAuthorizer(
+            "https://example.com/pusher/auth",
+            connectionFactory
+        )
+    );
+```
+
+`ConnectionFactory` also exposes the channel name and socket ID through:
+
+```java
+connectionFactory.getChannelName();
+connectionFactory.getSocketId();
+```
+
+---
+
+## Event serialization
+
+`PusherEvent` can be created directly or parsed from JSON.
+
+```java
+import com.pusher.client.channel.PusherEvent;
+
+PusherEvent event = new PusherEvent(
+    "example-event",
+    "example-channel",
+    "optional-user-id",
+    "{\"value\":42}"
+);
+
+String json = event.toJson();
+
+PusherEvent parsed = PusherEvent.fromJson(json);
+System.out.println(parsed.getEventName());
+System.out.println(parsed.getData());
+```
+
+For events with structured data:
+
+```java
+import java.util.Map;
+
+PusherEvent event = new PusherEvent(
+    "status-changed",
+    "example-channel",
+    null,
+    Map.of("status", "online")
+);
+```
+
+Use `getProperty(key)` to access event properties by key.
+
+---
+
+## Error handling
+
+Connection errors are delivered to `ConnectionEventListener.onError`:
+
+```java
+pusher.connect(new ConnectionEventListener() {
+    @Override
+    public void onConnectionStateChange(ConnectionStateChange change) {
+        // Handle state transitions.
+    }
+
+    @Override
+    public void onError(String message, String code, Exception e) {
+        System.err.println("Connection error: " + message);
+    }
+}, ConnectionState.ALL);
+```
+
+Channel listeners can receive errors through the default `SubscriptionEventListener.onError` method:
+
+```java
+channel.bind("example-event", new SubscriptionEventListener() {
+    @Override
+    public void onEvent(PusherEvent event) {
+        System.out.println(event.getData());
+    }
+
+    @Override
+    public void onError(String message, Exception e) {
+        System.err.println("Subscription error: " + message);
+    }
+});
+```
+
+For private channels, implement `onAuthenticationFailure`. For private encrypted channels, also implement `onDecryptionFailure`.
+

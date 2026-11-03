@@ -1,0 +1,4 @@
+rule,macro_f1,macro_f1_sd,accuracy,permutation_null,permutation_p,typical_threshold
+BigWords threshold,0.8105,0.0078,0.839,0.501,0.0099,34.06
+WPS threshold,0.3903,0.0084,0.6093,0.4441,1.0,11.2
+centrality (rejected),0.3733,,0.39,,,

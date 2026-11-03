@@ -1,0 +1,275 @@
+# zdaemon
+
+`zdaemon` provides Python components for running and controlling long-lived processes.
+
+Its public API is organized around two complementary roles:
+
+- **Daemon running**: start and supervise a subprocess, manage signals, report status, and accept control commands.
+- **Daemon control**: send lifecycle actions such as start, stop, restart, kill, status, and transcript reopening to a running daemon.
+- **Configuration and options**: define command-line/configuration options, load schemas and logging configuration, and validate common option values.
+
+The library exposes command-oriented entry points as well as classes that can be extended when embedding daemon control behavior in another application.
+
+## Main components
+
+### Daemon runner: `zdaemon.zdrun`
+
+The runner-side API is centered on `Daemonizer` and `ZDRunOptions`.
+
+- `Daemonizer` manages a supervised subprocess and responds to commands.
+- `Subprocess` represents the managed process lifecycle.
+- `Transcript` provides transcript copying and reopening operations.
+- `ZDRunOptions` extends the common runner option support for the daemon-running side.
+- `zdaemon.zdrun.main()` is a convenient runner entry point.
+
+Relevant command handlers on `Daemonizer` include:
+
+- `cmd_start(args)`
+- `cmd_stop(args)`
+- `cmd_restart(args)`
+- `cmd_kill(args)`
+- `cmd_status(args)`
+- `cmd_reopen_transcript(args)`
+
+The daemon runner also exposes methods for socket handling, signal setup, daemonization, command reception, status reporting, and supervision:
+
+```python
+from zdaemon.zdrun import Daemonizer
+
+daemon = Daemonizer()
+daemon.main()
+```
+
+For applications that want to invoke the runner entry point directly:
+
+```python
+from zdaemon.zdrun import main
+
+main()
+```
+
+`main()` also accepts an optional argument sequence:
+
+```python
+from zdaemon.zdrun import main
+
+argv = ["--help"]
+main(args=argv)
+```
+
+The exact accepted options are determined by the configured runner options.
+
+### Control interface: `zdaemon.zdctl`
+
+The control-side API is centered on `ZDCmd` and `ZDCtlOptions`.
+
+`ZDCmd` is a command interpreter based on `cmd.Cmd`. It provides commands for controlling a daemon and inspecting its state:
+
+- `start`
+- `stop`
+- `restart`
+- `kill`
+- `wait`
+- `status`
+- `reopen_transcript`
+- `logreopen`
+- `logtail`
+- `foreground` / `fg`
+- `show`
+
+The corresponding methods follow the usual `cmd.Cmd` naming convention, for example:
+
+```python
+from zdaemon.zdctl import ZDCmd
+
+controller = ZDCmd()
+controller.do_status("")
+controller.do_start("")
+controller.do_stop("")
+```
+
+For interactive use, start the command loop:
+
+```python
+from zdaemon.zdctl import ZDCmd
+
+controller = ZDCmd()
+controller.cmdloop()
+```
+
+`ZDCmd` includes lower-level helpers for sending actions and retrieving status:
+
+```python
+controller.send_action("start")
+status = controller.get_status()
+```
+
+The control module also provides a top-level entry point:
+
+```python
+from zdaemon.zdctl import main
+
+main()
+```
+
+As with the runner entry point, an argument sequence may be supplied:
+
+```python
+from zdaemon.zdctl import main
+
+main(args=["--help"])
+```
+
+### Common option support: `zdaemon.zdoptions`
+
+`ZDOptions` provides a reusable option-definition and configuration-loading interface. `RunnerOptions` extends it for runner-oriented consumers.
+
+Important methods include:
+
+- `add(...)` — register an option.
+- `remove(...)` — remove a previously registered option.
+- `realize(...)` — process arguments and finalize option values.
+- `usage(msg)` — report usage information.
+- `help(dummy)` and `print_version(dummy)` — built-in help/version handlers.
+- `default_configfile()` — obtain the default configuration file.
+- `load_schema()` — load configuration schema information.
+- `load_configfile()` — load configuration.
+- `load_logconf(sectname="eventlog")` — load logging configuration.
+
+A custom options class can extend `ZDOptions` and add application-specific settings:
+
+```python
+from zdaemon.zdoptions import ZDOptions
+
+
+class AppOptions(ZDOptions):
+    def __init__(self):
+        super().__init__()
+        self.add(
+            name="workers",
+            long="workers=",
+            default=1,
+            handler=int,
+        )
+
+
+options = AppOptions()
+options.realize(args=["--workers", "4"])
+
+print(options.workers)
+```
+
+`ZDCtlOptions` and `ZDRunOptions` both derive from `RunnerOptions`, allowing control and runner components to share common option behavior while providing their own schema setup and realization logic.
+
+## Validation helpers
+
+`zdaemon.zdoptions` includes standalone conversion and validation helpers that can be used when defining options:
+
+```python
+from zdaemon.zdoptions import (
+    existing_parent_directory,
+    list_of_ints,
+    name2signal,
+    octal_type,
+)
+
+workers = list_of_ints("1,2,4")
+mode = octal_type("755")
+signal_number = name2signal("TERM")
+directory = existing_parent_directory("/tmp/example/output.log")
+```
+
+Available helpers:
+
+- `list_of_ints(arg)` — parse a list of integer values.
+- `octal_type(arg)` — parse an octal-style value.
+- `name2signal(string)` — resolve a signal name.
+- `existing_parent_directory(arg)` — validate a path using its existing parent directory.
+- `existing_parent_dirpath(arg)` — validate or normalize a path based on an existing parent directory.
+
+Both `zdaemon.zdctl` and `zdaemon.zdrun` also expose `string_list(arg)` helpers for parsing string-list values.
+
+## Process and status helpers
+
+The runner module includes utilities for interpreting process results and signals:
+
+```python
+from zdaemon.zdrun import decode_wait_status, signame
+
+message = decode_wait_status(status_value)
+signal = signame(signal_number)
+```
+
+Other runner helpers include:
+
+- `get_path()` — obtain a path value used by the runner.
+- `main(args=None)` — runner entry point.
+
+`Subprocess` exposes lifecycle operations for a managed process:
+
+```python
+from zdaemon.zdrun import Subprocess
+
+process = Subprocess()
+
+process.spawn()
+
+if process.test(pid):
+    process.kill(signal_number)
+
+process.setstatus(status_value)
+```
+
+## Transcript handling
+
+`Transcript` represents transcript output associated with daemon activity.
+
+```python
+from zdaemon.zdrun import Transcript
+
+transcript = Transcript()
+
+transcript.copy()
+transcript.reopen()
+```
+
+The controller-side `logtail` command is supported by `TailHelper`, which can inspect and follow transcript-like files:
+
+```python
+from zdaemon.zdctl import TailHelper
+
+tailer = TailHelper()
+
+tailer.tail()
+tailer.tail(max=25)
+tailer.tailf()
+
+size = tailer.fsize()
+```
+
+## Typical architecture
+
+A typical integration separates responsibilities:
+
+1. Use `ZDRunOptions` or another `RunnerOptions` subclass to define and realize configuration.
+2. Run a `Daemonizer` to manage the supervised process.
+3. Use `ZDCmd` or the control entry point to send lifecycle commands.
+4. Use `Transcript` and `TailHelper` for transcript reopening, copying, and inspection.
+
+Conceptually:
+
+```python
+from zdaemon.zdrun import Daemonizer
+from zdaemon.zdctl import ZDCmd
+
+# In the daemon-running environment:
+daemon = Daemonizer()
+daemon.main()
+
+# In a separate control environment:
+controller = ZDCmd()
+controller.do_restart("")
+controller.do_status("")
+```
+
+This separation allows a long-running process manager and its control interface to be used independently or embedded into a larger Python application.

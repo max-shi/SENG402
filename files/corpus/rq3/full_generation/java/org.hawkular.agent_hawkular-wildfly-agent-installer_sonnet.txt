@@ -1,0 +1,195 @@
+# Hawkular WildFly Agent Installer
+
+The **hawkular-wildfly-agent-installer** library provides a self-contained installer for deploying and configuring the Hawkular WildFly Agent into a target WildFly or JBoss EAP server installation (standalone or domain mode). It is designed to be run as a standalone Java application (typically packaged as an executable JAR) that:
+
+- Copies/installs the agent module distribution into a target server installation.
+- Modifies the target server's configuration (`standalone.xml`, `host.xml`, or domain profile configuration) to register the Hawkular agent subsystem.
+- Handles encoding/decoding of sensitive configuration values (such as passwords) so they aren't stored in plain text.
+- Supports different target configurations depending on whether the server is running in standalone mode, host mode, or domain/profile mode.
+
+This library is primarily intended to be used as a command-line installer, but its configuration and encoding utilities can also be reused programmatically by tooling that needs to script or automate agent installation.
+
+## Main Components
+
+### `AgentInstaller`
+
+The entry point of the installer. Running its `main(String[] args)` method drives the entire installation process — parsing command-line arguments, building an `InstallerConfiguration`, and applying the appropriate configuration changes to the target server based on which `TargetConfigInfo` implementation applies (standalone, host, or domain).
+
+```java
+public class AgentInstaller {
+    public static void main(String[] args) throws Exception;
+}
+```
+
+Typically invoked directly from the command line:
+
+```bash
+java -jar hawkular-wildfly-agent-installer.jar \
+    --target-location=/opt/wildfly \
+    --server-url=http://localhost:8080 \
+    --username=jdoe \
+    --password=secret
+```
+
+(Exact command-line flags are determined by the `CommandLine` parser used internally to build the `InstallerConfiguration`.)
+
+### `InstallerConfiguration`
+
+Represents the fully parsed and resolved configuration for a single installer run. It is constructed from a `CommandLine<?>` object (typically produced by parsing the arguments passed to `AgentInstaller.main`), and exposes all settings needed to install and configure the agent:
+
+```java
+public class InstallerConfiguration {
+    public InstallerConfiguration(CommandLine<?> commandLine) throws Exception;
+
+    public void decodeProperties(String encryptionKey, byte[] salt) throws Exception;
+
+    public String getInstallerConfig();
+    public boolean isEnabled();
+    public boolean isConfigOnly();
+    public String getTargetLocation();
+    public String getModuleDistribution();
+    public String getTargetConfig();
+    public String getSubsystemSnippet();
+    public String getServerUrl();
+    public String getDownloadServerUrl();
+    public String getKeystorePath();
+    public String getKeystorePassword();
+    public String getUsername();
+    public String getPassword();
+    public String getManagedServerName();
+    public String getFeedId();
+    public String getTenantId();
+    public boolean isMetricsOnlyMode();
+    public String getManagedResourceTypeSets();
+}
+```
+
+Key responsibilities:
+
+- **Target selection** — `getTargetLocation()` and `getTargetConfig()` identify where and how the agent should be installed (e.g., path to a standalone/domain/host configuration file).
+- **Module handling** — `getModuleDistribution()` points to the agent module archive to install; `getSubsystemSnippet()` supplies the XML fragment to merge into the target configuration.
+- **Server connectivity** — `getServerUrl()` and `getDownloadServerUrl()` specify where the agent should connect to report data and where to download additional artifacts, respectively.
+- **Security** — `getKeystorePath()`, `getKeystorePassword()`, `getUsername()`, and `getPassword()` provide credentials for secure communication. Sensitive values may arrive encoded and are decrypted via `decodeProperties(String encryptionKey, byte[] salt)`.
+- **Agent identity/behavior flags** — `getManagedServerName()`, `getFeedId()`, `getTenantId()`, `isMetricsOnlyMode()`, and `getManagedResourceTypeSets()` configure how the agent identifies itself and what it monitors.
+- **Execution mode flags** — `isEnabled()` and `isConfigOnly()` control whether the agent subsystem is active and whether the installer should only update configuration without performing a full install.
+
+### `EncoderDecoder`
+
+A small utility class for symmetrically encoding and decoding sensitive strings (such as passwords) using a shared key and salt. This is used by `InstallerConfiguration.decodeProperties` to recover plaintext credentials that were stored/transmitted in encoded form.
+
+```java
+public class EncoderDecoder {
+    public static String encode(String clearText, String key, byte[] salt) throws Exception;
+    public static String decode(String encodedString, String key, byte[] salt) throws Exception;
+}
+```
+
+### `TargetConfigInfo` and Implementations
+
+`TargetConfigInfo` is the abstraction describing *where* and *how* the agent subsystem configuration should be inserted into a target server's XML configuration. It captures the XPath locations relevant to inserting the subsystem and security realm configuration, and the relative path base used for module resolution.
+
+```java
+public interface TargetConfigInfo {
+    public String getRootXPath();
+    public String getSecurityRealmsXPath();
+    public String getProfileXPath();
+    public String getManagedServerResourceTypeSets();
+    public String getRelativeTo();
+}
+```
+
+Three concrete implementations exist, one per server topology:
+
+- **`StandaloneTargetConfigInfo`** — for a standalone WildFly/EAP server (`standalone.xml`).
+- **`HostTargetConfigInfo`** — for the host-level controller configuration in a managed domain (`host.xml`).
+- **`DomainTargetConfigInfo`** — for domain-level profile configuration in a managed domain (`domain.xml`).
+
+Each implementation supplies the correct XPath expressions and defaults appropriate to its target file structure, so the installer logic in `AgentInstaller` can remain agnostic of which topology it's modifying — it simply asks the relevant `TargetConfigInfo` for the paths it needs.
+
+## How the Pieces Fit Together
+
+1. `AgentInstaller.main` parses command-line arguments into a `CommandLine` object.
+2. That `CommandLine` is used to construct an `InstallerConfiguration`, which centralizes all installer settings.
+3. If credentials were supplied in encoded form, `InstallerConfiguration.decodeProperties` is called with the encryption key and salt to recover plaintext values (using `EncoderDecoder.decode` internally).
+4. Based on the detected or specified server topology, the appropriate `TargetConfigInfo` implementation (`StandaloneTargetConfigInfo`, `HostTargetConfigInfo`, or `DomainTargetConfigInfo`) is selected.
+5. The installer uses the XPath information from `TargetConfigInfo` together with the settings from `InstallerConfiguration` (module distribution, subsystem snippet, server URL, credentials, etc.) to modify the target server's configuration file and install the agent module.
+
+## Usage Examples
+
+### Running the installer from the command line
+
+```bash
+java -jar hawkular-wildfly-agent-installer.jar \
+    --target-location=/opt/wildfly-server \
+    --server-url=https://hawkular-server:8443 \
+    --username=admin \
+    --password=changeme \
+    --managed-server-name=my-wildfly-01 \
+    --tenant-id=my-tenant
+```
+
+This installs and configures the agent module in the standalone server located at `/opt/wildfly-server`, pointing it at the Hawkular server URL, and registering it under the given tenant and managed server name.
+
+### Programmatically building configuration (advanced usage)
+
+If you are embedding installer logic in your own tooling, you can construct and inspect an `InstallerConfiguration` directly once you have a parsed `CommandLine` object:
+
+```java
+CommandLine<?> commandLine = /* parsed from your own argument source */;
+
+InstallerConfiguration config = new InstallerConfiguration(commandLine);
+
+// Decode any encrypted credentials that were passed in
+config.decodeProperties("myEncryptionKey", saltBytes);
+
+System.out.println("Installing to: " + config.getTargetLocation());
+System.out.println("Server URL: " + config.getServerUrl());
+System.out.println("Feed ID: " + config.getFeedId());
+
+if (config.isEnabled() && !config.isConfigOnly()) {
+    // Proceed with full install using config.getModuleDistribution(),
+    // config.getSubsystemSnippet(), etc.
+}
+```
+
+### Selecting target configuration info based on topology
+
+```java
+TargetConfigInfo targetInfo;
+
+switch (serverTopology) {
+    case STANDALONE:
+        targetInfo = new StandaloneTargetConfigInfo();
+        break;
+    case HOST:
+        targetInfo = new HostTargetConfigInfo();
+        break;
+    case DOMAIN:
+        targetInfo = new DomainTargetConfigInfo();
+        break;
+    default:
+        throw new IllegalStateException("Unknown topology");
+}
+
+String rootXPath = targetInfo.getRootXPath();
+String profileXPath = targetInfo.getProfileXPath();
+String securityRealmsXPath = targetInfo.getSecurityRealmsXPath();
+
+// Use these XPath expressions together with InstallerConfiguration's
+// getSubsystemSnippet() to patch the target server's XML configuration.
+```
+
+### Encoding a password for use in an encoded configuration file
+
+```java
+byte[] salt = generateSalt(); // application-specific
+String encoded = EncoderDecoder.encode("mySecretPassword", "myEncryptionKey", salt);
+
+// Store `encoded` in your installer configuration source; it can later
+// be recovered via InstallerConfiguration.decodeProperties(...) or:
+String decoded = EncoderDecoder.decode(encoded, "myEncryptionKey", salt);
+```
+
+## Summary
+
+This library packages everything needed to automate the installation and configuration of the Hawkular WildFly Agent into a WildFly/EAP server, whether running standalone or as part of a managed domain. `AgentInstaller` serves as the CLI entry point, `InstallerConfiguration` centralizes all installer settings (including secure credential handling via `EncoderDecoder`), and the `TargetConfigInfo` family abstracts away the differences between standalone, host, and domain configuration file structures.

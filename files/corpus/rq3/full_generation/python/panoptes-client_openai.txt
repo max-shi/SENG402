@@ -1,0 +1,515 @@
+# panoptes-client
+
+`panoptes-client` is a Python client library for working with Panoptes-style projects and their related resources. Its API provides object-oriented access to projects, workflows, subjects, subject sets, classifications, users, collections, organizations, workflow versions, exports, aggregations, and workflow-processing services.
+
+The library also includes lower-level HTTP helpers, authentication methods, pagination support, batching utilities, and integrations for Caesar, Talk, and iNaturalist-related operations.
+
+## Core concepts
+
+Most resources inherit from `PanoptesObject`, which provides a common interface for retrieving, saving, reloading, deleting, and querying API-backed objects.
+
+Typical resource operations include:
+
+- `find(...)` — retrieve an object by identifier or, for some resources, slug.
+- `where(...)` — query for matching objects.
+- `save()` — create or update an object.
+- `reload()` — refresh an object from the API.
+- `delete()` — delete an object.
+- `http_get(...)`, `http_post(...)`, `http_put(...)`, `http_delete(...)` — perform resource-oriented HTTP requests.
+
+`Panoptes` provides connection, login, authentication-token, and generic HTTP request functionality used by the higher-level resource classes.
+
+## Main classes
+
+### Connection and HTTP access
+
+#### `Panoptes`
+
+`Panoptes` is the main client interface for connecting to the service and making HTTP requests.
+
+```python
+from panoptes_client.panoptes import Panoptes
+
+Panoptes.connect()
+Panoptes.login(username="example-user", password="example-password")
+```
+
+Authentication-related methods include:
+
+- `login(username=None, password=None)`
+- `interactive_login()`
+- `get_csrf_token()`
+- `get_bearer_token()`
+- `valid_bearer_token()`
+- `has_bearer_token()`
+
+Request methods include:
+
+- `get(...)` / `get_request(...)`
+- `post(...)` / `post_request(...)`
+- `put(...)` / `put_request(...)`
+- `delete(...)` / `delete_request(...)`
+- `json_request(...)`
+- `http_request(...)`
+
+All request methods accept a path and optional request parameters, headers, JSON data, endpoint selection, and retry settings where applicable.
+
+```python
+response = Panoptes.get_request(
+    path=api_path,
+    params={"page": 1},
+    retry=True,
+)
+```
+
+### `PanoptesObject`
+
+`PanoptesObject` is the shared base class for API-backed resources. It supplies the standard persistence and querying interface used by most models.
+
+Common methods:
+
+```python
+object.save()
+object.reload()
+object.delete()
+```
+
+Class-oriented lookup methods:
+
+```python
+result = SomeResource.find(resource_id)
+matches = SomeResource.where(some_filter="value")
+```
+
+The base class also supports URL generation, pagination handling, raw response loading, and resource-scoped HTTP requests.
+
+### Projects
+
+#### `Project`
+
+A `Project` represents a project and supports collaborators, subject sets, workflows, exports, images, and copying.
+
+Key methods:
+
+- `Project.find(id='', slug=None)`
+- `project.collaborators(*roles)`
+- `project.add_subject_sets(subject_sets)`
+- `project.add_workflows(workflows)`
+- `project.avatar()`
+- `project.attached_images()`
+- `project.add_attached_image(...)`
+- `project.copy(new_subject_set_name=None)`
+
+Projects are also exportable.
+
+```python
+from panoptes_client.project import Project
+
+project = Project.find(slug="my-project")
+
+project.add_attached_image(
+    src=image_source,
+    content_type="image/png",
+    external_link=True,
+    metadata={"caption": "Project image"},
+)
+
+project.save()
+```
+
+### Subjects and subject sets
+
+#### `Subject`
+
+A `Subject` represents an individual item available for use in workflows.
+
+Key methods:
+
+- `subject.save(client=None)`
+- `subject.async_save_result()`
+- `subject.add_location(location, manual_mimetype=None)`
+- `subject.subject_workflow_status(workflow_id)`
+- `Subject.async_saves()`
+
+```python
+from panoptes_client.subject import Subject
+
+subject = Subject.find("12345")
+subject.add_location(
+    "https://example.org/media/specimen.png",
+    manual_mimetype="image/png",
+)
+subject.save()
+```
+
+`Subject.add_location(...)` can raise `UnknownMediaException` when the media type cannot be determined.
+
+#### `SubjectSet`
+
+A `SubjectSet` groups subjects together and can be associated with workflows and exports.
+
+Key methods:
+
+- `subject_set.subjects()`
+- `subject_set.add(subjects)`
+- `subject_set.remove(subjects)`
+- `subject_set.subject_workflow_statuses(workflow_id)`
+
+```python
+from panoptes_client.subject import Subject
+from panoptes_client.subject_set import SubjectSet
+
+subject_set = SubjectSet.find("67890")
+
+subjects = [
+    Subject.find("12345"),
+    Subject.find("12346"),
+]
+
+subject_set.add(subjects)
+subject_set.save()
+```
+
+### Workflows
+
+#### `Workflow`
+
+A `Workflow` represents a workflow configuration. It can be connected to subject sets, used to retire or unretire subjects, queried for subject workflow status, exported, versioned, and configured for aggregation services.
+
+Key methods include:
+
+- `workflow.retire_subjects(subjects, reason='other')`
+- `workflow.unretire_subjects(subjects)`
+- `workflow.unretire_subjects_by_subject_set(subject_sets)`
+- `workflow.add_subject_sets(subject_sets)`
+- `workflow.remove_subject_sets(subject_sets)`
+- `workflow.subject_workflow_status(subject_id)`
+- `workflow.subject_workflow_statuses(subject_set_id)`
+- `workflow.versions()`
+
+```python
+from panoptes_client.subject import Subject
+from panoptes_client.workflow import Workflow
+
+workflow = Workflow.find("1001")
+subject = Subject.find("12345")
+
+workflow.retire_subjects([subject], reason="other")
+workflow.save()
+```
+
+#### Workflow versions
+
+`WorkflowVersion` provides access to workflow-specific versions.
+
+- `WorkflowVersion.find(_id, workflow)`
+- `workflow_version.workflow()`
+- `workflow_version.save()`
+
+```python
+from panoptes_client.workflow import Workflow
+from panoptes_client.workflow_version import WorkflowVersion
+
+workflow = Workflow.find("1001")
+version = WorkflowVersion.find("2001", workflow)
+
+parent_workflow = version.workflow()
+```
+
+### Exports
+
+`Project`, `SubjectSet`, and `Workflow` implement the `Exportable` interface.
+
+Available methods:
+
+- `get_export(export_type, generate=False, wait=False, wait_timeout=None)`
+- `wait_export(export_type, timeout=None)`
+- `generate_export(export_type)`
+- `describe_export(export_type)`
+
+```python
+from panoptes_client.workflow import Workflow
+
+workflow = Workflow.find("1001")
+
+workflow.generate_export(export_type)
+export = workflow.wait_export(export_type, timeout=300)
+```
+
+The `export_type` value selects the type of export to retrieve or generate.
+
+### Collections and organizations
+
+#### `Collection`
+
+Collections group subjects and support membership management.
+
+- `Collection.find(id='', slug=None)`
+- `collection.subjects()`
+- `collection.add(subjects)`
+- `collection.remove(subjects)`
+- `collection.set_default_subject(subject)`
+
+```python
+from panoptes_client.collection import Collection
+from panoptes_client.subject import Subject
+
+collection = Collection.find(slug="featured-subjects")
+subject = Subject.find("12345")
+
+collection.add([subject])
+collection.set_default_subject(subject)
+collection.save()
+```
+
+#### `Organization`
+
+Organizations manage project membership.
+
+- `organization.add(projects)`
+- `organization.remove(projects)`
+
+```python
+from panoptes_client.organization import Organization
+from panoptes_client.project import Project
+
+organization = Organization.find("42")
+project = Project.find(slug="my-project")
+
+organization.add([project])
+organization.save()
+```
+
+### Users, roles, and preferences
+
+#### `User`
+
+User-related operations include filtering users, obtaining avatars, and retrieving the current user.
+
+- `User.where(**kwargs)`
+- `User.me()`
+- `user.avatar()`
+
+```python
+from panoptes_client.user import User
+
+current_user = User.me()
+users = User.where(login="example-user")
+```
+
+#### Roles
+
+The library exposes API-backed role resources:
+
+- `ProjectRole`
+- `CollectionRole`
+
+These inherit the common `PanoptesObject` persistence and query interface.
+
+#### `ProjectPreferences`
+
+`ProjectPreferences` manages settings associated with a user, project, or both.
+
+- `ProjectPreferences.find(id='', user=None, project=None)`
+- `ProjectPreferences.save_settings(project=None, user=None, settings=None)`
+- `ProjectPreferences.fetch_settings(project=None, user=None)`
+
+```python
+from panoptes_client.project_preferences import ProjectPreferences
+
+settings = ProjectPreferences.fetch_settings(
+    project=project,
+    user=current_user,
+)
+
+ProjectPreferences.save_settings(
+    project=project,
+    user=current_user,
+    settings={"example_setting": True},
+)
+```
+
+## Caesar workflow processing
+
+`Caesar` provides operations for workflow extractors, reducers, rules, effects, imports, and workflow data retrieval.
+
+Its API includes:
+
+- Workflow retrieval: `get_workflow(workflow_id)`
+- Extracts and reductions:
+  - `get_extracts_by_workflow_and_subject(...)`
+  - `get_reductions_by_workflow_and_subject(...)`
+- Extractor and reducer retrieval:
+  - `get_workflow_extractors(...)`
+  - `get_workflow_reducers(...)`
+- Workflow saving: `save_workflow(...)`
+- Extractor, reducer, rule, and effect creation
+- Data extract import
+- Validation for rule, reducer, extractor, and action types
+
+The `Workflow` class provides convenience methods for the same workflow-oriented functionality.
+
+```python
+from panoptes_client.workflow import Workflow
+
+workflow = Workflow.find("1001")
+
+workflow.add_caesar_extractor(
+    extractor_type=extractor_type,
+    extractor_key="example_extractor",
+    task_key="T0",
+)
+
+workflow.add_caesar_reducer(
+    reducer_type=reducer_type,
+    key="example_reducer",
+)
+
+workflow.save_to_caesar(
+    public_extracts=False,
+    public_reductions=False,
+)
+```
+
+A workflow can also be configured through the Alice-oriented helpers:
+
+```python
+workflow.configure_for_alice()
+```
+
+Additional Alice configuration methods allow extractor, reducer, rule, and effect creation with configurable thresholds and task keys:
+
+- `add_alice_extractors(...)`
+- `add_alice_reducers(...)`
+- `add_alice_rules_and_effects(...)`
+
+### Aggregation
+
+Workflows expose methods for starting and inspecting aggregation jobs:
+
+- `workflow.run_aggregation(user=None, delete_if_exists=False)`
+- `workflow.get_batch_aggregation()`
+- `workflow.get_batch_aggregation_status()`
+- `workflow.get_batch_aggregation_links()`
+
+`Aggregation` is also available as an API-backed resource.
+
+```python
+workflow.run_aggregation(delete_if_exists=False)
+
+status = workflow.get_batch_aggregation_status()
+links = workflow.get_batch_aggregation_links()
+```
+
+## Talk and iNaturalist integrations
+
+### `Talk`
+
+`Talk` provides request helpers and data-request methods for Talk-related sections and kinds.
+
+- `get_data_request(section, kind)`
+- `post_data_request(section, kind)`
+
+It also exposes `http_get`, `http_post`, `http_put`, and `http_delete`.
+
+### `Inaturalist`
+
+`Inaturalist` supports importing data associated with a taxon into a subject set.
+
+```python
+from panoptes_client.inaturalist import Inaturalist
+
+Inaturalist.inat_import(
+    taxon_id=taxon_id,
+    subject_set_id=subject_set_id,
+    updated_since=updated_since,
+)
+```
+
+## Link collections
+
+`LinkCollection` provides generic relationship management:
+
+- `add(objs)`
+- `remove(objs)`
+
+Specialized collections include:
+
+- `ProjectLinkCollection`
+- `SubjectSetLinkCollection`
+
+These are used by higher-level resources to manage linked objects such as subjects, workflows, subject sets, and projects.
+
+`LinkResolver` supports registration and read-only status checks for link types:
+
+- `LinkResolver.register(object_class, link_slug=None, readonly=False)`
+- `LinkResolver.isreadonly(link_slug)`
+
+## Pagination
+
+`ResultPaginator` supports paginated result handling through:
+
+- `set_page(response)`
+
+`PanoptesObject.paginated_results(response, etag)` provides pagination support for resource queries.
+
+## Utility functions
+
+The library includes helpers for iterable detection and batching.
+
+```python
+from panoptes_client.utils import batchable, isiterable, split
+```
+
+### `isiterable`
+
+Checks whether a value is iterable.
+
+```python
+if isiterable(values):
+    ...
+```
+
+### `split`
+
+Splits a sequence or iterable into batches.
+
+```python
+for batch in split(subject_ids, batch_size=100):
+    ...
+```
+
+### `batchable`
+
+Decorates a function so it can operate on input in batches.
+
+```python
+@batchable(batch_size=100)
+def process_subjects(subjects):
+    for subject in subjects:
+        subject.save()
+```
+
+## Exceptions
+
+The library defines several exceptions for common client-side error cases:
+
+- `PanoptesAPIException` — an API-related error.
+- `ReadOnlyAttributeException` — an attempt to modify a read-only attribute.
+- `ObjectNotSavedException` — an operation requiring a saved object was attempted before it was saved.
+- `UnknownMediaException` — a subject media location could not be identified or handled.
+
+```python
+from panoptes_client.panoptes import PanoptesAPIException
+from panoptes_client.subject import UnknownMediaException
+
+try:
+    subject.add_location(location)
+    subject.save()
+except UnknownMediaException:
+    # Provide a supported location or an explicit media type.
+    pass
+except PanoptesAPIException:
+    # Handle an API request failure.
+    pass
+```

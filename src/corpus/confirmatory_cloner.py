@@ -1,7 +1,7 @@
 """
-confirmatory_cloner — Acquire source for the confirmatory sample via git clone.
+confirmatory_cloner: Acquire source for the confirmatory sample via git clone.
 
-Reads files/corpus/frame_YYYYMMDD/sample_manifest.csv (§7.6). For each
+Reads files/corpus/frame_<name>/sample_manifest.csv. For each
 primary row it attempts:
 
     git clone --depth 1 --branch <tag> <repository_url>
@@ -23,17 +23,17 @@ The manifest is updated with:
                      (README*, files under docs/**, doc/**, *.md, *.rst)
     commit_sha       resolved commit SHA of the cloned working tree
     (existing        columns retained; word_count_post_clean and word_capped
-     columns)        remain empty here — the preprocessor fills them.
+     columns)        remain empty here, the preprocessor fills them.
 
 Outputs:
 
     files/raw/confirmatory/{python,java}/<pkg>/     # git clones
-    files/corpus/frame_YYYYMMDD/clone_log.csv       # per-library outcome
-    files/corpus/frame_YYYYMMDD/exclusion_log.csv   # appended
-    files/corpus/frame_YYYYMMDD/sample_manifest.csv # updated in-place
+    files/corpus/frame_<name>/clone_log.csv       # per-library outcome
+    files/corpus/frame_<name>/exclusion_log.csv   # appended
+    files/corpus/frame_<name>/sample_manifest.csv # updated in-place
 
 Usage:
-    python3 src/corpus/confirmatory_cloner.py [--freeze-date YYYYMMDD]
+    python3 src/corpus/confirmatory_cloner.py [--freeze-date <name>]
                                               [--lang java|python|all]
                                               [--libraries START-END]
                                               [--dry-run]
@@ -51,16 +51,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
 
-# Reuse the pilot's pause helper. It lives in the sibling crawl-clone dir
+# Reuse the pilot's pause helper. It lives in the sibling common dir
 # rather than in this package, so we splice its path onto sys.path.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "crawl-clone"))
+sys.path[:0] = [str(p) for p in Path(__file__).resolve().parents[1].iterdir() if p.is_dir()]
 from pause_helper import PauseController  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 CORPUS_DIR = ROOT / "files" / "corpus"
 RAW_DIR = ROOT / "files" / "raw" / "confirmatory"
 
-N_TARGET = 200
+from frame_config import load_n_target  # noqa: E402
+
+N_TARGET = 200  # overridden in main() from the frame's frame_metadata.json
 CLONE_TIMEOUT_SEC = 300           # 5 min per clone
 GIT_HOSTS_ALLOW = (
     "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "gitee.com",
@@ -345,7 +347,8 @@ def promote_reserves(rows: list[dict]) -> int:
     the rest are `role=reserve`. Returns the number of promotions applied.
     """
     promoted = 0
-    for eco in ("python", "java"):
+    ecosystems = sorted({r["ecosystem"] for r in rows})
+    for eco in ecosystems:
         eco_rows = sorted(
             (r for r in rows if r["ecosystem"] == eco),
             key=lambda r: int(r["draw_order"]),
@@ -365,7 +368,7 @@ def promote_reserves(rows: list[dict]) -> int:
                 or status.startswith("primary_excluded")
             )
             if disqualified:
-                continue  # excluded — leave status as-is
+                continue  # excluded, leave status as-is
             if len(primaries) < N_TARGET:
                 primaries.append(r)
             else:
@@ -533,7 +536,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--freeze-date",
                     default=datetime.now(timezone.utc).strftime("%Y%m%d"))
-    ap.add_argument("--lang", choices=["java", "python", "all"], default="all")
+    ap.add_argument("--lang", choices=["java", "python", "haskell", "all"], default="all")
     ap.add_argument("--libraries",
                     help="Range within this pass, e.g. '1-10' (1-indexed).")
     ap.add_argument("--dry-run", action="store_true",
@@ -546,6 +549,9 @@ def main() -> None:
     manifest_path = frame_dir / "sample_manifest.csv"
     excl_path = frame_dir / "exclusion_log.csv"
     clone_log_path = frame_dir / "clone_log.csv"
+
+    global N_TARGET
+    N_TARGET = load_n_target(frame_dir)
 
     if not manifest_path.exists():
         raise SystemExit(f"manifest not found: {manifest_path}")
@@ -561,7 +567,8 @@ def main() -> None:
         for r in rows:
             r.setdefault("commit_sha", "")
 
-    ecosystems = ["java", "python"] if args.lang == "all" else [args.lang]
+    ecosystems = (sorted({r["ecosystem"] for r in rows})
+                  if args.lang == "all" else [args.lang])
     lib_range = parse_range(args.libraries) if args.libraries else None
 
     # Open the clone log in append mode across passes.
@@ -578,7 +585,7 @@ def main() -> None:
 
     try:
         # Top up primary slots from reserves BEFORE the first pass.
-        # Needed when the manifest has vacant slots at startup — e.g.
+        # Needed when the manifest has vacant slots at startup, e.g.
         # after promote_f7_exclusions.py has marked rows as
         # primary_excluded_f7 without filling their positions, or when
         # a prior run failed to promote enough reserves.

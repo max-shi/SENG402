@@ -1,0 +1,110 @@
+# FlowListenerPromise
+
+`FlowListenerPromise` provides a small interoperability utility for starting a `Flow` while attaching a Scala callback.
+
+The API accepts:
+
+- a `Flow<Config>` instance,
+- a Scala `Function1` that receives that flow and produces a value of type `T`,
+- and returns a `Future<T>` representing the asynchronous result.
+
+This is useful when application code needs to associate a typed asynchronous result with a flow operation.
+
+## API overview
+
+### `FlowListenerPromise`
+
+```java
+public class FlowListenerPromise
+```
+
+`FlowListenerPromise` is the entry point for this library.
+
+#### `start`
+
+```java
+public static <Config, T> Future<T> start(
+    Flow<Config> flow,
+    scala.Function1<Flow<Config>, T> fn
+)
+```
+
+Starts work for the supplied `flow` and registers the supplied callback function.
+
+Type parameters:
+
+| Type parameter | Meaning |
+|---|---|
+| `Config` | The configuration type associated with the `Flow`. |
+| `T` | The value produced by the callback and delivered through the returned `Future`. |
+
+Parameters:
+
+| Parameter | Description |
+|---|---|
+| `flow` | The `Flow<Config>` to start. |
+| `fn` | A Scala function invoked with the flow and returning a value of type `T`. |
+
+Returns:
+
+- A `Future<T>` for the value produced by `fn`.
+
+## Usage
+
+### Java
+
+The callback is expressed as a `scala.Function1` whose input is the same flow passed to `start`.
+
+```java
+Flow<JobConfig> flow = obtainFlow();
+
+Future<String> result = FlowListenerPromise.start(
+    flow,
+    new scala.Function1<Flow<JobConfig>, String>() {
+        @Override
+        public String apply(Flow<JobConfig> startedFlow) {
+            return "Flow callback completed";
+        }
+    }
+);
+```
+
+The returned future is typed from the callback result. For example, a callback returning an integer produces a `Future<Integer>`:
+
+```java
+Flow<JobConfig> flow = obtainFlow();
+
+Future<Integer> result = FlowListenerPromise.start(
+    flow,
+    new scala.Function1<Flow<JobConfig>, Integer>() {
+        @Override
+        public Integer apply(Flow<JobConfig> startedFlow) {
+            return 1;
+        }
+    }
+);
+```
+
+### Scala-style callback
+
+Because the API accepts `scala.Function1`, it can also be used with a function value in Scala-oriented code:
+
+```scala
+val flow: Flow[JobConfig] = obtainFlow()
+
+val result: Future[String] =
+  FlowListenerPromise.start(
+    flow,
+    (startedFlow: Flow[JobConfig]) => "Flow callback completed"
+  )
+```
+
+## Type relationship
+
+The flow configuration type is preserved from input to callback:
+
+```text
+Flow<Config>  ──>  Function1<Flow<Config>, T>  ──>  Future<T>
+```
+
+This means the callback always receives a flow with the same configuration type as the flow supplied to `start`, while the callback result type determines the type of the returned future.

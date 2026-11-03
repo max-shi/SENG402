@@ -1,0 +1,17 @@
+check,subset,n,n_human,n_generated,macro_f1,macro_f1_sd,accuracy,permutation_null,permutation_p,threshold,human_correct,generated_correct,mean_bigwords
+readme_scope,all documents,63,21.0,42.0,0.8617,0.0128,0.8857,0.4902,0.0099,32.84,16.0,41.0,
+readme_scope,severe excluded,63,21.0,42.0,0.8617,0.0128,0.8857,0.4983,0.0099,32.84,16.0,41.0,
+readme_scope,clean only,63,21.0,42.0,0.8617,0.0128,0.8857,0.4948,0.0099,32.84,16.0,41.0,
+prompt_variant,V0_baseline,6,,6.0,,,,,,34.06,,4.0,37.51
+prompt_variant,V1_anon_name,6,,6.0,,,,,,34.06,,5.0,38.36
+prompt_variant,V2_length_cap,6,,6.0,,,,,,34.06,,5.0,40.36
+prompt_variant,V3_paraphrase,6,,6.0,,,,,,34.06,,5.0,36.74
+prompt_variant,V4_explicit_disclaimer,6,,6.0,,,,,,34.06,,5.0,37.95
+prompt_variant,pilot run,10,,10.0,,,,,,34.06,,9.0,40.93
+prompt_variant,human control (same libraries),3,3.0,,,,,,,34.06,2.0,,35.3
+prompt_variant,all variants,30,,30.0,,,,,,34.06,,24.0,38.19
+external_human,all,2400,2400.0,,,,,,,34.06,1992.0,,30.07
+external_human,n=400 frame,400,400.0,,,,,,,34.06,338.0,,30.0
+external_human,n=2000 frame,2000,2000.0,,,,,,,34.06,1654.0,,30.08
+external_human,java,1200,1200.0,,,,,,,34.06,931.0,,30.88
+external_human,python,1200,1200.0,,,,,,,34.06,1061.0,,29.26

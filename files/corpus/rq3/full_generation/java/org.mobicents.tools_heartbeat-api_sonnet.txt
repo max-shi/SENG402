@@ -1,0 +1,226 @@
+# heartbeat-api
+
+`org.mobicents.tools:heartbeat-api` provides a lightweight protocol and set of data structures for implementing **heartbeat/health-check communication** between distributed nodes — typically a load balancer and the backend server instances (e.g. SIP/HTTP application nodes) it manages.
+
+The library defines:
+- A common `Node` model representing a server instance and its runtime status (host, IP, ports, failure counters, timestamps, etc.).
+- A family of `Packet` implementations representing the messages exchanged during the node lifecycle: startup, heartbeat, shutdown, stop, and switchover.
+- Listener interfaces (`IServerListener`) for reacting to incoming packets on the server side.
+- A generic service interface (`IServerHeartbeatService`) for starting/stopping a heartbeat listener and sending packets to nodes.
+- Configuration (`HeartbeatConfig`) for pluggable transport/protocol implementations.
+
+This library only defines the API contracts and data model — actual network transport, serialization, and balancing logic are expected to be provided by an implementing module.
+
+---
+
+## Core Concepts
+
+### `Node` / `SIPNode`
+
+`Node` is the primary representation of a managed server instance. It tracks:
+
+- Identity: `hostName`, `ip`, `ports`
+- Arbitrary metadata via `getProperties()`
+- Health/liveness state: `isBad()`, `isGracefulShutdown()`, `getFailCounter()`
+- Traffic bookkeeping: `getRequestNumberWithoutResponse()`, `getLastTimeResponse()`, `getLastTimeError()`
+- Load-balancing helpers: `incrementWeightIndex()` / `obtainWeightIndex()`
+- Freshness tracking via `getTimeStamp()` / `updateTimerStamp()`
+
+`SIPNode` is a serializable, SIP-oriented counterpart to `Node`, carrying similar health/traffic metadata for use in SIP-specific balancing scenarios. Many `Packet` implementations can be constructed from either a `Node` or a `SIPNode`, allowing interoperability between the generic and SIP-specific node models.
+
+### Packets
+
+All packets implement the marker interface `Packet` and represent messages sent between a node and the entity monitoring it (e.g. a load balancer):
+
+| Packet | Purpose |
+|---|---|
+| `StartRequestPacket` | Announces a new node coming online, carrying full network configuration (HTTP/SSL/UDP/TCP/TLS/WS/WSS/heartbeat ports), version, and session/instance identifiers. |
+| `HeartbeatRequestPacket` | Periodic "I'm alive" signal from a node, tagged with a session ID. |
+| `NodeShutdownRequestPacket` | Signals a graceful shutdown request for a node. |
+| `NodeStopRequestPacket` | Signals an immediate stop of a node. |
+
+Each of these (except `StartRequestPacket`, which uses flat setters/getters for its fields) exposes a `sessionId` used to correlate requests/responses.
+
+### `IServerListener`
+
+Implemented by the party receiving heartbeat traffic (typically a load balancer). Each method corresponds to a packet type being received, delivered along with the raw `MessageEvent` and parsed `JsonObject` payload:
+
+- `startRequestReceived` — a node announced itself
+- `heartbeatRequestReceived` — a periodic heartbeat arrived
+- `shutdownRequestReceived` — a node requested graceful shutdown
+- `stopRequestReceived` — a node requested immediate stop
+- `switchoverRequestReceived` — a failover/switchover event occurred
+- `responseReceived` — a generic response to a previously sent request
+
+### `IServerHeartbeatService<T>`
+
+The main service contract for running a heartbeat endpoint:
+
+- `init(IServerListener listener, InetAddress host, T properties)` — configure the service with a listener and transport-specific properties
+- `startServer()` / `stopServer()` — control the lifecycle of the heartbeat listener
+- `sendPacket(String ip, int parseInt)` — send a packet to a remote node at the given address/port
+
+### `HeartbeatConfig`
+
+A minimal configuration contract that exposes `getProtocolClassName()`, allowing the concrete heartbeat protocol/transport implementation to be selected/plugged in at runtime.
+
+---
+
+## How the Pieces Fit Together
+
+1. A **node** (application server instance) builds a `Node`/`SIPNode` describing itself.
+2. On startup, it sends a `StartRequestPacket` to the monitoring service.
+3. Periodically, it sends `HeartbeatRequestPacket`s to signal liveness.
+4. On shutdown, it sends `NodeShutdownRequestPacket` (graceful) or `NodeStopRequestPacket` (immediate).
+5. The monitoring service implements `IServerHeartbeatService`, wiring in an `IServerListener` via `init(...)`, and reacts to incoming packets through the listener callbacks.
+6. `HeartbeatConfig` allows the underlying protocol implementation used by `IServerHeartbeatService` to be swapped/configured.
+
+---
+
+## Usage Examples
+
+### Implementing a heartbeat listener (server/load-balancer side)
+
+```java
+import org.mobicents.tools.heartbeat.api.*;
+import com.google.gson.JsonObject;
+import org.jboss.netty.channel.MessageEvent;
+
+public class MyServerListener implements IServerListener {
+
+    @Override
+    public void startRequestReceived(MessageEvent e, JsonObject json) {
+        System.out.println("Node announced startup: " + json);
+    }
+
+    @Override
+    public void heartbeatRequestReceived(MessageEvent e, JsonObject json) {
+        System.out.println("Heartbeat received: " + json);
+    }
+
+    @Override
+    public void shutdownRequestReceived(MessageEvent e, JsonObject json) {
+        System.out.println("Node requested graceful shutdown: " + json);
+    }
+
+    @Override
+    public void stopRequestReceived(MessageEvent e, JsonObject json) {
+        System.out.println("Node requested immediate stop: " + json);
+    }
+
+    @Override
+    public void switchoverRequestReceived(MessageEvent e, JsonObject asJsonObject) {
+        System.out.println("Switchover event: " + asJsonObject);
+    }
+
+    @Override
+    public void responseReceived(JsonObject json) {
+        System.out.println("Response received: " + json);
+    }
+}
+```
+
+### Starting a heartbeat service
+
+```java
+import java.net.InetAddress;
+import org.mobicents.tools.heartbeat.api.IServerHeartbeatService;
+
+public class HeartbeatBootstrap {
+
+    public void start(IServerHeartbeatService<Properties> service, MyServerListener listener) throws Exception {
+        InetAddress host = InetAddress.getByName("0.0.0.0");
+        Properties properties = new Properties();
+        properties.setProperty("port", "2000");
+
+        service.init(listener, host, properties);
+        service.startServer();
+    }
+
+    public void notifyNode(IServerHeartbeatService<?> service, String ip, String port) {
+        service.sendPacket(ip, Integer.parseInt(port));
+    }
+
+    public void stop(IServerHeartbeatService<?> service) {
+        service.stopServer();
+    }
+}
+```
+
+### Describing a node and sending a start packet
+
+```java
+import org.mobicents.tools.heartbeat.api.Node;
+import org.mobicents.tools.heartbeat.api.StartRequestPacket;
+
+Node node = new Node("app-node-1", "192.168.1.10");
+
+StartRequestPacket startPacket = new StartRequestPacket(node);
+startPacket.setHttpPort("8080");
+startPacket.setSslPort("8443");
+startPacket.setUdpPort("5060");
+startPacket.setTcpPort("5060");
+startPacket.setVersion("1.0.0");
+startPacket.setRestcommInstanceId("instance-1");
+startPacket.setHeartbeatPort("2000");
+startPacket.setSessionId("session-abc-123");
+
+// startPacket is then serialized/sent by the underlying transport
+// implementation via IServerHeartbeatService
+```
+
+### Sending periodic heartbeats
+
+```java
+import org.mobicents.tools.heartbeat.api.HeartbeatRequestPacket;
+
+HeartbeatRequestPacket heartbeat = new HeartbeatRequestPacket(node);
+heartbeat.setSessionId(12345L);
+// dispatched periodically by the node to the monitoring service
+```
+
+### Signaling shutdown
+
+```java
+import org.mobicents.tools.heartbeat.api.NodeShutdownRequestPacket;
+import org.mobicents.tools.heartbeat.api.NodeStopRequestPacket;
+
+// Graceful shutdown
+NodeShutdownRequestPacket shutdown = new NodeShutdownRequestPacket(node);
+shutdown.setSessionId(12345L);
+
+// Immediate stop
+NodeStopRequestPacket stop = new NodeStopRequestPacket(node);
+stop.setSessionId(12345L);
+```
+
+---
+
+## Configuring the Protocol
+
+```java
+import org.mobicents.tools.heartbeat.api.HeartbeatConfig;
+
+public class MyHeartbeatConfig implements HeartbeatConfig {
+    @Override
+    public String getProtocolClassName() {
+        return "org.mobicents.tools.heartbeat.impl.UdpHeartbeatProtocol";
+    }
+}
+```
+
+An implementation of `IServerHeartbeatService` can use `HeartbeatConfig` to dynamically instantiate the protocol/transport class that handles wire-level communication.
+
+---
+
+## Summary
+
+`heartbeat-api` is a foundational contract library for building health-monitoring and node-lifecycle communication between distributed instances. It standardizes:
+
+- **Node state representation** (`Node`, `SIPNode`)
+- **Lifecycle messages** (`StartRequestPacket`, `HeartbeatRequestPacket`, `NodeShutdownRequestPacket`, `NodeStopRequestPacket`)
+- **Event handling contracts** (`IServerListener`)
+- **Service lifecycle management** (`IServerHeartbeatService`)
+- **Pluggable protocol configuration** (`HeartbeatConfig`)
+
+Concrete transport and clustering behavior are supplied by implementation modules built on top of this API.

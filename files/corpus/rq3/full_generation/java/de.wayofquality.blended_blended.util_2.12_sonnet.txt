@@ -1,0 +1,144 @@
+# blended.util
+
+A small collection of general-purpose Java utility classes for common tasks encountered in application development: file I/O, stream copying, reflective bean property access, resource resolution (including classpath-aware lookup), and XML document handling (parsing, XPath querying, and schema validation).
+
+`blended.util` has no heavyweight dependencies on the rest of the Blended ecosystem — it is meant to be used as a lightweight helper library wherever these common needs arise.
+
+## Overview
+
+The library is organized into five independent utility areas:
+
+### `FileHelper`
+Static helpers for reading and writing files and streams.
+
+- `writeFile(File f, byte[] content)` – writes raw bytes to a file.
+- `readStream(InputStream is)` – reads an entire `InputStream` into a byte array.
+- `readFile(String location)` – reads a file's full contents as a byte array, given a location string.
+- `renameFile(File src, File dest, Boolean force)` – renames/moves a file, optionally overwriting the destination if it already exists.
+
+### `StreamCopySupport`
+A single utility method, `copyStream(InputStream in, OutputStream out)`, for copying the contents of an input stream to an output stream. Useful as a building block wherever streaming I/O is needed (e.g. inside `FileHelper` or custom I/O code).
+
+### `ResourceResolver`
+Resolves resources (files, classpath entries, etc.) by location string, and also implements the JAXP `URIResolver` interface so it can be plugged directly into XML transformation pipelines (e.g. XSLT processing) to resolve `xsl:include`/`xsl:import` or similar references.
+
+- `openFile(String location)` – opens an `InputStream` for a resource, using the default classloader resolution strategy.
+- `openFile(String location, ClassLoader loader)` – same, but resolves using an explicitly supplied `ClassLoader`.
+- `resolve(String href, String base)` – implements `URIResolver.resolve`, allowing an instance of `ResourceResolver` to be registered with an XML `Transformer` for resolving referenced resources during XSLT processing.
+
+`ResourceResolver`'s location-resolution logic is also used internally by `XMLSupport` to load XML documents and schema files by location string.
+
+### `ReflectionHelper`
+Reflection-based helpers for working with JavaBean-style properties on arbitrary objects — useful for generic property access, data binding, dynamic configuration, and mapping frameworks.
+
+- `getPropertyNames(Object obj)` – lists the bean property names discoverable on an object.
+- `getProperty(Object object, String... propertyNames)` / `getProperty(Object object, String propertyName)` – reads a (possibly nested) property value from an object by name(s), returning it generically typed.
+- `setProperty(Object object, Object value, String... propertyNames)` – sets a (possibly nested) property value on an object by name path.
+- `getGetterMethods(Class<?> clazz)` / `getSetterMethods(Class<?> clazz)` – introspects a class and returns its bean getter/setter methods.
+- `getPropertyName(Class<?> clazz, Class<?> propertyType)` – finds the property name on a class whose type matches a given type.
+- `getPropertyName(Method m)` – derives the bean property name corresponding to a given getter/setter method.
+
+### `XMLSupport`
+A convenience wrapper around loading, querying, and validating XML documents.
+
+- `XMLSupport(String location)` / `XMLSupport(String location, ClassLoader loader)` – constructs an instance bound to an XML document at the given location, optionally resolved with a specific classloader (internally delegating to `ResourceResolver`).
+- `getDocument()` – parses and returns the XML document as a DOM `Document`.
+- `applyXPath(String query)` – evaluates an XPath expression against the document and returns the resulting string.
+- `validate(String schemaLocation)` – validates the document against an XML Schema found at the given location.
+
+## Usage Examples
+
+### Reading and writing files
+
+```java
+import blended.util.FileHelper;
+import java.io.File;
+
+byte[] content = FileHelper.readFile("/etc/myapp/config.properties");
+
+File target = new File("/tmp/config-backup.properties");
+FileHelper.writeFile(target, content);
+
+boolean renamed = FileHelper.renameFile(
+    target,
+    new File("/tmp/config-backup-final.properties"),
+    true // force overwrite if destination exists
+);
+```
+
+### Copying streams
+
+```java
+import blended.util.StreamCopySupport;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+
+try (var in = new FileInputStream("input.dat");
+     var out = new FileOutputStream("output.dat")) {
+    StreamCopySupport.copyStream(in, out);
+}
+```
+
+### Resolving classpath or file-based resources
+
+```java
+import blended.util.ResourceResolver;
+import java.io.InputStream;
+
+// Resolve a resource using the current thread's classloader strategy
+try (InputStream is = ResourceResolver.openFile("classpath:config/app.xml")) {
+    // read the resource...
+}
+
+// Resolve using an explicit classloader
+ClassLoader loader = getClass().getClassLoader();
+try (InputStream is = ResourceResolver.openFile("app.xml", loader)) {
+    // read the resource...
+}
+```
+
+### Working with XML documents
+
+```java
+import blended.util.XMLSupport;
+
+XMLSupport xml = new XMLSupport("config/app.xml");
+
+// Validate against a schema
+xml.validate("config/app.xsd");
+
+// Query with XPath
+String appName = xml.applyXPath("/application/@name");
+
+// Access the raw DOM Document for further processing
+var document = xml.getDocument();
+```
+
+### Generic bean property access
+
+```java
+import blended.util.ReflectionHelper;
+import java.util.List;
+
+MyBean bean = new MyBean();
+
+// Discover available properties
+List<String> propertyNames = ReflectionHelper.getPropertyNames(bean);
+
+// Read a simple property
+String name = ReflectionHelper.getProperty(bean, "name");
+
+// Read a nested property path (e.g. bean.getAddress().getCity())
+String city = ReflectionHelper.getProperty(bean, "address", "city");
+
+// Set a nested property
+ReflectionHelper.setProperty(bean, "Springfield", "address", "city");
+
+// Introspect getters/setters
+List<java.lang.reflect.Method> getters = ReflectionHelper.getGetterMethods(MyBean.class);
+List<java.lang.reflect.Method> setters = ReflectionHelper.getSetterMethods(MyBean.class);
+```
+
+## License
+
+See the repository's license file for licensing terms.

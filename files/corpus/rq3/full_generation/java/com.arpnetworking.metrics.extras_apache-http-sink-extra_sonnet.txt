@@ -1,0 +1,167 @@
+# Apache HTTP Sink Extra
+
+`com.arpnetworking.metrics.extras:apache-http-sink-extra` provides an HTTP-based
+implementation of the `Sink` interface from `com.arpnetworking.metrics`, allowing
+applications to publish recorded metrics events to a remote HTTP endpoint using
+Apache HttpComponents as the underlying transport. It also provides an extensible
+event handler mechanism so that the internal behavior of the sink (successes,
+failures, and dropped events) can be observed and instrumented with metrics of
+its own.
+
+This library is intended to be used alongside the core `com.arpnetworking.metrics`
+API, plugging in as a concrete `Sink` implementation for applications that want
+to ship metrics data over HTTP.
+
+## Main Components
+
+### `ApacheHttpSink`
+
+`ApacheHttpSink` is the primary class of this library. It implements the
+`Sink` interface and is responsible for taking `Event` instances passed to its
+`record(Event event)` method and transmitting them to a configured HTTP
+endpoint using an Apache HTTP client under the hood.
+
+Typical usage involves constructing an `ApacheHttpSink` (via its builder or
+configuration mechanism provided by the surrounding metrics framework) and
+registering it as a `Sink` implementation with a `MetricsFactory`. Once wired
+up, any metrics events recorded through the metrics API will flow through the
+sink and be delivered over HTTP asynchronously.
+
+### `ApacheHttpSinkEventHandler`
+
+`ApacheHttpSinkEventHandler` is an interface that allows consumers of
+`ApacheHttpSink` to observe the internal lifecycle of HTTP delivery attempts.
+It exposes two callback methods:
+
+- `attemptComplete(long records, long bytes, boolean success, long elapasedTime, TimeUnit elapsedTimeUnit)` —
+  invoked whenever the sink completes an attempt to send a batch of events to
+  the HTTP endpoint. It reports how many records and bytes were involved, whether
+  the attempt succeeded, and how long the attempt took.
+- `droppedEvent(Event event)` — invoked whenever an event could not be queued
+  or delivered and was therefore dropped.
+
+Implementations of this interface can be supplied to an `ApacheHttpSink` in
+order to track sink health, performance, and reliability.
+
+### `InstrumentedApacheHttpSinkEventHandler`
+
+`InstrumentedApacheHttpSinkEventHandler` is a ready-made implementation of
+`ApacheHttpSinkEventHandler` that reports sink activity as metrics themselves.
+It is constructed with a `Supplier<Optional<MetricsFactory>>`, which it uses
+to lazily obtain a `MetricsFactory` (if available) at the time metrics need to
+be recorded. This allows the handler to safely operate even in situations
+where a `MetricsFactory` may not yet be initialized, or may become
+unavailable, without requiring a hard dependency at construction time.
+
+When `attemptComplete` or `droppedEvent` is called, this handler uses the
+supplied `MetricsFactory` (when present) to record counters and timers
+describing:
+
+- The number of records and bytes sent per attempt.
+- Whether attempts succeeded or failed.
+- The elapsed time of delivery attempts.
+- The number of events dropped.
+
+This provides built-in observability into the behavior of `ApacheHttpSink`
+without requiring consumers to write their own handler from scratch.
+
+## How the Pieces Fit Together
+
+- `ApacheHttpSink` is the `Sink` implementation applications use to publish
+  events over HTTP.
+- `ApacheHttpSinkEventHandler` is the extension point used by `ApacheHttpSink`
+  to notify interested parties about delivery attempts and dropped events.
+- `InstrumentedApacheHttpSinkEventHandler` is a default, metrics-emitting
+  implementation of `ApacheHttpSinkEventHandler` that can be wired into an
+  `ApacheHttpSink` to automatically report on its own operational health.
+
+## Usage Example
+
+### Basic Setup
+
+```java
+import com.arpnetworking.metrics.Event;
+import com.arpnetworking.metrics.MetricsFactory;
+import com.arpnetworking.metrics.Sink;
+import com.arpnetworking.metrics.impl.ApacheHttpSink;
+
+// Construct the sink (configuration such as endpoint URI, buffering,
+// and other transport options is provided via the sink's own
+// construction mechanism supplied by the surrounding metrics framework).
+Sink httpSink = new ApacheHttpSink();
+
+// Elsewhere in application code, once you have an Event to record:
+Event event = /* obtained from your metrics recording pipeline */;
+httpSink.record(event);
+```
+
+### Adding Instrumentation
+
+To gain visibility into how well `ApacheHttpSink` is performing—how many
+records are being sent, how many attempts fail, and how many events are
+dropped—supply an `InstrumentedApacheHttpSinkEventHandler` backed by a
+`MetricsFactory` supplier:
+
+```java
+import com.arpnetworking.metrics.MetricsFactory;
+import com.arpnetworking.metrics.impl.ApacheHttpSinkEventHandler;
+import com.arpnetworking.metrics.impl.InstrumentedApacheHttpSinkEventHandler;
+
+import java.util.Optional;
+import java.util.function.Supplier;
+
+// Supplier that lazily resolves the MetricsFactory used to
+// self-report on the sink's behavior.
+Supplier<Optional<MetricsFactory>> metricsFactorySupplier =
+        () -> Optional.ofNullable(myMetricsFactory);
+
+ApacheHttpSinkEventHandler eventHandler =
+        new InstrumentedApacheHttpSinkEventHandler(metricsFactorySupplier);
+
+// Wire the handler into your ApacheHttpSink configuration so that
+// delivery attempts and dropped events are reported automatically.
+```
+
+### Implementing a Custom Event Handler
+
+Consumers with specialized monitoring or alerting needs can implement
+`ApacheHttpSinkEventHandler` directly:
+
+```java
+import com.arpnetworking.metrics.Event;
+import com.arpnetworking.metrics.impl.ApacheHttpSinkEventHandler;
+
+import java.util.concurrent.TimeUnit;
+
+public class LoggingEventHandler implements ApacheHttpSinkEventHandler {
+
+    @Override
+    public void attemptComplete(
+            final long records,
+            final long bytes,
+            final boolean success,
+            final long elapasedTime,
+            final TimeUnit elapsedTimeUnit) {
+        System.out.printf(
+                "Attempt complete: records=%d bytes=%d success=%s elapsed=%d %s%n",
+                records, bytes, success, elapasedTime, elapsedTimeUnit);
+    }
+
+    @Override
+    public void droppedEvent(final Event event) {
+        System.out.println("Dropped event: " + event);
+    }
+}
+```
+
+This handler can then be supplied to an `ApacheHttpSink` instance in place of,
+or alongside, `InstrumentedApacheHttpSinkEventHandler`.
+
+## Summary
+
+This library equips applications with an HTTP-backed `Sink` for shipping
+metrics events to a remote collector, along with a pluggable event handling
+mechanism for observing sink behavior. The included
+`InstrumentedApacheHttpSinkEventHandler` makes it easy to gain out-of-the-box
+visibility into delivery success, failure, and dropped-event rates by
+emitting that information as metrics of its own.

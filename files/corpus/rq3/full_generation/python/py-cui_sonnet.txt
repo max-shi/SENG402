@@ -1,0 +1,227 @@
+# py-cui
+
+A Python library for building terminal-based user interfaces (TUIs) using a grid layout system. `py-cui` lets you lay out widgets — menus, text boxes, buttons, labels, sliders, and more — into a row/column grid, wire them up with keyboard and mouse commands, and manage complex terminal applications with popups, forms, and file dialogs.
+
+## Features
+
+- Grid-based widget layout with configurable row/column spans and padding
+- A rich set of built-in widgets: scrollable menus, checkbox menus, text boxes, multi-line text blocks, labels, buttons, and sliders
+- Popup system for messages, warnings, errors, yes/no prompts, text input, menus, loading indicators, forms, and file dialogs
+- Custom color rules for syntax highlighting or conditional text coloring within widgets
+- Keyboard and mouse command binding, including widget-cycling hotkeys
+- Multiple `WidgetSet`s per application, so you can build distinct "screens" and switch between them at runtime
+- Built-in logging with an optional live, in-terminal debug overlay
+
+## Installation
+
+```bash
+pip install py-cui
+```
+
+## Core Concepts
+
+### `PyCUI`
+
+The `PyCUI` class is the root of every application. It owns the terminal window, the grid, the currently active widget set, and the main event loop. You typically construct one `PyCUI` instance, add widgets or widget sets to it, and call `start()` to begin rendering and handling input.
+
+```python
+import py_cui
+
+root = py_cui.PyCUI(5, 4)  # 5 rows, 4 columns
+root.set_title('My Application')
+```
+
+### `Grid`
+
+Each `PyCUI` (and each `WidgetSet`) is backed by a `Grid`, which divides the terminal into a configurable number of rows and columns. Widgets are placed into grid cells and can span multiple rows/columns. You generally won't instantiate `Grid` directly — it's managed for you — but you can query it for dimensions, offsets, and cell sizing when building custom layouts.
+
+### `WidgetSet`
+
+A `WidgetSet` represents an independent collection of widgets and key bindings arranged in its own grid. This is useful for building multi-screen applications (e.g., a "login screen" and a "main screen") without needing multiple `PyCUI` instances.
+
+```python
+new_screen = root.create_new_widget_set(3, 3)
+new_screen.add_button('OK', 0, 0, command=lambda: print('clicked'))
+root.apply_widget_set(new_screen)
+```
+
+`WidgetSet` and `PyCUI` share nearly identical widget-adding APIs (`add_scroll_menu`, `add_checkbox_menu`, `add_text_box`, `add_text_block`, `add_label`, `add_block_label`, `add_button`, `add_slider`, `add_custom_widget`), as well as `add_key_command`, `get_widgets`, and `set_selected_widget`.
+
+### Widgets
+
+All widgets derive from `py_cui.widgets.Widget`, which itself extends `py_cui.ui.UIElement`. This gives every widget a shared interface for positioning, coloring, borders, selection state, and help text, plus the ability to register key and mouse commands and text color rules.
+
+Built-in widgets include:
+
+- **`Label`** — a single-line, non-interactive text display
+- **`BlockLabel`** — a multi-line, non-interactive text display, optionally centered
+- **`ScrollMenu`** — a scrollable, selectable list of items
+- **`CheckBoxMenu`** — a scrollable list where items can be checked/unchecked
+- **`Button`** — a clickable/actionable widget bound to a command
+- **`TextBox`** — a single-line text input field (supports password masking)
+- **`ScrollTextBlock`** — a multi-line, scrollable text editor
+- **`SliderWidget`** (in `py_cui.controls.slider`) — a numeric slider with configurable min/max/step
+
+### Popups
+
+`py_cui.popups.Popup` and its subclasses (`MessagePopup`, `YesNoPopup`, `TextBoxPopup`, `MenuPopup`, `LoadingIconPopup`, `LoadingBarPopup`) provide modal overlays for user interaction. `PyCUI` exposes convenience methods (`show_message_popup`, `show_warning_popup`, `show_error_popup`, `show_yes_no_popup`, `show_text_box_popup`, `show_menu_popup`, `show_loading_icon_popup`, `show_loading_bar_popup`, `show_form_popup`, `show_filedialog_popup`) so you rarely need to construct popups directly.
+
+### Forms and File Dialogs
+
+The `py_cui.dialogs.form` module implements multi-field forms (`Form`, `FormPopup`, `FormFieldElement`) with validation and required-field support, exposed via `PyCUI.show_form_popup`. The `py_cui.dialogs.filedialog` module implements a file/directory browser (`FileSelectElement`, `FileDialogPopup`) exposed via `PyCUI.show_filedialog_popup`, supporting open-file, save-file, and directory-selection modes with extension filtering.
+
+### Rendering and Color
+
+`py_cui.renderer.Renderer` handles the low-level drawing of borders, text, and cursors for each `UIElement`. `py_cui.colors.ColorRule` lets you define regex-based rules that color matching text within a widget, which can be attached to widgets via `Widget.add_text_color_rule`.
+
+### Logging and Debugging
+
+`PyCUI.enable_logging` configures a `PyCUILogger`, which supports a live, in-terminal debug overlay (`LiveDebugElement`) that can be toggled with a hotkey (default `CTRL+D`) via `set_toggle_live_debug_key`.
+
+## Usage Examples
+
+### Basic Application
+
+```python
+import py_cui
+
+def on_button_click():
+    root.show_message_popup('Info', 'Button was clicked!')
+
+root = py_cui.PyCUI(5, 4)
+root.set_title('Demo App')
+
+menu = root.add_scroll_menu('My Menu', 0, 0, row_span=3, column_span=2)
+menu.add_item_list(['Option 1', 'Option 2', 'Option 3'])
+
+textbox = root.add_text_box('Enter Name', 3, 0, column_span=2)
+
+button = root.add_button('Submit', 4, 0, column_span=2, command=on_button_click)
+
+label = root.add_block_label('Welcome to py-cui!', 0, 2, row_span=2, column_span=2)
+
+root.start()
+```
+
+### Switching Between Widget Sets
+
+```python
+import py_cui
+
+root = py_cui.PyCUI(3, 3)
+root.set_title('Multi-Screen App')
+
+# Main screen
+main_screen = root.create_new_widget_set(3, 3)
+main_menu = main_screen.add_scroll_menu('Main Menu', 0, 0, row_span=3, column_span=3)
+main_menu.add_item_list(['Settings', 'Exit'])
+
+# Settings screen
+settings_screen = root.create_new_widget_set(3, 3)
+back_button = settings_screen.add_button(
+    'Back', 2, 0, column_span=3,
+    command=lambda: root.apply_widget_set(main_screen)
+)
+
+def handle_main_menu_selection():
+    selected = main_menu.get()
+    if selected == 'Settings':
+        root.apply_widget_set(settings_screen)
+    elif selected == 'Exit':
+        root.stop()
+
+main_screen.add_key_command(py_cui.keys.KEY_ENTER, handle_main_menu_selection)
+
+root.apply_widget_set(main_screen)
+root.start()
+```
+
+### Forms and File Dialogs
+
+```python
+import py_cui
+
+root = py_cui.PyCUI(3, 3)
+root.set_title('Registration')
+
+def handle_form_submit():
+    root.show_message_popup('Form Submitted', 'Thanks for registering!')
+
+def open_config_dialog():
+    def handle_file_selection(path):
+        root.show_message_popup('Selected File', path)
+
+    root.show_filedialog_popup(
+        popup_type='openfile',
+        initial_dir='.',
+        callback=handle_file_selection,
+        limit_extensions=['.json', '.yaml']
+    )
+
+root.add_button(
+    'Register', 0, 0,
+    command=lambda: root.show_form_popup(
+        'Registration Form',
+        fields=['Name', 'Email', 'Password'],
+        passwd_fields=['Password'],
+        required=['Name', 'Email'],
+        callback=handle_form_submit
+    )
+)
+
+root.add_button('Open Config File', 1, 0, command=open_config_dialog)
+
+root.start()
+```
+
+### Color Rules and Custom Key Bindings
+
+```python
+import py_cui
+
+root = py_cui.PyCUI(3, 3)
+root.set_title('Log Viewer')
+
+log_view = root.add_text_block('Logs', 0, 0, row_span=3, column_span=3)
+log_view.add_text_color_rule(
+    r'ERROR',
+    py_cui.RED_ON_BLACK,
+    'contains',
+    match_type='line'
+)
+log_view.add_text_color_rule(
+    r'WARN',
+    py_cui.YELLOW_ON_BLACK,
+    'contains',
+    match_type='line'
+)
+
+def quit_app():
+    root.stop()
+
+root.add_key_command(py_cui.keys.KEY_Q_LOWER, quit_app)
+root.set_widget_cycle_key(
+    forward_cycle_key=py_cui.keys.KEY_TAB,
+    reverse_cycle_key=py_cui.keys.KEY_BACKSPACE
+)
+
+root.enable_logging()
+root.start()
+```
+
+## Key Concepts Summary
+
+| Concept | Purpose |
+|---|---|
+| `PyCUI` | Application root; manages the terminal, grid, and event loop |
+| `Grid` | Row/column layout backing a `PyCUI` or `WidgetSet` |
+| `WidgetSet` | An independent, swappable collection of widgets and key bindings |
+| `Widget` / `UIElement` | Base classes for all visible, interactive components |
+| `Popup` | Modal overlays for messages, prompts, forms, and dialogs |
+| `Renderer` | Low-level drawing of borders, text, and cursors |
+| `ColorRule` | Regex-driven text coloring within widgets |
+| `PyCUILogger` | Logging with optional live in-terminal debug view |
+
+## License
+
+See `LICENSE` in this repository for details.

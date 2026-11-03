@@ -1,0 +1,294 @@
+# WildFly Swarm Forge Addon
+
+`org.jboss.forge.addon:wildfly-swarm` provides Forge project integration for configuring and working with WildFly Swarm applications.
+
+The addon exposes:
+
+- A configuration model for common WildFly Swarm settings such as HTTP port, context path, port offset, main class, and arbitrary properties.
+- A project facet for installing and configuring WildFly Swarm support in a project.
+- Fraction discovery and installation support.
+- Forge UI commands and setup wizard steps for project setup, fraction management, application generation, testing, and running.
+
+## Main API
+
+### Configuration
+
+`WildFlySwarmConfiguration` represents WildFly Swarm settings:
+
+```java
+public interface WildFlySwarmConfiguration {
+    Integer getHttpPort();
+    String getContextPath();
+    Integer getPortOffset();
+    String getMainClass();
+    Map<String, String> getProperties();
+
+    void apply(Configuration configuration);
+}
+```
+
+Configuration values include:
+
+| Setting | Type | Purpose |
+|---|---:|---|
+| HTTP port | `Integer` | The configured HTTP port. |
+| Context path | `String` | The application context path. |
+| Port offset | `Integer` | A port offset value. |
+| Main class | `String` | The configured application main class. |
+| Properties | `Map<String, String>` | Additional named configuration properties. |
+
+Use `WildFlySwarmConfigurationBuilder` to create or copy configuration values.
+
+```java
+WildFlySwarmConfiguration configuration =
+        WildFlySwarmConfigurationBuilder.create()
+                .httpPort(8080)
+                .contextPath("/inventory")
+                .portOffset(100)
+                .mainClass("com.example.inventory.Main")
+                .properties(Map.of(
+                        "example.feature.enabled", "true",
+                        "example.environment", "development"));
+```
+
+The builder implements `WildFlySwarmConfiguration`, so it can be used directly wherever a configuration is required.
+
+#### Creating configuration from an existing source
+
+The builder can be initialized from either another WildFly Swarm configuration or a Forge `Configuration` instance:
+
+```java
+WildFlySwarmConfiguration existing = /* obtain an existing configuration */;
+
+WildFlySwarmConfiguration updated =
+        WildFlySwarmConfigurationBuilder.create(existing)
+                .httpPort(8181)
+                .contextPath("/api");
+```
+
+To apply a configuration to a Forge `Configuration` object:
+
+```java
+Configuration target = /* obtain a Forge Configuration instance */;
+
+WildFlySwarmConfiguration swarmConfiguration =
+        WildFlySwarmConfigurationBuilder.create()
+                .httpPort(8080)
+                .contextPath("/");
+
+swarmConfiguration.apply(target);
+```
+
+### Project facet
+
+`WildFlySwarmFacet` is the project-level entry point for WildFly Swarm support.
+
+```java
+public class WildFlySwarmFacet extends AbstractFacet<Project>
+        implements ProjectFacet {
+    public boolean install();
+    public boolean isInstalled();
+
+    public WildFlySwarmConfiguration getConfiguration();
+    public WildFlySwarmFacet setConfiguration(
+            WildFlySwarmConfiguration configuration);
+
+    public void installFractions(
+            Iterable<FractionDescriptor> selectedFractions);
+
+    public List<FractionDescriptor> getFractions();
+    public List<FractionDescriptor> getInstalledFractions();
+
+    public static Collection<FractionDescriptor>
+            getAllFractionDescriptors();
+
+    public static FractionUsageAnalyzer getFractionUsageAnalyzer();
+}
+```
+
+The facet supports the following workflow:
+
+1. Obtain the `WildFlySwarmFacet` from the current Forge project.
+2. Install the facet if it is not already installed.
+3. Set project configuration.
+4. Select and install fractions.
+5. Inspect available or installed fractions when needed.
+
+Example:
+
+```java
+WildFlySwarmFacet facet = /* obtain from the current Project */;
+
+if (!facet.isInstalled()) {
+    facet.install();
+}
+
+WildFlySwarmConfiguration configuration =
+        WildFlySwarmConfigurationBuilder.create()
+                .httpPort(8080)
+                .contextPath("/catalog")
+                .mainClass("com.example.catalog.CatalogApplication");
+
+facet.setConfiguration(configuration);
+```
+
+### Fractions
+
+Fractions are represented by `FractionDescriptor`. The facet provides access to all known descriptors, fractions associated with the project, and fractions already installed in the project.
+
+```java
+Collection<FractionDescriptor> available =
+        WildFlySwarmFacet.getAllFractionDescriptors();
+
+List<FractionDescriptor> installed =
+        facet.getInstalledFractions();
+```
+
+To install selected fractions:
+
+```java
+List<FractionDescriptor> selectedFractions = /* choose descriptors */;
+
+facet.installFractions(selectedFractions);
+```
+
+For example, an integration may obtain the complete set of descriptors and present them to a user for selection before invoking `installFractions`.
+
+A `FractionUsageAnalyzer` is also available through:
+
+```java
+FractionUsageAnalyzer analyzer =
+        WildFlySwarmFacet.getFractionUsageAnalyzer();
+```
+
+This API is intended for integrations that need access to fraction-usage analysis capabilities.
+
+## Forge project type and setup flow
+
+### `WildFlySwarmProjectType`
+
+`WildFlySwarmProjectType` defines a Forge project type for WildFly Swarm projects.
+
+```java
+public class WildFlySwarmProjectType extends AbstractProjectType {
+    public boolean supports(Stack stack);
+    public Iterable<Class<? extends ProjectFacet>> getRequiredFacets();
+    public String getType();
+    public int priority();
+    public Class<? extends UIWizardStep> getSetupFlow();
+}
+```
+
+It declares:
+
+- Whether the project type supports a particular Forge `Stack`.
+- The facets required by this project type.
+- The project type identifier and priority.
+- The wizard step used for project setup.
+
+### `WildFlySwarmSetupFlow`
+
+`WildFlySwarmSetupFlow` is a `UIWizardStep` that participates in setup navigation and execution:
+
+```java
+public class WildFlySwarmSetupFlow implements UIWizardStep {
+    public NavigationResult next(UINavigationContext context) throws Exception;
+    public Result execute(UIExecutionContext context) throws Exception;
+}
+```
+
+`SetupFractionsStep` is another wizard-oriented step focused on fraction setup:
+
+```java
+public class SetupFractionsStep
+        extends AbstractWildFlySwarmCommand
+        implements UIWizardStep {
+    public Result execute(UIExecutionContext context) throws Exception;
+}
+```
+
+## Forge UI commands
+
+The addon supplies command classes intended for use through the Forge UI and command infrastructure.
+
+All project-oriented WildFly Swarm commands derive from `AbstractWildFlySwarmCommand`, which provides command metadata:
+
+```java
+public class AbstractWildFlySwarmCommand
+        extends AbstractProjectCommand {
+    public UICommandMetadata getMetadata(UIContext context);
+}
+```
+
+### Setup and execution commands
+
+| Command | Role |
+|---|---|
+| `SetupCommand` | Sets up WildFly Swarm support through a Forge command UI. |
+| `RunCommand` | Provides a run action and reports whether it is enabled for the current UI context. |
+| `CreateMainClassCommand` | Creates and decorates a Java main class source. |
+| `CreateTestClassCommand` | Creates a test class through the Forge command UI. |
+
+`RunCommand` and `CreateTestClassCommand` expose `isEnabled(UIContext)`, allowing the Forge UI to determine whether the command applies to the active context.
+
+### Fraction commands
+
+| Command | Role |
+|---|---|
+| `AddFractionCommand` | Presents a multi-selection of `FractionDescriptor` instances and installs selected fractions. |
+| `DetectFractionsCommand` | Provides a UI-driven fraction detection operation. |
+| `ListFractionsCommand` | Lists fractions through a Forge command result. |
+
+`AddFractionCommand` exposes its selection control:
+
+```java
+UISelectMany<FractionDescriptor> selection =
+        addFractionCommand.getFractionElements();
+```
+
+This is useful when embedding or inspecting the command in a Forge UI integration.
+
+## Typical integration flow
+
+A programmatic integration commonly follows this sequence:
+
+```java
+WildFlySwarmFacet facet = /* obtain from the Project */;
+
+// Install WildFly Swarm support when required.
+if (!facet.isInstalled()) {
+    facet.install();
+}
+
+// Configure the project.
+WildFlySwarmConfiguration config =
+        WildFlySwarmConfigurationBuilder.create()
+                .httpPort(8080)
+                .contextPath("/orders")
+                .mainClass("com.example.orders.OrdersMain")
+                .properties(Map.of("orders.mode", "local"));
+
+facet.setConfiguration(config);
+
+// Obtain descriptors, select the fractions appropriate for the project,
+// then install the selected set.
+Collection<FractionDescriptor> allFractions =
+        WildFlySwarmFacet.getAllFractionDescriptors();
+
+List<FractionDescriptor> selectedFractions = /* select from allFractions */;
+facet.installFractions(selectedFractions);
+
+// Inspect the final installed set.
+List<FractionDescriptor> installedFractions =
+        facet.getInstalledFractions();
+```
+
+## API relationships
+
+- `WildFlySwarmConfiguration` is the configuration contract.
+- `WildFlySwarmConfigurationBuilder` creates, copies, and applies configuration.
+- `WildFlySwarmFacet` attaches WildFly Swarm capabilities to a Forge `Project`, including configuration and fractions.
+- `WildFlySwarmProjectType` identifies the project type and its setup flow.
+- `WildFlySwarmSetupFlow` and `SetupFractionsStep` participate in wizard-based setup.
+- `AbstractWildFlySwarmCommand` is the base class for project commands.
+- Fraction-related commands use `FractionDescriptor` values and complement the facet’s fraction APIs.

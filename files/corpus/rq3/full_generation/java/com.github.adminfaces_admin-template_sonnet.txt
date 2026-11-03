@@ -1,0 +1,166 @@
+# admin-template
+
+`admin-template` is a JavaServer Faces (JSF) library that provides a ready-made admin dashboard template, along with a set of supporting managed beans, configuration classes, security utilities, and exception handling infrastructure. It is designed to be dropped into a JSF application to quickly provide a themeable admin layout (sidebar, control sidebar, skins, breadcrumbs) with sensible defaults, plus common cross-cutting concerns like access control, session management, and business exception handling.
+
+## Features
+
+- **Ready-to-use admin layout** with configurable sidebar, control sidebar, boxed/fixed layout, skins, and collapse/hover behavior.
+- **Breadcrumb navigation** management via a simple stack-like API.
+- **Centralized configuration** (`AdminConfig`) that controls template behavior: messages, ripple effects, mobile header, URL rewriting, ajax status, etc.
+- **Exception handling** utilities (`BusinessException`, `CustomExceptionHandler`, `CustomExceptionHandlerFactory`) that integrate with JSF's exception handling lifecycle.
+- **Security/session helpers** (`AdminSession`, `AdminFilter`, `LogoutMB`, `AccessDeniedException`, `WebXml`) for guarding pages and reading `web.xml` metadata (welcome files, error pages, security constraints).
+- **i18n support** through a UTF-8 aware `ResourceBundle`.
+- **Utility classes** (`AdminUtils`, `Assert`) for common redirect, request, and validation logic.
+
+## Core Classes
+
+### Layout & Theming
+
+- **`LayoutMB`** — Managed bean controlling the visual layout of the admin template: fixed/boxed layout, sidebar collapse state, expand-on-hover, control sidebar state and skin, and whether the "top" or "left menu" template is used. Includes `restoreDefaults()` to reset to the configured defaults and `toggleTemplate()` to switch between top-menu and left-menu layouts.
+- **`SkinMB`** — Manages the current color skin of the template (`getSkin()`/`setSkin()`/`changeSkin(String)`).
+- **`BreadCrumbMB`** — Maintains a list of `BreadCrumb` entries representing the navigation trail. Supports adding, removing, clearing, and clearing back to a "home" breadcrumb.
+- **`BreadCrumb`** — Simple model representing a single breadcrumb entry (`link` + `title`).
+
+### Configuration
+
+- **`AdminConfig`** — Central configuration bean exposing dozens of toggles and settings that control template behavior: page suffix, login/index pages, date format, message rendering/auto-hide behavior, ripple effects, mobile header, breadcrumb rendering and max size, control sidebar defaults, skin, ajax status rendering, extension-less URLs, and more. This is the main place an application customizes how the template behaves.
+- **`ControlSidebarConfig`** — Immutable configuration object describing the default state of the control sidebar (fixed layout, boxed layout, expand-on-hover, collapsed state, dark skin, show-on-mobile), used as a nested property of `AdminConfig`.
+
+### Exception Handling
+
+- **`BusinessException`** — A rich runtime exception used to communicate business rule violations to the UI. Carries a summary, detail, severity (`FacesMessage.Severity`), a field id to focus, and can aggregate a list of nested `BusinessException`s. Call `build()` to trigger message construction/registration.
+- **`AccessDeniedException`** — Thrown when a user attempts to access a restricted resource.
+- **`CustomExceptionHandler`** / **`CustomExceptionHandlerFactory`** — Wrap the standard JSF exception handling mechanism so that `BusinessException` (and other exceptions) are translated into user-facing messages instead of generic error pages.
+
+### Security & Session
+
+- **`AdminSession`** — Simple session-scoped bean tracking login state and whether the user has already been redirected (useful for login flows).
+- **`AdminFilter`** — Servlet filter that likely enforces authentication/authorization rules for incoming requests before they reach JSF views.
+- **`AdminServletContextListener`** — Initializes/tears down application-scoped resources (such as `WebXml` parsing) on servlet context startup/shutdown.
+- **`LogoutMB`** — Managed bean exposing a `doLogout()` action for logging the user out and redirecting.
+- **`WebXml`** — Singleton enum that parses and exposes `web.xml` metadata: welcome files, error page mappings, security constraints, form login/error pages, session timeout, and role-based access checks (`isAccessAllowed`).
+
+### Utilities
+
+- **`AdminUtils`** — Static helpers for redirecting to a URL with parameters, obtaining the current `HttpServletRequest`, and URL-encoding strings.
+- **`Assert`** — Static helper methods for null/empty checks on strings, objects, arrays, collections, and maps, plus string prefix/substring checks.
+- **`AdminUTF8Bundle`** — A `ResourceBundle` implementation that ensures UTF-8 encoded resource bundle keys/values are correctly loaded for i18n.
+
+### Events
+
+- **`AdminSystemEventListener`** — JSF `SystemEventListener` implementation, likely used to hook into application/view lifecycle events to initialize template state (e.g., populating `LayoutMB`/`AdminConfig` defaults).
+
+## Usage Examples
+
+### 1. Configuring the template
+
+```java
+@Named
+@ApplicationScoped
+public class MyAppConfig {
+
+    @Inject
+    private AdminConfig adminConfig;
+
+    @PostConstruct
+    public void setup() {
+        adminConfig.setIndexPage("/pages/dashboard.xhtml");
+        adminConfig.setLoginPage("/pages/login.xhtml");
+        adminConfig.setSkin("skin-blue");
+        adminConfig.setRenderBreadCrumb(true);
+        adminConfig.setBreadCrumbMaxSize(5);
+        adminConfig.setAutoHideMessages(true);
+        adminConfig.setMessagesHideTimeout("3000");
+    }
+}
+```
+
+### 2. Managing breadcrumbs from a controller
+
+```java
+@Named
+@ViewScoped
+public class ProductBean implements Serializable {
+
+    @Inject
+    private BreadCrumbMB breadCrumbMB;
+
+    @PostConstruct
+    public void init() {
+        breadCrumbMB.clearAndHome();
+        breadCrumbMB.add("/pages/products/list.xhtml", "Products", false);
+    }
+
+    public void viewProduct(Long id) {
+        breadCrumbMB.add("/pages/products/view.xhtml?id=" + id, "Product Detail", false);
+    }
+}
+```
+
+### 3. Toggling layout options
+
+```java
+@Named
+@SessionScoped
+public class UserPreferencesBean implements Serializable {
+
+    @Inject
+    private LayoutMB layoutMB;
+
+    public void enableBoxedLayout() {
+        layoutMB.setBoxedLayout(true);
+        layoutMB.setFixedLayout(false);
+    }
+
+    public void switchToLeftMenu() {
+        layoutMB.toggleTemplate();
+    }
+
+    public void resetLayout() {
+        layoutMB.restoreDefaults();
+    }
+}
+```
+
+### 4. Raising business errors
+
+```java
+public void save(Product product) {
+    if (!Assert.has(product.getName())) {
+        throw new BusinessException("Validation Error", "Product name is required", "productName")
+                .setSeverity(FacesMessage.SEVERITY_WARN);
+    }
+    productService.save(product);
+}
+```
+
+### 5. Checking access with `WebXml`
+
+```java
+@Inject
+private HttpServletRequest request;
+
+public boolean canAccess(String url, String role) {
+    return WebXml.INSTANCE.isAccessAllowed(url, role);
+}
+```
+
+### 6. Logging out
+
+```xml
+<h:commandButton value="Logout" action="#{logoutMB.doLogout()}" />
+```
+
+## Getting Started
+
+Add the dependency to your project:
+
+```xml
+<dependency>
+    <groupId>com.github.adminfaces</groupId>
+    <artifactId>admin-template</artifactId>
+    <version>${admin-template.version}</version>
+</dependency>
+```
+
+Register `AdminFilter` and `AdminServletContextListener` in your `web.xml` (or via annotations, depending on your setup) to enable session control and startup initialization, then inject `AdminConfig`, `LayoutMB`, `SkinMB`, and `BreadCrumbMB` into your managed beans to control the look and behavior of your admin pages.

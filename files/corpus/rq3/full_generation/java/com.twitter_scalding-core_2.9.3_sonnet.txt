@@ -1,0 +1,80 @@
+# scalding-core: Cascading Interop
+
+## Overview
+
+`com.twitter:scalding-core_2.9.3` provides a small set of interoperability utilities for bridging Cascading's `Flow` execution model with Scala's `Future`-based asynchronous programming model. This allows developers working in Scalding or directly with Cascading flows to integrate flow execution into idiomatic Scala asynchronous code, rather than relying on Cascading's native listener callback API.
+
+The core piece of this surface is `FlowListenerPromise`, a utility class that wraps Cascading's `Flow` completion listener mechanism in a `scala.concurrent.Future`, letting you `map`, `flatMap`, compose, and otherwise treat flow execution as a standard asynchronous value.
+
+## Main Components
+
+### `FlowListenerPromise`
+
+```java
+public class FlowListenerPromise {
+    public static <Config, T> Future<T> start(Flow<Config> flow, scala.Function1<Flow<Config>, T> fn);
+}
+```
+
+`FlowListenerPromise.start` is the single entry point of this API. It takes:
+
+- **`flow`**: a Cascading `Flow<Config>` instance — typically one you've already built and configured (e.g., via a `FlowConnector`), but not yet submitted/run.
+- **`fn`**: a Scala function (`Function1<Flow<Config>, T>`) that is invoked once the flow completes, receiving the completed `Flow` and producing a result of type `T`. This is where you extract whatever value or side-effect you need from the finished flow (e.g., inspecting stats, counters, success/failure state, or simply returning `Unit`).
+
+Internally, `start` attaches a listener to the flow, triggers execution, and resolves a `Future[T]` once the flow's completion event fires — either by invoking `fn` on success, or by propagating any failure from the flow as a failed `Future`.
+
+This effectively converts Cascading's push-based, callback-driven `Flow` lifecycle into a pull-based, composable `Future`, so you can:
+
+- Chain multiple flow executions together using `flatMap`.
+- Run several flows concurrently and combine their results.
+- Apply timeouts, retries, or fallback logic using standard Scala `Future` combinators.
+- Integrate flow execution into larger asynchronous pipelines (e.g., web services, schedulers, or orchestration systems) without blocking threads on flow completion.
+
+## Usage Example
+
+### Running a single flow asynchronously
+
+```java
+import cascading.flow.Flow;
+import com.twitter.scalding.cascading_interop.FlowListenerPromise;
+import scala.Function1;
+import scala.concurrent.Future;
+import scala.concurrent.ExecutionContext;
+
+// Assume `myFlow` has already been constructed via a FlowConnector
+Flow<Object> myFlow = flowConnector.connect(sources, sinks, pipe);
+
+// Define what to do once the flow completes
+Function1<Flow<Object>, String> onComplete = new AbstractFunction1<Flow<Object>, String>() {
+    @Override
+    public String apply(Flow<Object> completedFlow) {
+        return "Flow completed with stats: " + completedFlow.getFlowStats();
+    }
+};
+
+Future<String> flowFuture = FlowListenerPromise.start(myFlow, onComplete);
+```
+
+### Composing multiple flows
+
+Because `start` returns a standard `scala.concurrent.Future`, you can compose multiple flow executions using Scala's `Future` combinators (from Scala code, or via interop in Java):
+
+```scala
+import com.twitter.scalding.cascading_interop.FlowListenerPromise
+import scala.concurrent.ExecutionContext.Implicits.global
+
+val firstFuture  = FlowListenerPromise.start(firstFlow, (f: Flow[Config]) => f.getFlowStats)
+val secondFuture = firstFuture.flatMap { _ =>
+  FlowListenerPromise.start(secondFlow, (f: Flow[Config]) => f.getFlowStats)
+}
+
+secondFuture.onSuccess { case stats =>
+  println(s"Pipeline finished: $stats")
+}
+```
+
+This pattern is especially useful when building multi-stage data pipelines where later flows depend on the successful completion of earlier ones, or when you want to run independent flows in parallel and combine their results with `Future.sequence` or similar combinators.
+
+## Why Use This
+
+Cascading's native API for flow completion relies on registering `FlowListener` callbacks, which can be cumbersome to compose or integrate with modern asynchronous Scala code. `FlowListenerPromise` removes this friction by giving you a single, Future-returning method, letting you leverage the full power of Scala's `Future` ecosystem (combinators, error handling, execution contexts) when orchestrating Cascading flow execution.

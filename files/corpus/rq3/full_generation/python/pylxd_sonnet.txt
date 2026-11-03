@@ -1,0 +1,218 @@
+# pylxd
+
+**pylxd** is a Python client library for interacting with LXD, the Linux container and virtual machine manager, over its REST API. It provides a Pythonic, object-oriented interface for managing containers, virtual machines, images, networks, storage pools, profiles, projects, certificates, and cluster resources without having to construct raw HTTP requests yourself.
+
+## Introduction
+
+pylxd wraps the LXD REST API in a set of models and managers that mirror the resources exposed by LXD. A `Client` object represents a connection to an LXD server (local or remote, authenticated via certificates or tokens) and exposes manager attributes for each resource type. Each manager provides class-style methods (`get`, `all`, `create`, `exists`, ...) that return or operate on `Model` instances, which in turn expose instance methods for lifecycle operations (`save`, `delete`, `rename`, `start`, `stop`, etc.).
+
+Long-running LXD operations (such as creating an instance or copying an image) are represented by `Operation` objects that can be waited on synchronously, and the client also supports subscribing to the LXD event stream via websockets.
+
+## Core Concepts
+
+### `Client`
+
+The `Client` class (in `pylxd.client`) is the main entry point. It manages the underlying HTTP session (including TLS/mutual-cert authentication via `LXDSSLAdapter` and `get_session_for_url`), authentication, and exposes managers as attributes, for example:
+
+- `client.instances` / `client.containers` / `client.virtual_machines`
+- `client.images`
+- `client.networks`
+- `client.profiles`
+- `client.projects`
+- `client.storage_pools`
+- `client.certificates`
+- `client.operations`
+- `client.cluster`
+
+Useful `Client` methods and properties:
+
+- `trusted()` — check whether the client is authenticated/trusted by the server.
+- `server_clustered()` — check whether the server is part of a cluster.
+- `resources()` — fetch server resource information (CPU, memory, storage, etc.).
+- `has_api_extension(name)` / `assert_has_api_extension(name)` — check for optional API extensions before using extension-dependent features.
+- `authenticate(secret, use_token_auth=True)` — authenticate against a server requiring a shared secret or token.
+- `websocket_url()` — retrieve the URL for the LXD event websocket.
+- `events(websocket_client=None, event_types=None)` — subscribe to the LXD event stream, optionally filtered by `EventType`.
+
+### Managers
+
+Managers (in `pylxd.managers`) sit behind `Client` attributes and provide collection-level operations for a given resource type. All managers derive from `BaseManager`, which associates a manager with its parent client and model class via `manager_for()`. Key managers include:
+
+- `CertificateManager`
+- `InstanceManager`, `ContainerManager`, `VirtualMachineManager`
+- `ImageManager`
+- `NetworkManager`, `NetworkForwardManager`
+- `OperationManager`
+- `ProfileManager`, `ProjectManager`
+- `SnapshotManager`
+- `StoragePoolManager`, `StorageResourcesManager`, `StorageVolumeManager`, `StorageVolumeSnapshotManager`
+- `ClusterMemberManager`, `ClusterCertificateManager`, `ClusterManager`
+
+A helper function `web_socket_manager(manager)` supports managers that need websocket-backed behavior (e.g., interactive exec sessions).
+
+### Models
+
+Models (in `pylxd.models`) represent individual LXD resources and are built on a shared base (`pylxd.models._model.Model`, `AttributeDict`, `Attribute`, `Manager`, `Parent`, `ModelType`). Every model instance supports:
+
+- `dirty()` — check for unsaved local changes.
+- `sync(rollback=False)` — refresh from the server.
+- `rollback()` — discard local changes.
+- `save(wait=False)` / `delete(wait=False)` — persist or remove the resource.
+- `marshall(skip_readonly=True)` — serialize the model to a dict for API calls.
+- `post`, `put`, `raw_put`, `patch`, `raw_patch` — lower-level HTTP verb helpers used internally and available for advanced use.
+
+Concrete models include:
+
+- **`Certificate`** — trusted client certificates; supports `create`, `create_token`, `get`, `all`.
+- **`Instance`** (base for `Container` and `VirtualMachine`) — lifecycle control (`start`, `stop`, `restart`, `freeze`, `unfreeze`), `execute()` and `raw_interactive_execute()` for running commands, `migrate()`/`generate_migration_data()` for moving instances between hosts, `publish()` to create images, and `restore_snapshot()`.
+- **`Snapshot`** — instance snapshots, with `create`, `rename`, `publish`, `restore`.
+- **`Image`** — image management, including `create`, `create_from_simplestreams`, `create_from_url`, `export`, `add_alias`, `delete_alias`, and `copy` to another client/remote.
+- **`Network`** and **`NetworkForward`** — network configuration and state, including forwarding rules.
+- **`Operation`** — represents asynchronous LXD operations; `wait_for_operation`, `get`, `wait()`.
+- **`Profile`** — reusable instance configuration profiles.
+- **`Project`** — LXD projects for resource isolation.
+- **`StoragePool`**, **`StorageResources`**, **`StorageVolume`**, **`StorageVolumeSnapshot`** — storage management.
+- **`Cluster`**, **`ClusterMember`**, **`ClusterCertificate`** — cluster administration.
+
+### Exceptions
+
+- `LXDAPIException` — base exception for API errors.
+- `NotFound` — raised when a requested resource does not exist.
+- `Conflict` — raised on resource conflicts (e.g., duplicate names).
+- `LXDAPIExtensionNotAvailable` — raised when using a feature not supported by the server's API extensions.
+- `ClientConnectionFailed` — raised when the client cannot connect to the LXD server.
+
+## Installation
+
+```bash
+pip install pylxd
+```
+
+## Usage Examples
+
+### Connecting to a server
+
+```python
+from pylxd import Client
+
+# Connect to the local LXD daemon over its Unix socket
+client = Client()
+
+# Or connect to a remote LXD server using certs
+client = Client(
+    endpoint="https://my-lxd-server:8443",
+    cert=("client.crt", "client.key"),
+    verify=False,
+)
+
+if not client.trusted():
+    client.authenticate(secret="my-shared-secret")
+
+print(client.host_info if hasattr(client, "host_info") else client.trusted())
+```
+
+### Managing containers
+
+```python
+from pylxd import Client
+
+client = Client()
+
+# Create and start a new container
+config = {
+    "name": "my-container",
+    "source": {"type": "image", "alias": "ubuntu/22.04"},
+}
+container = client.instances.create(config, wait=True)
+container.start(wait=True)
+
+# Run a command inside the container
+result = container.execute(["echo", "hello world"])
+print(result.exit_code, result.stdout)
+
+# Stop and delete it
+container.stop(wait=True)
+container.delete(wait=True)
+```
+
+### Working with images
+
+```python
+from pylxd import Client
+
+client = Client()
+
+# List all images
+for image in client.images.all():
+    print(image.fingerprint, image.aliases)
+
+# Fetch by alias and add a new alias
+image = client.images.get_by_alias("ubuntu/22.04")
+image.add_alias(name="my-ubuntu", description="Pinned base image")
+```
+
+### Snapshots and restore
+
+```python
+container = client.instances.get("my-container")
+
+snapshot = container.snapshots.create(
+    client, container, "backup-1", stateful=False, wait=True
+)
+
+# ... later ...
+container.restore_snapshot("backup-1", wait=True)
+```
+
+### Subscribing to events
+
+```python
+from pylxd import Client
+from pylxd.client import EventType
+
+client = Client()
+
+for event in client.events(event_types=[EventType.Lifecycle, EventType.Operation]):
+    print(event)
+```
+
+### Managing profiles and projects
+
+```python
+client = Client()
+
+profile = client.profiles.create(
+    client,
+    name="web-servers",
+    config={"limits.cpu": "2"},
+    description="Profile for web server instances",
+)
+
+project = client.projects.create(
+    client,
+    name="staging",
+    description="Staging environment",
+)
+```
+
+### Cluster administration
+
+```python
+from pylxd.models.cluster import Cluster, ClusterMember
+
+client = Client()
+
+if client.server_clustered():
+    for member in ClusterMember.all(client):
+        print(member.server_name)
+
+cluster = Cluster.enable(client, server_name="node-1")
+```
+
+## Contributing
+
+Contributions, bug reports, and feature requests are welcome. Please open an issue or pull request on the project's repository.
+
+## License
+
+See the `LICENSE` file for details.

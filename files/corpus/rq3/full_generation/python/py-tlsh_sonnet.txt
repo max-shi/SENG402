@@ -1,0 +1,167 @@
+# py-tlsh
+
+py-tlsh is a Python toolkit built around the **TLSH (Trend Micro Locality Sensitive Hash)** fuzzy hashing scheme. It provides utilities for computing TLSH digests of files, comparing hashes for similarity, and clustering large collections of hashes using hierarchical agglomerative clustering (HAC-T) as well as DBSCAN. It is aimed at malware analysts, digital forensics researchers, and anyone who needs to group large sets of files (or other TLSH-hashable objects) by similarity.
+
+## Features
+
+- **Digest computation** — compute TLSH digests for files and inspect their internal parts.
+- **Clustering** — cluster large sets of TLSH digests efficiently using a Vantage Point Tree (VPT) accelerated HAC-T algorithm, or with DBSCAN.
+- **Cluster output & analysis** — write clusters to CSV, estimate cluster radii, print dendrograms, and analyse cluster quality.
+- **Low-level primitives** — a min-heap and VP-tree implementation used internally to support fast nearest-neighbour search over TLSH distance space.
+
+## Installation
+
+This project is distributed as source; clone the repository and ensure the `py_ext` and `tlshCluster` packages (and their `pylib` submodule) are on your `PYTHONPATH`.
+
+```bash
+git clone https://github.com/<org>/py-tlsh.git
+cd py-tlsh
+```
+
+## Module Overview
+
+### `py_ext`
+
+Command-line style utilities for producing TLSH digests from files.
+
+- `tlsh_digest.py`
+  - `compute_1(path, force_cons_param, old_param=0)` — compute a TLSH digest for a single file, with options controlling the constraint parameters used by the algorithm.
+  - `main(argv)` — CLI entry point for digest computation, suitable for invocation as a script.
+- `tlsh_parts.py`
+  - `main(argv)` — CLI entry point for inspecting the internal components ("parts") of a TLSH digest.
+- `test.py`
+  - `compute_1(path)` / `compute_2(path)` — example/test helpers demonstrating two ways of computing a digest.
+
+### `tlshCluster`
+
+The core clustering engine, split between the top-level driver script and the `pylib` support library.
+
+- `hac-t.py`
+  - `simple_unittests()` — sanity-checks the clustering pipeline end-to-end.
+
+### `tlshCluster/pylib/hac_lib.py`
+
+The heart of the clustering implementation.
+
+- **Data structures**
+  - `Node` — a node of a Vantage Point Tree, with `insert(point)` for building the tree and `PrintTree(maxdepth, depth)` for debugging/visualizing its structure.
+- **Tree construction & search**
+  - `VPTGrow(tlshList, tobjList, tidxList)` — build a VP-tree over a list of TLSH digests.
+  - `VPTSearch(node, searchItem, searchIdx, cluster, notInC, best)` — search the VP-tree for the nearest neighbours of an item.
+  - `linearSearch(searchItem, tobjList, ignoreList, linbest)` — brute-force nearest-neighbour search, used as a fallback/reference.
+  - `VPTsearch_add_to_heap(A, cluster, tobjList, rootVPT, heap)` — push VP-tree search results onto a min-heap of candidate merges.
+  - `distMetric(tobj, searchItem)` — the distance function (TLSH distance) used throughout tree search and clustering.
+- **Merging**
+  - `Tentative_Merge(...)` / `Merge(...)` — evaluate and commit merges of clusters during HAC-T.
+  - `median(currlist)` — helper for computing median distances, used in cluster diagnostics.
+- **Driving the algorithm**
+  - `HAC_T_step3(tlshList, tobjList, CDist, rootVPT, memberList, cluster)` — the core iterative merge step of HAC-T.
+  - `HAC_T_opt(fname, CDist, step3, outfname, cenfname, verbose=0)` — an optimized HAC-T driver.
+  - `HAC_T(fname, CDist, step3, outfname, cenfname, allowStringy=0, verbose=0)` — the full HAC-T clustering pipeline: reads input, builds a VP-tree, iteratively merges clusters up to distance threshold `CDist`, and writes cluster output.
+  - `DBSCAN_procedure(fname, CDist, outfname, cenfname, verbose=0)` — an alternative clustering pipeline using DBSCAN instead of HAC-T.
+  - `read_data(fname)` — load a file of TLSH digests (and associated metadata) into memory for clustering.
+- **Instrumentation**
+  - `hac_resetDistCalc()` / `hac_lookupDistCalc()` — reset/retrieve a counter of distance computations performed, for performance profiling.
+  - `setNoTiming()` / `setShowNumberClusters()` — toggle diagnostic output.
+  - `print_time(title, final=0)` / `print_number_clusters(memberList, end=False)` — diagnostic printing helpers.
+
+### `tlshCluster/pylib/myheap.py`
+
+- `MinHeap` — a min-heap keyed by TLSH distance, used to efficiently track the closest candidate pairs during clustering. Supports `insert(key, dist)`, `deleteTop()`, `dist(i)`, and internal heap-maintenance methods (`heapify`, `heapify2`, parent/child position helpers).
+- `heap_tester()` — exercises the heap implementation for correctness.
+
+### `tlshCluster/pylib/printCluster.py`
+
+Utilities for rendering clustering results to disk.
+
+- `printAllCluster(outfname, cenfname, cluster, memberList, tlshList, tobjList, labels, verbose)` — write every cluster (members and centroid info) to output files.
+- `printCluster(f, cenf, gA, cluster, memberList, tlshList, tobjList, labelList, dateList)` — write a single cluster's details.
+- `estimateRadius(ml, tobjList)` — estimate the radius (spread) of a cluster from its member list.
+
+### `tlshCluster/pylib/tlsh_lib.py`
+
+General-purpose helpers for working with TLSH digests outside of the HAC-T pipeline — comparison, visualization, CSV-based search, and scikit-learn-style clustering (agglomerative/DBSCAN) over TLSH distance.
+
+- `resetDistCalc()` / `lookupDistCalc()` — global distance-computation counters.
+- `sim(idx1, idx2)` — similarity/distance between two indexed TLSH digests.
+- `tlist2cdata(tlist)` — convert a list of TLSH digests into a distance/condensed-data matrix suitable for clustering libraries.
+- `sim_affinity(tdata)` — an affinity/distance function wrapper for use with clustering algorithms that accept a custom metric.
+- `tlsh_dendrogram(tlist, labelList=None)` — render a dendrogram of a set of TLSH digests.
+- `assignCluster(tlist, n_clusters)` — perform agglomerative clustering into a fixed number of clusters.
+- `runDBSCAN(tlist, eps, min_samples, algorithm='auto')` — run DBSCAN clustering over a list of TLSH digests.
+- `selectCluster(tlist, clusterNumber, clusterIdx, labelList=None)` — extract the members of a specific cluster.
+- `analyse_clusters(clusterNumber)` — compute summary statistics over cluster assignments.
+- `outputClusters(outfname, tlist, clusterNumber, labelList, quiet=False)` — write cluster assignments to a file.
+- `tlsh_csvfile(fname, searchColName=None, searchValueList=None, simTlsh=None, simThreshold=150, sDate=None, eDate=None, searchNitems=None, verbose=0)` — search/filter a CSV of TLSH digests and metadata by similarity, date range, or column values.
+- `mb_show_sha1(family, thisDate=None, nitems=None, fname='malbaz/clust_389300.csv', showN=10, showC=1)` — display sample SHA1 hashes for a malware family from a clustering result CSV, useful for spot-checking clusters.
+
+## Usage Examples
+
+### Computing a TLSH digest for a file
+
+```python
+from py_ext.tlsh_digest import compute_1
+
+digest = compute_1("/path/to/sample.exe", force_cons_param=False)
+print("TLSH digest:", digest)
+```
+
+### Running the HAC-T clustering pipeline on a set of digests
+
+```python
+from tlshCluster.pylib.hac_lib import HAC_T, HAC_T_step3
+
+# fname: input file containing TLSH digests (and metadata) to cluster
+# CDist: maximum distance threshold for merging clusters
+HAC_T(
+    fname="digests.tlsh",
+    CDist=30,
+    step3=HAC_T_step3,
+    outfname="clusters.csv",
+    cenfname="centroids.csv",
+    allowStringy=0,
+    verbose=1,
+)
+```
+
+### Clustering with DBSCAN over a list of digests
+
+```python
+from tlshCluster.pylib.tlsh_lib import runDBSCAN, outputClusters
+
+tlist = ["T1A2B3C4D5...", "T1A2B3C4E6...", "T1FFA2C4D5..."]
+
+labels = runDBSCAN(tlist, eps=30, min_samples=2)
+
+outputClusters("dbscan_clusters.csv", tlist, clusterNumber=labels, labelList=None)
+```
+
+### Visualizing similarity structure with a dendrogram
+
+```python
+from tlshCluster.pylib.tlsh_lib import tlsh_dendrogram
+
+tlist = ["T1A2B3C4D5...", "T1A2B3C4E6...", "T1FFA2C4D5..."]
+tlsh_dendrogram(tlist, labelList=["sample_a", "sample_b", "sample_c"])
+```
+
+### Searching a CSV of digests for near matches
+
+```python
+from tlshCluster.pylib.tlsh_lib import tlsh_csvfile
+
+matches = tlsh_csvfile(
+    "malware_db.csv",
+    simTlsh="T1A2B3C4D5E6F7...",
+    simThreshold=100,
+    verbose=1,
+)
+```
+
+## Notes on Performance
+
+The library maintains internal counters for the number of pairwise distance calculations performed (`resetDistCalc`/`lookupDistCalc` and their `hac_`-prefixed counterparts), which are useful for benchmarking the efficiency of VP-tree-accelerated search versus brute-force `linearSearch`. `setNoTiming()` and `setShowNumberClusters()` can be used to control verbosity of diagnostic output during large clustering runs.
+
+## Contributing
+
+Issues and pull requests are welcome. When adding new clustering strategies, please follow the existing pattern of pairing a driver function (e.g. `HAC_T`, `DBSCAN_procedure`) with an output routine (e.g. `printAllCluster`, `outputClusters`) so results remain consistent across pipelines.

@@ -1,0 +1,405 @@
+# be.atbash.json:octopus-jwt-support
+
+A Java library for working with JSON Web Tokens (JWT), JSON Web Signatures (JWS), JSON Web Encryption (JWE), and JSON Web Keys (JWK).
+
+The library provides both high-level JWT encoding and decoding APIs and lower-level JOSE building blocks. It includes support for:
+
+- Plain, signed, and encrypted JWTs
+- JWS signing and verification
+- JWE encryption and decryption
+- RSA, EC, Ed25519, AES, HMAC, direct, ECDH, and password-based key handling
+- JWK, JWK Set, PEM, and Java KeyStore key resources
+- Local, remote, and in-memory key management
+- Key selection by key ID, type, and asymmetric key part
+- JSON-B serialization support
+- JWT claim and header processing utilities
+
+## Core API overview
+
+### High-level JWT encoding and decoding
+
+The primary entry points are:
+
+- `JWTEncoder` — serializes application data and produces a JWT.
+- `JWTDecoder` — parses a JWT, resolves keys, verifies or decrypts it, and deserializes its payload.
+- `JWTParametersBuilder` — creates the parameters used by `JWTEncoder`.
+- `JWTData<T>` — contains decoded application data together with `MetaJWTData`.
+- `MetaJWTData` — exposes JWT header metadata, including the key ID.
+
+Supported output encodings are represented by `JWTEncoding`:
+
+| Value | Meaning |
+|---|---|
+| `NONE` | No JWT output encoding parameters. |
+| `PLAIN` | Plain, unsecured JWT. |
+| `JWS` | Signed JWT. |
+| `JWE` | Encrypted JWT. |
+
+Use `JWTParametersBuilder.newBuilderFor(...)` to create parameters appropriate for the desired encoding.
+
+### Keys and key selection
+
+`AtbashKey` wraps a Java `Key` together with a key ID (`kid`) and key-type metadata.
+
+Key sources are exposed through `KeyManager`:
+
+- `ListKeyManager` — retrieves keys from a supplied list.
+- `LocalKeyManager` — local key manager.
+- `RemoteKeyManager` — remote key manager.
+- `CombinedKeyManager` — combines key-manager behavior.
+
+`KeySelector` resolves an `AtbashKey` or Java `Key` from a `KeyManager`. For a known single key, use `SingleKeySelector`.
+
+Useful related types include:
+
+- `SelectorCriteria` — describes the required key, including ID, key type, asymmetric part, JWE algorithm, and password-based encryption parameters.
+- `AsymmetricPart` — `PUBLIC`, `PRIVATE`, or `SYMMETRIC`.
+- `SecretKeyType` — describes a key type and, for asymmetric keys, its public/private part.
+- `KeyFilter` and its implementations — filter key collections by ID, key type, secret-key type, or asymmetric part.
+
+### Reading and writing keys
+
+`KeyReader` reads keys from resources, URIs, streams, or content:
+
+- JWK (`KeyReaderJWK`)
+- JWK Set (`KeyReaderJWKSet`)
+- PEM (`KeyReaderPEM`)
+- Java KeyStore (`KeyReaderKeyStore`)
+
+`KeyWriter` exports an `AtbashKey` as:
+
+- `JWK`
+- `JWKSET`
+- `PEM`
+- `KEYSTORE`
+
+Passwords for protected resources and individual keys are supplied through `KeyResourcePasswordLookup`.
+
+### JWK model
+
+The `be.atbash.ee.security.octopus.nimbus.jwk` package provides JWK representations:
+
+- `JWK` — common JWK base type.
+- `RSAKey` — RSA JWK.
+- `ECKey` — elliptic-curve JWK.
+- `OctetSequenceKey` — symmetric/octet JWK.
+- `OctetKeyPair` — octet key-pair JWK.
+- `JWKSet` — collection of JWKs.
+
+JWKs can be parsed from JSON, loaded from a `KeyStore`, converted to Java key objects, serialized, and reduced to public-key-only representations.
+
+### Low-level JOSE objects
+
+For direct control over JWT and JOSE processing, use:
+
+- `PlainJWT`
+- `SignedJWT`
+- `EncryptedJWT`
+- `JWTParser`
+- `JWTClaimsSet`
+- `JWSObject`
+- `JWEObject`
+- `JWSHeader`
+- `JWEHeader`
+
+Signing, verification, encryption, and decryption implementations include:
+
+- `MACSigner` / `MACVerifier`
+- `RSASSASigner` / `RSASSAVerifier`
+- `ECDSASigner` / `ECDSAVerifier`
+- `Ed25519Signer` / `Ed25519Verifier`
+- `RSAEncrypter` / `RSADecrypter`
+- `AESEncrypter` / `AESDecrypter`
+- `DirectEncrypter` / `DirectDecrypter`
+- `ECDHEncrypter` / `ECDHDecrypter`
+- `PasswordBasedEncrypter` / `PasswordBasedDecrypter`
+
+Factories are available when the algorithm and key are selected at runtime:
+
+- `JWTSignerFactory`
+- `JWEEncryptionFactory`
+- `DefaultJWSVerifierFactory`
+- `DefaultJWEDecrypterFactory`
+
+---
+
+## Example: create and decode an HMAC-signed JWT
+
+This example creates a symmetric key, signs a payload as a JWS JWT, then decodes it using the same key.
+
+```java
+import be.atbash.ee.security.octopus.jwt.decoder.JWTData;
+import be.atbash.ee.security.octopus.jwt.decoder.JWTDecoder;
+import be.atbash.ee.security.octopus.jwt.encoder.JWTEncoder;
+import be.atbash.ee.security.octopus.jwt.parameter.JWTParameters;
+import be.atbash.ee.security.octopus.jwt.parameter.JWTParametersBuilder;
+import be.atbash.ee.security.octopus.jwt.JWTEncoding;
+import be.atbash.ee.security.octopus.keys.AtbashKey;
+import be.atbash.ee.security.octopus.keys.selector.SingleKeySelector;
+import be.atbash.ee.security.octopus.util.HmacSecretUtil;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
+AtbashKey signingKey = HmacSecretUtil.generateSecretKey(
+        "application-hmac-key",
+        "a-secret-value-used-for-signing".getBytes(StandardCharsets.UTF_8)
+);
+
+JWTParameters parameters = JWTParametersBuilder
+        .newBuilderFor(JWTEncoding.JWS)
+        .withHeader("typ", "JWT")
+        .withSecretKeyForSigning(signingKey)
+        .build();
+
+Map<String, Object> payload = Map.of(
+        "sub", "user-42",
+        "role", "admin"
+);
+
+JWTEncoder encoder = new JWTEncoder();
+String token = encoder.encode(payload, parameters);
+
+SingleKeySelector keySelector = new SingleKeySelector(signingKey);
+
+JWTDecoder decoder = new JWTDecoder();
+JWTData<Map> decoded = decoder.decode(token, Map.class, keySelector);
+
+Map<String, Object> decodedPayload = decoded.getData();
+String keyId = decoded.getMetaData().getKeyID();
+```
+
+`JWTData<Map>` contains both the deserialized payload and metadata extracted from the JWT header.
+
+---
+
+## Example: encrypt a JWT with a symmetric key
+
+The following example creates a JWE-encoded JWT using a symmetric key.
+
+```java
+import be.atbash.ee.security.octopus.jwt.JWTEncoding;
+import be.atbash.ee.security.octopus.jwt.encoder.JWTEncoder;
+import be.atbash.ee.security.octopus.jwt.parameter.JWTParameters;
+import be.atbash.ee.security.octopus.jwt.parameter.JWTParametersBuilder;
+import be.atbash.ee.security.octopus.keys.AtbashKey;
+import be.atbash.ee.security.octopus.util.HmacSecretUtil;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+
+AtbashKey encryptionKey = HmacSecretUtil.generateSecretKey(
+        "application-encryption-key",
+        "encryption-key-material".getBytes(StandardCharsets.UTF_8)
+);
+
+JWTParameters parameters = JWTParametersBuilder
+        .newBuilderFor(JWTEncoding.JWE)
+        .withHeader("typ", "JWT")
+        .withSecretKeyForEncryption(encryptionKey)
+        .build();
+
+Map<String, Object> payload = Map.of(
+        "sub", "user-42",
+        "scope", "reports:read"
+);
+
+String encryptedToken = new JWTEncoder().encode(payload, parameters);
+```
+
+For password-based JWE encryption, `JWTParametersBuilder` also provides:
+
+```java
+JWTParameters parameters = JWTParametersBuilder
+        .newBuilderFor(JWTEncoding.JWE)
+        .withSecretKeyForEncryption("password-key-id", "secret-password".toCharArray())
+        .build();
+```
+
+An overload accepts an explicit password-based encryption iteration count.
+
+---
+
+## Example: read a JWK Set and select a key
+
+A JWK Set may contain multiple keys. Parse it with `JWKSet`, convert it to `AtbashKey` values, and expose them through a `ListKeyManager`.
+
+```java
+import be.atbash.ee.security.octopus.keys.AtbashKey;
+import be.atbash.ee.security.octopus.keys.ListKeyManager;
+import be.atbash.ee.security.octopus.keys.selector.KeySelector;
+import be.atbash.ee.security.octopus.nimbus.jwk.JWKSet;
+
+import java.util.List;
+
+String jwkSetJson = """
+{
+  "keys": [
+    {
+      "kty": "oct",
+      "kid": "shared-key",
+      "k": "c2VjcmV0"
+    }
+  ]
+}
+""";
+
+JWKSet jwkSet = JWKSet.parse(jwkSetJson);
+List<AtbashKey> keys = jwkSet.getAtbashKeys();
+
+ListKeyManager keyManager = new ListKeyManager(keys);
+KeySelector keySelector = new KeySelector(keyManager);
+keySelector.init();
+```
+
+Alternatively, use `KeyReader` when keys are supplied as external resources:
+
+```java
+import be.atbash.ee.security.octopus.keys.AtbashKey;
+import be.atbash.ee.security.octopus.keys.reader.KeyReader;
+
+import java.util.List;
+
+KeyReader keyReader = new KeyReader();
+keyReader.init();
+
+List<AtbashKey> keys = keyReader.readKeyResource("https://example.invalid/keys.jwks");
+```
+
+When a key resource or key entry requires passwords, provide a `KeyResourcePasswordLookup`.
+
+```java
+import be.atbash.ee.security.octopus.keys.reader.password.KeyResourcePasswordLookup;
+
+KeyResourcePasswordLookup passwordLookup = new KeyResourcePasswordLookup() {
+    @Override
+    public char[] getResourcePassword(String path) {
+        return "store-password".toCharArray();
+    }
+
+    @Override
+    public char[] getKeyPassword(String path, String keyId) {
+        return "key-password".toCharArray();
+    }
+};
+```
+
+---
+
+## Example: direct signed-JWT processing
+
+Use the lower-level API when you need to construct headers and claims explicitly.
+
+```java
+import be.atbash.ee.security.octopus.nimbus.jose.crypto.MACSigner;
+import be.atbash.ee.security.octopus.nimbus.jose.crypto.MACVerifier;
+import be.atbash.ee.security.octopus.nimbus.jwt.JWTClaimsSet;
+import be.atbash.ee.security.octopus.nimbus.jwt.SignedJWT;
+import be.atbash.ee.security.octopus.nimbus.jwt.jws.JWSAlgorithm;
+import be.atbash.ee.security.octopus.nimbus.jwt.jws.JWSHeader;
+
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+
+byte[] secret = "a-secret-value-used-for-signing".getBytes(StandardCharsets.UTF_8);
+
+JWSHeader header = new JWSHeader(new JWSAlgorithm("HS256"));
+JWTClaimsSet claims = JWTClaimsSet.parse("""
+{
+  "sub": "user-42",
+  "iss": "example-service"
+}
+""");
+
+SignedJWT signedJWT = new SignedJWT(header, claims);
+signedJWT.sign(new MACSigner(secret));
+
+String compactJwt = signedJWT.serialize();
+
+SignedJWT parsed = SignedJWT.parse(compactJwt);
+boolean valid = parsed.verify(new MACVerifier(secret));
+
+JWTClaimsSet parsedClaims = parsed.getJWTClaimsSet();
+```
+
+---
+
+## JWT verification and processing
+
+`DefaultJWTProcessor` can process parsed JWTs with configured key selectors, verifier factories, decrypter factories, and claim verification.
+
+```java
+import be.atbash.ee.security.octopus.keys.selector.KeySelector;
+import be.atbash.ee.security.octopus.nimbus.jwt.JWT;
+import be.atbash.ee.security.octopus.nimbus.jwt.JWTClaimsSet;
+import be.atbash.ee.security.octopus.nimbus.jwt.JWTParser;
+import be.atbash.ee.security.octopus.nimbus.jwt.proc.DefaultJWTClaimsVerifier;
+import be.atbash.ee.security.octopus.nimbus.jwt.proc.DefaultJWTProcessor;
+
+JWT jwt = JWTParser.parse(token);
+
+DefaultJWTProcessor processor = new DefaultJWTProcessor();
+processor.setJWSKeySelector(keySelector);
+processor.setJWEKeySelector(keySelector);
+processor.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier());
+
+JWTClaimsSet claims = processor.process(jwt);
+```
+
+Implement `JWTVerifier` to add application-specific claim checks:
+
+```java
+import be.atbash.ee.security.octopus.jwt.decoder.JWTVerifier;
+import be.atbash.ee.security.octopus.nimbus.jwt.CommonJWTHeader;
+import be.atbash.ee.security.octopus.nimbus.jwt.JWTClaimsSet;
+
+JWTVerifier verifier = new JWTVerifier() {
+    @Override
+    public boolean verify(CommonJWTHeader header, JWTClaimsSet claimsSet) {
+        return "expected-issuer".equals(claimsSet.getIssuer());
+    }
+};
+```
+
+Pass such a verifier to a `JWTDecoder.decode(...)` overload or configure it on `DefaultJWTProcessor`.
+
+---
+
+## Configuration and utilities
+
+Configuration singletons are exposed through:
+
+- `JwtSupportConfiguration.getInstance()`
+- `JCASupportConfiguration.getInstance()`
+
+`JwtSupportConfiguration` exposes JWT-support settings such as key location, key manager, reader order, default JWE algorithms, JWK Set cache period, clock-skew seconds, and key-store settings.
+
+`JCASupportConfiguration` exposes secure-random configuration:
+
+```java
+import be.atbash.ee.security.octopus.config.JCASupportConfiguration;
+
+JCASupportConfiguration jca = JCASupportConfiguration.getInstance();
+
+String algorithm = jca.getSecureRandomAlgorithm();
+int recreateSeconds = jca.getSecureRandomRecreateSeconds();
+```
+
+Additional utilities include:
+
+- `JsonbUtil.getJsonb()` — obtain a JSON-B instance.
+- `EncryptionHelper` — encrypt and decrypt strings or bytes using passwords or `SecretKey` values.
+- `PeriodUtil.defineSecondsInPeriod(...)` — convert a period configuration string to seconds.
+- `JWKSetCache` — cache a JWK Set and inspect its lifetime or expiry.
+- `JWKSetRetriever` — retrieve a JWK Set from a URL with configurable timeouts, size limits, and proxy support.
+
+---
+
+## Security notes
+
+- Use `JWTEncoding.JWS` when integrity and authentication are required.
+- Use `JWTEncoding.JWE` when payload confidentiality is required.
+- A plain JWT (`JWTEncoding.PLAIN`) does not provide signature verification or encryption.
+- Protect private keys, symmetric keys, passwords, and key-store credentials.
+- Use key IDs consistently so `KeySelector` and `KeyManager` instances can resolve the intended key.
+- When accepting remote JWK Set URLs, validate them with `RemoteJWKSetURIValidator` and `ValidateRemoteJWKSetURI`.

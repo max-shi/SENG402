@@ -1,0 +1,271 @@
+# WebDataset
+
+WebDataset is a Python library for building scalable, high-performance data
+pipelines for training machine learning models on large datasets stored as
+tar files (locally, on shared filesystems, or in cloud storage). It is
+designed to work naturally with PyTorch's `IterableDataset` interface and
+supports streaming, sharding, shuffling, decoding, caching, and writing of
+datasets composed of sequentially-named files packed into tar archives.
+
+Instead of requiring random-access indexing into a dataset, WebDataset reads
+data sequentially from sharded tar files, making it well suited for
+distributed training, cloud storage, and very large datasets that cannot fit
+on local disk.
+
+## Key Concepts
+
+- **Shards**: Datasets are split into multiple tar files ("shards"), each
+  containing a sequence of samples. Samples are groups of files sharing the
+  same basename but different extensions (e.g. `001.jpg`, `001.cls`,
+  `001.json`).
+- **Pipeline**: A WebDataset pipeline is built by chaining together stages
+  that open shards, iterate over tar files, group files into samples,
+  shuffle, decode, and batch data.
+- **Decoding**: Raw bytes read from tar files are automatically or manually
+  decoded into usable Python objects (images, tensors, JSON, pickled data,
+  etc.).
+- **Writing**: The library also supports writing datasets back out into
+  sharded tar format for later consumption.
+
+## Main Components
+
+### `WebDataset` / `WebLoader` (compat.py)
+
+The primary user-facing entry points. `WebDataset` builds a pipeline from a
+list of shard URLs (local paths, remote URLs, or brace-expandable patterns)
+and exposes a fluent interface (via `FluidInterface`) for composing
+transformations:
+
+- `.shuffle(size)` – shuffle samples using a buffer.
+- `.decode(...)` – decode sample fields (images, tensors, etc.).
+- `.to_tuple(*args)` / `.map_dict(...)` / `.map(...)` – reshape or transform
+  samples.
+- `.batched(batchsize)` / `.unbatched()` – form or split mini-batches.
+- `.select(predicate)` – filter samples.
+- `.rename(...)`, `.rename_keys(...)`, `.extract_keys(...)` – manipulate
+  sample keys.
+- `.slice(...)` – take a subset of samples.
+- `.mcached()` / `.lmdb_cached(...)` – cache samples in memory or LMDB.
+
+`WebLoader` wraps a `DataPipeline` similarly but is intended for use as a
+replacement for `DataLoader`-like iteration over batches, typically wrapping
+a `WebDataset` plus batching/collation stages.
+
+### `DataPipeline` (pipeline.py)
+
+The underlying execution engine. A `DataPipeline` is a sequence of
+"stages" (callables, iterators, or `PipelineStage` objects) that are
+composed together and executed lazily, sample by sample. It provides:
+
+- `.compose(*args)` / `.append(f)` – add stages to the pipeline.
+- `.with_length(n)` / `.with_epoch(n)` / `.repeat(n)` – control iteration
+  length and looping behavior.
+- `.iterator()` / `.iterator1()` – produce iterators over the pipeline.
+
+`WebDataset` and `WebLoader` are both built on top of `DataPipeline`.
+
+### Shard Handling (shardlists.py)
+
+Functions and classes for expanding and distributing shard URLs:
+
+- `expand_urls(urls)` / `expand_source(source)` – expand brace patterns
+  (`{000..099}`) and shard specification files into concrete URLs.
+- `SimpleShardList` – basic iterable list of shards.
+- `ResampledShards` – infinite resampling of shards (useful for
+  distributed/multi-epoch training without epoch boundaries).
+- `MultiShardSample` / `MSSource` – combine multiple weighted data sources
+  into a single sampling stream, with per-epoch reproducibility via
+  `set_epoch`.
+- `split_by_node` / `split_by_worker` – partition shards across distributed
+  training nodes and DataLoader workers.
+- `DirectoryShardList` – track shard processing state via files on disk
+  (for coordinating multiple worker processes).
+
+### Reading Tar Files (tariterators.py)
+
+Low-level generator functions that implement the tar-reading pipeline:
+
+- `url_opener(urls, handler)` – open each shard URL as a stream.
+- `tar_file_expander(data)` / `tar_file_iterator(fileobj)` – iterate over
+  individual files inside a tar stream.
+- `group_by_keys(data)` – group consecutive files with the same basename
+  into a single sample dict.
+- `tarfile_samples(src)` – combine the above into a full "shards to
+  samples" pipeline stage.
+
+### Decoding (autodecode.py)
+
+- `Decoder` – the central decoding object used by `.decode(...)`; applies a
+  sequence of handlers to sample fields based on file extension.
+- `imagehandler(imagespec)` – build a decoder for image extensions (e.g.
+  `"pil"`, `"rgb"`, `"torch"` depending on config).
+- `basichandlers`, `torch_loads`, `npy_loads`, `npz_loads`, `cbor_loads`,
+  `msgpack_loads`, `unpickle_loads`, `tenbin_loads` – individual format
+  decoders usable directly or via extension dispatch.
+- `torch_audio` / `torch_video` – decode audio/video payloads.
+- `handle_extension(extensions, f)` – register a decoder for a set of file
+  extensions.
+
+### Writing Datasets (writer.py)
+
+- `TarWriter` – write samples (dicts of field → data) directly to a tar
+  file, automatically encoding values based on key extensions.
+- `ShardWriter` – like `TarWriter` but automatically splits output across
+  multiple numbered shard files once a size/count limit is reached.
+- `make_encoder(spec)` and related `*_dumps` functions – control how
+  individual fields are serialized (images, tensors, numpy arrays, pickled
+  objects, msgpack, cbor, etc.).
+
+### Filters and Pipeline Stages (filters.py)
+
+Composable, curried stream-transformation functions used internally by
+`WebDataset`/`DataPipeline` and usable directly:
+
+- `pipelinefilter`, `pipeline`, `compose`, `compose2` – build reusable
+  pipeline stages.
+- `default_collation_fn` – default batching/collation behavior.
+- `detshuffle` – deterministic shuffling stage.
+- `Cached` / `LMDBCached` – cache pipeline output for reuse across epochs.
+
+### Error Handling (handlers.py)
+
+Standard error-handling strategies to pass as `handler=` arguments
+throughout the library:
+
+- `reraise_exception` – propagate errors (default, strict behavior).
+- `ignore_and_continue` / `warn_and_continue` – skip bad samples.
+- `ignore_and_stop` / `warn_and_stop` – stop iteration on error.
+
+### Caching (cache.py)
+
+- `FileCache` / `StreamingOpen` – transparently cache remote shard files to
+  local disk.
+- `LRUCleanup` – evict least-recently-used cached files to bound disk
+  usage.
+- `download(url, dest)` – fetch a remote file to a local destination.
+
+### Mixing Datasets (mix.py)
+
+- `RandomMix` – randomly interleave samples from multiple source iterables
+  according to given probabilities.
+- `RoundRobin` – interleave sources round-robin, either stopping at the
+  shortest or continuing to the longest.
+
+### Multi-process Loading (multi.py)
+
+- `MultiLoader` – load samples using multiple worker processes
+  communicating over sockets, as an alternative to PyTorch's built-in
+  `DataLoader` worker pool.
+
+### Utilities (utils.py)
+
+- `pytorch_worker_info` / `pytorch_worker_seed` – introspect the current
+  distributed/worker context for correct sharding and seeding.
+- `glob_with_braces` / `fnmatch_with_braces` – brace-aware globbing used for
+  shard URL expansion.
+- `PipelineStage` – base class for custom pipeline stages usable with
+  `DataPipeline.compose`.
+
+## Installation
+
+```bash
+pip install webdataset
+```
+
+## Basic Usage
+
+### Reading a dataset for training
+
+```python
+import webdataset as wds
+import torch
+
+url = "https://storage.example.com/dataset/shard-{000000..000999}.tar"
+
+dataset = (
+    wds.WebDataset(url, shardshuffle=True, handler=wds.warn_and_continue)
+    .shuffle(1000)
+    .decode("pil")
+    .to_tuple("jpg", "cls")
+    .map_tuple(lambda img: img.convert("RGB"), lambda cls: int(cls))
+    .batched(64)
+)
+
+loader = wds.WebLoader(dataset, batch_size=None, num_workers=4)
+
+for images, labels in loader:
+    ...  # training step
+```
+
+### Distributed / multi-worker training
+
+```python
+dataset = (
+    wds.WebDataset(url, resampled=True)  # infinite resampling of shards
+    .shuffle(5000)
+    .decode("torchrgb")
+    .to_tuple("png", "json")
+    .batched(32)
+)
+
+loader = wds.WebLoader(dataset, batch_size=None, num_workers=8)
+loader = loader.with_epoch(10000)  # fixed number of batches per "epoch"
+
+for batch in loader:
+    ...
+```
+
+### Writing a dataset
+
+```python
+import webdataset as wds
+
+with wds.ShardWriter("output/shard-%06d.tar", maxcount=10000) as sink:
+    for key, image, label in samples():
+        sink.write({
+            "__key__": key,
+            "jpg": image,      # encoded automatically based on extension
+            "cls": label,
+        })
+```
+
+### Mixing multiple data sources
+
+```python
+import webdataset as wds
+
+ds1 = wds.WebDataset("data/source1-{000..099}.tar")
+ds2 = wds.WebDataset("data/source2-{000..049}.tar")
+
+mixed = wds.RandomMix([ds1, ds2], probs=[0.7, 0.3])
+
+for sample in mixed:
+    ...
+```
+
+## Error Handling
+
+Most pipeline stages accept a `handler` argument controlling how exceptions
+raised while reading or decoding samples are handled:
+
+```python
+from webdataset import warn_and_continue
+
+dataset = wds.WebDataset(url, handler=warn_and_continue).decode("pil")
+```
+
+Available handlers: `reraise_exception` (default), `ignore_and_continue`,
+`warn_and_continue`, `ignore_and_stop`, `warn_and_stop`.
+
+## Caching Remote Shards
+
+```python
+from webdataset.cache import FileCache
+
+cache = FileCache()
+local_path = cache.get_file("https://storage.example.com/shard-000000.tar")
+```
+
+## License
+
+See `LICENSE` for details.

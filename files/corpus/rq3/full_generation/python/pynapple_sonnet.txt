@@ -1,0 +1,162 @@
+# pynapple
+
+**pynapple** is a Python library for analyzing neurophysiological data. It provides a small set of core data structures for representing time series, timestamps, and time intervals, along with a large collection of analysis routines built on top of them — spike train statistics, tuning curves, decoding, filtering, spectral analysis, wavelet transforms, peri-event analysis, and randomization/shuffling procedures. It also includes I/O utilities for loading and saving data from common neuroscience acquisition and processing pipelines (NWB, Neurosuite, Phy, Suite2P, CNMF-E, Neo-compatible formats).
+
+The design philosophy is simple: everything is built around a handful of time-aware containers (`Ts`, `Tsd`, `TsdFrame`, `TsdTensor`, `TsGroup`, `IntervalSet`), and analysis functions consume and return these same objects, so results can be chained together naturally.
+
+## Core data structures
+
+All of these live under the `pynapple.core` namespace and are re-exported at the top level (`nap.Ts`, `nap.Tsd`, etc.).
+
+- **`IntervalSet`** — A set of non-overlapping time intervals (start/end pairs), used to define epochs of interest (e.g. a task period, a sleep session). Supports set operations (`intersect`, `union`, `set_diff`), filtering (`drop_short_intervals`, `drop_long_intervals`, `merge_close_intervals`), splitting (`split`), and metadata attachment (`set_info`, `get_info`, `groupby`). Nearly every analysis function accepts an `IntervalSet` (commonly named `ep` or `epochs`) to restrict computation to specific time windows.
+
+- **`Ts`** — A simple series of timestamps (e.g., spike times) with no associated data values. Supports `restrict`, `count`, `value_from`, `time_diff`, `trial_count`, and conversion helpers like `as_series`.
+
+- **`Tsd`** — A 1-dimensional time series: timestamps paired with a 1D array of values. Adds `threshold` (extract intervals crossing a value), `find_peaks`, and `to_tsgroup`.
+
+- **`TsdFrame`** — A time series with 2D data (timestamps × columns), similar to a labeled `Tsd` with named columns. Supports column-wise metadata (`set_info`/`get_info`), `groupby`, `as_dataframe`, and `find_peaks`.
+
+- **`TsdTensor`** — A time series with N-dimensional data per timestamp (e.g., video frames, multi-channel spectrograms).
+
+- **`TsGroup`** — A dictionary-like collection of `Ts`/`Tsd` objects (typically spike trains from multiple neurons), keyed by an integer or label. Supports group-wide `restrict`, `count`, `value_from`, `to_tsd`, filtering by metadata (`getby_threshold`, `getby_intervals`, `getby_category`), merging (`merge`, `merge_group`), and subsampling.
+
+- **`TsIndex`** — The underlying time index type used internally by all time series objects; provides unit conversion (`in_units`) between seconds, milliseconds, and microseconds.
+
+All time-series-like objects (`Ts`, `Tsd`, `TsdFrame`, `TsdTensor`, `TsGroup`) share a common interface: `restrict(iset)`, `count(...)`, `value_from(...)`, `time_diff(...)`, and `get_slice(...)`, which makes it possible to write analysis code that is largely agnostic to the specific container type.
+
+## Analysis modules
+
+Located under `pynapple.process`:
+
+- **`correlograms`** — Autocorrelograms, cross-correlograms, event-triggered correlograms, and ISI distributions for spike trains (`compute_autocorrelogram`, `compute_crosscorrelogram`, `compute_eventcorrelogram`, `compute_isi_distribution`).
+
+- **`tuning_curves`** — Compute firing-rate or signal tuning curves as a function of one or more behavioral features (`compute_tuning_curves`, `compute_1d_tuning_curves`, `compute_2d_tuning_curves`, and continuous-signal variants), plus mutual information metrics (`compute_mutual_information`, `compute_1d_mutual_info`, `compute_2d_mutual_info`) and per-epoch response summaries (`compute_response_per_epoch`, `compute_discrete_tuning_curves`).
+
+- **`decoding`** — Bayesian and template-matching decoders (`decode_bayes`, `decode_template`) and legacy 1D/2D position decoders (`decode_1d`, `decode_2d`) that reconstruct a feature from population activity and tuning curves.
+
+- **`perievent`** — Build peri-event/peri-stimulus time windows around events (`compute_perievent`), and compute event- or spike-triggered averages (`compute_event_triggered_average`, `compute_spike_triggered_average`).
+
+- **`warping`** — Align variable-length trials onto a common time base (`build_tensor`, `warp_tensor`), useful for trial-averaged analyses.
+
+- **`filtering`** — Bandpass/bandstop/highpass/lowpass filters for continuous signals (`apply_bandpass_filter`, etc.), plus `get_filter_frequency_response` for inspecting filter characteristics.
+
+- **`signal`** — Hilbert transform utilities for computing instantaneous amplitude/phase (`apply_hilbert_transform`, `compute_hilbert_envelope`, `compute_hilbert_phase`) and oscillatory event detection (`detect_oscillatory_events`), e.g. for detecting ripples or spindles.
+
+- **`spectrum`** — FFT and power spectral density estimation (`compute_fft`, `compute_power_spectral_density`, `compute_mean_power_spectral_density`).
+
+- **`wavelets`** — Continuous wavelet transforms using Morlet wavelets (`compute_wavelet_transform`, `generate_morlet_filterbank`).
+
+- **`randomize`** — Surrogate data generation for statistical testing: shifting, shuffling, jittering, and resampling timestamps (`shift_timestamps`, `shuffle_ts_intervals`, `jitter_timestamps`, `resample_timestamps`).
+
+## I/O
+
+Located under `pynapple.io`:
+
+- **`load_file`, `load_folder`, `load_session`** — General-purpose entry points for loading saved pynapple data, NWB files, or whole session directories.
+- **`load_binary_file`, `load_eeg`, `append_NWB_LFP`** — Raw binary/LFP data loading and writing helpers.
+- **`Folder`** — A dictionary-like view over a directory of saved pynapple objects, supporting `save`, `load`, and metadata inspection (`info`, `doc`, `metadata`).
+- **`NWBFile`** — Dictionary-like interface over an NWB file's contents.
+- **`NeuroSuite`, `Phy`, `Suite2P`, `CNMF_E`, `Minian`, `InscopixCNMFE`** — Loaders (subclasses of `BaseLoader`) for specific acquisition/processing pipeline formats, converting their outputs (spikes, LFP, imaging traces) into pynapple objects and NWB files.
+
+## Configuration
+
+`PynappleConfig` (accessible as a module-level singleton) lets you control global behavior such as the computation backend (`set_backend`), time index precision, and whether conversion/sorting warnings are shown (`suppress_conversion_warnings`, `suppress_time_index_sorting_warnings`).
+
+## Installation
+
+```bash
+pip install pynapple
+```
+
+## Usage examples
+
+### Basic time series and restriction
+
+```python
+import pynapple as nap
+import numpy as np
+
+# Timestamps for a single neuron's spikes
+spike_times = np.sort(np.random.uniform(0, 100, 1000))
+spikes = nap.Ts(t=spike_times)
+
+# A continuous signal (e.g. LFP) sampled at 1250 Hz
+t = np.arange(0, 100, 1 / 1250)
+lfp = nap.Tsd(t=t, d=np.sin(2 * np.pi * 8 * t) + np.random.randn(len(t)) * 0.1)
+
+# Define an epoch of interest
+ep = nap.IntervalSet(start=[0, 50], end=[20, 80])
+
+spikes_in_ep = spikes.restrict(ep)
+lfp_in_ep = lfp.restrict(ep)
+
+# Bin spikes into a firing rate time series
+rate = spikes_in_ep.count(bin_size=0.1, ep=ep)
+```
+
+### Building a TsGroup and computing tuning curves
+
+```python
+# A dict of spike trains, one per neuron
+spikes_dict = {i: nap.Ts(t=np.sort(np.random.uniform(0, 100, 500))) for i in range(10)}
+tsgroup = nap.TsGroup(spikes_dict)
+
+# A behavioral feature, e.g. position along a track
+position = nap.Tsd(t=np.arange(0, 100, 0.02), d=np.random.uniform(0, 1, 5000))
+
+tuning_curves = nap.compute_1d_tuning_curves(
+    group=tsgroup, feature=position, nb_bins=20, ep=ep
+)
+
+mutual_info = nap.compute_1d_mutual_info(tuning_curves, position, ep=ep)
+```
+
+### Filtering and spectral analysis of LFP
+
+```python
+filtered = nap.apply_bandpass_filter(lfp, cutoff=(4, 12), fs=1250)
+
+phase = nap.compute_hilbert_phase(filtered)
+envelope = nap.compute_hilbert_envelope(filtered)
+
+psd = nap.compute_power_spectral_density(lfp, fs=1250, ep=ep)
+
+freqs = np.linspace(1, 100, 50)
+cwt = nap.compute_wavelet_transform(lfp, freqs=freqs, fs=1250)
+```
+
+### Peri-event analysis and decoding
+
+```python
+events = nap.Ts(t=np.array([10.0, 30.0, 60.0]))
+
+sta = nap.compute_spike_triggered_average(
+    data=lfp, spikes=spikes, binsize=0.01, window=0.5
+)
+
+perievent = nap.compute_perievent(lfp, events, window=1.0)
+
+decoded, proba = nap.decode_bayes(
+    tuning_curves=tuning_curves,
+    data=tsgroup,
+    epochs=ep,
+    bin_size=0.1,
+)
+```
+
+### Loading and saving data
+
+```python
+# Load an entire session directory
+data = nap.load_session("/path/to/session", session_type="neurosuite")
+
+# Or load a single file
+tsd = nap.load_file("/path/to/file.npz")
+
+# Save any core object
+spikes.save("/path/to/output/spikes.npz")
+```
+
+## License
+
+See the `LICENSE` file for details.

@@ -1,0 +1,181 @@
+# org.apache.tika:tika-app
+
+`org.apache.tika:tika-app` provides application-oriented entry points around parsing and configuration:
+
+- A command-line interface through `TikaCLI`
+- A Swing-based graphical interface through `TikaGUI`
+- Parser-factory construction support through `AppParserFactoryBuilder`
+- A parser factory capable of configuring a digesting parser through `DigestingAutoDetectParserFactory`
+
+The API is useful when embedding application-facing parsing workflows in Java, whether they are driven by command-line arguments, a desktop UI, or parser-factory configuration.
+
+## Main API
+
+### `TikaCLI`
+
+`TikaCLI` is the command-line-oriented entry point.
+
+```java
+public class TikaCLI {
+    public TikaCLI();
+    public static void main(String[] args) throws Exception;
+    public void process(String arg) throws Exception;
+}
+```
+
+Use `main` when launching from a Java command line, or create an instance and call `process` when integrating command-line-style processing into another application.
+
+```java
+import org.apache.tika.cli.TikaCLI;
+
+public class CommandLineIntegration {
+    public static void main(String[] args) throws Exception {
+        TikaCLI cli = new TikaCLI();
+
+        // Pass an application-provided argument to the CLI processor.
+        cli.process(args[0]);
+    }
+}
+```
+
+To delegate directly to the CLI entry point:
+
+```java
+import org.apache.tika.cli.TikaCLI;
+
+public class Launcher {
+    public static void main(String[] args) throws Exception {
+        TikaCLI.main(args);
+    }
+}
+```
+
+### `TikaGUI`
+
+`TikaGUI` is a Swing `JFrame` implementation for interactive use. It is constructed with a `Parser` and a `TikaConfig`, and it can open local files or URLs.
+
+```java
+public class TikaGUI extends JFrame
+        implements ActionListener, HyperlinkListener {
+    public TikaGUI(Parser parser, TikaConfig tikaConfig);
+    public static void main(String[] args) throws Exception;
+    public void actionPerformed(ActionEvent e);
+    public void openFile(File file);
+    public void openURL(URL url);
+    public void hyperlinkUpdate(HyperlinkEvent e);
+}
+```
+
+A host application can construct the GUI using its own parser and configuration, then display it like a normal Swing frame.
+
+```java
+import java.io.File;
+import javax.swing.SwingUtilities;
+
+import org.apache.tika.gui.TikaGUI;
+
+// Obtain these from the surrounding application's parsing setup.
+import org.apache.tika.parser.Parser;
+import org.apache.tika.config.TikaConfig;
+
+public class DesktopIntegration {
+    public static void showDocument(
+            Parser parser,
+            TikaConfig config,
+            File file) {
+
+        SwingUtilities.invokeLater(() -> {
+            TikaGUI gui = new TikaGUI(parser, config);
+            gui.openFile(file);
+            gui.setVisible(true);
+        });
+    }
+}
+```
+
+The GUI can also be directed to a URL:
+
+```java
+import java.net.URL;
+
+TikaGUI gui = new TikaGUI(parser, config);
+gui.openURL(new URL("https://example.com/document"));
+gui.setVisible(true);
+```
+
+For standalone launch behavior, use:
+
+```java
+TikaGUI.main(args);
+```
+
+### `AppParserFactoryBuilder`
+
+`AppParserFactoryBuilder` implements `IParserFactoryBuilder` and builds a `ParserFactory` from a configuration `Node` and runtime attributes.
+
+```java
+public class AppParserFactoryBuilder implements IParserFactoryBuilder {
+    public ParserFactory build(Node node, Map<String, String> runtimeAttrs);
+}
+```
+
+This class is intended for applications that construct parser factories from configuration data while supplying runtime values separately.
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.tika.batch.builders.AppParserFactoryBuilder;
+
+// `node` is supplied by the application's configuration-loading code.
+Node node = /* configuration node */ null;
+
+Map<String, String> runtimeAttributes = new HashMap<>();
+runtimeAttributes.put("environment", "production");
+
+AppParserFactoryBuilder builder = new AppParserFactoryBuilder();
+ParserFactory factory = builder.build(node, runtimeAttributes);
+```
+
+The returned `ParserFactory` can then participate in the caller's parser construction workflow.
+
+### `DigestingAutoDetectParserFactory`
+
+`DigestingAutoDetectParserFactory` is a `ParserFactory` specialization that can be configured with a `DigestingParser.Digester`.
+
+```java
+public class DigestingAutoDetectParserFactory extends ParserFactory {
+    public Parser getParser(TikaConfig config);
+    public void setDigester(DigestingParser.Digester digester);
+}
+```
+
+Configure the digester before requesting a parser:
+
+```java
+import org.apache.tika.batch.DigestingAutoDetectParserFactory;
+
+// Obtain these from application setup.
+DigestingParser.Digester digester = /* digester implementation */ null;
+TikaConfig config = /* parser configuration */ null;
+
+DigestingAutoDetectParserFactory factory =
+        new DigestingAutoDetectParserFactory();
+
+factory.setDigester(digester);
+
+Parser parser = factory.getParser(config);
+```
+
+## Typical Relationships
+
+The application-facing classes serve different integration styles:
+
+| Class | Role |
+|---|---|
+| `TikaCLI` | Runs processing through command-line-style arguments. |
+| `TikaGUI` | Presents parsing functionality in a Swing desktop interface. |
+| `AppParserFactoryBuilder` | Builds `ParserFactory` instances from a configuration node and runtime attributes. |
+| `DigestingAutoDetectParserFactory` | Produces a configured `Parser` and supports attaching a digester. |
+
+A typical embedded application can configure or obtain a `Parser`, create a `TikaGUI` for interactive use, or invoke `TikaCLI` for command-line-oriented processing. Where parser factories are used, `AppParserFactoryBuilder` and `DigestingAutoDetectParserFactory` provide factory-level integration points.

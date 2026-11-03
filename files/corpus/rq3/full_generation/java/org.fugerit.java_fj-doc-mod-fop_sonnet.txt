@@ -1,0 +1,129 @@
+# fj-doc-mod-fop
+
+`fj-doc-mod-fop` is an integration module for the [fj-doc](https://github.com/fugerit-org/fj-doc) document generation framework that adds support for producing PDF (and other Apache FOP-supported) output formats via **Apache FOP** (Formatting Objects Processor). It provides type handlers that combine FreeMarker templating (for generating XSL-FO markup) with FOP rendering, along with configuration and resource-resolution utilities to control how the underlying `FopFactory` is built and how resources (fonts, images, configuration files) are resolved.
+
+This module plugs into the fj-doc handler architecture (`DocTypeHandlerDefault`, `DocTypeHandlerDecorator`, `DocInput`, `DocOutput`) so it can be registered as a document type handler alongside other fj-doc output modules.
+
+## Key concepts
+
+### Type handlers
+
+- **`FreeMarkerFopTypeHandler`** — Base handler that renders a FreeMarker template (typically producing XSL-FO) as part of the document generation pipeline. It extends `DocTypeHandlerDefault` and can be configured with a specific `Charset` and/or type identifier.
+- **`FreeMarkerFopTypeHandlerUTF8`** — A convenience decorator (`DocTypeHandlerDecorator`) preconfigured to use UTF-8 encoding.
+- **`PdfFopTypeHandler`** — Extends `FreeMarkerFopTypeHandler` to actually invoke Apache FOP and produce PDF output from the FO content. Supports configuring:
+  - A custom `FopConfig` (controls how the `FopFactory` is created)
+  - Accessibility features (tagged PDF)
+  - Whether empty tags are kept in the output
+  - Character encoding
+- **`PdfFopNoAccessibilityTypeHandler`** — A convenience subclass of `PdfFopTypeHandler` preconfigured with accessibility disabled.
+
+### FOP configuration
+
+- **`FopConfig`** — Interface abstracting creation of a `FopFactory`. Implementations decide how FOP is configured (e.g., from a config file, classpath resource, or default settings).
+- **`FopConfigDefault`** — Default implementation of `FopConfig`, producing a `FopFactory` using standard/default FOP configuration.
+- **`FopConfigClassLoaderWrapper`** — Implementation of `FopConfig` that loads FOP configuration (`fop.xconf`-style) from the classpath, optionally using a custom `ResourceResolver` for resolving fonts and other referenced resources. Supports preloaded configuration bytes as well as a config path.
+
+### Resource resolution
+
+- **`ResourceResolverWrapper`** — A wrappable/decoratable implementation of Apache FOP's `ResourceResolver`, allowing custom resolution logic to be layered on top of an existing resolver. Provides a static `getResolver(String type)` factory method to obtain a resolver by type identifier.
+- **`ClassLoaderResourceResolverWrapper`** — A `ResourceResolverWrapper` implementation that resolves resources (e.g., fonts, images referenced in FOP configuration) from the Java classpath/class loader.
+
+### Initialization and lifecycle utilities
+
+- **`InitFopHandler`** — Utility for initializing the FOP-based document handling subsystem, either synchronously (`initDoc()`, returning whether initialization succeeded) or asynchronously (`initDocAsync()`), useful for "warming up" FOP at application startup to avoid first-request latency.
+- **`ApacheFopUtils`** — Utility exposing the version of the underlying Apache FOP library in use (`getApacheFOPVersion()`).
+- **`PoolUtils`** / **`FopConfigWrap`** — Support pooling of FOP-related configuration/factory objects (`FopConfigWrap`), allowing reuse of expensive-to-create `FopFactory` instances across a bounded pool (`poolMin`/`poolMax`) instead of recreating them for every document.
+
+## Typical usage
+
+### 1. Generating a PDF with default FOP configuration
+
+```java
+import org.fugerit.java.doc.mod.fop.PdfFopTypeHandler;
+import org.fugerit.java.doc.base.config.DocInput;
+import org.fugerit.java.doc.base.config.DocOutput;
+
+// Uses FopConfigDefault internally and UTF-8 charset
+PdfFopTypeHandler handler = new PdfFopTypeHandler();
+
+handler.handle(docInput, docOutput);
+```
+
+`docInput` supplies the FreeMarker template and model data used to render the XSL-FO document; `docOutput` receives the resulting PDF bytes/stream.
+
+### 2. Using a custom FOP configuration from the classpath
+
+```java
+import org.fugerit.java.doc.mod.fop.PdfFopTypeHandler;
+import org.fugerit.java.doc.mod.fop.config.FopConfigClassLoaderWrapper;
+import org.fugerit.java.doc.mod.fop.config.ClassLoaderResourceResolverWrapper;
+
+FopConfig fopConfig = new FopConfigClassLoaderWrapper(
+        "/fop/fop-config.xconf",
+        new ClassLoaderResourceResolverWrapper()
+);
+
+PdfFopTypeHandler handler = new PdfFopTypeHandler(
+        StandardCharsets.UTF_8,
+        fopConfig,
+        true,   // enable accessibility (tagged PDF)
+        false   // do not keep empty tags
+);
+
+handler.handle(docInput, docOutput);
+```
+
+### 3. Disabling accessibility with the convenience handler
+
+```java
+import org.fugerit.java.doc.mod.fop.PdfFopNoAccessibilityTypeHandler;
+
+PdfFopNoAccessibilityTypeHandler handler = new PdfFopNoAccessibilityTypeHandler();
+handler.handle(docInput, docOutput);
+```
+
+### 4. Warming up FOP at application startup
+
+```java
+import org.fugerit.java.doc.mod.fop.InitFopHandler;
+
+// Fire-and-forget async initialization
+InitFopHandler.initDocAsync();
+
+// Or synchronous, checking result
+boolean ready = InitFopHandler.initDoc();
+if (!ready) {
+    // handle initialization failure
+}
+```
+
+### 5. Checking the Apache FOP version in use
+
+```java
+import org.fugerit.java.doc.mod.fop.utils.ApacheFopUtils;
+
+String version = ApacheFopUtils.getApacheFOPVersion();
+System.out.println("Using Apache FOP version: " + version);
+```
+
+### 6. Pooling FOP factory configurations
+
+```java
+import org.fugerit.java.doc.mod.fop.utils.PoolUtils;
+
+List<FopConfigWrap> pool = new ArrayList<>();
+
+FopConfigWrap fopConfigWrap = PoolUtils.handleFopWrap(
+        previousWrapOrNull,
+        pool,
+        2,   // minimum pool size
+        10,  // maximum pool size
+        () -> new FopConfigWrap(/* ... */)
+);
+```
+
+## Integration notes
+
+- All `FopConfig` implementations, `ResourceResolverWrapper`, and related classes are `Serializable`, making them suitable for use in distributed or session-based environments.
+- `FreeMarkerFopTypeHandler` and `PdfFopTypeHandler` are designed to be registered as document type handlers within the broader fj-doc framework, typically alongside a `DocTypeHandlerDefault`/`DocTypeHandlerDecorator`-based configuration.
+- Custom resource resolution (fonts, images referenced from FOP configuration) can be layered by wrapping or extending `ResourceResolverWrapper`.

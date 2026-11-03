@@ -1,0 +1,168 @@
+# lapx
+
+`lapx` is a Python library for solving the **Linear Assignment Problem (LAP)** — finding the minimum-cost way to assign rows to columns of a cost matrix on a one-to-one basis. It provides fast, JIT/compiled implementations of the Jonker-Volgenant algorithm (LAPJV) along with variants for sparse cost matrices, batched processing, and dense/complex cost handling.
+
+This makes `lapx` useful for problems such as:
+
+- Multi-object tracking (matching detections to tracks)
+- Bipartite matching / resource allocation
+- Any scenario requiring optimal assignment given a cost matrix
+
+## Installation
+
+```bash
+pip install lapx
+```
+
+## Overview
+
+All functions solve the same underlying problem — given a cost matrix, find the assignment of rows to columns that minimizes total cost — but differ in matrix shape support, backend, and batching capability.
+
+### Core solvers (dense cost matrices)
+
+| Function | Description |
+|---|---|
+| `lapjv(cost, extend_cost=False, cost_limit=np.inf, return_cost=True)` | Standard LAPJV solver. Supports rectangular matrices via `extend_cost`, and thresholding unattractive assignments via `cost_limit`. |
+| `lapjvx(cost, extend_cost=False, cost_limit=np.inf, return_cost=True)` | Extended/optimized variant of `lapjv` with the same interface. |
+| `lapjvxa(cost, extend_cost=False, cost_limit=np.inf, return_cost=True)` | Like `lapjvx`, but returns only the row-to-column assignment array (no column-to-row array), for cases where only one-directional mapping is needed. |
+| `lapjvc(cost, return_cost=True)` | LAPJV variant intended for complex/alternative-typed cost matrices. |
+| `lapjvs(cost, extend_cost=None, return_cost=True, jvx_like=True, prefer_float32=True)` | Sparse-friendly/optimized solver with float32 preference for speed, and a "JVX-like" return-format toggle. |
+| `lapjvsa(cost, extend_cost=None, return_cost=True, prefer_float32=True)` | Like `lapjvs`, but returns only the row assignment array. |
+
+### Batched solvers
+
+These operate over a stack of cost matrices (e.g., a 3D array of shape `(batch, n, m)`) and solve each independently, optionally in parallel.
+
+| Function | Description |
+|---|---|
+| `lapjvx_batch(costs, extend_cost=False, cost_limit=np.inf, return_cost=True, n_threads=0)` | Batched version of `lapjvx`. Returns lists of assignment arrays per batch item. |
+| `lapjvxa_batch(costs, extend_cost=False, cost_limit=np.inf, return_cost=True, n_threads=0)` | Batched version of `lapjvxa` (row assignments only). |
+| `lapjvs_batch(costs, extend_cost=False, return_cost=True, n_threads=0, prefer_float32=True)` | Batched version of `lapjvs`. |
+| `lapjvsa_batch(costs, extend_cost=False, return_cost=True, n_threads=0, prefer_float32=True)` | Batched version of `lapjvsa` (row assignments only). |
+
+`n_threads=0` typically means "use all available cores" (auto-parallelize across the batch).
+
+### Sparse / graph-based solver
+
+For very large or sparse cost matrices represented in compressed row format, `lapmod` solves the assignment problem using indices/values instead of a dense matrix:
+
+```python
+def lapmod(n, cc, ii, kk, fast=True, return_cost=True, fp_version=FP_DYNAMIC)
+```
+
+- `n`: number of rows/columns in the (square) assignment problem
+- `cc`: array of cost values (non-infinite entries only)
+- `ii`: row pointer array (CSR-style offsets)
+- `kk`: column indices corresponding to `cc`
+- `fast`: use the optimized code path
+- `fp_version`: controls the floating-point precision strategy used internally
+
+Supporting (lower-level) helper functions exposed alongside `lapmod` include `find_minima`, `binary_search`, `find_path`, `check_cost`, and `get_cost`, which implement pieces of the shortest-augmenting-path search used internally. Most users only need `lapmod` itself.
+
+## Return values
+
+Most solvers, when `return_cost=True` (the default), return a tuple:
+
+```python
+cost, x, y = lapjv(cost_matrix)
+```
+
+- `cost`: the total minimum assignment cost (float)
+- `x`: array where `x[i]` is the column assigned to row `i` (or `-1` if unassigned)
+- `y`: array where `y[j]` is the row assigned to column `j` (or `-1` if unassigned)
+
+When `return_cost=False`, only `(x, y)` is returned. The `"a"`-suffixed functions (`lapjvxa`, `lapjvsa`, and their batch counterparts) omit `y` entirely and return just `x` (plus `cost` if requested).
+
+## Usage examples
+
+### Basic assignment
+
+```python
+import numpy as np
+from lap import lapjv
+
+cost_matrix = np.array([
+    [4, 1, 3],
+    [2, 0, 5],
+    [3, 2, 2],
+], dtype=float)
+
+cost, row_to_col, col_to_row = lapjv(cost_matrix)
+
+print("Total cost:", cost)
+print("Row assignments:", row_to_col)  # row_to_col[i] = column assigned to row i
+```
+
+### Rectangular matrices with `extend_cost`
+
+```python
+from lap import lapjv
+import numpy as np
+
+# 2 rows, 3 columns — not square, so extend_cost is required
+cost_matrix = np.array([
+    [1, 2, 3],
+    [4, 1, 2],
+], dtype=float)
+
+cost, x, y = lapjv(cost_matrix, extend_cost=True)
+```
+
+### Thresholding assignments with `cost_limit`
+
+```python
+from lap import lapjvx
+
+# Prevent assignments whose individual cost exceeds 10
+cost, x, y = lapjvx(cost_matrix, extend_cost=True, cost_limit=10.0)
+```
+
+### Getting only row assignments
+
+```python
+from lap import lapjvxa
+
+row_assignments = lapjvxa(cost_matrix, extend_cost=True, return_cost=False)
+```
+
+### Batch processing multiple cost matrices
+
+```python
+import numpy as np
+from lap import lapjvx_batch
+
+# 100 independent 20x20 assignment problems
+costs = np.random.rand(100, 20, 20)
+
+total_costs, row_assignments, col_assignments = lapjvx_batch(
+    costs, n_threads=0  # use all available threads
+)
+
+for i, (cost, x) in enumerate(zip(total_costs, row_assignments)):
+    print(f"Problem {i}: cost={cost}, assignment={x}")
+```
+
+### Solving a sparse assignment problem with `lapmod`
+
+```python
+import numpy as np
+from lap import lapmod
+
+# Suppose we have a sparse cost representation in CSR-like form:
+# n rows/cols, ii is row pointer offsets, kk is column indices, cc is costs
+n = 4
+ii = np.array([0, 2, 4, 6, 8], dtype=np.int32)
+kk = np.array([0, 1, 1, 2, 0, 3, 2, 3], dtype=np.int32)
+cc = np.array([2.0, 3.0, 1.0, 4.0, 5.0, 2.0, 3.0, 1.0])
+
+cost, x, y = lapmod(n, cc, ii, kk)
+print("Minimum cost:", cost)
+```
+
+## Choosing a solver
+
+- Use **`lapjv`** for general-purpose, dense square or rectangular cost matrices.
+- Use **`lapjvx`/`lapjvxa`** when you want the extended/optimized backend with the same feature set (cost limits, extension).
+- Use **`lapjvs`/`lapjvsa`** when you want float32-optimized performance and can tolerate reduced precision.
+- Use the **`_batch`** variants when solving many independent assignment problems at once and want multi-threaded throughput.
+- Use **`lapmod`** when your cost matrix is large and sparse, and you can represent it in compressed row form rather than as a dense array.

@@ -1,0 +1,189 @@
+# mcap (Python)
+
+A Python library for reading and writing [MCAP](https://mcap.dev) files — a modular, self-contained container format for storing timestamped, heterogeneous log data (e.g. sensor readings, messages, telemetry). MCAP files organize data into typed **schemas**, **channels**, and **messages**, along with optional **attachments** and **metadata**, and support both streaming and random-access reading patterns.
+
+This package provides:
+
+- Low-level record definitions matching the MCAP binary spec (`mcap.records`)
+- A streaming reader for iterating over raw records (`mcap.stream_reader`)
+- High-level readers for iterating over decoded messages, with seeking and time-range support (`mcap.reader`)
+- A writer for producing valid MCAP files, including chunking, indexing, and compression (`mcap.writer`)
+- Infrastructure for pluggable message decoding (`mcap.decoder`)
+
+## Installation
+
+```bash
+pip install mcap
+```
+
+## Core Concepts
+
+An MCAP file is built from a small set of record types, all subclasses of `McapRecord` (in `mcap.records`):
+
+- **`Header`** / **`Footer`** — bookend the file and carry file-level metadata (profile, library).
+- **`Schema`** — describes the structure/type of messages (e.g. a protobuf or JSON schema definition).
+- **`Channel`** — a named stream of messages (a "topic"), referencing a `Schema` and an encoding.
+- **`Message`** — a single timestamped data record on a channel.
+- **`Chunk`** — a compressed group of schemas, channels, and messages, used for efficient storage and indexed access.
+- **`Attachment`** — arbitrary named binary blobs (files, images, etc.) embedded in the file.
+- **`Metadata`** — arbitrary named key/value string metadata.
+- **`ChunkIndex`**, **`MessageIndex`**, **`AttachmentIndex`**, **`MetadataIndex`**, **`Statistics`**, **`SummaryOffset`**, **`DataEnd`** — indexing and summary records that live near the end of the file to support fast, seekable reads.
+
+These records are written and read using `RecordBuilder` and `ReadDataStream` (in `mcap.data_stream`), which handle the low-level binary encoding (length-prefixed strings, integers of various widths, CRC checksums, etc.). Most users won't need to touch these directly — they're used internally by the reader and writer.
+
+## Reading MCAP Files
+
+### `mcap.reader.make_reader`
+
+The simplest way to read an MCAP file:
+
+```python
+def make_reader(
+    stream: IO[bytes],
+    validate_crcs: bool = False,
+    decoder_factories: Iterable[DecoderFactory] = (),
+) -> McapReader
+```
+
+`make_reader` inspects the stream and returns either a `SeekingReader` (if the stream supports seeking, enabling fast indexed access) or a `NonSeekingReader` (for streaming, forward-only sources like pipes or sockets).
+
+Both implement the `McapReader` interface:
+
+- `iter_messages(topics=None, start_time=None, end_time=None, log_time_order=True, reverse=False)` — iterate over `(Schema, Channel, Message)` tuples, optionally filtered by topic and time range, in log-time or file order.
+- `iter_decoded_messages(...)` — like `iter_messages`, but returns `DecodedMessageTuple` objects with message payloads already decoded via a registered `DecoderFactory`.
+- `get_header()` — returns the file's `Header` record.
+- `get_summary()` — returns a `Summary` object (statistics, indexes, schemas, channels) if available.
+- `iter_attachments()` — iterate over `Attachment` records.
+- `iter_metadata()` — iterate over `Metadata` records.
+
+### Decoding messages
+
+`DecoderFactory` (in `mcap.decoder`) is an abstract base class for pluggable message decoders. A factory inspects a message's encoding and schema and returns a callable that decodes raw bytes into a Python object (e.g. a protobuf message, a dict from JSON, etc.). Concrete implementations are typically provided by companion packages (e.g. for protobuf, JSON, or ROS message support) and passed into `make_reader` via `decoder_factories`.
+
+### Lower-level streaming access
+
+For direct access to the record stream without the schema/channel/message correlation logic of `McapReader`, use `StreamReader` (in `mcap.stream_reader`):
+
+- `StreamReader(...).records()` — an iterator over raw `McapRecord` instances in file order.
+- `read_magic(stream)` — validates the MCAP magic bytes at the start of a stream.
+- `breakup_chunk(chunk, validate_crc=False)` — expands a `Chunk` record into its constituent records.
+- `get_chunk_data_stream(chunk, validate_crc=False)` — returns a `ReadDataStream` over a chunk's decompressed contents.
+
+Errors during reading are raised as subclasses of `McapError` (in `mcap.exceptions`), including `InvalidMagic`, `EndOfFile`, `DecoderNotFoundError`, `RecordLengthLimitExceeded`, and `UnsupportedCompressionError`. Checksum mismatches raise `CRCValidationError`.
+
+## Writing MCAP Files
+
+The `Writer` class (in `mcap.writer`) produces MCAP files:
+
+```python
+Writer(...)
+```
+
+Typical lifecycle:
+
+1. `start(profile="", library=LIBRARY_IDENTIFIER)` — write the file header.
+2. `register_schema(name, encoding, data) -> int` — register a schema, returns a schema ID.
+3. `register_channel(topic, message_encoding, schema_id, metadata={}) -> int` — register a channel bound to a schema, returns a channel ID.
+4. `add_message(channel_id, log_time, data, publish_time, sequence=0)` — write a message to a channel.
+5. `add_attachment(create_time, log_time, name, media_type, data)` — embed a binary attachment.
+6. `add_metadata(name, data)` — embed a metadata record (name + string key/value dict).
+7. `finish()` — flush remaining data, write summary/index records, and close out the file.
+
+Writer behavior around chunking and indexing can be controlled via `CompressionType` and `IndexType`, which configure how messages are grouped into compressed chunks and which index records are generated.
+
+Internally, the writer uses `ChunkBuilder` to accumulate schemas, channels, and messages into chunks before flushing them to disk — this is managed automatically and not typically used directly by application code.
+
+## Other Utilities
+
+- `mcap.well_known` — constants for common `Profile`, `SchemaEncoding`, and `MessageEncoding` values.
+- `mcap.serialization` — `normalize_value` and `stringify_record` helpers for converting records/values into human-readable or serializable forms (useful for debugging or CLI tools).
+- `mcap.summary.Summary` — an aggregated view of a file's statistics, schemas, channels, and indexes, as returned by `get_summary()`.
+
+## Usage Examples
+
+### Writing an MCAP file
+
+```python
+from mcap.writer import Writer
+
+with open("output.mcap", "wb") as f:
+    writer = Writer(f)
+    writer.start(profile="x-custom", library="my-app 1.0")
+
+    schema_id = writer.register_schema(
+        name="my_msgs/SensorReading",
+        encoding="jsonschema",
+        data=b'{"type": "object", "properties": {"value": {"type": "number"}}}',
+    )
+
+    channel_id = writer.register_channel(
+        topic="/sensor",
+        message_encoding="json",
+        schema_id=schema_id,
+    )
+
+    for i in range(100):
+        writer.add_message(
+            channel_id=channel_id,
+            log_time=i * 1_000_000,
+            publish_time=i * 1_000_000,
+            data=f'{{"value": {i}}}'.encode("utf-8"),
+        )
+
+    writer.add_metadata("run_info", {"operator": "alice", "location": "lab-1"})
+
+    writer.finish()
+```
+
+### Reading messages from an MCAP file
+
+```python
+from mcap.reader import make_reader
+
+with open("output.mcap", "rb") as f:
+    reader = make_reader(f)
+
+    header = reader.get_header()
+    print("Profile:", header.profile)
+
+    for schema, channel, message in reader.iter_messages(topics=["/sensor"]):
+        print(channel.topic, message.log_time, message.data)
+```
+
+### Reading with time range and decoded messages
+
+```python
+from mcap.reader import make_reader
+from mcap.decoder import DecoderFactory
+
+class JsonDecoderFactory(DecoderFactory):
+    def decoder_for(self, message_encoding, schema):
+        if message_encoding == "json":
+            import json
+            return lambda data: json.loads(data)
+        return None
+
+with open("output.mcap", "rb") as f:
+    reader = make_reader(f, decoder_factories=[JsonDecoderFactory()])
+
+    for decoded in reader.iter_decoded_messages(
+        start_time=0,
+        end_time=50_000_000,
+    ):
+        print(decoded)
+```
+
+### Inspecting attachments and metadata
+
+```python
+from mcap.reader import make_reader
+
+with open("output.mcap", "rb") as f:
+    reader = make_reader(f)
+
+    for attachment in reader.iter_attachments():
+        print("Attachment:", attachment.name, len(attachment.data), "bytes")
+
+    for metadata in reader.iter_metadata():
+        print("Metadata:", metadata.name, metadata.metadata)
+```

@@ -1,0 +1,186 @@
+# grimoire-elk
+
+**grimoire-elk** is a Python library for collecting, storing, and enriching data from a wide range of software development and community platforms (Git, GitHub, GitLab, Gerrit, Jira, mailing lists, chat platforms, forums, and more) into Elasticsearch. It implements the "Ocean/Enrich" pattern used by the GrimoireLab ecosystem: raw items fetched via [Perceval](https://github.com/chaoss/grimoirelab-perceval)-style backends are stored ("Ocean" indices), then transformed into analysis-ready, denormalized documents ("enriched" indices) suitable for dashboards and metrics (e.g., Kibana/Kibiter).
+
+It also integrates with **SortingHat** for identity management (merging aliases/emails into unique identities, organizational affiliations, bot detection), and provides a set of "studies" — post-processing jobs that compute derived metrics such as demographics, onion diagrams, areas of code, forecasting, and geolocation enrichment.
+
+## Core Concepts
+
+### Ocean (raw data layer)
+
+Classes in `grimoire_elk/raw/*` (e.g. `GitOcean`, `GitHubOcean`, `JiraOcean`, `MBoxOcean`, ...) all subclass `ElasticOcean` (itself built on `ElasticItems`). They are responsible for:
+
+- Feeding raw items retrieved from a Perceval backend into an Elasticsearch index (`feed`, `feed_items`, `update_items`).
+- Tracking incremental fetch state (`get_last_update_from_es`, `get_field_date`).
+- Parsing backend/collection parameters out of repository URLs (`get_perceval_params_from_url`, `get_p2o_params_from_url`).
+
+Each connector module typically also defines a `Mapping` class exposing `get_elastic_mappings(es_major)`, describing the Elasticsearch index mapping to use for that data source and ES version.
+
+### Enrich (enriched data layer)
+
+Classes in `grimoire_elk/enriched/*` (e.g. `GitEnrich`, `GitHubEnrich`, `JiraEnrich`, `MBoxEnrich`, `GerritEnrich`, ...) subclass the common `Enrich` base class (itself an `ElasticItems`). Responsibilities include:
+
+- Converting raw items into rich, flattened documents (`get_rich_item`, `get_rich_events`).
+- Resolving author/reporter/assignee identities against SortingHat (`get_sh_identity`, `get_identities`, `get_item_sh`, `get_uuid_from_id`, enrollment/affiliation helpers).
+- Driving the enrichment pipeline (`enrich_items`, `update_items`).
+- Running "studies": demography (`enrich_demography`), onion diagrams (`enrich_onion`), geolocation (`enrich_geolocation`), forecasting (`enrich_forecast_activity`), sentiment analysis (`enrich_feelings`), and data-source-specific studies (e.g. `enrich_areas_of_code` for Git, `enrich_pull_requests`/`enrich_backlog_analysis` for GitHub).
+
+Some connectors have specialized subclasses sharing common logic, e.g. `MBoxEnrich` is the base for `GroupsioEnrich`, `HyperKittyEnrich`, `NNTPEnrich`, and `PipermailEnrich`.
+
+### Identities
+
+`grimoire_elk/identities/*` provides `Identities` and per-backend subclasses (`GitIdentities`, `GitHubIdentities`, `GitlabIdentities`, `MeetupIdentities`, `StackExchangeIdentities`) used mainly for anonymizing personally identifiable fields in raw items (`anonymize_item`).
+
+### SortingHat integration
+
+`SortingHat` (in `grimoire_elk/enriched/sortinghat_gelk.py`) wraps identity-management operations: adding identities/organizations/enrollments, affiliation and unification jobs, bot flags, and querying unique identities/profiles. `Enrich` methods like `get_sh_identity`, `get_enrollments`, and `add_sh_identity` build on top of this.
+
+### Elasticsearch access layer
+
+`ElasticSearch` (`grimoire_elk/elastic.py`) is a thin wrapper around Elasticsearch operations used throughout the library: creating indices and mappings, bulk uploads (`bulk_upload`, `safe_put_bulk`), alias management, retrieving the last indexed date/offset for incremental fetches, and retention-based deletion (`delete_items`).
+
+`ElasticItems` (`grimoire_elk/elastic_items.py`) implements generic scrolling/fetching over an Elasticsearch index with filtering support (repository filters, date filters, project/label/space metadata), and is the common ancestor of both `ElasticOcean` and `Enrich`.
+
+### CERES-based studies
+
+`grimoire_elk/enriched/ceres_base.py` defines a lighter-weight processing framework (`Connector`, `CeresBase`, `ESConnector`, `SimpleCopy`) used by some studies (e.g. `study_ceres_aoc.py` for areas-of-code analysis, `study_ceres_onion.py` for onion diagrams) to read from one index, process items in blocks, and write to another.
+
+### Orchestration entry points
+
+`grimoire_elk/elk.py` contains the high-level driving functions used to run a full raw-fetch + enrich cycle:
+
+- `feed_backend(...)` — fetch raw data from a Perceval backend into an Ocean index.
+- `enrich_backend(...)` — run the enrichment pipeline (identities, studies, filtering) against an Ocean index, producing an enriched index.
+- `get_ocean_backend(...)`, `enrich_items(...)`, `do_studies(...)`, `load_identities(...)`, `refresh_projects(...)`, `refresh_identities(...)` — supporting steps invoked by `enrich_backend`.
+- `init_backend(backend_cmd)` — instantiate a Perceval backend from parsed arguments.
+- Identity retention/cleanup helpers: `retain_identities`, `delete_orphan_unique_identities`, `delete_inactive_unique_identities`, `populate_identities_index`.
+
+### Utilities
+
+`grimoire_elk/utils.py` provides connector discovery and configuration helpers:
+
+- `get_connectors()` — returns the registry of all available Ocean/Enrich/Mapping connectors, keyed by data source name.
+- `get_connector_from_name(name)` — look up the connector triple for a given backend name (e.g. `"git"`, `"github"`, `"jira"`).
+- `get_elastic(url, es_index, ...)` — build an `ElasticSearch` instance for a given index.
+- `get_kibiter_version(url)`, `config_logging(debug)`, `get_params_parser()` / `get_params()` — CLI/config helpers.
+
+`grimoire_elk/enriched/utils.py` supplies smaller helpers used across enrichers: repository filter construction, URL anonymization, date arithmetic, and computing the "last enrich" watermark for incremental runs.
+
+Command-line style scripts under `utils/` (`e2k.py`, `gelk.py`, `gelk_mapping.py`, `gh2arthur.py`, `gh2k.py`, `index_mapping.py`) build on top of the library to create dashboards, export/import mappings, and manage GitHub organization onboarding.
+
+## Installation
+
+```bash
+pip install grimoire-elk
+```
+
+(Requires access to an Elasticsearch cluster and, for identity resolution, a configured SortingHat database.)
+
+## Usage
+
+### 1. Fetching raw data into Elasticsearch
+
+```python
+from grimoire_elk.elk import feed_backend
+
+backend_params = [
+    '--owner', 'chaoss',
+    '--repository', 'grimoirelab-elk',
+]
+
+feed_backend(
+    url='http://localhost:9200',
+    clean=False,
+    fetch_archive=False,
+    backend_name='github',
+    backend_params=backend_params,
+    es_index='github_chaoss_grimoirelab-elk_raw',
+)
+```
+
+### 2. Enriching the raw data
+
+```python
+from grimoire_elk.elk import enrich_backend
+
+enrich_backend(
+    url='http://localhost:9200',
+    clean=False,
+    backend_name='github',
+    backend_params=backend_params,
+    cfg_section_name='github',
+    ocean_index='github_chaoss_grimoirelab-elk_raw',
+    ocean_index_enrich='github_chaoss_grimoirelab-elk_enrich',
+    db_sortinghat='sortinghat_db',
+    db_user='root',
+    db_password='',
+    db_host='localhost',
+    studies=True,
+    do_refresh_identities=True,
+)
+```
+
+### 3. Using connectors directly
+
+```python
+from grimoire_elk.utils import get_connectors, get_connector_from_name
+
+# List all registered data sources
+connectors = get_connectors()
+print(list(connectors.keys()))  # e.g. ['git', 'github', 'jira', 'gerrit', ...]
+
+git_connector = get_connector_from_name('git')
+ocean_cls, enrich_cls, mapping_cls, _ = git_connector[:4]
+```
+
+### 4. Working with the Elasticsearch wrapper
+
+```python
+from grimoire_elk.utils import get_elastic
+
+es = get_elastic(
+    url='http://localhost:9200',
+    es_index='git_myrepo_enrich',
+)
+
+es.create_index(clean=False)
+last_date = es.get_last_date(field='metadata__updated_on')
+```
+
+### 5. Running a study (e.g. demography enrichment)
+
+```python
+# Inside an Enrich subclass instance (e.g. GitEnrich):
+enrich_backend_instance.enrich_demography(
+    ocean_backend=ocean_backend_instance,
+    enrich_backend=enrich_backend_instance,
+    alias='git',
+)
+```
+
+### 6. Exporting/migrating an index
+
+```python
+from utils.index_mapping import export_items
+
+export_items(
+    elastic_url='http://localhost:9200',
+    in_index='github_chaoss_grimoirelab-elk_enrich',
+    out_index='github_chaoss_grimoirelab-elk_enrich_v2',
+    copy=True,
+)
+```
+
+## Supported Data Sources
+
+Ask Bot, Bugzilla / Bugzilla REST, Confluence, Crates.io, Discourse, Docker Hub / Dockerfile dependencies & smells, Functest, Gerrit, Git, GitHub (REST + GraphQL), GitLab, Gitter, Google Hits, Graal-based code/license analysis (CoCom, CoLic), Groups.io, HyperKitty, Jenkins, Jira, Kitsune, Launchpad, Mattermost, generic Mbox/NNTP/Pipermail mailing lists, MediaWiki, Meetup, Mozilla Club, Pagure, Phabricator, Puppet Forge, Redmine, ReMo, RocketChat, RSS, Slack, StackExchange, Supybot, Telegram, Twitter, and Weblate.
+
+Each of these exposes an `*Ocean` class for raw ingestion and, where applicable, an `*Enrich` class for producing rich analytics-ready documents, plus a `Mapping` class describing the Elasticsearch schema.
+
+## Error Handling
+
+Library-specific exceptions are defined in `grimoire_elk/errors.py`:
+
+- `BaseError` — root exception type.
+- `ElasticError` — raised for Elasticsearch communication/index issues.
+- `ELKError` — raised for enrichment/pipeline-level failures.

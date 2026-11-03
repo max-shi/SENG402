@@ -1,0 +1,265 @@
+# PDM
+
+PDM is a modern Python package and dependency manager built around the
+`pyproject.toml` standard. It manages project dependencies, virtual
+environments, Python interpreters, and package builds/publishing, while
+exposing a rich internal API that can also be used programmatically or
+extended via plugins.
+
+## What PDM Does
+
+Based on its API surface, PDM provides:
+
+- **Project & dependency management** — reading/writing `pyproject.toml`
+  and lockfiles, adding/removing/updating dependencies, and resolving
+  dependency graphs.
+- **Locking & resolution** — a pluggable resolver architecture (including a
+  `resolvelib`-based resolver and a `uv`-based resolver) that produces
+  reproducible lockfiles (`pdm.lock` or PEP 751-style `pylock.toml`).
+- **Installation & synchronization** — installing resolved packages into
+  virtual environments, uninstalling stale ones, and keeping environments
+  in sync with the lockfile.
+- **Python interpreter management** — discovering, installing, and
+  switching between Python interpreters and virtual environments.
+- **Building & publishing** — building sdists/wheels via PEP 517 build
+  backends and publishing them to package indexes.
+- **Format conversion** — importing/exporting dependency metadata from
+  other ecosystems (Poetry, Flit, Pipfile, `setup.py`, requirements files,
+  PEP 751 lock files).
+- **CLI framework** — a command framework (`BaseCommand` subclasses) that
+  implements the `pdm` command line tool (`add`, `remove`, `install`,
+  `sync`, `lock`, `update`, `build`, `publish`, `run`, `list`, `show`,
+  `search`, `config`, `python`, `cache`, `self`, `fix`, etc.).
+- **Testing utilities** — a `pdm.pytest` module offering fixtures and mock
+  objects (`TestRepository`, `MockWorkingSet`, `PDMCallable`, etc.) for
+  writing tests against PDM-based tooling or plugins.
+
+## Core Concepts
+
+### `Project` (`pdm.project.core.Project`)
+
+The central object representing a PDM-managed project. It ties together:
+
+- `pyproject` — the parsed `pyproject.toml` (`PyProject`, a `TOMLFile`
+  subclass) including metadata, dependency groups, build system config,
+  and settings.
+- `lockfile` — the project's lockfile (`Lockfile`, with concrete
+  implementations `PDMLock` and `PyLock`).
+- `environment` — the active `BaseEnvironment` (Python interpreter +
+  installed packages).
+- `project_config` — a `Config` mapping merging global and per-project
+  configuration.
+
+Typical operations exposed on `Project` include `get_dependencies()`,
+`add_dependencies()`, `get_repository()`, `get_locked_repository()`,
+`get_provider()`, `write_lockfile()`, `get_synchronizer()`,
+`iter_interpreters()`, and `resolve_interpreter()`.
+
+### Requirements & Candidates
+
+- `Requirement` (and subclasses `NamedRequirement`, `FileRequirement`,
+  `VcsRequirement`) model a dependency specifier, parsed via
+  `parse_requirement()` / `parse_line()`.
+- `Candidate` (and `PreparedCandidate`) represent a specific resolvable
+  package version/artifact, with metadata retrieval, building, and
+  lockfile-entry generation (`as_lockfile_entry`).
+
+### Repositories
+
+`BaseRepository` and its implementations — `PyPIRepository` (queries a
+package index), `LockedRepository` (reads candidates from an existing
+lockfile) — supply candidates and dependency metadata to the resolver.
+`Project.get_repository()` / `Project.get_locked_repository()` construct
+these for you.
+
+### Resolvers
+
+`Resolver` (abstract base in `pdm.resolver.base`) is implemented by:
+
+- `RLResolver` — resolution using the `resolvelib` algorithm with
+  pluggable `BaseProvider` strategies (`ReusePinProvider`,
+  `EagerUpdateProvider`, `ReuseInstalledProvider`).
+- `UvResolver` — resolution delegated to `uv`.
+
+`Project.get_resolver()` picks the appropriate resolver class based on
+project configuration.
+
+### Environments
+
+`BaseEnvironment` (and concrete `PythonEnvironment`,
+`PythonLocalEnvironment`, `BareEnvironment`) represent the target Python
+runtime — its interpreter (`PythonInfo`), installed packages
+(`WorkingSet`), package finder, and site paths. `Project.environment`
+exposes the active environment.
+
+### Installers & Synchronizers
+
+- `InstallManager` installs/uninstalls/overwrites individual `Candidate`
+  objects into an environment.
+- `BaseSynchronizer` (implemented by `Synchronizer` and `UvSynchronizer`)
+  reconciles the working set with the lockfile: installing missing
+  packages, updating outdated ones, and removing extras.
+- `install_requirements()` is a convenience function to install a list of
+  `Requirement` objects directly into an environment.
+
+### Builders
+
+`EnvBuilder` and its subclasses `SdistBuilder`, `WheelBuilder`,
+`EditableBuilder` wrap PEP 517 build backends to produce source
+distributions, wheels, and editable installs in isolated build
+environments.
+
+### CLI Commands
+
+Every CLI subcommand (`add`, `remove`, `install`, `sync`, `lock`, `update`,
+`build`, `publish`, `run`, `list`, `show`, `outdated`, `search`, `config`,
+`python`, `cache`, `self`, `fix`, `export`, `import`, `use`, `new`,
+`completion`) is implemented as a `BaseCommand` subclass with
+`add_arguments()` and `handle()` methods, registered through
+`Core.register_command()`. `Core` (in `pdm.core`) is the top-level
+application object that builds the argument parser, loads plugins, and
+dispatches to commands via `Core.main()`.
+
+### Formats
+
+The `pdm.formats.*` modules (`flit`, `poetry`, `pipfile`, `setup_py`,
+`uv`, `pylock`) each provide `check_fingerprint()`, `convert()`, and/or
+`export()` functions used by the `import`/`export` commands to translate
+between PDM's dependency model and other tools' formats.
+
+## Installation
+
+```bash
+pip install pdm
+```
+
+## Basic CLI Usage
+
+```bash
+# Create a new project
+pdm new
+
+# Add dependencies
+pdm add requests "flask>=2.0"
+
+# Lock and install
+pdm lock
+pdm sync
+
+# Run a script defined in pyproject.toml
+pdm run test
+
+# Build and publish
+pdm build
+pdm publish
+
+# Manage Python interpreters
+pdm python install 3.12
+pdm use 3.12
+```
+
+## Programmatic Usage
+
+PDM's internals can be driven directly from Python, which is useful for
+tooling, plugins, or automation scripts.
+
+```python
+from pdm.core import Core
+from pdm.cli.filters import GroupSelection
+from pdm.cli.hooks import HookManager
+from pdm.cli.commands.add import Command as AddCommand
+
+core = Core()
+project = core.create_project()  # loads pyproject.toml from cwd
+
+# Build a group selection (which dependency groups to operate on)
+selection = GroupSelection(project, groups=["default"], group="default")
+
+# Programmatically add a dependency, mirroring `pdm add requests`
+AddCommand.do_add(
+    project,
+    selection=selection,
+    packages=["requests"],
+    hooks=HookManager(project),
+)
+```
+
+Resolving and installing dependencies manually:
+
+```python
+from pdm.project.core import Project
+
+project = Project(root_path=".")
+
+repository = project.get_repository()
+provider = project.get_provider(strategy="reuse")
+resolver_cls = project.get_resolver()
+
+resolver = resolver_cls(
+    provider=provider,
+    reporter=project.get_reporter([]),
+    requirements=project.get_dependencies(),
+    tracked_names=[],
+    project=project,
+)
+resolution = resolver.resolve()
+
+synchronizer_cls = project.get_synchronizer()
+synchronizer = synchronizer_cls(
+    candidates=resolution.candidates(),
+    environment=project.environment,
+)
+synchronizer.synchronize()
+```
+
+Working with requirements directly:
+
+```python
+from pdm.models.requirements import parse_requirement
+
+req = parse_requirement("requests>=2.28; python_version >= '3.8'")
+print(req.identify())   # -> "requests"
+print(req.as_line())    # -> "requests>=2.28; python_version >= '3.8'"
+```
+
+## Writing Plugins
+
+PDM discovers plugins through `Core.load_plugins()`. A plugin typically
+registers new CLI commands or configuration items:
+
+```python
+from pdm.core import Core
+from pdm.cli.commands.base import BaseCommand
+from pdm.project.config import ConfigItem
+
+class HelloCommand(BaseCommand):
+    def add_arguments(self, parser):
+        parser.add_argument("name")
+
+    def handle(self, project, options):
+        project.core.ui.echo(f"Hello, {options.name}!")
+
+def hello_plugin(core: Core) -> None:
+    core.register_command(HelloCommand, name="hello")
+    core.add_config("hello.greeting", ConfigItem("Custom greeting", default="Hi"))
+```
+
+Once installed, this exposes `pdm hello <name>` alongside the built-in
+commands.
+
+## Testing Support
+
+The `pdm.pytest` module ships fixtures (`project`, `pdm`, `repository`,
+`working_set`, `core`, etc.) for testing code that interacts with PDM
+projects, without needing a real package index or virtual environment:
+
+```python
+def test_add_package(pdm, project):
+    result = pdm(["add", "requests"], obj=project)
+    assert result.exit_code == 0
+    assert "requests" in project.get_dependencies()
+```
+
+## License
+
+See the repository's `LICENSE` file for licensing details.

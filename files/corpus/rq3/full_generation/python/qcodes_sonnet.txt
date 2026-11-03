@@ -1,0 +1,181 @@
+# QCoDeS
+
+QCoDeS is a Python framework for instrument control and measurement automation in experimental physics laboratories. It provides a uniform way to define, communicate with, and configure laboratory instruments, and it pairs this with a robust dataset and measurement infrastructure for acquiring, storing, analyzing, and visualizing scientific data.
+
+## What QCoDeS Provides
+
+At a high level, QCoDeS is built around a few cooperating layers:
+
+- **Instrument abstraction** — a common object model (`Instrument`, `InstrumentChannel`, `VisaInstrument`, `IPInstrument`) for representing physical devices, their parameters, sub-modules, and channels, regardless of the underlying communication protocol (VISA, IP sockets, USB HID, custom DLLs, etc.).
+- **Parameters** — a rich set of `Parameter`, `MultiParameter`, `ArrayParameter`, `ParameterWithSetpoints`, `DelegateParameter`, and related classes that represent settable/gettable quantities on instruments (or purely virtual/software values), with validation, units, and snapshotting built in.
+- **A large library of instrument drivers** for real hardware from vendors such as Keysight, Keithley, Tektronix, Rohde & Schwarz, Stanford Research Systems, Lakeshore, Oxford Instruments, AlazarTech, Yokogawa, and many others.
+- **The dataset and measurement framework** (`qcodes.dataset`) — `Experiment`, `DataSet`, `DataSetInMem`, and the `dond`/`do0d`/`do1d`/`do2d` measurement routines, backed by a SQLite database and optional export to Pandas/xarray/NetCDF.
+- **Station and configuration** — `Station` ties instruments, parameters, and configuration files together into a single addressable snapshot of your experimental setup.
+- **Plotting and monitoring** — utilities to plot datasets (`plot_dataset`, `plot_by_id`) and a live `Monitor` for watching parameter values in real time.
+- **Validators** — a comprehensive validation library (`qcodes.validators`) used throughout the parameter system to enforce type and range constraints.
+
+## Core Concepts
+
+### Instruments and Parameters
+
+`Instrument` (subclass of `InstrumentBase`) is the base class for all instrument drivers. Instruments communicate over VISA (`VisaInstrument`), raw IP sockets (`IPInstrument`), or vendor-specific transports, and expose their functionality through `Parameter` objects added via `add_parameter`.
+
+```python
+from qcodes.instrument_drivers.Keysight.N51x1 import KeysightN51x1
+
+# Connect to a signal generator over VISA
+sg = KeysightN51x1("sg", "TCPIP0::192.168.1.10::inst0::INSTR")
+
+sg.power(-10)          # set output power
+sg.frequency(5.8e9)     # set frequency
+print(sg.get_idn())     # query identification
+sg.close()
+```
+
+Instruments can contain `InstrumentChannel` objects grouped into `ChannelList`/`ChannelTuple` collections, useful for multi-channel devices (e.g. `Keithley2450Source`, `RigolDG1062Channel`, `LakeshoreModel336Channel`).
+
+Parameters come in several flavors:
+
+- `Parameter` — a single scalar value.
+- `MultiParameter` — returns multiple named values/arrays at once.
+- `ArrayParameter` — returns a single array with defined setpoints.
+- `ParameterWithSetpoints` — an array-valued parameter whose setpoint axes are themselves parameters, ideal for sweeps and traces.
+- `DelegateParameter` — wraps another parameter, useful for renaming, unit conversion, or exposing a subset of functionality.
+- `GroupParameter` / `Group` — parameters that share a single instrument command.
+- `ScaledParameter`, `CombinedParameter`, `ManualParameter` — helper parameters for scaling, combining sweeps, and virtual (non-instrument-backed) values.
+
+### Station
+
+`Station` aggregates instruments and other metadata components into one object, and can load its configuration from YAML-style config files:
+
+```python
+from qcodes.station import Station
+
+station = Station()
+station.load_config_file("station.yaml")
+dmm = station.load_instrument("dmm")
+station.snapshot()
+```
+
+### Measurements: `dond` and friends
+
+The `qcodes.dataset.dond` module provides high-level sweep functions built on top of `AbstractSweep` implementations (`LinSweep`, `LogSweep`, `ArraySweep`, `TogetherSweep`):
+
+```python
+from qcodes.dataset import (
+    initialise_or_create_database_at,
+    load_or_create_experiment,
+)
+from qcodes.dataset.dond.do_nd import dond
+from qcodes.dataset.dond.sweeps import LinSweep
+
+initialise_or_create_database_at("./experiments.db")
+exp = load_or_create_experiment("cooldown_1", sample_name="device_A")
+
+sweep = LinSweep(param_set=sg.frequency, start=5e9, stop=6e9, num_points=101, delay=0.01)
+
+dataset, axes, colorbars = dond(
+    sweep,
+    dmm.voltage,
+    measurement_name="frequency_sweep",
+    exp=exp,
+    do_plot=True,
+)
+```
+
+Convenience wrappers `do0d`, `do1d`, `do2d`, and `do2d_retrace` cover the most common zero-, one-, and two-dimensional sweep patterns without needing to construct `AbstractSweep` objects directly.
+
+### DataSets
+
+Every measurement produces a `DataSetProtocol` implementation — either a SQLite-backed `DataSet` or an in-memory `DataSetInMem` (with optional NetCDF export via `write_metadata_to_db`/`set_netcdf_location`). Datasets can be loaded back by ID, GUID, or run specification:
+
+```python
+from qcodes.dataset import load_by_id, load_by_guid, load_by_run_spec
+
+ds = load_by_id(42)
+df = ds.to_pandas_dataframe()
+xa = ds.to_xarray_dataset()
+ds.export(export_type="netcdf", path="./exports")
+```
+
+`plot_dataset` and `plot_by_id` render datasets using Matplotlib, automatically choosing 1D/2D plot types via `get_1D_plottype`/`get_2D_plottype`.
+
+### Experiments
+
+`Experiment` objects (created with `new_experiment` or `load_or_create_experiment`) group related datasets together within a database, and provide access to their child datasets via `data_sets()`, `data_set()`, and `last_data_set()`.
+
+### Validators
+
+The `qcodes.validators` module (`Numbers`, `Ints`, `Enum`, `Arrays`, `Strings`, `MultiType`, `Sequence`, etc.) is used pervasively to validate parameter values at set-time:
+
+```python
+import qcodes.validators as vals
+from qcodes.parameters import Parameter
+
+p = Parameter("amplitude", set_cmd=None, get_cmd=None,
+              vals=vals.Numbers(min_value=0, max_value=10))
+p(5)      # OK
+p(20)     # raises an error
+```
+
+## Instrument Driver Catalog
+
+QCoDeS ships with drivers for a wide range of equipment, organized by manufacturer, including (non-exhaustive):
+
+- **Source measure units / DMMs**: Keithley 2000/2400/2450/2600-series/3706A/6500/7510/S46, Agilent/Keysight 344xxA family, Keysight B1500 parameter analyzer suite.
+- **Signal/function generators & sources**: Agilent E8257D/E8267C, Keysight N51x1/N9030B, Rigol DG1062/DG4000, Rohde & Schwarz SGS100A, Stanford Research SG384.
+- **Network/impedance analyzers**: Keysight N52xx/P5xxx PNA family, Keysight E4980A, CopperMountain M5xxx, Rohde & Schwarz ZNB/ZNLE.
+- **Oscilloscopes**: Keysight Infiniium, Rigol DS1074Z/DS4000, Tektronix TPS2012/DPO/DSA/MSO series, Rohde & Schwarz RTO1000.
+- **AWGs/digitizers**: Tektronix AWG5014/5208/70000-series, AlazarTech ATS9360/9373/9440/9870.
+- **Magnets & temperature controllers**: American Magnetics AMI430, Oxford MercuryiPS/Triton, Cryomagnetics Model 4G/TM620, Lakeshore 325/335/336/372.
+- **Switches/attenuators**: Minicircuits RC/USB SPDT & SP4T switches, RUDAT attenuators, Keysight B220x/34980A switch matrices.
+- **Power supplies**: AimTTi PL/QL series, Yokogawa GS200, Keysight N6705B/B2962A, Rigol DP8xx.
+- **Mock/simulated instruments** for testing (`DummyInstrument`, `MockParabola`, `MockField`, `SimulatedATS9360API`, etc.) in `qcodes.instrument_drivers.mock_instruments`.
+
+## Configuration and Logging
+
+- `qcodes.configuration.config.Config` manages hierarchical JSON-schema-validated configuration, loadable from home directory, environment, or current working directory.
+- `qcodes.logger` provides structured logging (`start_all_logging`, `get_instrument_logger`) plus tools for turning log files into Pandas DataFrames for analysis (`logfile_to_dataframe`).
+
+## Typical Workflow
+
+```python
+from qcodes.station import Station
+from qcodes.dataset import initialise_or_create_database_at, load_or_create_experiment
+from qcodes.dataset.dond.do_1d import do1d
+
+# 1. Set up instruments via a station config
+station = Station()
+station.load_config_file("my_station.yaml")
+source = station.load_instrument("yoko")
+meter = station.load_instrument("keithley")
+
+# 2. Point at (or create) a measurement database
+initialise_or_create_database_at("./data/experiments.db")
+exp = load_or_create_experiment("gate_sweep", sample_name="chip42")
+
+# 3. Run a 1D sweep and get back a dataset + plot axes
+dataset, axes, cbar = do1d(
+    source.voltage, -1.0, 1.0, 101, 0.05,
+    meter.current,
+    measurement_name="gate_sweep_1",
+    exp=exp,
+    do_plot=True,
+)
+
+# 4. Post-process
+df = dataset.to_pandas_dataframe()
+xa = dataset.to_xarray_dataset()
+```
+
+## Extensions
+
+The `qcodes.extensions` subpackage offers additional building blocks:
+
+- `infer` — utilities to trace a `Parameter` back to its owning `Instrument`/`InstrumentModule` (`infer_instrument`, `get_root_parameter`, `get_parameter_chain`).
+- `ParameterMixin` family — composable mixins for parameters that need group-based triggering, cache-change callbacks, or inter-parameter dependencies.
+- `DelegateInstrument`/`InstrumentGroup` — compose virtual instruments out of parameters/paths on other instruments.
+
+## Summary
+
+QCoDeS combines an extensible instrument driver framework with an integrated dataset, measurement, and visualization toolchain, making it suitable for building reproducible, database-backed experimental workflows across a wide variety of laboratory hardware.

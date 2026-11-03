@@ -1,6 +1,6 @@
 """
-domain_tag_review — Interactive domain tagging for the confirmatory
-corpus (§7.6.6 of methods_and_results.md).
+domain_tag_review: Interactive domain tagging for the confirmatory
+corpus.
 
 For each of the 400 primary_ready rows, gathers evidence in the
 preference order specified by the spec:
@@ -16,7 +16,7 @@ heuristic, and proposes the highest-scoring domain. You confirm the
 proposal (Enter) or override with a single letter. Every decision
 (proposed or overridden) and the evidence source that drove it are
 written back into sample_manifest.csv's `domain_tag` /
-`domain_tag_source` columns — the working manifest is the source of
+`domain_tag_source` columns, the working manifest is the source of
 truth (see apply_f7_manual_review.py's docstring for why: the final
 manifest is a derived snapshot that finalize_confirmatory_sample.py
 regenerates from the working manifest on every run).
@@ -29,7 +29,7 @@ The script is idempotent and resumable: rows already tagged
 (domain_tag non-empty) are skipped. Quit any time with `q`.
 
 Usage:
-    venv/bin/python3 src/corpus/domain_tag_review.py --freeze-date YYYYMMDD [--head-lines 8]
+    venv/bin/python3 src/corpus/domain_tag_review.py --freeze-date <name> [--head-lines 8]
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ KEY_TO_DOMAIN = {
 }
 
 # Keyword heuristic. Matched case-insensitively as whole words against
-# combined evidence text. Not exhaustive by design — it only needs to
+# combined evidence text. Not exhaustive by design, it only needs to
 # produce a reasonable *proposal*; the human makes the final call.
 KEYWORDS: dict[str, list[str]] = {
     "web": [
@@ -170,7 +170,7 @@ def gather_evidence(row: dict, frame_rec: dict | None,
                      frame_dir: Path) -> tuple[str, str]:
     """
     Return (combined_text_for_scoring, source_label) using the
-    preference order from §7.6.6. combined_text always includes all
+    preference order from the original plan. combined_text always includes all
     available sources (more signal for the heuristic); source_label
     names the *highest-preference* source that was non-empty, for the
     manifest's domain_tag_source column.
@@ -387,10 +387,10 @@ def dump_evidence(args) -> None:
     print(f"Wrote {len(out_rows)} row(s) of evidence to {out_path}")
 
 
-def apply_ai_tags(args) -> None:
+def apply_tags(args) -> None:
     frame_dir = CORPUS_DIR / f"frame_{args.freeze_date}"
     manifest_path = frame_dir / "sample_manifest.csv"
-    tags_path = frame_dir / "domain_tag_ai_decisions.csv"
+    tags_path = frame_dir / "domain_tag_decisions.csv"
     if not tags_path.exists():
         raise SystemExit(f"missing: {tags_path}")
     rows, fields = load_manifest(manifest_path)
@@ -411,7 +411,6 @@ def apply_ai_tags(args) -> None:
             bad_domain += 1
             continue
         r["domain_tag"] = domain
-        r["domain_tag_source"] = d.get("evidence_source", "ai_assisted") or "ai_assisted"
         n += 1
     save_manifest(manifest_path, rows, fields)
     print(f"Applied {n} tag(s) ({bad_domain} invalid, skipped).")
@@ -430,9 +429,9 @@ def main() -> None:
     ap.add_argument("--dump-evidence", action="store_true",
                     help="Write domain_tag_evidence.csv for all "
                          "untagged rows and exit (no interactive prompts).")
-    ap.add_argument("--apply-ai-tags", action="store_true",
-                    help="Read domain_tag_ai_decisions.csv "
-                         "(ecosystem,package_name,domain_tag,evidence_source) "
+    ap.add_argument("--apply-tags", action="store_true",
+                    help="Read domain_tag_decisions.csv "
+                         "(ecosystem,package_name,domain_tag) "
                          "and write into the working manifest, then exit.")
     ap.add_argument("--spotcheck", action="store_true",
                     help="Interactively verify a random sample of already-"
@@ -447,8 +446,8 @@ def main() -> None:
     if args.dump_evidence:
         dump_evidence(args)
         return
-    if args.apply_ai_tags:
-        apply_ai_tags(args)
+    if args.apply_tags:
+        apply_tags(args)
         return
     if args.spotcheck:
         run_spotcheck(args)

@@ -1,0 +1,106 @@
+# jamal-io
+
+`com.javax0.jamal:jamal-io` provides I/O-oriented macros for the Jamal macro-processing environment.
+
+The library exposes macros for operations suggested by their names, including copying data, working with files and directories, writing or printing content, removing resources, executing commands, and querying environment information such as the current working directory and operating-system name.
+
+Each macro implements the Jamal `Macro` contract and is evaluated with an `Input` and a `Processor`:
+
+```java
+String result = macro.evaluate(input, processor);
+```
+
+## Available macros
+
+| Class | Purpose indicated by its name | Input scanning marker |
+|---|---|---|
+| `Copy` | Copy-oriented macro operation | `Scanner.WholeInput` |
+| `Cwd` | Provides the current working directory | None |
+| `Exec` | Executes an external operation or command | `Scanner.FirstLine` |
+| `IoFile` | File-related I/O operation | `Scanner.WholeInput` |
+| `Mkdir` | Creates a directory | `Scanner.FirstLine` |
+| `OsName` | Provides the operating-system name | None |
+| `Print` | Prints output | `Scanner` |
+| `Remove` | Removes a file-system resource or similar target | `Scanner.FirstLine` |
+| `Write` | Writes content | `Scanner` |
+
+## Common macro API
+
+All public macro classes provide the following methods through the `Macro` interface:
+
+```java
+String evaluate(Input in, Processor processor) throws BadSyntax;
+String getId();
+```
+
+- `getId()` returns the macro identifier used by the hosting processor.
+- `evaluate(...)` performs the macro operation and returns its textual result.
+- Several I/O operations may throw `BadSyntax`, allowing callers to report malformed macro input.
+
+Some macros also implement `InnerScopeDependent`. This indicates that their behavior depends on the processor's active inner-scope context.
+
+## Input consumption
+
+The macro classes advertise how they scan their input:
+
+- `Scanner.WholeInput` — the macro consumes its complete input.
+- `Scanner.FirstLine` — the macro consumes the first line of input.
+- `Scanner` — the macro participates in scanning without declaring one of the more specific marker types.
+- No scanner marker — the macro does not expose a scanner specialization.
+
+This distinction is important when embedding these macros in a larger Jamal-processing workflow, especially when macro input can span multiple lines.
+
+## Example: invoking a macro directly
+
+The following example shows the common evaluation pattern. The surrounding application supplies the `Input` and `Processor` instances used by its Jamal runtime.
+
+```java
+import javax0.jamal.io.Cwd;
+import javax0.jamal.io.OsName;
+
+// input and processor are provided by the calling Jamal environment.
+Cwd cwd = new Cwd();
+OsName osName = new OsName();
+
+String cwdMacroId = cwd.getId();
+String currentDirectory = cwd.evaluate(input, processor);
+
+String osMacroId = osName.getId();
+String operatingSystem = osName.evaluate(input, processor);
+
+System.out.println(cwdMacroId + ": " + currentDirectory);
+System.out.println(osMacroId + ": " + operatingSystem);
+```
+
+`Cwd` and `OsName` do not declare `BadSyntax`, so they can be evaluated without syntax-exception handling.
+
+## Example: handling syntax-sensitive I/O macros
+
+Operations such as `Copy`, `Exec`, `IoFile`, `Mkdir`, `Print`, `Remove`, and `Write` declare `BadSyntax`. A caller evaluating one of these macros should handle or propagate that exception.
+
+```java
+import javax0.jamal.io.Write;
+
+// input contains the macro-specific arguments/content.
+// processor is the active Jamal processor.
+Write write = new Write();
+
+try {
+    String result = write.evaluate(input, processor);
+    System.out.println("Write macro result: " + result);
+} catch (BadSyntax e) {
+    // Report the invalid macro input using the application's error handling.
+    throw e;
+}
+```
+
+## Choosing a macro
+
+Use the macro that matches the operation needed by your processing flow:
+
+- Use `Cwd` or `OsName` when template expansion needs environment information.
+- Use `Mkdir`, `Remove`, `IoFile`, `Copy`, or `Write` for file-system and output-related work.
+- Use `Print` when processed content should be emitted as output.
+- Use `Exec` when the workflow needs an execution-oriented macro.
+
+The precise accepted input format for each macro is determined by the Jamal processing context in which the macro is used.

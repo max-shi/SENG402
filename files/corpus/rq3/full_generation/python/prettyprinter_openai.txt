@@ -1,0 +1,336 @@
+# prettyprinter
+
+`prettyprinter` is a Python formatting library for producing readable, structured representations of Python values. It provides convenient replacements for ordinary `repr()`-style output, with configurable line width, indentation, nesting depth, sequence limits, dictionary ordering, comments, and optional colored output.
+
+It can format built-in Python values as well as values supported by installed integrations, and it exposes lower-level document and layout APIs for custom formatting extensions.
+
+## Quick start
+
+```python
+from prettyprinter import pformat, pprint
+
+value = {
+    "service": "api",
+    "ports": [8000, 8001, 8002],
+    "features": {
+        "tracing": True,
+        "cache": False,
+    },
+}
+
+# Get formatted text.
+formatted = pformat(value, width=50)
+print(formatted)
+
+# Print directly to a stream (stdout by default).
+pprint(value, width=50)
+```
+
+Use `pformat()` when you need a string, such as for logging or storing formatted output. Use `pprint()` when you want to write directly to a stream.
+
+## Main API
+
+### `pformat(object, ...)`
+
+Formats an object and returns its formatted representation as a string.
+
+```python
+from prettyprinter import pformat
+
+message = pformat(
+    {
+        "user": "alice",
+        "permissions": ["read", "write", "admin"],
+    },
+    width=40,
+    compact=True,
+)
+
+print(message)
+```
+
+Supported formatting options include:
+
+- `indent`: indentation size or formatting indentation setting.
+- `width`: target output width.
+- `depth`: maximum nested formatting depth.
+- `ribbon_width`: width available for non-indented content.
+- `max_seq_len`: maximum number of sequence items to display.
+- `compact`: prefer more compact layouts where possible.
+- `sort_dict_keys`: control dictionary-key ordering.
+
+### `pprint(object, ...)`
+
+Formats and writes an object to a stream.
+
+```python
+import sys
+
+from prettyprinter import pprint
+
+pprint(
+    {"status": "ok", "items": list(range(20))},
+    stream=sys.stdout,
+    width=60,
+    max_seq_len=8,
+    end="\n\n",
+)
+```
+
+`pprint()` accepts the same primary formatting controls as `pformat()`, plus:
+
+- `stream`: destination stream.
+- `end`: text written after the formatted value.
+
+### `cpprint(object, ...)`
+
+Formats and prints an object with styling support.
+
+```python
+from prettyprinter import cpprint
+
+cpprint(
+    {
+        "result": "success",
+        "warnings": [],
+        "elapsed_seconds": 0.25,
+    }
+)
+```
+
+Pass `style` to select the desired styling configuration:
+
+```python
+from prettyprinter import cpprint
+from prettyprinter.color import GitHubLightStyle
+
+cpprint({"name": "example", "enabled": True}, style=GitHubLightStyle)
+```
+
+## Global configuration
+
+Use `set_default_config()` to set library-wide defaults for subsequent formatting calls.
+
+```python
+from prettyprinter import pformat, set_default_config
+
+set_default_config(
+    width=100,
+    ribbon_width=0.9,
+    max_seq_len=25,
+    sort_dict_keys=True,
+)
+
+print(pformat({"z": 1, "a": 2, "nested": {"b": 2, "a": 1}}))
+```
+
+Retrieve the active default configuration with:
+
+```python
+from prettyprinter import get_default_config
+
+config = get_default_config()
+```
+
+Color styling defaults can be configured separately:
+
+```python
+from prettyprinter.color import GitHubLightStyle, set_default_style
+
+set_default_style(GitHubLightStyle)
+```
+
+## PrettyPrinter instances
+
+`PrettyPrinter` provides an object-oriented interface for formatting and inspecting values.
+
+```python
+from prettyprinter import PrettyPrinter
+
+printer = PrettyPrinter()
+
+text = printer.pformat({"task": "build", "attempt": 3})
+printer.pprint(["one", "two", "three"])
+
+formatted = printer.format({"ready": True})
+```
+
+The instance also provides inspection helpers:
+
+```python
+if printer.isrecursive(value):
+    print("The value contains a recursive reference")
+
+if printer.isreadable(value):
+    print("The representation is readable")
+```
+
+## Installed integrations
+
+`install_extras()` enables available optional formatting integrations.
+
+```python
+from prettyprinter import install_extras
+
+install_extras()
+```
+
+You can exclude integrations or choose error behavior:
+
+```python
+from prettyprinter import install_extras
+
+install_extras(
+    exclude={"django"},
+    warn_on_error=True,
+    raise_on_error=False,
+)
+```
+
+The library exposes integrations for several common ecosystems and value types, including:
+
+- `attrs`
+- `dataclasses`
+- Django models and querysets
+- IPython display formatting
+- NumPy arrays
+- `requests` objects
+- standard-library values such as dates, paths, UUIDs, exceptions, enums, collections, and more
+
+Individual integrations provide an `install()` function when only a specific integration should be enabled.
+
+## Comments in formatted output
+
+The comment helpers associate explanatory text with values or documents before formatting.
+
+```python
+from prettyprinter import pformat
+from prettyprinter.prettyprinter import comment, trailing_comment
+
+settings = {
+    "host": "localhost",
+    "port": trailing_comment(8080, "development server"),
+    "debug": comment(True, "Disable this in production"),
+}
+
+print(pformat(settings, width=60))
+```
+
+Related helpers include:
+
+- `comment_value(value, comment_text)`
+- `comment_doc(doc, comment_text)`
+- `comment(value, comment_text)`
+- `trailing_comment(value, comment_text)`
+- `unwrap_comments(value)`
+- `is_commented(value)`
+
+## Custom formatting
+
+Custom formatters can be registered with `register_pretty()`.
+
+```python
+from prettyprinter.prettyprinter import register_pretty
+
+class Build:
+    def __init__(self, name, number):
+        self.name = name
+        self.number = number
+
+
+@register_pretty(Build)
+def pretty_build(value, ctx):
+    # Build and return a document using the formatting helpers.
+    ...
+```
+
+A formatter receives the value being formatted and a `PrettyContext`. The context tracks formatting state, nesting, recursive visits, and formatter-specific information.
+
+`register_pretty()` can register a formatter by concrete type or by predicate:
+
+```python
+from prettyprinter.prettyprinter import register_pretty
+
+@register_pretty(predicate=lambda value: hasattr(value, "to_dict"))
+def pretty_dict_like(value, ctx):
+    ...
+```
+
+Use `is_registered()` to determine whether a type has a formatter:
+
+```python
+from prettyprinter.prettyprinter import is_registered
+
+if is_registered(Build, check_superclasses=True):
+    print("A formatter is available")
+```
+
+## Building custom documents
+
+For advanced integrations, the document API provides primitives for constructing layouts that can be rendered intelligently.
+
+Useful document-building functions include:
+
+- `concat(docs)`: concatenate document fragments.
+- `group(doc)`: allow a document to render flat or broken across lines.
+- `nest(i, doc)`: indent a nested document.
+- `align(doc)`: align nested content with the current position.
+- `hang(i, doc)`: combine alignment and indentation.
+- `fill(docs)`: fill available horizontal space with document fragments.
+- `always_break(doc)`: force broken layout behavior.
+- `flat_choice(when_broken, when_flat)`: select content based on layout mode.
+- `annotate(annotation, doc)`: attach annotations.
+- `contextual(fn)`: create a context-dependent document.
+- `validate_doc(doc)`: validate a document.
+
+Formatting helpers in `prettyprinter.prettyprinter` build common Python-like structures:
+
+- `pretty_call()` and `pretty_call_alt()` for calls.
+- `build_fncall()` for function-call documents.
+- `bracket()` for bracketed values.
+- `sequence_of_docs()` for sequence layouts.
+- `commentdoc()` for comment documents.
+- `pretty_python_value()` for recursively formatting Python values.
+
+For example, a custom formatter may use call-oriented helpers to represent an object as a constructor-style expression:
+
+```python
+from prettyprinter.prettyprinter import pretty_call, register_pretty
+
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
+@register_pretty(Point)
+def pretty_point(value, ctx):
+    return pretty_call(ctx, Point, value.x, value.y)
+```
+
+## Rendering and layout
+
+Lower-level rendering functions are available when working directly with structured documents:
+
+- `layout_smart(doc, width=79, ribbon_frac=0.9)`
+- `layout_fast(doc, width=79, ribbon_frac=0.9)`
+- `best_layout(...)`
+- `default_render_to_str(sdocs, newline="\n", separator=" ")`
+- `default_render_to_stream(stream, sdocs, newline="\n", separator=" ")`
+- `colored_render_to_stream(stream, sdocs, style, newline="\n", separator=" ")`
+
+The layout functions produce structured output documents, while the render functions turn those documents into strings or write them to streams.
+
+## Utility helpers
+
+The public utility API includes a small set of general-purpose helpers:
+
+- `intersperse(x, ys)`
+- `find(predicate, iterable, default=None)`
+- `rfind_idx(predicate, seq)`
+- `identity(x)`
+- `get_terminal_width(default=79)`
+- `take(n, iterable)`
+- `compose(f, g)`
+
+These helpers can be useful when implementing custom pretty printers or integrations.

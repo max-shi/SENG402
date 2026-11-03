@@ -1,0 +1,598 @@
+# sample-project
+
+`sample-project` is a Python toolkit for working with XML-oriented data models. Its API provides:
+
+- **XML, JSON, dictionary, and Python-code serialization**
+- **Parsing XML and JSON into Python dataclasses**
+- **XML Schema (XSD), WSDL, and DTD parsing**
+- **Schema/document-to-dataclass code generation**
+- **XML datatype conversion and namespace utilities**
+- **SOAP-style service client and transport support**
+- **Tools for inspecting, transforming, validating, and generating model classes**
+
+The public modules are exposed under the `xsdata` package namespace.
+
+## Features
+
+### Runtime data binding
+
+Use dataclasses with XML metadata to parse and serialize structured XML documents:
+
+- `XmlParser` parses XML into typed dataclasses.
+- `XmlSerializer` serializes dataclass instances to XML.
+- `JsonParser` and `JsonSerializer` handle JSON.
+- `DictDecoder` and `DictEncoder` bind models to and from dictionaries.
+- `TreeParser` and `TreeSerializer` work with XML element trees.
+- `PycodeSerializer` renders Python code that recreates an object.
+
+### Schema-driven code generation
+
+The code-generation subsystem can process XML Schema, WSDL, DTD, XML, JSON, and dictionary-like source documents:
+
+- `ResourceTransformer` coordinates resource loading, parsing, mapping, analysis, and generation.
+- `SchemaParser`, `DefinitionsParser`, and `DtdParser` parse XSD, WSDL, and DTD inputs.
+- `SchemaMapper`, `DefinitionsMapper`, `DtdMapper`, `ElementMapper`, and `DictMapper` convert parsed documents into code-generation `Class` models.
+- `ClassContainer`, `ClassValidator`, and code-generation handlers normalize, validate, and transform generated models.
+- `DataclassGenerator` renders Python dataclasses.
+- `CodeWriter` writes generated results using a configured generator.
+
+### XML metadata and generic values
+
+The runtime metadata layer represents how Python fields map to XML:
+
+- `XmlContext` caches and resolves metadata for binding models.
+- `XmlMetaBuilder` and `XmlVarBuilder` inspect model types and build XML metadata.
+- `XmlMeta` represents a class-level XML binding.
+- `XmlVar` represents an XML-bound field.
+- `AnyElement` represents arbitrary XML content.
+- `DerivedElement[T]` represents an element whose runtime value has a derived type.
+
+### XML datatypes and conversion
+
+The converter framework maps XML lexical values to Python objects:
+
+- `ConverterFactory` selects and registers converters.
+- Built-in converters support strings, booleans, numbers, bytes, decimals, QNames, enums, dates, and times.
+- `XmlDate`, `XmlDateTime`, `XmlTime`, `XmlDuration`, and `XmlPeriod` model XML Schema date/time-related values.
+- `DataType` identifies XML Schema-compatible datatypes.
+
+---
+
+## Installation
+
+Install the package from your preferred package source:
+
+```bash
+pip install sample-project
+```
+
+The import namespace used by the API is `xsdata`:
+
+```python
+from xsdata.formats.dataclass.parsers import XmlParser
+from xsdata.formats.dataclass.serializers import XmlSerializer
+```
+
+---
+
+## Quick start: XML dataclasses
+
+Define a standard Python dataclass and describe each XML-bound field with dataclass metadata.
+
+```python
+from dataclasses import dataclass, field
+
+from xsdata.formats.dataclass.parsers.xml import XmlParser
+from xsdata.formats.dataclass.serializers.xml import XmlSerializer
+
+
+@dataclass
+class Book:
+    class Meta:
+        name = "book"
+
+    title: str = field(
+        metadata={
+            "type": "Element",
+        }
+    )
+    isbn: str | None = field(
+        default=None,
+        metadata={
+            "type": "Attribute",
+        },
+    )
+
+
+xml = """\
+<book isbn="978-1-2345-6789-0">
+  <title>Example Book</title>
+</book>
+"""
+
+parser = XmlParser()
+book = parser.from_string(xml, Book)
+
+assert book.title == "Example Book"
+assert book.isbn == "978-1-2345-6789-0"
+
+serializer = XmlSerializer()
+result = serializer.render(book)
+
+print(result)
+```
+
+Typical output:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<book isbn="978-1-2345-6789-0"><title>Example Book</title></book>
+```
+
+`XmlParser` also supports parsing from paths and bytes:
+
+```python
+from pathlib import Path
+
+book = parser.from_path(Path("book.xml"), Book)
+book = parser.from_bytes(b"<book><title>Example</title></book>", Book)
+```
+
+---
+
+## JSON and dictionary binding
+
+The JSON and dictionary APIs use the same model metadata and dataclass types.
+
+```python
+from dataclasses import dataclass, field
+
+from xsdata.formats.dataclass.parsers.json import JsonParser
+from xsdata.formats.dataclass.serializers.json import JsonSerializer
+
+
+@dataclass
+class Product:
+    name: str = field(metadata={"type": "Element"})
+    price: float = field(metadata={"type": "Element"})
+
+
+parser = JsonParser()
+product = parser.from_string(
+    '{"name": "Keyboard", "price": 49.99}',
+    Product,
+)
+
+serializer = JsonSerializer()
+payload = serializer.render(product)
+
+print(payload)
+# {"name": "Keyboard", "price": 49.99}
+```
+
+For already-loaded Python mappings, use `DictDecoder`:
+
+```python
+from xsdata.formats.dataclass.parsers.dict import DictDecoder
+from xsdata.formats.dataclass.serializers.dict import DictEncoder
+
+decoder = DictDecoder()
+product = decoder.decode(
+    {"name": "Mouse", "price": 19.99},
+    Product,
+)
+
+encoder = DictEncoder()
+data = encoder.encode(product)
+
+print(data)
+# {"name": "Mouse", "price": 19.99}
+```
+
+---
+
+## Working with arbitrary XML content
+
+Use `AnyElement` when a model must preserve XML content that does not have a dedicated dataclass type.
+
+```python
+from dataclasses import dataclass, field
+
+from xsdata.formats.dataclass.models.generics import AnyElement
+from xsdata.formats.dataclass.parsers.xml import XmlParser
+
+
+@dataclass
+class Document:
+    content: list[AnyElement] = field(
+        default_factory=list,
+        metadata={
+            "type": "Wildcard",
+            "namespace": "##any",
+        },
+    )
+
+
+xml = """\
+<document>
+  <custom-item id="1">hello</custom-item>
+  <another-item enabled="true" />
+</document>
+"""
+
+document = XmlParser().from_string(xml, Document)
+print(document.content)
+```
+
+`AnyElement` is also useful for extension points, mixed content, and documents with open content models.
+
+---
+
+## XML Schema datatypes
+
+The library includes value types for XML Schema date, time, duration, period, hexadecimal, and Base64 values.
+
+```python
+from xsdata.models.datatype import XmlDate, XmlDateTime, XmlDuration
+
+date_value = XmlDate.from_string("2024-06-15")
+timestamp = XmlDateTime.from_string("2024-06-15T10:30:00Z")
+duration = XmlDuration("P2Y6M5DT12H35M30S")
+
+print(date_value.to_date())
+print(timestamp.to_datetime())
+print(duration.asdict())
+```
+
+Use `ConverterFactory` when you need explicit conversion between lexical XML values and Python types.
+
+```python
+from decimal import Decimal
+
+from xsdata.formats.converter import ConverterFactory
+
+converter = ConverterFactory()
+
+amount = converter.deserialize("12.50", [Decimal])
+text = converter.serialize(amount)
+
+print(amount)  # Decimal("12.50")
+print(text)    # "12.50"
+```
+
+The factory can be extended with custom converters:
+
+```python
+from xsdata.formats.converter import Converter
+
+
+class UpperCaseConverter(Converter):
+    def deserialize(self, value, **kwargs):
+        return str(value).upper()
+
+    def serialize(self, value, **kwargs):
+        return str(value).upper()
+
+
+converter.register_converter(str, UpperCaseConverter())
+```
+
+---
+
+## XML namespaces and qualified names
+
+Namespace helpers provide consistent handling for XML qualified names.
+
+```python
+from xsdata.utils.namespaces import (
+    build_qname,
+    local_name,
+    split_qname,
+    target_uri,
+)
+
+qname = build_qname("https://example.com/catalog", "book")
+
+print(qname)
+# {https://example.com/catalog}book
+
+print(target_uri(qname))
+# https://example.com/catalog
+
+print(local_name(qname))
+# book
+
+namespace, name = split_qname(qname)
+```
+
+Useful namespace utilities include:
+
+- `load_prefix`
+- `generate_prefix`
+- `clean_prefixes`
+- `clean_uri`
+- `is_ncname`
+- `is_uri`
+- `to_package_name`
+
+---
+
+## Generating models from schemas
+
+`ResourceTransformer` is the main high-level API for processing source resources. It supports schema, WSDL, DTD, XML, and JSON-oriented inputs.
+
+```python
+from xsdata.codegen.transformer import ResourceTransformer
+
+transformer = ResourceTransformer()
+
+transformer.process(
+    [
+        "schemas/catalog.xsd",
+        "schemas/common.xsd",
+    ]
+)
+```
+
+The transformer coordinates several stages:
+
+1. Load and classify input resources.
+2. Parse XSD, WSDL, DTD, XML, or JSON documents.
+3. Map parsed source documents to code-generation `Class` models.
+4. Analyze and normalize model relationships.
+5. Process classes through generation handlers.
+6. Render and write output through a configured writer/generator.
+
+For lower-level workflows, parse and map a schema directly:
+
+```python
+from xsdata.codegen.mappers.schema import SchemaMapper
+from xsdata.codegen.parsers.schema import SchemaParser
+
+source = open("schemas/catalog.xsd", "rb").read()
+
+schema = SchemaParser().parse(source)
+classes = SchemaMapper.map(schema)
+
+for clazz in classes:
+    print(clazz.name())
+```
+
+> Generated models and their destination packages are controlled through `GeneratorConfig` and related configuration types.
+
+---
+
+## Command-line interface
+
+The package exposes a command-line entry point through `xsdata.cli` and `python -m xsdata`.
+
+```bash
+python -m xsdata --help
+```
+
+The CLI includes commands for initializing configuration, downloading sources, and generating models.
+
+```bash
+python -m xsdata init-config
+python -m xsdata generate schemas/catalog.xsd
+```
+
+Source resolution is also available programmatically:
+
+```python
+from xsdata.cli import resolve_source
+
+for source in resolve_source("schemas", recursive=True):
+    print(source)
+```
+
+---
+
+## XML serialization options
+
+`XmlSerializer` writes text XML, while `TreeSerializer` produces an XML element tree.
+
+```python
+from xsdata.formats.dataclass.serializers.tree import TreeSerializer
+from xsdata.formats.dataclass.serializers.xml import XmlSerializer
+
+xml = XmlSerializer().render(book)
+
+tree = TreeSerializer().render(book)
+root = tree.getroot()
+
+print(root.tag)
+```
+
+For streaming output, write to a text stream:
+
+```python
+from io import StringIO
+
+stream = StringIO()
+XmlSerializer().write(stream, book)
+
+xml = stream.getvalue()
+```
+
+For Python source output that reconstructs an object, use `PycodeSerializer`:
+
+```python
+from xsdata.formats.dataclass.serializers.code import PycodeSerializer
+
+source = PycodeSerializer().render(book, var_name="book")
+print(source)
+```
+
+---
+
+## SOAP and HTTP client support
+
+The dataclass client API provides a transport abstraction for service-oriented integrations.
+
+- `Client` prepares payloads and headers, then sends requests.
+- `Transport` defines `get` and `post` operations.
+- `DefaultTransport` implements the default HTTP transport.
+- `Config` can be built from a service model using `Config.from_service`.
+
+```python
+from xsdata.formats.dataclass.client import Client
+
+# `ServiceModel` is typically a generated service binding.
+client = Client.from_service(ServiceModel)
+
+response = client.send(request_object)
+```
+
+Custom transports can implement the abstract `Transport` interface:
+
+```python
+from xsdata.formats.dataclass.transports import Transport
+
+
+class MemoryTransport(Transport):
+    def get(self, url: str, params: dict, headers: dict) -> bytes:
+        return b""
+
+    def post(self, url: str, data, headers: dict) -> bytes:
+        return b"<response/>"
+```
+
+---
+
+## Main API areas
+
+### Parsing
+
+| Module | Main API | Purpose |
+|---|---|---|
+| `xsdata.formats.dataclass.parsers.xml` | `XmlParser`, `UserXmlParser` | Parse XML into dataclass instances |
+| `xsdata.formats.dataclass.parsers.json` | `JsonParser` | Parse JSON into dataclass instances |
+| `xsdata.formats.dataclass.parsers.dict` | `DictDecoder` | Bind mappings and lists to dataclasses |
+| `xsdata.formats.dataclass.parsers.tree` | `TreeParser` | Parse XML while retaining generic tree content |
+| `xsdata.codegen.parsers.schema` | `SchemaParser` | Parse XML Schema documents |
+| `xsdata.codegen.parsers.definitions` | `DefinitionsParser` | Parse WSDL definitions |
+| `xsdata.codegen.parsers.dtd` | `DtdParser` | Parse DTD documents |
+
+### Serialization
+
+| Module | Main API | Purpose |
+|---|---|---|
+| `xsdata.formats.dataclass.serializers.xml` | `XmlSerializer` | Serialize dataclasses to XML |
+| `xsdata.formats.dataclass.serializers.json` | `JsonSerializer` | Serialize dataclasses to JSON |
+| `xsdata.formats.dataclass.serializers.dict` | `DictEncoder` | Serialize dataclasses to mappings |
+| `xsdata.formats.dataclass.serializers.tree` | `TreeSerializer` | Serialize dataclasses to XML trees |
+| `xsdata.formats.dataclass.serializers.code` | `PycodeSerializer` | Render reconstructible Python source |
+
+### Model metadata
+
+| Module | Main API | Purpose |
+|---|---|---|
+| `xsdata.formats.dataclass.context` | `XmlContext` | Cache and resolve binding metadata |
+| `xsdata.formats.dataclass.models.builders` | `XmlMetaBuilder`, `XmlVarBuilder` | Build metadata from Python types |
+| `xsdata.formats.dataclass.models.elements` | `XmlMeta`, `XmlVar`, `XmlType` | Runtime XML class and field metadata |
+| `xsdata.formats.dataclass.models.generics` | `AnyElement`, `DerivedElement` | Generic XML content and derived-type values |
+
+### Code generation
+
+| Module | Main API | Purpose |
+|---|---|---|
+| `xsdata.codegen.transformer` | `ResourceTransformer` | Process source resources end to end |
+| `xsdata.codegen.container` | `ClassContainer` | Store and process generated class models |
+| `xsdata.codegen.models` | `Class`, `Attr`, `AttrType`, `Extension`, `Restrictions` | Intermediate code-generation model |
+| `xsdata.codegen.validator` | `ClassValidator` | Validate and merge generated models |
+| `xsdata.codegen.writer` | `CodeWriter` | Write generated source files |
+| `xsdata.formats.dataclass.generator` | `DataclassGenerator` | Generate Python dataclass modules |
+
+### Configuration
+
+| Module | Main API | Purpose |
+|---|---|---|
+| `xsdata.models.config` | `GeneratorConfig` | Read, create, and write generator configuration |
+| `xsdata.models.config` | `GeneratorOutput`, `OutputFormat` | Configure generator output |
+| `xsdata.models.config` | `NameConvention`, `GeneratorConventions` | Configure naming behavior |
+| `xsdata.models.config` | `GeneratorAliases`, `GeneratorSubstitutions`, `GeneratorExtensions` | Customize generated models |
+
+---
+
+## Errors and warnings
+
+The library defines dedicated exceptions for common runtime and generation failures:
+
+```python
+from xsdata.exceptions import (
+    ConverterError,
+    ParserError,
+    SerializerError,
+    XmlContextError,
+    XmlHandlerError,
+    XmlWriterError,
+)
+
+from xsdata.codegen.exceptions import CodegenError, CodegenWarning
+```
+
+Catch specific exceptions where callers need to distinguish malformed input, unsupported conversion, metadata issues, serialization failures, or code-generation errors.
+
+```python
+from xsdata.exceptions import ParserError
+from xsdata.formats.dataclass.parsers.xml import XmlParser
+
+try:
+    result = XmlParser().from_string("<invalid", Book)
+except ParserError as exc:
+    print(f"Unable to parse XML: {exc}")
+```
+
+---
+
+## Utilities
+
+The `xsdata.utils` package includes reusable helpers for common tasks:
+
+- `xsdata.utils.collections` — grouping, searching, uniqueness, connected components
+- `xsdata.utils.dates` — XML date/time parsing and formatting
+- `xsdata.utils.namespaces` — QName and namespace manipulation
+- `xsdata.utils.text` — naming and case conversion
+- `xsdata.utils.package` — package and module path helpers
+- `xsdata.utils.downloader` — download and rewrite imported schema resources
+- `xsdata.utils.graphs` — strongly connected component discovery
+- `xsdata.utils.objects` — object updates and Python literal rendering
+
+Example naming conversion:
+
+```python
+from xsdata.utils.text import pascal_case, snake_case
+
+print(pascal_case("purchase-order"))
+# PurchaseOrder
+
+print(snake_case("PurchaseOrder"))
+# purchase_order
+```
+
+---
+
+## Architecture
+
+At a high level, the library is organized into two connected layers:
+
+```text
+Source documents
+   │
+   ├── XSD / WSDL / DTD parsers
+   ├── XML / JSON / dictionary mappers
+   ▼
+Code-generation Class models
+   │
+   ├── handlers, validators, dependency resolution
+   ├── package and module designation
+   ▼
+Generated Python dataclasses
+   │
+   ├── XmlContext and metadata builders
+   ├── XML / JSON / dictionary parsers
+   └── XML / JSON / dictionary serializers
+```
+
+This separation allows the same runtime binding system to work with generated models as well as manually authored dataclasses.

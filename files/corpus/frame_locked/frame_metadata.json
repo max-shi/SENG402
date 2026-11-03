@@ -1,0 +1,19 @@
+{
+  "freeze_date": "locked",
+  "generated_at": "2026-07-12T06:42:21.208870+00:00",
+  "seed": 402,
+  "n_target_per_ecosystem": 200,
+  "n_draw_per_ecosystem": 500,
+  "min_dependents": 5,
+  "registries": {
+    "python": "pypi.org",
+    "java": "repo1.maven.org"
+  },
+  "api_base": "https://packages.ecosyste.ms/api/v1",
+  "frame_counts_after_F1_F3": {
+    "python": 11774,
+    "java": 68662
+  },
+  "git_commit": "dc36de14cd491110c1fb658d715365bd53eefc66",
+  "spec_reference": "RULES.md (locked 2026-07-12)"
+}

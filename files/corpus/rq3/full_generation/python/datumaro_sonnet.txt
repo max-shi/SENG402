@@ -1,0 +1,212 @@
+# Datumaro
+
+Datumaro is a Python framework and CLI toolkit for building, converting, merging, filtering, validating, and analyzing datasets used in computer vision and machine learning. It provides a unified, format-agnostic data model (`Dataset`, `DatasetItem`, `Annotation`) together with a large collection of importers/exporters for popular dataset formats (COCO, VOC, YOLO, Cityscapes, KITTI, ImageNet, CVAT, LabelMe, MOT, Open Images, and many more), plus tools for dataset comparison, merging, transformation, tiling, sampling, and validation.
+
+## What can you do with it?
+
+- **Load and save datasets** in dozens of formats through a common `Dataset` API.
+- **Convert** between formats without writing custom parsers.
+- **Merge** multiple datasets or annotation sources (union, intersection with voting, exact merge).
+- **Filter, transform, and remap** dataset items and annotations with built-in or user-defined logic.
+- **Validate** datasets for common annotation problems (missing labels, imbalance, outliers, etc.).
+- **Compare** two datasets and generate human-readable / visual diff reports.
+- **Tile** large images into smaller patches and merge predictions back.
+- **Sample** dataset subsets randomly or by relevance/entropy-based criteria.
+- **Work with rich media**: images, video frames, point clouds, tabular data.
+- Use everything from the **command line** (`datum ...`) or as a **Python library**.
+
+An experimental module (`datumaro.experimental`) offers a columnar, schema-driven dataset representation built on Polars DataFrames, with typed `Field` descriptors, format converters, tiling/filtering transforms, and bidirectional conversion to/from the classic (legacy) `Dataset` model.
+
+---
+
+## Core Concepts
+
+### `Dataset` and `DatasetItem`
+
+`Dataset` (in `datumaro.components.dataset`) is the central object representing a collection of `DatasetItem`s, organized into named subsets (e.g. `train`, `val`), with associated `infos()` (metadata), `categories()` (label/mask/point definitions), and a `media_type()`.
+
+```python
+from datumaro.components.dataset import Dataset
+from datumaro.components.dataset_base import DatasetItem
+from datumaro.components.annotation import Bbox, Label
+
+dataset = Dataset.from_iterable(
+    [
+        DatasetItem(id="img_001", annotations=[Bbox(10, 10, 50, 50, label=0)]),
+        DatasetItem(id="img_002", annotations=[Label(label=1)]),
+    ],
+    categories=["cat", "dog"],
+)
+
+for subset_name, subset in dataset.subsets().items():
+    print(subset_name, len(subset))
+```
+
+Key `Dataset` capabilities:
+
+- `Dataset.load(path)` / `Dataset.import_from(path, format=...)` — load a dataset from disk, with automatic or explicit format detection.
+- `Dataset.detect(path)` — detect the dataset's format.
+- `dataset.export(save_dir, format)` / `dataset.save(save_dir)` — write the dataset out in a given format.
+- `dataset.filter(expr_or_filter_func)` — filter items/annotations via XPath expressions or callables.
+- `dataset.transform(method, **kwargs)` — apply a named or custom `Transform`.
+- `dataset.update(source)` — merge in new items or apply a `DatasetPatch`.
+- `Dataset.from_extractors(*sources, merge_policy=...)` — combine multiple dataset sources using a merge strategy.
+
+### Annotations
+
+`datumaro.components.annotation` defines the annotation model: `Label`, `Bbox`, `Polygon`, `Mask`, `RleMask`, `Points`, `PolyLine`, `Caption`, `Cuboid3d`, `Cuboid2D`, `Ellipse`, `RotatedBbox`, `Tabular`, and category containers (`LabelCategories`, `MaskCategories`, `PointsCategories`, `TabularCategories`). Each annotation type carries geometry/label information and supports operations like `get_area()`, `get_bbox()`, `as_polygon()`, and IoU computation (`Bbox.iou`, `RotatedBbox.iou`, `Ellipse.iou`).
+
+### Media
+
+`datumaro.components.media` models the underlying data behind each `DatasetItem`: `Image` (and its `ImageFromFile` / `ImageFromNumpy` / `ImageFromBytes` variants), `Video` / `VideoFrame`, `PointCloud`, `MultiframeImage`, `Table` (tabular data via CSV/DataFrame/list), `RoIImage`, and `MosaicImage`. These abstract away whether media is loaded lazily from disk or held in memory.
+
+### Environment, Importers, and Exporters
+
+`Environment` (in `datumaro.components.environment`) is the plugin registry: it knows all available `DatasetBase` extractors, `Importer`s, `Exporter`s, `Transform`s, `DatasetGenerator`s, and `Validator`s, and can detect a dataset's format via `detect_dataset(path)`.
+
+- `Importer` — discovers dataset sources on disk and reports format-detection confidence (`FormatDetectionConfidence`).
+- `Exporter` — writes a `Dataset` to disk in a specific format; supports `convert()` for one-shot conversion and `patch()` for incremental updates.
+- Format detection utilities live in `datumaro.components.format_detection` (`FormatDetectionContext`, `detect_dataset_format`, `apply_format_detector`).
+
+Dozens of concrete format plugins are provided under `datumaro.plugins.data_formats` (COCO, VOC, YOLO, Cityscapes, KITTI, CVAT, LabelMe, Market1501, MOT/MOTS, Open Images, Mapillary Vistas, MNIST, ImageNet, Kaggle-hosted layouts, tabular CSV data, video frames, and Datumaro's own native JSON/binary/Arrow formats, among others).
+
+### Merging
+
+`datumaro.components.merge` provides the `Merger` base class and concrete strategies:
+
+- `ExactMerge` — merges datasets item-by-item assuming identical structure.
+- `UnionMerge` — simple union of items/categories.
+- `IntersectMerge` — sophisticated annotation-level merging with per-type matchers (`BboxMatcher`, `PolygonMatcher`, `MaskMatcher`, `PointsMatcher`, `LineMatcher`, `CaptionsMatcher`, `Cuboid3dMatcher`, `RotatedBboxMatcher`, `Cuboid2DMatcher`, etc.) and mergers (`BboxMerger`, `PolygonMerger`, `LabelMerger`, ...), with voting/consensus logic and error reporting for conflicts.
+
+Use `get_merger(merge_policy, ...)` to obtain a merger by name, or the convenience `HLOps.merge(*datasets, merge_policy=...)`.
+
+### Transforms
+
+`Transform` / `ItemTransform` (in `datumaro.components.transformer`) is the base class for dataset-level and item-level transformations. Built-in transforms in `datumaro.plugins.transforms` and elsewhere include:
+
+- Geometry conversions: `PolygonsToMasks`, `BoxesToMasks`, `BoxesToPolygons`, `MasksToPolygons`, `ShapesToBoxes`, `MergeInstanceSegments`, `CropCoveredSegments`.
+- Dataset restructuring: `Reindex`, `ReindexAnnotations`, `Sort`, `MapSubsets`, `RandomSplit`, `Rename`, `IdFromImageName`, `RemapLabels`, `ProjectLabels`, `ProjectInfos`, `RemoveItems`, `RemoveAnnotations`, `RemoveAttributes`, `ResizeTransform`, `CropTransform`, `AstypeAnnotations`, `AnnsToLabels`, `BboxValuesDecrement`.
+- Sampling: `RandomSampler`, `LabelRandomSampler`, `RelevancySampler` (in `datumaro.plugins.sampler`).
+- Noise/duplicate reduction: `NDR`.
+- Tiling: `Tile` and `MergeTile` (in `datumaro.plugins.tiling`).
+- Data cleaning: `Correct`, `Clean` (tabular).
+
+### Validation
+
+`Validator` (in `datumaro.components.validator`) computes statistics and generates structured reports about dataset quality. Task-specific validators (`ClassificationValidator`, `DetectionValidator`, `SegmentationValidator`, `TabularValidator`) and a generic `ConfigurableValidator` are provided in `datumaro.plugins.validators` / `datumaro.plugins.configurable_validator`. Results are `DatasetValidationError` subclasses such as `MissingLabelCategories`, `ImbalancedLabels`, `FewSamplesInLabel`, `FarFromLabelMean`, etc.
+
+### Comparison
+
+`datumaro.components.comparator` offers `DistanceComparator`, `EqualityComparator`, and `TableComparator` for comparing two datasets and producing reports (including tabular high-level/mid-level summaries). `DistanceCompareVisualizer` (CLI utility) renders visual diffs (bounding boxes, confusion matrices) to image/tensorboard output.
+
+### High-Level Operations
+
+`HLOps` (in `datumaro.components.hl_ops`) bundles common workflows as static methods: `compare`, `transform`, `filter`, `merge`, `export`, `validate`, `aggregate` — convenient one-liners built on top of the lower-level APIs.
+
+---
+
+## Command-Line Interface
+
+Datumaro ships a CLI (`datumaro.cli`) exposing most of the library's functionality:
+
+```bash
+datum convert -i ./coco_dataset -if coco -o ./voc_dataset -f voc
+datum filter -i ./dataset -e '/item[subset="train"]'
+datum merge dataset_a/ dataset_b/ -o merged/
+datum stats -i ./dataset
+datum validate -i ./dataset -t classification
+datum compare first_dataset/ second_dataset/ -o report/
+datum info -i ./dataset
+datum detect-format ./unknown_dataset
+datum download get -i tfds:mnist -o ./mnist
+```
+
+Each subcommand is backed by a `build_parser` / `<name>_command` pair (see `datumaro.cli.commands.*`). Dataset downloaders (Kaggle, TensorFlow Datasets) are pluggable via the `IDatasetDownloader` interface.
+
+---
+
+## Usage Examples
+
+### Load, filter, and export a dataset
+
+```python
+from datumaro.components.dataset import Dataset
+
+# Auto-detect format and load
+dataset = Dataset.import_from("path/to/coco_dataset", format="coco_instances")
+
+# Keep only items from the "train" subset that contain at least one annotation
+filtered = dataset.filter(
+    lambda item: item.subset == "train" and len(item.annotations) > 0
+)
+
+# Export to VOC format
+filtered.export("path/to/output_voc", format="voc")
+```
+
+### Merge several datasets
+
+```python
+from datumaro.components.dataset import Dataset
+from datumaro.components.hl_ops import HLOps
+
+a = Dataset.import_from("dataset_a", format="datumaro")
+b = Dataset.import_from("dataset_b", format="datumaro")
+
+merged = HLOps.merge(a, b, merge_policy="intersect", report_path="merge_report.json")
+merged.save("merged_dataset")
+```
+
+### Validate a dataset
+
+```python
+from datumaro.components.dataset import Dataset
+from datumaro.components.hl_ops import HLOps
+
+dataset = Dataset.import_from("dataset", format="voc")
+report = HLOps.validate(dataset, task="detection")
+print(report)
+```
+
+### Apply a built-in transform
+
+```python
+from datumaro.components.dataset import Dataset
+
+dataset = Dataset.import_from("dataset", format="coco_instances")
+resized = dataset.transform("resize", width=640, height=480)
+resized.save("dataset_resized")
+```
+
+### Compare two datasets
+
+```python
+from datumaro.components.hl_ops import HLOps
+
+result = HLOps.compare(
+    first_dataset=Dataset.import_from("v1", format="datumaro"),
+    second_dataset=Dataset.import_from("v2", format="datumaro"),
+    report_dir="comparison_report",
+    method="table",
+)
+```
+
+### Experimental schema-based dataset
+
+```python
+from datumaro.experimental.dataset import Dataset as ExpDataset
+from datumaro.experimental.data_formats.coco.io import load_coco_dataset
+
+exp_dataset = load_coco_dataset(
+    images_dir_path="images/",
+    annotations_path="annotations/instances.json",
+)
+print(exp_dataset.schema())
+subset = exp_dataset.filter_by_subset("train")
+```
+
+---
+
+## Extending Datumaro
+
+New formats, transforms, validators, or downloaders can be added by subclassing the relevant base classes (`DatasetBase`, `Importer`, `Exporter`, `Transform`, `Validator`, `DatasetGenerator`, `IDatasetDownloader`) and registering them with an `Environment` instance via `register_plugins` or `load_plugins`. Each plugin class inherits `CliPlugin`, which auto-generates a command-line argument parser from its constructor signature (`build_cmdline_parser`), so custom plugins are usable from both Python and the CLI without extra glue code.

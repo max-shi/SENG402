@@ -1,0 +1,221 @@
+# hdfs
+
+A Python client for the Hadoop Distributed File System (HDFS), built on top of WebHDFS. It provides a simple, Pythonic API for interacting with HDFS clusters: browsing and managing files and directories, reading and writing data, managing permissions and ACLs, working with snapshots, and integrating with tools like Avro and pandas DataFrames.
+
+## Features
+
+- Pure Python client for WebHDFS (no native Hadoop dependencies required)
+- Support for insecure, token-based, and Kerberos-authenticated connections
+- Upload/download files with multi-threading support
+- Streaming reads and writes with configurable buffering, chunking, and encoding
+- File and directory management: rename, delete, permissions, ownership, replication
+- ACL (Access Control List) management
+- HDFS snapshot support
+- Command-line interface for common operations
+- Extensions for reading/writing Avro files and pandas DataFrames directly on HDFS
+
+## Installation
+
+```bash
+pip install hdfs
+```
+
+For Kerberos support:
+
+```bash
+pip install hdfs[kerberos]
+```
+
+For Avro support:
+
+```bash
+pip install hdfs[avro]
+```
+
+For dataframe support:
+
+```bash
+pip install hdfs[dataframe]
+```
+
+## Core Concepts
+
+### Clients
+
+All interaction with HDFS goes through a `Client` instance. The base `Client` class implements the full API surface (reading, writing, listing, managing metadata, etc.) and can be subclassed or configured for different authentication mechanisms:
+
+- **`Client`** — the base class, configured with a WebHDFS URL and any relevant options. All other clients inherit its full behavior.
+- **`InsecureClient`** — a client for clusters without authentication, typically authenticating as a fixed, given user.
+- **`TokenClient`** — a client that authenticates using a delegation token.
+- **`KerberosClient`** (in `hdfs.ext.kerberos`) — a client that authenticates using Kerberos.
+
+Clients can also be instantiated generically via `Client.from_options`, which is useful when the client type is determined dynamically (e.g. from a configuration file).
+
+### Configuration
+
+The `hdfs.config` module provides a `Config` class (extending `configparser.RawConfigParser`) for loading client configuration from `.hdfscli.cfg`-style files, including named client aliases and logging setup. This is primarily used by the command-line interface but can be reused in custom scripts. `Config.get_client` resolves a configured client by alias, and `Config.get_log_handler` sets up logging for a given command.
+
+The `catch` decorator is a helper for wrapping functions so that specified error classes are handled gracefully (e.g. in CLI entry points).
+
+### Errors
+
+All library-specific errors are raised as `HdfsError` (from `hdfs.util`).
+
+### Utilities
+
+- **`AsyncWriter`** (`hdfs.util`) — a file-like helper object used internally (and available for advanced use) to support asynchronous, streaming writes to HDFS.
+- **`temppath`** (`hdfs.util`) — generates a temporary path, useful when staging files before upload/download.
+
+## Command-Line Interface
+
+The library ships with a CLI, exposed via `hdfs.__main__`. It supports operations such as uploading, downloading, and inspecting HDFS paths, with configuration resolved through `hdfs.config.Config` and clients built by `configure_client`. After installation, it's typically invoked as:
+
+```bash
+hdfscli --help
+```
+
+Internally, `parse_arg`, `configure_client`, and `main` implement argument parsing, client construction, and command dispatch respectively.
+
+## Extensions
+
+### Avro (`hdfs.ext.avro`)
+
+- **`AvroReader`** — reads Avro-encoded files stored on HDFS, exposing the record schema used by the writer via `writer_schema`.
+- **`AvroWriter`** — writes records to HDFS in Avro format; `schema` exposes the schema in use, and `write(record)` appends a record to the file.
+
+This extension also has its own CLI entry point (`hdfs.ext.avro.__main__.main`) for converting or inspecting Avro data on HDFS from the command line.
+
+### DataFrame (`hdfs.ext.dataframe`)
+
+- **`read_dataframe(client, hdfs_path)`** — reads data from HDFS into a pandas DataFrame.
+- **`write_dataframe(client, hdfs_path, df, **kwargs)`** — writes a pandas DataFrame to HDFS.
+
+### Kerberos (`hdfs.ext.kerberos`)
+
+- **`KerberosClient`** — drop-in replacement for `Client` that authenticates against a Kerberos-secured WebHDFS endpoint.
+
+## Usage Examples
+
+### Connecting to HDFS
+
+```python
+from hdfs import InsecureClient
+
+client = InsecureClient('http://namenode:50070', user='hdfs_user')
+```
+
+### Listing and inspecting paths
+
+```python
+# List contents of a directory
+print(client.list('/user/hdfs_user'))
+
+# Get detailed status information
+status = client.status('/user/hdfs_user/data.csv')
+print(status)
+
+# Walk a directory tree
+for dirpath, dirnames, filenames in client.walk('/user/hdfs_user'):
+    print(dirpath, dirnames, filenames)
+```
+
+### Reading and writing files
+
+```python
+# Write data to HDFS
+with client.write('/user/hdfs_user/greeting.txt', encoding='utf-8') as writer:
+    writer.write('Hello, HDFS!')
+
+# Read data back
+with client.read('/user/hdfs_user/greeting.txt', encoding='utf-8') as reader:
+    content = reader.read()
+    print(content)
+```
+
+### Uploading and downloading files
+
+```python
+# Upload a local file or directory
+client.upload('/user/hdfs_user/uploaded_data', '/local/path/to/data', n_threads=4)
+
+# Download it back
+client.download('/user/hdfs_user/uploaded_data', '/local/path/to/download', overwrite=True)
+```
+
+### Managing files and directories
+
+```python
+client.makedirs('/user/hdfs_user/new_dir', permission='755')
+client.rename('/user/hdfs_user/old_name.txt', '/user/hdfs_user/new_name.txt')
+client.set_permission('/user/hdfs_user/new_name.txt', '644')
+client.set_owner('/user/hdfs_user/new_name.txt', owner='alice', group='data-team')
+client.delete('/user/hdfs_user/old_dir', recursive=True)
+```
+
+### Working with ACLs
+
+```python
+client.set_acl('/user/hdfs_user/shared_dir', 'user:bob:rwx,group:analytics:r-x')
+client.remove_acl_entries('/user/hdfs_user/shared_dir', 'user:bob:rwx')
+client.remove_acl('/user/hdfs_user/shared_dir')
+```
+
+### Snapshots
+
+```python
+client.allow_snapshot('/user/hdfs_user/important_data')
+client.create_snapshot('/user/hdfs_user/important_data', snapshotname='backup_2024')
+client.rename_snapshot('/user/hdfs_user/important_data', 'backup_2024', 'backup_final')
+client.delete_snapshot('/user/hdfs_user/important_data', 'backup_final')
+```
+
+### Using configuration files
+
+```python
+from hdfs.config import Config
+
+config = Config()
+client = config.get_client('dev')  # 'dev' refers to a named client alias in your config file
+```
+
+### Reading/writing Avro data
+
+```python
+from hdfs.ext.avro import AvroReader, AvroWriter
+
+# Writing records
+records = [{'name': 'Alice', 'age': 30}, {'name': 'Bob', 'age': 25}]
+with AvroWriter(client, '/user/hdfs_user/people.avro') as writer:
+    for record in records:
+        writer.write(record)
+
+# Reading records
+with AvroReader(client, '/user/hdfs_user/people.avro') as reader:
+    schema = reader.writer_schema
+    for record in reader:
+        print(record)
+```
+
+### Working with pandas DataFrames
+
+```python
+from hdfs.ext.dataframe import read_dataframe, write_dataframe
+
+df = read_dataframe(client, '/user/hdfs_user/data.parquet')
+write_dataframe(client, '/user/hdfs_user/output.parquet', df)
+```
+
+### Handling errors
+
+```python
+from hdfs.util import HdfsError
+
+try:
+    client.status('/nonexistent/path')
+except HdfsError as e:
+    print('Something went wrong:', e)
+```
+
+## License
+
+This project is distributed under an open-source license. See the `LICENSE` file for details.

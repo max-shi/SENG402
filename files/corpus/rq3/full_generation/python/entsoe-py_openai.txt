@@ -1,0 +1,789 @@
+# entsoe-py
+
+`entsoe-py` is a Python library for querying and working with electricity-system and energy-market data. Its API covers prices, load, generation, cross-border flows, transmission capacity, balancing markets, and asset unavailability.
+
+The library provides two complementary clients:
+
+- **`EntsoeRawClient`** retrieves raw responses as text or bytes.
+- **`EntsoePandasClient`** retrieves the same kinds of information as pandas `Series` and `DataFrame` objects, ready for analysis.
+
+It also includes area-code utilities, XML/ZIP parsing helpers, file-download helpers, time-period utilities, geographic zone utilities, and domain-specific exceptions.
+
+## Requirements
+
+The public API uses:
+
+- Python
+- `pandas`
+- pandas timestamps (`pd.Timestamp`)
+
+```python
+import pandas as pd
+```
+
+## Quick start
+
+For analysis workflows, use `EntsoePandasClient`.
+
+```python
+import pandas as pd
+from entsoe.entsoe import EntsoePandasClient
+
+client = EntsoePandasClient()
+
+start = pd.Timestamp("2024-01-01")
+end = pd.Timestamp("2024-01-08")
+
+prices = client.query_day_ahead_prices(
+    country_code="DE",
+    start=start,
+    end=end,
+)
+
+print(prices)
+```
+
+The returned value is a pandas `Series`.
+
+For raw-response workflows, use `EntsoeRawClient`.
+
+```python
+import pandas as pd
+from entsoe.entsoe import EntsoeRawClient
+
+client = EntsoeRawClient()
+
+xml_text = client.query_day_ahead_prices(
+    country_code="DE",
+    start=pd.Timestamp("2024-01-01"),
+    end=pd.Timestamp("2024-01-02"),
+)
+
+print(xml_text)
+```
+
+## Clients
+
+### `EntsoeRawClient`
+
+`EntsoeRawClient` exposes query methods that return raw response content:
+
+- Most standard responses return `str`.
+- Several balancing and unavailability responses return `bytes`, which may represent archive or binary response content.
+
+Use this client when you need the original response payload or want to use parsing utilities directly.
+
+```python
+from entsoe.entsoe import EntsoeRawClient
+from entsoe.parsers import parse_prices
+import pandas as pd
+
+client = EntsoeRawClient()
+
+raw_prices = client.query_day_ahead_prices(
+    country_code="FR",
+    start=pd.Timestamp("2024-02-01"),
+    end=pd.Timestamp("2024-02-02"),
+)
+
+prices = parse_prices(raw_prices)
+```
+
+### `EntsoePandasClient`
+
+`EntsoePandasClient` extends `EntsoeRawClient` and provides parsed pandas output.
+
+Use it for typical data-science, reporting, and analysis workloads:
+
+```python
+from entsoe.entsoe import EntsoePandasClient
+import pandas as pd
+
+client = EntsoePandasClient()
+
+load = client.query_load(
+    country_code="NL",
+    start=pd.Timestamp("2024-03-01"),
+    end=pd.Timestamp("2024-03-08"),
+)
+
+print(load.head())
+```
+
+## Area identifiers
+
+Most query methods accept either:
+
+- an `Area` enum value, or
+- a string area/country identifier.
+
+```python
+from entsoe.mappings import Area, lookup_area
+
+area = lookup_area("DE")
+print(area.meaning())
+print(area.tz())
+print(area.code())
+```
+
+Use `Area.has_code()` to test whether an area code is recognized.
+
+```python
+from entsoe.mappings import Area
+
+if Area.has_code("DE"):
+    print("Recognized area code")
+```
+
+## Querying data
+
+All time-based client methods use `start` and `end` parameters of type `pd.Timestamp`.
+
+```python
+import pandas as pd
+
+start = pd.Timestamp("2024-01-01")
+end = pd.Timestamp("2024-01-02")
+```
+
+### Prices
+
+Query day-ahead, intraday, imbalance, and balancing-energy prices.
+
+```python
+prices = client.query_day_ahead_prices(
+    country_code="BE",
+    start=start,
+    end=end,
+)
+```
+
+```python
+intraday = client.query_intraday_prices(
+    country_code="BE",
+    start=start,
+    end=end,
+    sequence=1,
+)
+```
+
+```python
+imbalance_prices = client.query_imbalance_prices(
+    country_code="BE",
+    start=start,
+    end=end,
+)
+```
+
+For day-ahead prices with a selected resolution:
+
+```python
+prices_15min = client.query_day_ahead_prices(
+    country_code="BE",
+    start=start,
+    end=end,
+    resolution="15min",
+)
+```
+
+A local day-ahead pricing query is also available:
+
+```python
+local_prices = client.query_day_ahead_prices_local(
+    country_code="BE",
+    sequence=1,
+    start=start,
+    end=end,
+    resolution="60min",
+)
+```
+
+### Load and load forecasts
+
+```python
+actual_load = client.query_load(
+    country_code="ES",
+    start=start,
+    end=end,
+)
+
+forecast_load = client.query_load_forecast(
+    country_code="ES",
+    start=start,
+    end=end,
+)
+```
+
+To retrieve load and forecast data together:
+
+```python
+load_comparison = client.query_load_and_forecast(
+    country_code="ES",
+    start=start,
+    end=end,
+)
+```
+
+The load-forecast query accepts a `process_type` parameter:
+
+```python
+forecast_load = client.query_load_forecast(
+    country_code="ES",
+    start=start,
+    end=end,
+    process_type="A01",
+)
+```
+
+### Generation and forecasts
+
+Retrieve generation data, optionally filtered by a power-system-resource type (`psr_type`).
+
+```python
+generation = client.query_generation(
+    country_code="DK",
+    start=start,
+    end=end,
+)
+```
+
+```python
+wind_generation = client.query_generation(
+    country_code="DK",
+    start=start,
+    end=end,
+    psr_type="B18",
+)
+```
+
+Generation forecasts:
+
+```python
+generation_forecast = client.query_generation_forecast(
+    country_code="DK",
+    start=start,
+    end=end,
+)
+```
+
+Use `nett=True` where supported to request net output:
+
+```python
+net_forecast = client.query_generation_forecast(
+    country_code="DK",
+    start=start,
+    end=end,
+    nett=True,
+)
+```
+
+Wind and solar forecasts are available separately:
+
+```python
+renewable_forecast = client.query_wind_and_solar_forecast(
+    country_code="DK",
+    start=start,
+    end=end,
+)
+```
+
+```python
+intraday_renewable_forecast = client.query_intraday_wind_and_solar_forecast(
+    country_code="DK",
+    start=start,
+    end=end,
+)
+```
+
+### Installed generation capacity
+
+```python
+capacity = client.query_installed_generation_capacity(
+    country_code="SE",
+    start=start,
+    end=end,
+)
+```
+
+Per-unit installed capacity:
+
+```python
+capacity_by_unit = client.query_installed_generation_capacity_per_unit(
+    country_code="SE",
+    start=start,
+    end=end,
+)
+```
+
+### Generation by plant
+
+Retrieve generation at plant level. Use `include_eic=True` to include EIC information where available, or filter for a known EIC code.
+
+```python
+plant_generation = client.query_generation_per_plant(
+    country_code="IT",
+    start=start,
+    end=end,
+    include_eic=True,
+)
+```
+
+```python
+single_plant = client.query_generation_per_plant(
+    country_code="IT",
+    start=start,
+    end=end,
+    eic_code="PLANT_EIC_CODE",
+)
+```
+
+### Water reservoirs and hydro storage
+
+```python
+hydro = client.query_aggregate_water_reservoirs_and_hydro_storage(
+    country_code="NO",
+    start=start,
+    end=end,
+)
+```
+
+### Cross-border flows and exchanges
+
+Query flow from one area to another:
+
+```python
+flows = client.query_crossborder_flows(
+    country_code_from="FR",
+    country_code_to="DE",
+    start=start,
+    end=end,
+)
+```
+
+Scheduled exchanges can be queried with optional day-ahead mode:
+
+```python
+exchanges = client.query_scheduled_exchanges(
+    country_code_from="FR",
+    country_code_to="DE",
+    start=start,
+    end=end,
+    dayahead=True,
+)
+```
+
+For country-level imports:
+
+```python
+imports = client.query_import(
+    country_code="DE",
+    start=start,
+    end=end,
+)
+```
+
+For a combined generation/import view:
+
+```python
+generation_import = client.query_generation_import(
+    country_code="DE",
+    start=start,
+    end=end,
+)
+```
+
+To query physical cross-border information across borders:
+
+```python
+exports = client.query_physical_crossborder_allborders(
+    country_code="DE",
+    start=start,
+    end=end,
+    export=True,
+    per_hour=True,
+)
+```
+
+### Transmission and offered capacity
+
+Net transfer capacity is available for several horizons:
+
+```python
+day_ahead_ntc = client.query_net_transfer_capacity_dayahead(
+    country_code_from="AT",
+    country_code_to="DE",
+    start=start,
+    end=end,
+)
+
+week_ahead_ntc = client.query_net_transfer_capacity_weekahead(
+    country_code_from="AT",
+    country_code_to="DE",
+    start=start,
+    end=end,
+)
+```
+
+Month-ahead and year-ahead queries are also available:
+
+```python
+month_ahead_ntc = client.query_net_transfer_capacity_monthahead(
+    country_code_from="AT",
+    country_code_to="DE",
+    start=start,
+    end=end,
+)
+
+year_ahead_ntc = client.query_net_transfer_capacity_yearahead(
+    country_code_from="AT",
+    country_code_to="DE",
+    start=start,
+    end=end,
+)
+```
+
+Query intraday offered capacity:
+
+```python
+intraday_capacity = client.query_intraday_offered_capacity(
+    country_code_from="AT",
+    country_code_to="DE",
+    start=start,
+    end=end,
+    implicit=True,
+    id_type="IDCT",
+)
+```
+
+Query offered capacity for a specific contract/market-agreement type:
+
+```python
+offered_capacity = client.query_offered_capacity(
+    country_code_from="AT",
+    country_code_to="DE",
+    contract_marketagreement_type="A01",
+    start=start,
+    end=end,
+    implicit=True,
+)
+```
+
+### Balancing data
+
+The pandas client provides DataFrame-based methods for balancing-market data.
+
+```python
+balancing_prices = client.query_activated_balancing_energy_prices(
+    country_code="FI",
+    start=start,
+    end=end,
+)
+```
+
+```python
+imbalance_volumes = client.query_imbalance_volumes(
+    country_code="FI",
+    start=start,
+    end=end,
+    include_resolution=True,
+)
+```
+
+```python
+balancing_state = client.query_current_balancing_state(
+    country_code="FI",
+    start=start,
+    end=end,
+)
+```
+
+Query procured balancing capacity:
+
+```python
+procured_capacity = client.query_procured_balancing_capacity(
+    country_code="FI",
+    process_type="A01",
+    start=start,
+    end=end,
+)
+```
+
+Query activated balancing energy:
+
+```python
+activated_energy = client.query_activated_balancing_energy(
+    country_code="FI",
+    business_type="A01",
+    start=start,
+    end=end,
+)
+```
+
+Reserve-related queries include contracted reserve prices and amounts:
+
+```python
+reserve_prices = client.query_contracted_reserve_prices(
+    country_code="FI",
+    process_type="A01",
+    type_marketagreement_type="A01",
+    start=start,
+    end=end,
+)
+```
+
+```python
+reserve_amount = client.query_contracted_reserve_amount(
+    country_code="FI",
+    process_type="A01",
+    type_marketagreement_type="A01",
+    start=start,
+    end=end,
+)
+```
+
+### Aggregated bids and net position
+
+```python
+bids = client.query_aggregated_bids(
+    country_code="PL",
+    process_type="A01",
+    start=start,
+    end=end,
+)
+```
+
+```python
+net_position = client.query_net_position(
+    country_code="PL",
+    start=start,
+    end=end,
+    dayahead=True,
+)
+```
+
+### Unavailability
+
+The library supports data about unavailability of generation units, production units, offshore grid, and transmission.
+
+```python
+generation_unavailability = client.query_unavailability_of_generation_units(
+    country_code="GB",
+    start=start,
+    end=end,
+)
+```
+
+Filter by document status, update window, or message identifier:
+
+```python
+generation_unavailability = client.query_unavailability_of_generation_units(
+    country_code="GB",
+    start=start,
+    end=end,
+    docstatus="A05",
+    periodstartupdate=pd.Timestamp("2024-01-01"),
+    periodendupdate=pd.Timestamp("2024-01-02"),
+    mRID="DOCUMENT_ID",
+)
+```
+
+Transmission unavailability requires an origin and destination area:
+
+```python
+transmission_unavailability = client.query_unavailability_transmission(
+    country_code_from="GB",
+    country_code_to="FR",
+    start=start,
+    end=end,
+)
+```
+
+Offshore-grid unavailability:
+
+```python
+offshore_unavailability = client.query_unavailability_of_offshore_grid(
+    area_code="GB",
+    start=start,
+    end=end,
+)
+```
+
+## Raw data parsing
+
+Parser functions convert raw XML text or bytes into pandas structures.
+
+```python
+from entsoe.parsers import (
+    parse_crossborder_flows,
+    parse_generation,
+    parse_loads,
+    parse_prices,
+)
+
+prices = parse_prices(xml_text)
+loads = parse_loads(xml_text)
+flows = parse_crossborder_flows(xml_text)
+generation = parse_generation(xml_text)
+```
+
+Generation parsing supports plant-level output, EIC inclusion, and net output:
+
+```python
+generation_by_plant = parse_generation(
+    xml_text,
+    per_plant=True,
+    include_eic=True,
+    nett=False,
+)
+```
+
+Balancing and reserve parsing helpers include:
+
+- `parse_activated_balancing_energy_prices`
+- `parse_imbalance_prices`
+- `parse_imbalance_volumes`
+- `parse_procured_balancing_capacity`
+- `parse_contracted_reserve`
+- `parse_aggregated_bids`
+
+ZIP/byte-oriented parsers are available for relevant raw responses:
+
+- `parse_procured_balancing_capacity_zip`
+- `parse_contracted_reserve_zip`
+- `parse_imbalance_prices_zip`
+- `parse_imbalance_volumes_zip`
+- `parse_unavailabilities`
+- `parse_offshore_unavailability`
+
+## File client
+
+`EntsoeFileClient` provides folder listing and file-download operations.
+
+```python
+from entsoe.files.entsoe_files import EntsoeFileClient
+
+files = EntsoeFileClient()
+
+contents = files.list_folder("some-folder")
+print(contents)
+```
+
+Download a single file as raw bytes:
+
+```python
+raw_file = files.download_single_file_raw(
+    folder="some-folder",
+    filename="example-file",
+)
+```
+
+Download and parse a single file into a DataFrame:
+
+```python
+data = files.download_single_file(
+    folder="some-folder",
+    filename="example-file",
+)
+```
+
+Download multiple files by identifier:
+
+```python
+raw_bundle = files.download_multiple_files_raw(
+    file_ids=["file-1", "file-2"],
+)
+
+combined = files.download_multiple_files(
+    file_ids=["file-1", "file-2"],
+)
+```
+
+## Time-period helpers
+
+The `misc` utilities split time ranges into standard blocks.
+
+```python
+from entsoe.misc import day_blocks, month_blocks, year_blocks
+import pandas as pd
+
+start = pd.Timestamp("2023-01-01")
+end = pd.Timestamp("2024-03-01")
+
+for block_start, block_end in month_blocks(start, end):
+    print(block_start, block_end)
+```
+
+Available helpers:
+
+- `day_blocks(start, end)`
+- `month_blocks(start, end)`
+- `year_blocks(start, end)`
+- `pairwise(iterable)`
+
+These helpers are useful when processing long date ranges in smaller intervals.
+
+## Geographic utilities
+
+Zone-related geographic utilities are available:
+
+```python
+from entsoe.geo.utils import load_zones
+import pandas as pd
+
+zones = load_zones(
+    zones=["DE", "FR"],
+    d=pd.Timestamp("2024-01-01"),
+)
+```
+
+Other geographic helpers:
+
+- `geojson_rewind_file(fname)`
+- `extract_naturalearthdata(shpfile, countrylist, outputfolder)`
+
+## Exceptions
+
+The library defines the following exceptions:
+
+- `PaginationError`
+- `NoMatchingDataError`
+- `InvalidPSRTypeError`
+- `InvalidBusinessParameterError`
+- `InvalidParameterError`
+
+Example:
+
+```python
+from entsoe.exceptions import NoMatchingDataError
+
+try:
+    data = client.query_day_ahead_prices(
+        country_code="DE",
+        start=start,
+        end=end,
+    )
+except NoMatchingDataError:
+    print("No matching data was returned for the requested interval.")
+```
+
+## API summary
+
+### Primary analysis client
+
+Use `EntsoePandasClient` for pandas results:
+
+- Prices and net positions: `pd.Series`
+- Cross-border flows and capacities: `pd.Series`
+- Load, generation, balancing, reserve, and unavailability data: `pd.DataFrame`
+
+### Raw-response client
+
+Use `EntsoeRawClient` when you need raw `str` or `bytes` response content before parsing.
+
+### Supporting tools
+
+- `Area` and `lookup_area()` for area identifiers.
+- Parser functions for converting raw responses to pandas objects.
+- `EntsoeFileClient` for folder and file operations.
+- Date-block helpers for splitting time intervals.
+- Geographic utilities for loading and preparing zones.

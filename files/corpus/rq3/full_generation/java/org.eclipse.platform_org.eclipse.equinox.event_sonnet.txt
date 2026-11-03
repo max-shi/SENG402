@@ -1,0 +1,155 @@
+# org.eclipse.equinox.event
+
+## Overview
+
+`org.eclipse.equinox.event` is an implementation of the OSGi Event Admin service specification for the Eclipse Equinox OSGi framework. It provides a publish/subscribe event mechanism that allows bundles to broadcast application and framework events, and other bundles to receive and react to them, without requiring direct coupling between publishers and subscribers.
+
+The library implements the standard OSGi `EventAdmin` service interface and, in addition, bridges native OSGi framework events (bundle lifecycle events, service lifecycle events, and framework events) into the Event Admin topic-based model, so that consumers can observe framework activity using the same `EventHandler` mechanism used for application-level events.
+
+This bundle is primarily infrastructure: most consumers only interact with the standard OSGi `org.osgi.service.event.EventAdmin` and `org.osgi.service.event.EventHandler` interfaces. The classes documented here are the internal implementation that backs those services when this bundle is installed and started in an OSGi runtime.
+
+## Main Components
+
+### Event Admin Implementation
+
+- **`EventAdminImpl`** — The core implementation of the OSGi `EventAdmin` service. It exposes `postEvent(Event)` for asynchronous event delivery and `sendEvent(Event)` for synchronous event delivery, dispatching events to interested `EventHandler` services registered in the framework.
+
+- **`EventComponent`** — A component wrapper around the Event Admin implementation, also implementing `EventAdmin`. It exposes the same `postEvent` / `sendEvent` operations and is typically the class registered as the actual OSGi service, delegating to the underlying event delivery machinery.
+
+### Event Handler Tracking and Dispatch
+
+- **`EventHandlerTracker`** — Extends OSGi's `ServiceTracker` to track all registered `EventHandler` services in the framework. It listens for handlers being registered, modified, or unregistered (`addingService`, `modifiedService`, `removedService`), maintains a registry of handlers per topic (`getHandlers(String topic)`), and performs the actual dispatch of an `Event` to a specific handler via `dispatchEvent(...)`, taking into account topic permissions.
+
+- **`EventHandlerWrapper`** — Wraps an individual `EventHandler` service reference. It resolves and caches the handler's subscribed topics (`getTopics()`), validates/initializes the handler (`init()`), delivers events to the wrapped handler (`handleEvent(Event, Permission)`), and can release its resources (`flush()`) when the handler is unregistered or updated.
+
+### Logging
+
+- **`LogTracker`** — A small `ServiceTracker` for the OSGi `LogService`. It provides convenience methods `error(String)` and `error(String, Throwable)` used internally to report problems (e.g., misbehaving event handlers) either to a registered `LogService` or to a fallback `PrintStream`.
+
+### Framework Event Bridging (`mapper` package)
+
+These classes convert native OSGi framework events into `org.osgi.service.event.Event` instances so they can be delivered through the Event Admin service, following the standard OSGi Event Admin topic naming conventions for framework events.
+
+- **`EventAdapter`** — Abstract base class for event adapters. Defines the `convert()` contract for turning a native OSGi event into an `Event`, along with helper methods to populate common event properties: `putBundleProperties`, `putExceptionProperties`, `putServiceReferenceProperties`, and `classes2strings` (for converting `Class<?>[]` into service object class name arrays). Also provides `redeliver()` to publish the converted event through the associated `EventAdmin`.
+
+- **`BundleEventAdapter`** — Converts an OSGi `BundleEvent` into an Event Admin `Event` (e.g., for bundle installed/started/stopped topics).
+
+- **`ServiceEventAdapter`** — Converts an OSGi `ServiceEvent` into an Event Admin `Event` (e.g., for service registered/unregistered/modified topics).
+
+- **`FrameworkEventAdapter`** — Converts an OSGi `FrameworkEvent` into an Event Admin `Event` (e.g., for framework started/error/warning topics).
+
+- **`EventRedeliverer`** — Listens directly to the OSGi framework as a `FrameworkListener`, `BundleListener`, and `AllServiceListener`. On `open()`, it registers itself with the `BundleContext` to receive framework, bundle, and service events; on receiving them (`frameworkEvent`, `bundleChanged`, `serviceChanged`), it wraps them using the appropriate `EventAdapter` subclass and redelivers them through the `EventAdmin` service. `close()` unregisters the listeners.
+
+## How It Fits Together
+
+1. Bundles publish events by obtaining the OSGi `EventAdmin` service (backed by `EventComponent` / `EventAdminImpl`) and calling `postEvent` or `sendEvent`.
+2. `EventAdminImpl` uses an `EventHandlerTracker` to find all `EventHandlerWrapper` instances subscribed to the event's topic.
+3. Each matching `EventHandlerWrapper` is invoked via `dispatchEvent`/`handleEvent`, subject to topic permission checks.
+4. Separately, `EventRedeliverer` observes native framework activity (bundle, service, and framework events) and, using the `mapper` adapter classes, converts and republishes these as standard Event Admin events—allowing the same `EventHandler` subscribers to observe framework-level activity alongside application events.
+5. `LogTracker` is used throughout to report errors (e.g., a handler throwing an exception during dispatch) without disrupting the overall event delivery pipeline.
+
+## Usage Examples
+
+### Publishing an Event
+
+```java
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventAdmin;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.ServiceReference;
+
+import java.util.HashMap;
+import java.util.Map;
+
+public class OrderPublisher {
+
+    private final BundleContext context;
+
+    public OrderPublisher(BundleContext context) {
+        this.context = context;
+    }
+
+    public void publishOrderCreated(String orderId) {
+        ServiceReference<EventAdmin> ref = context.getServiceReference(EventAdmin.class);
+        if (ref == null) {
+            return;
+        }
+        EventAdmin eventAdmin = context.getService(ref);
+        try {
+            Map<String, Object> properties = new HashMap<>();
+            properties.put("order.id", orderId);
+
+            Event event = new Event("com/example/orders/CREATED", properties);
+
+            // Asynchronous delivery
+            eventAdmin.postEvent(event);
+
+            // Or, for synchronous delivery:
+            // eventAdmin.sendEvent(event);
+        } finally {
+            context.ungetService(ref);
+        }
+    }
+}
+```
+
+### Subscribing to Events
+
+```java
+import org.osgi.service.event.Event;
+import org.osgi.service.event.EventHandler;
+import org.osgi.framework.BundleContext;
+import org.osgi.framework.ServiceRegistration;
+
+import java.util.Dictionary;
+import java.util.Hashtable;
+
+public class OrderEventHandler implements EventHandler {
+
+    private ServiceRegistration<EventHandler> registration;
+
+    public void start(BundleContext context) {
+        Dictionary<String, Object> props = new Hashtable<>();
+        props.put(org.osgi.service.event.EventConstants.EVENT_TOPIC,
+                new String[] { "com/example/orders/*" });
+
+        registration = context.registerService(EventHandler.class, this, props);
+    }
+
+    public void stop() {
+        if (registration != null) {
+            registration.unregister();
+        }
+    }
+
+    @Override
+    public void handleEvent(Event event) {
+        String orderId = (String) event.getProperty("order.id");
+        System.out.println("Received event on topic " + event.getTopic()
+                + " for order " + orderId);
+    }
+}
+```
+
+### Observing Framework Activity
+
+Once this bundle is active in the OSGi runtime, framework-level activity is automatically bridged into Event Admin topics. A handler can subscribe to standard framework topics (e.g. bundle lifecycle or service lifecycle topics) the same way it would subscribe to application events:
+
+```java
+Dictionary<String, Object> props = new Hashtable<>();
+props.put(org.osgi.service.event.EventConstants.EVENT_TOPIC,
+        new String[] { "org/osgi/framework/BundleEvent/*" });
+
+context.registerService(EventHandler.class, new EventHandler() {
+    @Override
+    public void handleEvent(Event event) {
+        System.out.println("Bundle event: " + event.getTopic());
+    }
+}, props);
+```
+
+No direct interaction with `EventRedeliverer`, the `mapper` adapter classes, `EventHandlerTracker`, or `LogTracker` is required by application code—these are internal components that are wired together automatically when the bundle is started, providing the underlying implementation of the OSGi Event Admin specification.
+
+## Installation
+
+Add the bundle to your OSGi runtime (e.g., via a Target Platform, p2 repository, or Maven dependency on `org.eclipse.platform:org.eclipse.equinox.event`) alongside an implementation of `org.osgi.service.log.LogService` if log output is desired. Once started, the bundle automatically registers the `EventAdmin` service and begins tracking `EventHandler` services and bridging framework events.

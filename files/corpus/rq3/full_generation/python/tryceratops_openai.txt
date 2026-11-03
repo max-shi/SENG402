@@ -1,0 +1,381 @@
+# tryceratops
+
+`tryceratops` is a Python static-analysis library focused on exception handling and related control-flow patterns. It parses Python source files into abstract syntax trees (ASTs), runs a collection of analyzers, produces `Violation` objects, and can optionally apply fixes for supported violations.
+
+The library also exposes a command-line entry point, file discovery and parsing utilities, configuration-aware settings, a flake8 adapter, and fixer infrastructure.
+
+## What it checks
+
+The available analyzers indicate checks for patterns such as:
+
+- Raising exceptions with overly broad or uninformative calls.
+- Raising exceptions without preserving the original cause.
+- Verbose exception re-raising.
+- Broad `except` blocks that only pass.
+- Exception logging patterns.
+- Try blocks that may benefit from `else` clauses.
+- Raising from within try blocks.
+- Unnecessary try/except structures.
+- Class inheritance and pickling-related concerns.
+- Conditional checks that may be better expressed with `TypeError`.
+- Functions containing too many relevant calls.
+
+Violations are represented by subclasses of `Violation`, including specialized forms for verbose re-raises, raises without a cause, and invalid inheritance.
+
+## Quick start
+
+Run the package’s module entry point:
+
+```bash
+python -m tryceratops
+```
+
+For programmatic CLI-style invocation, call `entrypoint` with the directories and options to use:
+
+```python
+from tryceratops.__main__ import entrypoint
+
+entrypoint(
+    dir=("src",),
+    experimental=False,
+    ignore=(),
+    exclude=(),
+    verbose=True,
+    autofix=False,
+)
+```
+
+Set `autofix=True` to enable available automatic fixes.
+
+## Main components
+
+### Analysis pipeline
+
+The central analysis flow is:
+
+1. Discover Python files.
+2. Parse files into ASTs.
+3. Build analyzer instances based on global settings.
+4. Run analyzers and collect violations.
+5. Filter violations according to file-level ignore directives.
+6. Optionally run fixers for fixable violations.
+7. Present violations and choose an exit code.
+
+The main orchestration type is `Runner`:
+
+```python
+class Runner:
+    def analyze(self, trees, global_settings) -> list[Violation]:
+        ...
+    def had_issues(self) -> bool:
+        ...
+    def any_violation(self) -> bool:
+        ...
+```
+
+`Runner.analyze()` accepts parsed files and `GlobalSettings`, then returns the violations found. The status methods let callers determine whether analysis or parsing encountered issues and whether any violations were reported.
+
+### Analyzers
+
+All analyzers derive from `BaseAnalyzer`, which is an AST visitor and exposes:
+
+```python
+class BaseAnalyzer:
+    def check(self, tree: ast.AST, filename: str) -> list[Violation]:
+        ...
+```
+
+`check()` analyzes a parsed syntax tree for one file and returns violations for that file.
+
+Available analyzer families include:
+
+| Area | Analyzer classes |
+| --- | --- |
+| Function calls and raises | `CallTooManyAnalyzer`, `CallRaiseVanillaAnalyzer`, `CallRaiseLongArgsAnalyzer`, `CallAvoidCheckingToContinueAnalyzer` |
+| Class definitions | `NonPickableAnalyzer`, `InheritFromBaseAnalyzer` |
+| Conditional logic | `PreferTypeErrorAnalyzer` |
+| Exception handlers | `ExceptReraiseWithoutCauseAnalyzer`, `ExceptVerboseReraiseAnalyzer`, `ExceptBroadPassAnalyzer`, `LogErrorAnalyzer`, `LogObjectAnalyzer`, `UselessTryExceptAnalyzer` |
+| Try blocks | `TryConsiderElseAnalyzer`, `TryShouldntRaiseAnalyzer` |
+
+Use `get_analyzer_chain()` to obtain the enabled analyzer set for a settings object:
+
+```python
+from tryceratops.analyzers import get_analyzer_chain
+
+analyzers = get_analyzer_chain(global_settings)
+```
+
+### Violations
+
+`Violation` is the base result type returned by analyzers. It provides a class method for constructing a violation from source-location information and AST nodes:
+
+```python
+from tryceratops.violations.violations import Violation
+
+violation = Violation.build(
+    filename="example.py",
+    vio_details=("CODE", "Description of the problem"),
+    node=some_ast_node,
+)
+```
+
+Specialized violation types preserve extra context needed for reporting or fixing:
+
+- `VerboseReraiseViolation`
+- `RaiseWithoutCauseViolation`
+- `InheritFromNonBaseViolation`
+
+For example, a raise-without-cause violation can retain the relevant exception handler and exception name:
+
+```python
+from tryceratops.violations.violations import RaiseWithoutCauseViolation
+
+violation = RaiseWithoutCauseViolation.build(
+    filename="example.py",
+    vio_details=("CODE", "Raise should preserve its cause"),
+    node=raise_node,
+    except_node=except_handler_node,
+    exception_name="error",
+)
+```
+
+### Parsing and file discovery
+
+The `files` utilities provide lower-level access to source discovery and parsing.
+
+```python
+from tryceratops.files.discovery import find_files, is_python_file
+from tryceratops.files.parser import parse_file
+
+for filename in find_files("src"):
+    if is_python_file(filename):
+        tree, file_filter = parse_file(filename)
+        # `tree` is an ast.AST.
+        # `file_filter` can suppress applicable violations.
+```
+
+Useful functions include:
+
+| Function | Purpose |
+| --- | --- |
+| `is_python_file(filename)` | Determine whether a filename is a Python file. |
+| `find_files(dir)` | Yield files discovered under a directory. |
+| `parse_file(filename)` | Parse a file and return its AST plus a `FileFilter`. |
+| `parse_tree(content)` | Parse Python source from an open text stream. |
+| `parse_ignore_comments_from_file(content)` | Read ignore directives from source comments. |
+| `find_project_root(srcs)` | Locate the project root for source paths. |
+| `find_pyproject_toml(path_search_start)` | Search for a `pyproject.toml` file. |
+| `load_config(dir)` | Load project configuration, if available. |
+
+`FileDiscovery` offers a higher-level parsing interface:
+
+```python
+from tryceratops.files.discovery import FileDiscovery, find_files
+
+discovery = FileDiscovery()
+
+for parsed_file in discovery.parse_python_files(find_files("src")):
+    # Pass parsed files to an analysis workflow.
+    pass
+
+if discovery.had_issues():
+    print("One or more files could not be processed.")
+```
+
+### Ignore handling
+
+Ignore directives are represented by `IgnoreViolation`. A `FileFilter` combines applicable ignore rules and decides whether a produced violation should be suppressed.
+
+```python
+class IgnoreViolation:
+    def affects_whole_file(self) -> bool:
+        ...
+    def is_ignoring(self, line: int, violation_code: str) -> bool:
+        ...
+
+class FileFilter:
+    def ignores_violation(self, violation: Violation) -> bool:
+        ...
+```
+
+This makes it possible to separate source parsing from reporting:
+
+```python
+tree, file_filter = parse_file("src/example.py")
+
+violations = analyzer.check(tree, "src/example.py")
+visible_violations = [
+    violation
+    for violation in violations
+    if not file_filter.ignores_violation(violation)
+]
+```
+
+### Settings and configuration
+
+`GlobalSettings` controls which processors run, which files are skipped, whether experimental processors are included, ignored violations, excluded directories, and autofix behavior.
+
+```python
+class GlobalSettings:
+    def exclude_experimental(self) -> bool:
+        ...
+    def should_run_processor(self, processor) -> bool:
+        ...
+    def should_skip_file(self, filename: str) -> bool:
+        ...
+    def create_from_config(cls, config) -> GlobalSettings:
+        ...
+    def overwrite_from_cli(
+        self,
+        include_experimental: bool,
+        ignore_violations,
+        exclude_dirs,
+        autofix: bool,
+    ) -> None:
+        ...
+```
+
+A typical configuration-aware setup looks like this:
+
+```python
+from tryceratops.files.discovery import load_config
+from tryceratops.settings import GlobalSettings
+
+config = load_config(("src",))
+
+if config is not None:
+    settings = GlobalSettings.create_from_config(config)
+else:
+    settings = GlobalSettings()
+
+settings.overwrite_from_cli(
+    include_experimental=False,
+    ignore_violations=(),
+    exclude_dirs=(),
+    autofix=False,
+)
+```
+
+`PyprojectConfig` is the typed configuration object returned by configuration loading.
+
+### Fixers
+
+Fixers can rewrite files to address supported violations. All fixers inherit from `BaseFixer`:
+
+```python
+class BaseFixer:
+    def perform_fix(self, lines: list[str], violation) -> list[str]:
+        ...
+    def fix(self, violations: list[Violation]) -> None:
+        ...
+```
+
+Available fixers include:
+
+- `VerboseReraiseFixer`
+- `RaiseWithoutCauseFixer`
+- `LoggerErrorFixer`
+
+Retrieve enabled fixers with settings-aware selection:
+
+```python
+from tryceratops.fixers import get_fixers_chain
+
+fixers = get_fixers_chain(global_settings)
+
+for fixer in fixers:
+    fixer.fix(violations)
+```
+
+`FileFixerHandler` exposes the file I/O operations used by the fixing workflow:
+
+```python
+class FileFixerHandler:
+    def read_lines(self) -> list[str]:
+        ...
+    def write_fix(self, new_lines) -> None:
+        ...
+```
+
+## Programmatic analysis example
+
+The following example demonstrates the relationship between discovery, parsing, settings, analyzers, and presentation:
+
+```python
+from tryceratops.analyzers import get_analyzer_chain
+from tryceratops.files.discovery import find_files
+from tryceratops.files.parser import parse_file
+from tryceratops.interfaces import present_violation
+from tryceratops.settings import GlobalSettings
+
+settings = GlobalSettings()
+analyzers = get_analyzer_chain(settings)
+
+for filename in find_files("src"):
+    if settings.should_skip_file(filename):
+        continue
+
+    tree, file_filter = parse_file(filename)
+
+    for analyzer in analyzers:
+        for violation in analyzer.check(tree, filename):
+            if not file_filter.ignores_violation(violation):
+                print(present_violation(violation))
+```
+
+## Using `Runner`
+
+When parsed files are already available, use `Runner` to coordinate analysis:
+
+```python
+from tryceratops.runners import Runner
+
+runner = Runner()
+violations = runner.analyze(parsed_trees, global_settings)
+
+for violation in violations:
+    print(present_violation(violation))
+
+if runner.had_issues():
+    print("Analysis completed with processing issues.")
+
+if runner.any_violation():
+    print("Violations were found.")
+```
+
+## Flake8 integration
+
+`TryceratopsAdapterPlugin` exposes a flake8-compatible `run()` method that yields flake8 violation records:
+
+```python
+from tryceratops.flake_plugin import TryceratopsAdapterPlugin
+
+plugin = TryceratopsAdapterPlugin()
+
+for result in plugin.run():
+    print(result)
+```
+
+## Error types
+
+The library exposes separate exception hierarchies for analysis and fixing:
+
+- `AnalyzerException`
+- `AnalyzerVisitException`
+- `FixerException`
+- `FixerFixException`
+
+These can be used by integrations that need to distinguish analysis failures from failures while applying source changes.
+
+## Reporting and exit behavior
+
+Use `present_violation()` to convert a violation into displayable text:
+
+```python
+from tryceratops.interfaces import present_violation
+
+message = present_violation(violation)
+print(message)
+```
+
+`CliInterface.present_and_exit()` provides the command-line reporting and exit flow. `ExitCodes` is an `IntEnum` containing the library’s available CLI exit statuses.

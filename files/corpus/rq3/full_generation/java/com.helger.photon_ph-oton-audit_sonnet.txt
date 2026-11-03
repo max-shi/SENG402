@@ -1,0 +1,273 @@
+# ph-oton-audit
+
+`ph-oton-audit` is a Java library for recording **audit trails** — structured, timestamped records of who did what, and whether it succeeded — inside an application. It provides:
+
+- A pluggable **auditor** abstraction (`IAuditor`) for creating audit items whenever business-relevant actions happen (create/modify/delete/undelete/execute).
+- Several ready-to-use auditor implementations: logging to SLF4J, asynchronous queued processing, no-op, and persistence-backed managers.
+- A **manager** abstraction (`IAuditManager`) for storing, querying, and retrieving audit history, with both file-based (XML) and in-memory/WAL-backed implementations.
+- A static convenience facade (`AuditHelper`) for firing audit events from anywhere in application code without holding a reference to a specific auditor.
+- A newer, more structured **v2 API** built around `AuditEvent`/`AuditField` objects, a builder, and a consumer pipeline, for cases where you want richer, queryable audit events (e.g. sent to an external system) rather than a single free-text action string.
+
+This library is part of the [ph-oton](https://github.com/phax/ph-oton) framework but can be used standalone for auditing purposes.
+
+## Core concepts
+
+### `IAuditor` — recording audit events
+
+The central interface for writing audit information:
+
+```java
+public interface IAuditor {
+    void createAuditItem(EAuditActionType eActionType, ESuccess eSuccess,
+                          ObjectType aActionObjectType, String sAction, Object... aArgs);
+
+    // convenience defaults: onCreateSuccess/Failure, onModifySuccess/Failure,
+    // onDeleteSuccess/Failure, onUndeleteSuccess/Failure, onExecuteSuccess/Failure
+}
+```
+
+`EAuditActionType` enumerates the kinds of actions being audited: `CREATE`, `MODIFY`, `DELETE`, `UNDELETE`, `EXECUTE`.
+
+Every audit item is associated with:
+- the **current user** performing the action, resolved via `ICurrentUserIDProvider` (from `com.helger.commons`),
+- the type of action (`EAuditActionType`),
+- the outcome (`ESuccess`),
+- an `ObjectType` describing what kind of object was affected,
+- a free-text action description and optional extra arguments.
+
+### `AbstractAuditor` and implementations
+
+`AbstractAuditor` implements the common bookkeeping (user ID resolution, action string building via `IAuditActionStringProvider`) and delegates the actual persistence/logging to subclasses:
+
+- **`LoggingAuditor`** — writes audit items to the SLF4J log, optionally with a common prefix. Use `LoggingAuditor.getDefaultAuditItemString(IAuditItem)` to format an item the same way internally.
+- **`DoNothingAuditor`** — discards everything; useful for tests or disabling auditing without changing calling code.
+- **`AsynchronousAuditor`** — queues created audit items and processes them on a background thread via an `IConcurrentPerformer<List<IAuditItem>>` callback; supports checking `getQueueLength()` and calling `stop()` to shut down gracefully.
+- **`Audit2Bridge`** (in `v2`) — adapts the classic `IAuditor` API to the newer `IAuditEventConsumer` pipeline, converting each `createAuditItem(...)` call into a `AuditEvent`.
+
+### `IAuditManager` — storing and retrieving audit history
+
+`IAuditManager` describes a component that owns an `IAuditor` and additionally offers read access to stored history:
+
+```java
+public interface IAuditManager {
+    boolean isInMemory();
+    String getBaseDir();
+    IAuditor getAuditor();
+    List<IAuditItem> getLastAuditItems(int nMaxItems);
+    void stop();
+    LocalDate getEarliestAuditDate();
+}
+```
+
+Implementations:
+
+- **`AuditManager`** — a full-featured manager that persists audit items to XML files, organized by year/date (`getRelativeAuditDirectory`, `getRelativeAuditFilename`), uses an internal `AsynchronousAuditor` for non-blocking writes, and can look up audit items for a specific date or count of "last items".
+- **`SimpleAuditManager`** — a lighter-weight manager backed by a write-ahead-log DAO (`AbstractPhotonWALDAO<AuditItem>`), implementing `IAuditor` directly so it can be both writer and reader of audit items.
+- **`DoNothingAuditManager`** — a no-op manager (paired naturally with `DoNothingAuditor`) for when auditing is disabled entirely but code still expects an `IAuditManager`.
+
+### `AuditItem` / `IAuditItem` — the classic audit record
+
+```java
+public interface IAuditItem extends IHasUserID, ISuccessIndicator, Serializable {
+    LocalDateTime getDateTime();
+    EAuditActionType getType();
+    ESuccess getSuccess();
+    String getAction();
+}
+```
+
+`AuditItem` is the concrete, serializable implementation, with equality/hashing/toString support, and an `AuditItemMicroTypeConverter` for XML (de)serialization via ph-commons' micro-DOM converter framework. `AuditItemList` is a simple in-memory holder that tracks a growing list of `IAuditItem`s and exposes `getLastItems(int)`.
+
+### `AuditHelper` — static facade
+
+For application code that doesn't want to inject an `IAuditor` everywhere, `AuditHelper` exposes static convenience methods (`onAuditCreateSuccess`, `onAuditModifyFailure`, `onAuditDeleteSuccess`, `onAuditExecuteFailure`, etc.) that delegate to a globally configured auditor:
+
+```java
+IAuditor getAuditor();
+boolean isDefaultAuditorSet();
+void setAuditor(IAuditor aAuditor);
+void setDefaultAuditor();
+```
+
+By default a sensible auditor (e.g. logging) is used; call `setAuditor(...)` to install your own (for example an `AuditManager`'s auditor, or an `Audit2Bridge`).
+
+## The v2 API — structured audit events
+
+The `com.helger.photon.audit.v2` package offers a more structured alternative to the free-text `IAuditor.createAuditItem` model, centered on immutable `AuditEvent` objects with named `AuditField`s.
+
+### `AuditEvent` / `AuditField`
+
+```java
+public class AuditEvent implements Serializable, IHasLongID, IHasCreationDateTime {
+    long getID();
+    LocalDateTime getCreationDateTime();
+    String getActor();
+    String getOrigin();
+    EAuditActionType getAction();
+    ESuccess getSuccess();
+    ICommonsList<AuditField> getAllFields();
+}
+```
+
+`AuditField` represents a single name/value pair attached to an event; `AuditField.createWithHiddenValue(String)` creates a field whose value is intentionally not recorded (for sensitive data). An `AuditEventMicroTypeConverter` allows `AuditEvent`s to be serialized to/from XML micro-DOM elements.
+
+### `AuditEventBuilder`
+
+A fluent builder for constructing `AuditEvent` instances, wiring in settings and user-ID resolution:
+
+```java
+AuditEventBuilder builder = new AuditEventBuilder()
+    .setSettings(settings)
+    .setCurrentUserIDProvider(userIDProvider)
+    .setAction(EAuditActionType.MODIFY)
+    .setSucces(ESuccess.SUCCESS)
+    .addField("customerId", "4711")
+    .addFieldHiddenValue("password");
+
+AuditEvent event = builder.build();
+```
+
+### `IAuditSettings` / `AuditSettings` / `AuditDefaultSettings`
+
+Settings control how `AuditEvent` IDs and timestamps are generated:
+
+```java
+public interface IAuditSettings extends Serializable {
+    ILongSupplier getAuditEventIDProvider();
+    Supplier<LocalDateTime> getAuditEventDateTimeProvider();
+}
+```
+
+`AuditSettings` is the mutable, configurable implementation; `AuditDefaultSettings` exposes ready-made default suppliers (`getDefaultAuditEventIDProvider()`, `getDefaultAuditEventDateTimeProvider()`) that can be plugged into `AuditSettings` or used directly.
+
+### Consuming events: `IAuditEventConsumer` and `AuditEventConsumerPipeline`
+
+```java
+public interface IAuditEventConsumer extends Serializable {
+    void consumeAuditEvent(AuditEvent aAuditEvent);
+}
+```
+
+Implement this interface to route `AuditEvent`s to storage, logging, messaging systems, etc. `AuditEventConsumerPipeline` lets you chain multiple consumers together and register exception callbacks for handling failures during consumption:
+
+```java
+AuditEventConsumerPipeline pipeline = new AuditEventConsumerPipeline();
+pipeline.consumers().add(myDatabaseConsumer);
+pipeline.consumers().add(myLoggingConsumer);
+pipeline.exceptionCallbacks().add(ex -> logger.error("Audit consumption failed", ex));
+```
+
+### Bridging classic and v2 APIs: `Audit2Bridge`
+
+If existing code uses the classic `IAuditor` interface but you want events routed through the v2 pipeline, use `Audit2Bridge`:
+
+```java
+IAuditEventConsumer consumer = pipeline; // an AuditEventConsumerPipeline, for example
+IAuditor auditor = new Audit2Bridge(userIDProvider, consumer, Object::toString);
+
+auditor.onModifySuccess(MY_OBJECT_TYPE, "updated address");
+```
+
+## Usage examples
+
+### 1. Simple logging-based auditing
+
+```java
+ICurrentUserIDProvider userIDProvider = MockCurrentUserIDProvider.getInstance();
+IAuditor auditor = new LoggingAuditor(userIDProvider, "APP-AUDIT");
+
+ObjectType customerType = new ObjectType("customer");
+
+auditor.onCreateSuccess(customerType, "customerId=4711");
+auditor.onModifyFailure(customerType, "update address", "customerId=4711", "reason=validation-error");
+```
+
+### 2. Installing a global auditor via `AuditHelper`
+
+```java
+// At application startup:
+IAuditManager auditManager = new AuditManager("/var/data/audit", MockCurrentUserIDProvider.getInstance());
+AuditHelper.setAuditor(auditManager.getAuditor());
+
+// Anywhere in application code:
+ObjectType orderType = new ObjectType("order");
+AuditHelper.onAuditCreateSuccess(orderType, "orderId=1001");
+AuditHelper.onAuditDeleteFailure(orderType, "orderId=1002", "reason=locked");
+
+// At shutdown:
+auditManager.stop();
+```
+
+### 3. Asynchronous auditing with a custom sink
+
+```java
+IConcurrentPerformer<List<IAuditItem>> performer = items -> {
+    for (IAuditItem item : items) {
+        myAuditSink.write(item);
+    }
+};
+
+AsynchronousAuditor asyncAuditor =
+    new AsynchronousAuditor(MockCurrentUserIDProvider.getInstance(), performer);
+
+asyncAuditor.onExecuteSuccess("nightly-batch-job");
+
+// during shutdown
+asyncAuditor.stop();
+```
+
+### 4. Reading back audit history
+
+```java
+AuditManager auditManager = new AuditManager("/var/data/audit", MockCurrentUserIDProvider.getInstance());
+
+// Last 50 audit items across the manager's history
+List<IAuditItem> recent = auditManager.getLastAuditItems(50);
+
+// All items for a specific day
+ICommonsList<IAuditItem> todaysItems = auditManager.getAllAuditItemsOfDate(LocalDate.now());
+
+LocalDate earliest = auditManager.getEarliestAuditDate();
+```
+
+### 5. Structured v2 audit events with a consumer pipeline
+
+```java
+IAuditSettings settings = new AuditSettings()
+    .setAuditEventIDProvider(AuditDefaultSettings.getDefaultAuditEventIDProvider())
+    .setAuditEventDateTimeProvider(AuditDefaultSettings.getDefaultAuditEventDateTimeProvider());
+
+AuditEventConsumerPipeline pipeline = new AuditEventConsumerPipeline();
+pipeline.consumers().add(event -> myAuditStore.save(event));
+pipeline.exceptionCallbacks().add(ex -> logger.error("Failed to persist audit event", ex));
+
+AuditEvent event = new AuditEventBuilder()
+    .setSettings(settings)
+    .setCurrentUserIDProvider(MockCurrentUserIDProvider.getInstance())
+    .setAction(EAuditActionType.EXECUTE)
+    .setSucces(ESuccess.SUCCESS)
+    .setOrigin("batch-scheduler")
+    .addField("jobName", "cleanup")
+    .addFieldHiddenValue("apiToken")
+    .build();
+
+pipeline.consumeAuditEvent(event);
+```
+
+## When to use which manager
+
+| Need | Use |
+|---|---|
+| Full XML-file persisted history, organized by date | `AuditManager` |
+| Lightweight WAL-backed persistence, no directory structure | `SimpleAuditManager` |
+| Disable auditing entirely without changing call sites | `DoNothingAuditManager` / `DoNothingAuditor` |
+| Route audit data to external systems / structured storage | `v2` API with `AuditEventConsumerPipeline` and `Audit2Bridge` |
+
+## Serialization
+
+Both classic `AuditItem`s and v2 `AuditEvent`s support XML (de)serialization through the ph-commons micro-DOM converter framework:
+
+- `AuditItemMicroTypeConverter`
+- `AuditEventMicroTypeConverter`
+
+These are registered automatically via `MicroTypeConverterRegistrar_ph_oton_audit`, an SPI implementation of `IMicroTypeConverterRegistrarSPI`.

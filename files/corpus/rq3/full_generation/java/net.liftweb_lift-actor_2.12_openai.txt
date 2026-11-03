@@ -1,0 +1,315 @@
+# net.liftweb:lift-actor_2.12
+
+Java-friendly utility and interoperability APIs for working with Lift-style functions, web helpers, CSS selection bindings, session variables, site maps, and password hashing.
+
+The public API provides small adapter classes that make commonly used Lift and Scala-oriented concepts easier to access from Java. It includes:
+
+- Java functional interfaces and adapters to Scala `Function0` through `Function4`
+- Convenience factories for arrays and value suppliers
+- BCrypt password hashing and verification
+- CSS selector bindings
+- Java accessors for HTTP, HTML, request/session, and sitemap APIs
+- Session-variable and sitemap construction helpers
+
+## Overview
+
+### Functional interfaces: `Func0`–`Func4`
+
+The `Func0`, `Func1`, `Func2`, `Func3`, and `Func4` interfaces represent Java-callable functions with zero through four arguments.
+
+```java
+Func0<String> greeting = () -> "Hello";
+
+Func1<String, Integer> length = value -> value.length();
+
+Func2<Integer, Integer, Integer> add = (a, b) -> a + b;
+```
+
+Each interface exposes a single `apply` method:
+
+| Interface | Method |
+|---|---|
+| `Func0<Z>` | `Z apply()` |
+| `Func1<A, Z>` | `Z apply(A a)` |
+| `Func2<A, B, Z>` | `Z apply(A a, B b)` |
+| `Func3<A, B, C, Z>` | `Z apply(A a, B b, C c)` |
+| `Func4<A, B, C, D, Z>` | `Z apply(A a, B b, C c, D d)` |
+
+### `Func`
+
+`Func` converts the Java-oriented `Func0`–`Func4` interfaces into Scala `Function0`–`Function4` values.
+
+It also adapts a `Callable<Z>` into a Scala `Function0<Z>`.
+
+```java
+import net.liftweb.common.Func;
+import net.liftweb.common.Func1;
+import scala.Function1;
+
+Func1<String, String> normalize = value -> value.trim().toLowerCase();
+
+Function1<String, String> scalaNormalize = Func.lift(normalize);
+```
+
+Available overloads include:
+
+```java
+Func.lift(Func0<Z>)
+Func.lift(Func1<A, Z>)
+Func.lift(Func2<A, B, Z>)
+Func.lift(Func3<A, B, C, Z>)
+Func.lift(Func4<A, B, C, D, Z>)
+Func.lift(Callable<Z>)
+```
+
+Use `Func.lift` when another API expects a Scala function but application code is written in Java.
+
+---
+
+## Utilities
+
+### `A`: array creation
+
+`A.a` is a generic convenience method for creating arrays.
+
+```java
+import net.liftweb.util.A;
+
+String[] names = A.a("Ada", "Grace", "Linus");
+Integer[] ports = A.a(8080, 8081, 8082);
+```
+
+### `VendorJ`: value suppliers
+
+`VendorJ` creates `Vendor<T>` values from:
+
+- a `Func0<T>`
+- a `Callable<T>`
+- a direct value
+
+```java
+import net.liftweb.common.Func0;
+import net.liftweb.common.Vendor;
+import net.liftweb.util.VendorJ;
+
+Vendor<String> fixedName = VendorJ.vendor("application");
+
+Vendor<Long> currentTime = VendorJ.vendor(
+    (Func0<Long>) () -> System.currentTimeMillis()
+);
+```
+
+This is useful when an API needs either a fixed value or a deferred value-producing function.
+
+---
+
+## Password hashing with `BCrypt`
+
+`BCrypt` supports generating salts, hashing passwords, and verifying a plaintext password against a stored hash.
+
+```java
+import net.liftweb.util.BCrypt;
+
+String password = "correct horse battery staple";
+
+// Create a salt using the default settings.
+String salt = BCrypt.gensalt();
+
+// Store the resulting hash, not the plaintext password.
+String storedHash = BCrypt.hashpw(password, salt);
+
+// Later, during authentication:
+boolean authenticated = BCrypt.checkpw(password, storedHash);
+```
+
+You can specify the work factor explicitly:
+
+```java
+String salt = BCrypt.gensalt(12);
+String hash = BCrypt.hashpw("secret", salt);
+```
+
+Or provide a `SecureRandom` instance:
+
+```java
+import java.security.SecureRandom;
+import net.liftweb.util.BCrypt;
+
+SecureRandom random = new SecureRandom();
+String salt = BCrypt.gensalt(12, random);
+```
+
+---
+
+## CSS selector bindings
+
+### `Css`
+
+`Css.sel` creates a `CssSel` from a selector and a replacement or transformation value.
+
+Supported value forms are:
+
+- `String`
+- `NodeSeq`
+- `Function1<NodeSeq, NodeSeq>`
+- `Bindable`
+
+```java
+import net.liftweb.util.Css;
+import net.liftweb.util.CssSel;
+
+// Bind a selector to a string value.
+CssSel titleBinding = Css.sel("#page-title", "Welcome");
+```
+
+A selector can also be associated with a node transformation function:
+
+```java
+import net.liftweb.util.Css;
+import net.liftweb.util.CssSel;
+import scala.Function1;
+import scala.xml.NodeSeq;
+
+Function1<NodeSeq, NodeSeq> transform = nodes -> nodes;
+
+CssSel binding = Css.sel(".content *", transform);
+```
+
+The `Func.lift` adapter can be used when defining the transformation with the Java-friendly `Func1` interface:
+
+```java
+import net.liftweb.common.Func;
+import net.liftweb.common.Func1;
+import net.liftweb.util.Css;
+import net.liftweb.util.CssSel;
+import scala.xml.NodeSeq;
+
+Func1<NodeSeq, NodeSeq> keepNodes = nodes -> nodes;
+
+CssSel binding = Css.sel(".content *", Func.lift(keepNodes));
+```
+
+---
+
+## Java entry points for web APIs
+
+Several classes expose Java accessors for corresponding Lift APIs:
+
+| Class | Accessor | Returns |
+|---|---|---|
+| `LiftRulesJ` | `LiftRulesJ.j()` | `LiftRules` |
+| `SHtmlJ` | `SHtmlJ.j()` | `SHtml` |
+| `SJ` | `SJ.j()` | `S` |
+| `MenuJ` | `MenuJ.j()` | `MenuSingleton` |
+| `SiteMapJ` | `SiteMapJ.j()` | `SiteMapSingleton` |
+
+For example:
+
+```java
+import net.liftweb.http.LiftRules;
+import net.liftweb.http.LiftRulesJ;
+
+LiftRules rules = LiftRulesJ.j();
+```
+
+```java
+import net.liftweb.http.S;
+import net.liftweb.http.SJ;
+
+S requestContext = SJ.j();
+```
+
+```java
+import net.liftweb.http.SHtml;
+import net.liftweb.http.SHtmlJ;
+
+SHtml html = SHtmlJ.j();
+```
+
+These accessors provide a direct Java entry point without requiring callers to reference Scala-style singleton access patterns.
+
+---
+
+## Session variables
+
+### `VarsJ`
+
+`VarsJ.vendSessionVar` creates a `SessionVar<T>` using either:
+
+- a default value, or
+- a `Callable<T>` that supplies the default value
+
+```java
+import net.liftweb.http.SessionVar;
+import net.liftweb.http.VarsJ;
+
+SessionVar<String> selectedTheme = VarsJ.vendSessionVar("light");
+```
+
+For a computed default value:
+
+```java
+import java.util.UUID;
+import net.liftweb.http.SessionVar;
+import net.liftweb.http.VarsJ;
+
+SessionVar<String> requestToken =
+    VarsJ.vendSessionVar(() -> UUID.randomUUID().toString());
+```
+
+Use the callable form when the default should be created lazily rather than supplied as one shared literal value.
+
+---
+
+## Site maps
+
+### `SiteMapJ`
+
+`SiteMapJ` provides access to a `SiteMapSingleton` and a builder for `SiteMap` instances.
+
+```java
+import net.liftweb.sitemap.ConvertableToMenu;
+import net.liftweb.sitemap.SiteMap;
+import net.liftweb.sitemap.SiteMapJ;
+
+// menu1 and menu2 are ConvertableToMenu values.
+ConvertableToMenu menu1 = /* ... */;
+ConvertableToMenu menu2 = /* ... */;
+
+SiteMap siteMap = SiteMapJ.build(menu1, menu2);
+```
+
+The `MenuJ.j()` and `SiteMapJ.j()` methods expose the associated menu and sitemap singleton APIs:
+
+```java
+import net.liftweb.sitemap.MenuSingleton;
+import net.liftweb.sitemap.MenuJ;
+import net.liftweb.sitemap.SiteMapJ;
+import net.liftweb.sitemap.SiteMapSingleton;
+
+MenuSingleton menus = MenuJ.j();
+SiteMapSingleton siteMaps = SiteMapJ.j();
+```
+
+---
+
+## Typical Java integration pattern
+
+A common pattern is to write application logic using Java lambdas, then adapt it where a Scala function is required.
+
+```java
+import net.liftweb.common.Func;
+import net.liftweb.common.Func1;
+import net.liftweb.util.Css;
+import net.liftweb.util.CssSel;
+import scala.xml.NodeSeq;
+
+public class PageBindings {
+    public CssSel contentBinding() {
+        Func1<NodeSeq, NodeSeq> transform = nodes -> nodes;
+        return Css.sel("#content *", Func.lift(transform));
+    }
+}
+```
+
+This keeps Java code expressed in terms of Java lambdas and the `Func0`–`Func4` interfaces while remaining compatible with APIs that use Scala function types.

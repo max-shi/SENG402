@@ -1,0 +1,459 @@
+# odoo14-addon-sale-exception
+
+A collection of Odoo sales extensions centered on sales-order control, exception handling, pricing, invoicing, delivery, stock, workflow automation, and related customer-service processes.
+
+The library extends Odoo model classes such as sales orders, sales-order lines, products, pricelists, partners, stock moves, invoices, companies, and configuration settings. It also provides transient wizard models, scheduled-processing entry points, portal/controller integrations, and installation or migration hooks.
+
+Although many components are designed to work independently, they commonly relate through the sales-order lifecycle:
+
+1. Configure company-, partner-, product-, pricelist-, workflow-, or order-type behavior.
+2. Create and edit sale orders and lines.
+3. Apply validation, exception, stock, packaging, pricing, and delivery rules.
+4. Confirm orders, generate deliveries, invoices, plans, bookings, or automated workflow jobs.
+5. Use wizards and actions to resolve exceptions and perform assisted operations.
+
+## Main capabilities
+
+### Sale-order exceptions and confirmation control
+
+The core exception-oriented API extends `SaleOrder` with checks around confirmation and draft transitions.
+
+| Class | Public methods | Purpose indicated by API |
+|---|---|---|
+| `SaleOrder` | `detect_exceptions()` | Detect applicable exceptions on sale orders. |
+| `SaleOrder` | `test_all_draft_orders()` | Run exception-related checks for draft orders. |
+| `SaleOrder` | `sale_check_exception()` | Perform a sale exception check. |
+| `SaleOrder` | `action_confirm()` | Confirm an order, potentially subject to extension rules. |
+| `SaleOrder` | `action_draft()` | Return an order to draft, potentially subject to extension rules. |
+| `SaleOrder` | `write(vals)` | Update order values while applying extension behavior. |
+| `SaleExceptionConfirm` | `action_confirm()` | Wizard action for confirming an exception-related operation. |
+| `SaleOrderCancel` | `action_cancel()` | Wizard action for cancelling an order with a reason. |
+| `SaleMassCancelOrders` | `action_mass_cancel()` | Wizard action for cancelling multiple orders. |
+
+Supporting models include `ExceptionRule`, `ResCompany`, and `ResConfigSettings`, indicating that exception behavior can be defined and configured.
+
+An additional order-level exception is available through:
+
+```python
+order.exception_partner_can_order_manufactured_for()
+```
+
+on the `SaleOrder` extension supplied by the manufactured-for partner exception component.
+
+---
+
+### Automatic sales workflows
+
+Several components extend `AutomaticWorkflowJob` and `SaleWorkflowProcess` to support automated sales workflow execution, periodicity, stock handling, queue jobs, and forced invoicing.
+
+| Class/function | Public methods | Purpose indicated by API |
+|---|---|---|
+| `AutomaticWorkflowJob` | `run_with_workflow(sale_workflow)` | Run a job against a workflow definition. |
+| `AutomaticWorkflowJob` | `run()` | Execute the job. |
+| `savepoint(cr)` | — | Database savepoint helper. |
+| `SaleOrder` | `write(vals)` | React to sales-order updates in workflow processing. |
+| `SaleWorkflowProcess` | `write(vals)` | Update workflow process settings or behavior. |
+| `QueueJob` | — | Queue-job model extension. |
+
+Multiple workflow variants extend the same public classes. When several are installed together, their behavior is composed through Odoo model inheritance.
+
+---
+
+### Pricelist caching and price access
+
+The pricelist cache API provides operations for building, refreshing, clearing, and querying cached pricelist data.
+
+| Class | Public methods |
+|---|---|
+| `PricelistCache` | `update_product_pricelist_cache(product_ids=None, pricelist_ids=None)` |
+| `PricelistCache` | `create_full_cache()` |
+| `PricelistCache` | `flush_pricelist_cache()` |
+| `PricelistCache` | `cron_reset_pricelist_cache()` |
+| `PricelistCache` | `get_cached_prices_for_pricelist(pricelist, products)` |
+| `Pricelist` | `create(vals_list)` |
+| `Pricelist` | `button_open_pricelist_cache_tree()` |
+| `PricelistItem` | `create(vals_list)` |
+| `PricelistItem` | `update_product_pricelist_cache()` |
+| `Partner` | `button_open_pricelist_cache_tree()` |
+| `PricelistCacheWizard` | `open_in_tree_view()` |
+| `PricelistController` | `partner_pricelist(partner)` |
+
+The cache can be refreshed selectively for products or pricelists, built in full, reset by a scheduled job, and queried for a specific pricelist/product collection.
+
+---
+
+### Delivery, stock, packaging, and availability
+
+A substantial portion of the API extends the relationship between sale orders and stock operations. Areas represented by public classes include:
+
+- Delivery-state controls and force/unforce actions.
+- Stock availability blocking before confirmation.
+- Manual delivery workflows.
+- Delivery address handling.
+- Delivery blocking reasons and removal actions.
+- Stock-move history and stock-move sequence handling.
+- Customer references propagated to stock operations.
+- Return requests.
+- Lots and lot selection.
+- Packaging-only sales rules.
+- Product-set packaging validation.
+- Stock-aware automatic workflows.
+- Multi-warehouse availability display.
+- Secondary-unit support through sales and stock flows.
+
+Notable actions include:
+
+| Class | Public methods |
+|---|---|
+| `SaleOrder` | `action_force_delivery_state()` |
+| `SaleOrder` | `action_unforce_delivery_state()` |
+| `SaleOrderLine` | `action_force_delivery_state()` |
+| `SaleOrderLine` | `action_unforce_delivery_state()` |
+| `SaleOrderBlockWizard` | `confirm()` |
+| `SaleOrderBlockWizard` | `action_adjust_uom_quantity()` |
+| `SaleOrderBlockWizard` | `action_adjust_packaging_quantity()` |
+| `SaleOrderBlockWizard` | `action_move_to_new_order()` |
+| `ManualDelivery` | `default_get(fields)` |
+| `ManualDelivery` | `confirm()` |
+| `SaleOrder` | `action_manual_delivery_wizard()` |
+| `StockPicking` | `validate_picking()` |
+| `SaleOrderLine` | `action_view_stock_moves()` |
+| `SaleOrder` | `action_create_return_request()` |
+| `StockReturnRequest` | `action_confirm()` |
+| `StockReturnRequest` | `action_view_sales()` |
+| `SaleOrder` | `generate_lot()` |
+| `SaleOrderLine` | `create_lot(index_lot=1)` |
+| `ProductSetLine` | `cron_check_packaging()` |
+| `ProductProduct` | `action_view_product_set_lines_to_check()` |
+| `ProductTemplate` | `action_view_product_set_lines_to_check()` |
+
+---
+
+### Invoicing, advance payments, payment sheets, and invoice plans
+
+The API includes facilities for advance payments, invoice plans, payment sheets, invoicing filters, invoice blocking, invoice frequency, forced invoicing, and invoice-related sales reporting.
+
+#### Advance-payment wizard
+
+```python
+class AccountVoucherWizard(models.TransientModel):
+    def check_amount(self):
+    def default_get(self, fields_list):
+    def make_advance_payment(self):
+```
+
+`AccountMove.action_post()` is also extended, indicating integration with accounting-document posting.
+
+#### Invoice plans
+
+| Class | Public methods |
+|---|---|
+| `SaleOrder` | `create_invoice_plan(num_installment, installment_date, interval, interval_type, advance)` |
+| `SaleOrder` | `remove_invoice_plan()` |
+| `SaleInvoicePlan` | `unlink()` |
+| `SaleCreateInvoicePlan` | `sale_create_invoice_plan()` |
+| `SaleAdvancePaymentInv` | `create_invoices_by_plan()` |
+
+#### Payment sheets
+
+| Class | Public methods |
+|---|---|
+| `SalePaymentSheet` | `unlink_except_open()` |
+| `SalePaymentSheet` | `button_confirm_sheet()` |
+| `SalePaymentSheet` | `button_reopen()` |
+| `SalePaymentSheet` | `button_bank_statement()` |
+| `SalePaymentSheetLine` | `unlink_except_statement_line()` |
+| `SaleInvoicePaymentWiz` | `default_get(fields_list)` |
+| `SaleInvoicePaymentWiz` | `create_sale_invoice_payment_sheet()` |
+
+---
+
+### Product sets, recommendations, and sales-line tools
+
+The library contains a set of tools for composing sale lines and assisting users with product selection.
+
+| Class | Public methods | Purpose indicated by API |
+|---|---|---|
+| `ProductSetLine` | `prepare_sale_order_line_values(order, quantity, max_sequence=0)` | Prepare values for a line generated from a product set. |
+| `SaleProductSetWizard` | `add_set()` | Add a product set to a sale order. |
+| `SaleProductSetWizard` | `prepare_sale_order_line_data(set_line, max_sequence=0)` | Prepare wizard line data. |
+| `SaleImportProducts` | `select_products()` | Select products for a sales import operation. |
+| `SaleImportProducts` | `create_items()` | Create import items. |
+| `SaleOrderRecommendation` | `action_reset()` | Reset recommendations. |
+| `SaleOrderRecommendation` | `generate_recommendations()` | Generate recommendations. |
+| `SaleOrderRecommendation` | `action_accept()` | Accept recommendations. |
+| `SaleOrderRecommendationLine` | `onchange_sale_uom_id_for_secondary()` | React to a secondary-unit change. |
+| `SaleOrderLinePriceHistoryline` | `action_set_price()` | Apply a selected historical price. |
+| `SaleOrderLine` | `action_update_names()` | Update order-line names through the order action. |
+
+Additional sale-line extensions cover descriptions, notes, tags, dates, effective dates, client order references, quantity cancellation, removal restrictions, sequencing, price locks, price history, secondary units, product attributes, product availability, and printing behavior.
+
+---
+
+### Sale-order lifecycle helpers
+
+The following public actions are available on sale orders or closely related wizard models:
+
+| Class | Public methods |
+|---|---|
+| `SaleOrder` | `toggle_active()` |
+| `SaleOrder` | `action_finish_sale_order()` |
+| `SaleOrder` | `action_unfinish_sale_order()` |
+| `SaleOrder` | `action_split(silent_errors=False)` |
+| `SaleOrder` | `action_view_revisions()` |
+| `SaleOrder` | `action_view_transaction()` |
+| `SaleOrder` | `action_open_resource_bookings()` |
+| `SaleOrder` | `action_bookings_resync()` |
+| `SaleOrder` | `action_set_planner_calendar_event(planner_summary=False)` |
+| `SaleOrder` | `cron_sale_validity_auto_cancel(company_ids=None)` |
+| `SaleOrder` | `copy(default=None)` |
+| `SaleOrder` | `is_using_quotation_number(vals)` |
+| `SaleOrder` | `get_view(view_id=None, view_type='form', **options)` |
+| `SaleOrder` | `check_access(operation)` |
+
+These extensions support archiving, completion state, splitting, revision navigation, transaction navigation, resource bookings, planner calendar integration, validity cancellation, quotation numbering, view customization, and access control.
+
+---
+
+### Resource bookings
+
+Resource-booking models and wizards integrate booking operations with sales orders.
+
+| Class | Public methods |
+|---|---|
+| `ResourceBookingType` | `action_sale_order_wizard()` |
+| `SaleOrder` | `action_open_resource_bookings()` |
+| `SaleOrder` | `action_bookings_resync()` |
+| `SaleOrderBookingConfirm` | `action_invite()` |
+| `SaleOrderBookingConfirm` | `action_noop()` |
+| `ResourceBookingSale` | `action_generate()` |
+
+The related `SaleOrder.create(vals_list)`, `SaleOrder.write(vals)`, `SaleOrder.action_confirm()`, `SaleOrderLine.create(vals_list)`, and `SaleOrderLine.write(vals)` extensions indicate that bookings can be synchronized as orders and lines change.
+
+---
+
+### Planner calendar
+
+The planner calendar API provides sale-order and event-oriented actions, summaries, ratings, issues, payment-sheet access, reassignment support, and scheduled updates.
+
+| Class | Public methods |
+|---|---|
+| `CalendarEvent` | `action_open_sale_order(new_order=False)` |
+| `CalendarEvent` | `action_open_invoices()` |
+| `CalendarEvent` | `action_open_unpaid_invoice()` |
+| `CalendarEvent` | `action_done()` |
+| `CalendarEvent` | `action_cancel()` |
+| `CalendarEvent` | `action_pending()` |
+| `CalendarEvent` | `action_open_issue()` |
+| `CalendarEvent` | `action_apply_issue()` |
+| `CalendarEvent` | `action_open_change_hour_wiz()` |
+| `CalendarEvent` | `action_apply_change_hour_wiz()` |
+| `CalendarEvent` | `action_open_rating()` |
+| `CalendarEvent` | `action_set_sale_planner_rating()` |
+| `CalendarEvent` | `get_week_days_count()` |
+| `CalendarEvent` | `cron_update_dynamic_final_date()` |
+| `SalePlannerCalendarSummary` | `action_get_today_summary()` |
+| `SalePlannerCalendarSummary` | `action_process()` |
+| `SalePlannerCalendarSummary` | `action_event_planner()` |
+| `SalePlannerCalendarReassignWiz` | `action_get_lines()` |
+| `SalePlannerCalendarReassignWiz` | `action_assign_new_values()` |
+| `SalePlannerCalendarReassignWiz` | `select_all_lines()` |
+| `SalePlannerCalendarReassignWiz` | `unselect_all_lines()` |
+| `SalePlannerCalendarReassignWiz` | `apply()` |
+| `SalePlannerCalendarReassignWiz` | `cron_unsubscribe(date=None)` |
+
+---
+
+## Usage examples
+
+The following examples illustrate calls against Odoo recordsets. The exact way records are obtained depends on the calling context—for example, a server action, wizard, controller, test, scheduled job, or custom module.
+
+### Detect and check sale-order exceptions
+
+```python
+# `order` is a SaleOrder recordset.
+order.detect_exceptions()
+
+# Perform the explicit exception check.
+order.sale_check_exception()
+
+# Continue with the normal confirmation action when appropriate.
+order.action_confirm()
+```
+
+For a batch process operating on draft orders:
+
+```python
+# `orders` is a SaleOrder recordset containing draft orders.
+orders.test_all_draft_orders()
+```
+
+### Refresh cached pricelist data
+
+Refresh cache entries for a specified group of products and pricelists:
+
+```python
+# `cache` is a PricelistCache recordset.
+# `product_ids` and `pricelist_ids` are optional values accepted by the API.
+cache.update_product_pricelist_cache(
+    product_ids=product_ids,
+    pricelist_ids=pricelist_ids,
+)
+```
+
+Build the complete cache:
+
+```python
+cache.create_full_cache()
+```
+
+Retrieve cached prices for a pricelist and a product collection:
+
+```python
+prices = cache.get_cached_prices_for_pricelist(
+    pricelist=pricelist,
+    products=products,
+)
+```
+
+A scheduled operation can reset the cache through:
+
+```python
+cache.cron_reset_pricelist_cache()
+```
+
+### Create an invoice plan
+
+```python
+# `order` is a SaleOrder recordset.
+order.create_invoice_plan(
+    num_installment=3,
+    installment_date=first_installment_date,
+    interval=1,
+    interval_type="month",
+    advance=0,
+)
+```
+
+Remove existing plan entries:
+
+```python
+order.remove_invoice_plan()
+```
+
+Create invoices from a planned-invoice wizard:
+
+```python
+# `wizard` is a SaleAdvancePaymentInv transient recordset.
+wizard.create_invoices_by_plan()
+```
+
+### Add a product set to an order
+
+```python
+# `wizard` is a SaleProductSetWizard transient recordset.
+wizard.add_set()
+```
+
+To prepare a line explicitly from a set line:
+
+```python
+line_values = set_line.prepare_sale_order_line_values(
+    order=order,
+    quantity=2,
+    max_sequence=10,
+)
+```
+
+### Blocked-order resolution workflow
+
+The stock-block wizard exposes alternative corrective actions:
+
+```python
+# `wizard` is a SaleOrderBlockWizard transient recordset.
+
+# Confirm the current wizard operation.
+wizard.confirm()
+
+# Or adjust quantities before continuing.
+wizard.action_adjust_uom_quantity()
+wizard.action_adjust_packaging_quantity()
+
+# Or move affected content to a new order.
+wizard.action_move_to_new_order()
+```
+
+### Generate lots for an order
+
+```python
+# Generate lots at order level.
+order.generate_lot()
+
+# Or create a lot for an individual sale line.
+lot = order_line.create_lot(index_lot=1)
+```
+
+### Work with planner-calendar events
+
+```python
+# `event` is a CalendarEvent recordset.
+
+# Navigate to the related sales order.
+action = event.action_open_sale_order()
+
+# Mark the event as done.
+event.action_done()
+
+# Open the associated invoices.
+invoice_action = event.action_open_invoices()
+```
+
+### Run automatic workflow processing
+
+```python
+# `job` is an AutomaticWorkflowJob recordset.
+job.run_with_workflow(sale_workflow)
+
+# Execute the job using its configured processing behavior.
+job.run()
+```
+
+### Invoke scheduled operations
+
+Several public methods are intended for scheduled execution:
+
+```python
+cache.cron_reset_pricelist_cache()
+
+calendar_event.cron_update_dynamic_final_date()
+
+sale_order.cron_sale_validity_auto_cancel(company_ids=company_ids)
+
+reassign_wizard.cron_unsubscribe(date=run_date)
+```
+
+## Hooks and migrations
+
+The library exposes Odoo lifecycle hooks and migration functions, including:
+
+- `pre_init_hook(env)`
+- `post_init_hook(env)`
+- `uninstall_hook(env)`
+- `migrate(cr, version)`
+- `migrate(env, version)`
+- `populate_unrevisioned_name(env)`
+- `set_default_partner_product_filter(env)`
+
+These functions are lifecycle entry points. They are normally invoked by Odoo during installation, uninstallation, initialization, or migration rather than called from regular business code.
+
+## Extension model conventions
+
+Most classes inherit from either:
+
+- `models.Model` for persistent business records,
+- `models.TransientModel` for wizard and temporary interaction records, or
+- `models.AbstractModel` for reusable model behavior.
+
+Many classes intentionally expose no standalone methods. These classes still participate in the public extension surface by adding or adapting model behavior, fields, views, reports, configuration, or business rules through Odoo inheritance.
+
+When extending this library, prefer calling the documented public action and helper methods on recordsets and preserve Odoo’s usual multi-record semantics for methods such as `create`, `write`, `copy`, `unlink`, and `action_confirm`.

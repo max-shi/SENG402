@@ -1,0 +1,494 @@
+# py7zr
+
+`py7zr` is a Python library for reading, writing, testing, and extracting 7z archives. It provides a high-level `SevenZipFile` interface for everyday archive operations, optional callbacks for reporting progress, in-memory extraction targets, compression/decompression components, and lower-level 7z header and stream support.
+
+The package also exposes a command-line entry point:
+
+```bash
+python -m py7zr
+```
+
+## Features
+
+- Create 7z archives from files, directories, file-like objects, and in-memory data.
+- List archive contents and inspect individual members.
+- Extract entire archives or selected members.
+- Test archives and verify member integrity.
+- Work with password-protected archives.
+- Configure encoded and encrypted headers when creating archives.
+- Extract to the filesystem or custom in-memory writer factories.
+- Receive extraction progress through callback classes.
+- Use compression, decompression, encryption, and filter primitives directly when needed.
+- Integrate with archive-packaging workflows through `pack_7zarchive()` and `unpack_7zarchive()`.
+
+## Installation
+
+```bash
+pip install py7zr
+```
+
+## Quick start
+
+### Create an archive
+
+Use `SevenZipFile` as a context manager and add a directory tree with `writeall()`:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("project.7z", "w") as archive:
+    archive.writeall("project/")
+```
+
+Add individual files with `write()`:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("documents.7z", "w") as archive:
+    archive.write("README.md")
+    archive.write("notes/todo.txt", arcname="notes/todo.txt")
+```
+
+Write in-memory content with `writestr()`:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("generated.7z", "w") as archive:
+    archive.writestr("hello from py7zr\n", "message.txt")
+    archive.writestr(b"\x00\x01\x02", "data.bin")
+```
+
+Write an already-open file-like object with `writef()`:
+
+```python
+import io
+import py7zr
+
+payload = io.BytesIO(b"content produced in memory")
+
+with py7zr.SevenZipFile("memory.7z", "w") as archive:
+    archive.writef(payload, "payload.bin")
+```
+
+### Extract an archive
+
+Extract every member to a directory:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    archive.extractall(path="restored-project")
+```
+
+Extract selected members:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    archive.extract(
+        path="selected-files",
+        targets={"README.md", "src/main.py"},
+    )
+```
+
+The `recursive` option can be used when selecting archive members by path:
+
+```python
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    archive.extract(
+        path="selected-files",
+        targets={"docs"},
+        recursive=True,
+    )
+```
+
+### List archive contents
+
+Use `getnames()` or `namelist()` to retrieve member names:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    for name in archive.getnames():
+        print(name)
+```
+
+Use `list()` to retrieve file-information objects:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    entries = archive.list()
+
+for entry in entries:
+    print(entry)
+```
+
+Look up a particular member with `getinfo()`:
+
+```python
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    readme_info = archive.getinfo("README.md")
+    print(readme_info)
+```
+
+### Test archive integrity
+
+`test()` returns an integrity result, while `testzip()` can identify a problematic member:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    result = archive.test()
+    if result is True:
+        print("Archive passed integrity checks.")
+    else:
+        print("Archive test did not complete successfully.")
+
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    bad_member = archive.testzip()
+    if bad_member is None:
+        print("All members passed.")
+    else:
+        print(f"Problem found in: {bad_member}")
+```
+
+### Check whether a file is a 7z archive
+
+```python
+import py7zr
+
+if py7zr.is_7zfile("downloaded-file"):
+    print("This is a 7z archive.")
+```
+
+`is_7zfile()` also accepts compatible binary file objects that support `read()` and `seek()`.
+
+## Password-protected archives
+
+`SevenZipFile` provides `needs_password()` to determine whether an opened archive requires a password:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("protected.7z", "r") as archive:
+    if archive.needs_password():
+        print("A password is required.")
+```
+
+When creating an archive, header behavior can be configured with:
+
+- `set_encoded_header_mode(mode)`
+- `set_encrypted_header(mode)`
+
+For example:
+
+```python
+import py7zr
+
+with py7zr.SevenZipFile("protected.7z", "w", password="secret") as archive:
+    archive.set_encoded_header_mode(True)
+    archive.set_encrypted_header(True)
+    archive.writeall("private-files")
+```
+
+## Extraction callbacks
+
+Extraction callbacks allow applications to display progress, warnings, and completion events.
+
+Subclass `ExtractCallback` and implement the reporting methods needed by your application:
+
+```python
+import py7zr
+
+
+class ProgressPrinter(py7zr.callbacks.ExtractCallback):
+    def report_start_preparation(self):
+        print("Preparing extraction...")
+
+    def report_start(self, processing_file_path, processing_bytes):
+        print(f"Extracting {processing_file_path} ({processing_bytes})")
+
+    def report_update(self, decompressed_bytes):
+        print(f"  processed: {decompressed_bytes}")
+
+    def report_end(self, processing_file_path, wrote_bytes):
+        print(f"Finished {processing_file_path} ({wrote_bytes})")
+
+    def report_warning(self, message):
+        print(f"Warning: {message}")
+
+    def report_postprocess(self):
+        print("Extraction complete.")
+
+
+with py7zr.SevenZipFile("project.7z", "r") as archive:
+    archive.extractall(
+        path="output",
+        callback=ProgressPrinter(),
+    )
+```
+
+The base `Callback` API defines the following lifecycle hooks:
+
+| Method | Purpose |
+| --- | --- |
+| `report_start_preparation()` | Called before processing begins. |
+| `report_start(processing_file_path, processing_bytes)` | Called when a member begins processing. |
+| `report_update(decompressed_bytes)` | Called as decompression progresses. |
+| `report_end(processing_file_path, wrote_bytes)` | Called after a member has been written. |
+| `report_warning(message)` | Called when a warning is reported. |
+| `report_postprocess()` | Called after archive processing completes. |
+
+`ArchiveCallback` is also available for archive-creation reporting integrations.
+
+## Extracting into memory
+
+By default, extraction writes files to the filesystem. Pass a `WriterFactory` to direct output elsewhere.
+
+`BytesIOFactory` creates in-memory byte streams for extracted members:
+
+```python
+import py7zr
+from py7zr.io import BytesIOFactory
+
+factory = BytesIOFactory()
+
+with py7zr.SevenZipFile("assets.7z", "r") as archive:
+    archive.extractall(factory=factory)
+
+logo_stream = factory.get("images/logo.bin")
+logo_stream.seek(0)
+logo_data = logo_stream.read()
+
+print(f"Loaded {len(logo_data)} bytes")
+```
+
+Other built-in factories include:
+
+- `HashIOFactory` — creates output objects intended for hashing or verification workflows.
+- `NullIOFactory` — discards extracted content while still allowing archive processing.
+- `WriterFactory` — abstract base class for implementing custom extraction destinations.
+
+A custom factory implements `create(filename)` and returns a `Py7zIO` object.
+
+## Main API
+
+### `SevenZipFile`
+
+`SevenZipFile` is the primary archive interface.
+
+| Method | Description |
+| --- | --- |
+| `getnames()` | Return archive member names. |
+| `namelist()` | Return archive member names. |
+| `getinfo(name)` | Return information for a named member. |
+| `archiveinfo()` | Return archive-level information. |
+| `needs_password()` | Report whether archive contents require a password. |
+| `list()` | Return member information objects. |
+| `extractall(path=None, callback=None, factory=None)` | Extract every member. |
+| `extract(path=None, targets=None, recursive=False, callback=None, factory=None)` | Extract selected members. |
+| `reporter(callback)` | Set or use an extraction reporter. |
+| `writeall(path, arcname=None)` | Add a directory tree or path collection. |
+| `write(file, arcname=None)` | Add one filesystem file. |
+| `writef(bio, arcname)` | Add content from a file-like object. |
+| `writestr(data, arcname)` | Add text or bytes as a member. |
+| `set_encoded_header_mode(mode)` | Configure encoded-header behavior. |
+| `set_encrypted_header(mode)` | Configure encrypted-header behavior. |
+| `test()` | Test archive integrity. |
+| `testzip()` | Return a failing member name, if available. |
+| `reset()` | Reset archive processing state. |
+| `close()` | Close the archive. |
+
+## Archive member metadata
+
+Archive members are represented internally by `ArchiveFile`. Its public accessors include:
+
+- `filename()` — archive member name.
+- `origin()` — source path information.
+- `file_properties()` — member property dictionary.
+- `is_file()` and `is_directory()` — member kind checks.
+- `is_symlink()`, `is_junction()`, and `is_socket()` — special filesystem entry checks.
+- `uncompressed()` and `compressed()` — size information.
+- `crc32()` — CRC value, when available.
+- `lastwritetime()` — archive timestamp, when available.
+- `posix_mode()` and `st_fmt()` — POSIX metadata, when available.
+- `readonly()` — read-only attribute state.
+- `data()` — associated binary data stream, when available.
+
+`ArchiveTimestamp` provides conversion helpers:
+
+```python
+from py7zr.helpers import ArchiveTimestamp
+
+timestamp = ArchiveTimestamp.from_now()
+print(timestamp.totimestamp())
+print(timestamp.as_datetime())
+```
+
+## Compression and decompression components
+
+Most applications should use `SevenZipFile`, which manages archive formats, streams, folders, filters, and integrity checks automatically.
+
+For advanced integrations, `py7zr.compressor` exposes compressor and decompressor interfaces:
+
+- `ISevenZipCompressor`
+- `ISevenZipDecompressor`
+- `SevenZipCompressor`
+- `SevenZipDecompressor`
+
+Available codecs and filters include components for:
+
+- AES encryption
+- Deflate and Deflate64
+- Copy/no-compression streams
+- PPMd
+- LZMA1
+- Brotli
+- Zstandard
+- BCJ transformations for x86, ARM, ARM Thumb, PowerPC, and SPARC
+
+Example using the copy codec directly:
+
+```python
+from py7zr.compressor import CopyCompressor, CopyDecompressor
+
+source = b"uncompressed data"
+
+compressor = CopyCompressor()
+encoded = compressor.compress(source) + compressor.flush()
+
+decompressor = CopyDecompressor()
+decoded = decompressor.decompress(encoded)
+
+assert decoded == source
+```
+
+`SupportedMethods` provides method and filter lookup helpers, including support checks and method-name resolution. `get_methods_names()` converts lists of coder descriptions into readable method names.
+
+## Utility functions
+
+### CRC calculation
+
+```python
+from py7zr.helpers import calculate_crc32
+
+crc = calculate_crc32(b"important data")
+print(hex(crc))
+```
+
+### Archive path validation
+
+`py7zr.helpers` provides utilities useful when working with extracted archive paths:
+
+- `check_archive_path(arcname)` — validate an archive member path.
+- `get_sanitized_output_path(fname, path)` — create a safe extraction target path.
+- `is_path_valid(target, parent)` — validate a path against a parent location.
+- `canonical_path(target)` — obtain a canonical path.
+- `remove_relative_path_marker(path)` — remove relative-path markers.
+- `remove_trailing_slash(path)` — normalize a trailing slash.
+- `islink(path)` and `readlink(path)` — link helpers.
+- `check_win32_file_namespace(pathname)` — Windows path namespace handling.
+
+These helpers support safe archive extraction workflows, especially when archive member names may contain unusual or unsafe path forms.
+
+## Archive packaging helpers
+
+`pack_7zarchive()` and `unpack_7zarchive()` provide archive-oriented helper functions:
+
+```python
+import py7zr
+
+py7zr.pack_7zarchive(
+    base_name="release",
+    base_dir="dist",
+)
+```
+
+```python
+import py7zr
+
+py7zr.unpack_7zarchive(
+    archive="release.7z",
+    path="unpacked-release",
+)
+```
+
+## Exceptions
+
+The package defines dedicated exceptions for common archive failures:
+
+| Exception | Meaning |
+| --- | --- |
+| `ArchiveError` | Base archive-related error. |
+| `Bad7zFile` | The input is not a valid or readable 7z archive. |
+| `CrcError` | A CRC integrity check failed. |
+| `UnsupportedCompressionMethodError` | The archive requires an unsupported compression method. |
+| `DecompressionError` | Decompression failed. |
+| `DecompressionBombError` | Archive processing exceeded decompression safety limits. |
+| `InternalError` | An internal archive-processing error occurred. |
+| `PasswordRequired` | A password is required to continue. |
+| `AbsolutePathError` | An unsafe absolute archive path was encountered. |
+
+A typical error-handling pattern:
+
+```python
+import py7zr
+from py7zr.exceptions import ArchiveError, PasswordRequired
+
+try:
+    with py7zr.SevenZipFile("input.7z", "r") as archive:
+        archive.extractall(path="output")
+except PasswordRequired:
+    print("The archive requires a password.")
+except ArchiveError as exc:
+    print(f"Unable to process archive: {exc}")
+```
+
+## Command-line interface
+
+The package provides a CLI through the module entry point:
+
+```bash
+python -m py7zr
+```
+
+The CLI implementation includes operations for:
+
+- displaying version and help information;
+- inspecting archive information;
+- listing archive contents;
+- testing archives;
+- extracting archives;
+- creating archives;
+- appending to archives.
+
+For command-specific options, use the built-in help output:
+
+```bash
+python -m py7zr --help
+```
+
+## Low-level archive support
+
+The `archiveinfo` module exposes the structures used to read and write 7z archive metadata and stream information:
+
+- `SignatureHeader`
+- `Header`
+- `StreamsInfo`
+- `PackInfo`
+- `UnpackInfo`
+- `SubstreamsInfo`
+- `FilesInfo`
+- `Folder`
+- `Bond`
+
+It also includes binary serialization helpers for CRC values, unsigned integers, booleans, UTF-16 strings, and byte sequences. These APIs are primarily intended for advanced tooling, format inspection, or custom archive implementations.
+

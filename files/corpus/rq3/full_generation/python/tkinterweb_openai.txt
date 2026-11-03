@@ -1,0 +1,460 @@
+# tkinterweb
+
+`tkinterweb` provides HTML-oriented widgets and DOM-style APIs for Python applications built with Tkinter. It appears designed for loading and rendering HTML content, navigating to URLs, applying CSS, interacting with document elements, handling selection and caret behavior, searching text, and integrating script-like evaluation through a JavaScript engine interface.
+
+The library offers both high-level widgets for common application use and lower-level interfaces for direct document, node, style, image, event, and URL handling.
+
+## Main components
+
+### HTML widgets
+
+The primary widget family is built around `HtmlFrame`.
+
+- `HtmlFrame` — an embeddable Tkinter frame for loading and displaying HTML.
+- `HtmlLabel` — a label-like HTML widget.
+- `HtmlText` — a text-oriented HTML widget with `insert()` and `delete()` operations.
+- `HtmlParse` — an HTML frame variant with custom cleanup behavior.
+
+`HtmlFrame` provides page loading, navigation, selection, caret control, searching, document access, screenshots, printing, and saving.
+
+Common methods include:
+
+```python
+frame.load_html(html_source, base_url=None, fragment=None)
+frame.load_url(url, decode=None, force=False)
+frame.load_file(file_url, decode=None, force=False)
+frame.load_website(website_url, decode=None, force=False)
+frame.reload()
+frame.stop()
+```
+
+It also exposes page metadata and document interfaces:
+
+```python
+frame.title()
+frame.icon()
+frame.current_url()
+frame.base_url()
+frame.document()
+frame.javascript()
+frame.html()
+```
+
+### Document and DOM APIs
+
+`HTMLDocument` and `HTMLElement` provide a browser-like interface for creating, locating, and modifying document elements.
+
+`HTMLDocument` supports:
+
+- `body()` and `documentElement()`
+- `write()`
+- `createElement()` and `createTextNode()`
+- lookup methods such as `getElementById()`
+- CSS selector queries through `querySelector()` and `querySelectorAll()`
+
+`HTMLElement` supports:
+
+- HTML and text content access through `innerHTML`, `innerText`, and `textContent`
+- attributes with `getAttribute()`, `setAttribute()`, and `removeAttribute()`
+- element properties such as `id`, `className`, `tagName`, `children`, and `parentElement`
+- document traversal with `previousSibling()` and `nextSibling()`
+- DOM mutation with `appendChild()`, `insertBefore()`, and `remove()`
+- event binding through `bind()` and `unbind()`
+- layout access through `getBoundingClientRect()` and `scrollIntoView()`
+
+`CSSStyleDeclaration` represents element style information and supports reading, setting, and removing CSS properties.
+
+### Low-level HTML engine access
+
+`TkinterWeb` is the lower-level Tk widget interface underlying HTML rendering and document operations. It includes APIs for:
+
+- Parsing HTML and CSS
+- URL resolution and downloading
+- DOM node access and mutation
+- Scrolling and bounding-box queries
+- Image loading and caching
+- Selection and caret handling
+- Search and text highlighting
+- Widget replacement for document nodes
+- Event and handler registration
+- Serialization and style inspection
+
+For example:
+
+```python
+html_widget.parse("<p>Hello</p>")
+html_widget.parse_css(data="p { color: blue; }")
+html_widget.resolve_url("images/logo.png", base="https://example.com/")
+html_widget.find_text("Hello", select=True, ignore_case=True, highlight_all=True)
+```
+
+### Selection, caret, and search
+
+`HtmlFrame` includes high-level selection and caret methods:
+
+```python
+frame.select_all()
+frame.clear_selection()
+frame.get_selection()
+
+frame.get_caret_position()
+frame.set_caret_position(element=None, index=0)
+frame.shift_caret_left()
+frame.shift_caret_right()
+
+frame.find_text(
+    text,
+    select=1,
+    ignore_case=True,
+    highlight_all=True,
+    detailed=False,
+)
+```
+
+The lower-level `SelectionManager`, `CaretManager`, and `SearchManager` classes expose more direct control for integrations that need to manage document selection, caret placement, or match highlighting.
+
+### JavaScript-style evaluation
+
+`JSEngine` provides a small interface for registering Python objects and evaluating expressions:
+
+```python
+engine.register(name, obj)
+engine.eval(expr, _this=None)
+```
+
+An `HtmlFrame` exposes its associated engine through `javascript()` and can register objects with `register_JS_object()`.
+
+### URL and download helpers
+
+`TkHtmlParsedURI` provides URI parsing and manipulation methods, including:
+
+- `load()`
+- `get()`
+- `scheme()`
+- `authority()`
+- `path()`
+- `query()`
+- `fragment()`
+- `splitfrag()`
+- `defrag()`
+- `uri_resolve()`
+
+Utility download functions are also available:
+
+```python
+download(url, data='', method='GET', decode=None, insecure=False,
+         cafile=None, headers=(), timeout=15)
+
+cache_download(url, data='', method='GET', decode=None, insecure=False,
+               cafile=None, headers=(), timeout=15)
+
+check_download(url, data='', method='GET', decode=None, insecure=False,
+               cafile=None, headers=(), timeout=15)
+```
+
+## Quick start
+
+Create an `HtmlFrame`, place it in a Tkinter window, and load HTML content.
+
+```python
+import tkinter as tk
+from tkinterweb.htmlwidgets import HtmlFrame
+
+root = tk.Tk()
+root.title("tkinterweb example")
+
+page = HtmlFrame(root)
+page.pack(fill="both", expand=True)
+
+page.load_html("""
+<!doctype html>
+<html>
+  <head>
+    <title>Example page</title>
+  </head>
+  <body>
+    <h1>Hello from tkinterweb</h1>
+    <p>This document was loaded from a Python string.</p>
+  </body>
+</html>
+""")
+
+root.mainloop()
+```
+
+## Loading a URL
+
+Use `load_url()` when the page location is already available as a URL.
+
+```python
+import tkinter as tk
+from tkinterweb.htmlwidgets import HtmlFrame
+
+root = tk.Tk()
+
+browser = HtmlFrame(root)
+browser.pack(fill="both", expand=True)
+
+browser.load_url("https://example.com")
+
+root.mainloop()
+```
+
+Related loading methods include:
+
+```python
+browser.load_file("page.html")
+browser.load_website("https://example.com")
+browser.load_form_data(
+    "https://example.com/search",
+    data="q=tkinterweb",
+    method="GET",
+)
+```
+
+Call `reload()` to load the current page again, or `stop()` to stop an active operation.
+
+## Working with the document
+
+Retrieve the document from an `HtmlFrame` and use DOM lookup methods to locate elements.
+
+```python
+document = page.document()
+
+heading = document.getElementById("heading")
+if heading is not None:
+    heading.innerText("Updated heading")
+
+first_link = document.querySelector("a")
+if first_link is not None:
+    first_link.setAttribute("href", "https://example.com")
+```
+
+Create and append a new element:
+
+```python
+document = page.document()
+body = document.body()
+
+message = document.createElement("p")
+message.innerText("This paragraph was created from Python.")
+
+body.appendChild(message)
+```
+
+Query multiple elements:
+
+```python
+document = page.document()
+
+for item in document.querySelectorAll(".notice"):
+    item.setAttribute("data-processed", "true")
+```
+
+## Updating element content and attributes
+
+`HTMLElement` exposes HTML, text, and attribute operations.
+
+```python
+element = page.document().querySelector("#status")
+
+if element is not None:
+    element.innerHTML("<strong>Ready</strong>")
+    element.setAttribute("role", "status")
+    element.setAttribute("class", "success")
+```
+
+Remove an attribute or element when needed:
+
+```python
+element.removeAttribute("hidden")
+element.remove()
+```
+
+## Applying CSS
+
+Add stylesheet content directly to an HTML frame with `add_css()`.
+
+```python
+page.add_css("""
+body {
+    font-family: Arial, sans-serif;
+    margin: 1rem;
+}
+
+.notice {
+    color: #0a5;
+    font-weight: bold;
+}
+""")
+```
+
+For lower-level access, `TkinterWeb.parse_css()` can parse stylesheet data:
+
+```python
+html_widget = page.html()
+
+html_widget.parse_css(
+    sheetid="theme",
+    data="h1 { color: navy; }",
+    fallback_priority="author",
+)
+```
+
+Element styles are available through `style()` and the `CSSStyleDeclaration` API:
+
+```python
+element = page.document().querySelector("#status")
+
+if element is not None:
+    styles = element.style()
+    styles.setProperty("color", "green")
+    styles.setProperty("font-weight", "bold")
+```
+
+## Searching page text
+
+Use `find_text()` to locate text in the currently loaded document.
+
+```python
+page.find_text(
+    "tkinterweb",
+    select=1,
+    ignore_case=True,
+    highlight_all=True,
+)
+```
+
+To clear or inspect the current selection:
+
+```python
+selected_text = page.get_selection()
+page.clear_selection()
+page.select_all()
+```
+
+## Caret positioning
+
+`HtmlFrame` provides caret movement and position APIs suitable for editable or keyboard-driven document interactions.
+
+```python
+page.set_caret_page_position(0)
+
+page.shift_caret_right()
+page.shift_caret_right()
+page.shift_caret_left()
+
+position = page.get_caret_page_position()
+```
+
+Caret positions can also be expressed relative to an element:
+
+```python
+element = page.document().querySelector("p")
+
+if element is not None:
+    page.set_caret_position(element, index=0)
+```
+
+## Handling element events
+
+Bind callbacks directly to an `HTMLElement`.
+
+```python
+def on_click(event):
+    print("The button was clicked")
+
+button = page.document().getElementById("submit")
+
+if button is not None:
+    button.bind("<Button-1>", on_click)
+```
+
+Bindings can later be removed with `unbind()`:
+
+```python
+button.unbind("<Button-1>")
+```
+
+For lower-level event dispatch, `EventManager` provides methods such as `post_event()`, `bind()`, `unbind()`, and `send_onload()`.
+
+## Registering objects with the JavaScript interface
+
+An `HtmlFrame` can register Python objects for use by its JavaScript engine interface.
+
+```python
+class ApplicationAPI:
+    def notify(self, message):
+        print(message)
+
+api = ApplicationAPI()
+
+page.register_JS_object("app", api)
+
+engine = page.javascript()
+engine.eval("app.notify('Hello from the page')")
+```
+
+## Capturing, printing, and saving pages
+
+`HtmlFrame` includes output-oriented methods:
+
+```python
+page.screenshot_page(filename="page.png", full=True)
+page.print_page(filename="page.ps")
+page.save_page(filename="page.html")
+page.snapshot_page(filename="snapshot.html", include_head=True)
+```
+
+Use `get_page_text()` to retrieve textual page content:
+
+```python
+text = page.get_page_text()
+print(text)
+```
+
+## Specialized widgets
+
+The library also includes Tkinter-compatible helper widgets that appear intended for HTML form controls and embedded UI behavior:
+
+- `Combobox`
+- `AutoScrollbar`
+- `ScrolledTextBox`
+- `FormEntry`
+- `FormCheckbox`
+- `FormRadioButton`
+- `FormRange`
+- `FormNumber`
+- `FileSelector`
+- `ColourSelector`
+- `Notebook`
+- `Tooltip`
+
+Examples of form-style accessors include:
+
+```python
+entry.set("example")
+value = entry.get()
+
+radio.set("option-a")
+selected = radio.get()
+
+selector.set("/path/to/file")
+filename = selector.get()
+```
+
+## Utility APIs
+
+Useful standalone helpers include:
+
+```python
+from tkinterweb.dom import escape_Tcl, camel_case_to_property
+from tkinterweb.utilities import rgb_to_hex, invert_color, shorten
+
+escaped = escape_Tcl('Text with "quotes"')
+property_name = camel_case_to_property("fontSize")
+color = rgb_to_hex(255, 128, 0)
+short = shorten("A long string")
+```
+
+Image utilities include `svg_to_png()`, `data_to_image()`, `blank_image()`, `invert_image()`, and `create_RGB_image()` for image conversion and preparation workflows.

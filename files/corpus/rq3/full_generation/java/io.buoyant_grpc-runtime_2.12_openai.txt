@@ -1,0 +1,250 @@
+# io.buoyant:grpc-runtime_2.12
+
+A Java library for participating in ZooKeeper-backed leader election.
+
+The API centers on a **candidate** that joins a group, offers leadership through a `Leader` implementation, and can read optional data associated with the current leader. It also includes a small functional interface for commands that may throw checked exceptions.
+
+## Main API
+
+### `Candidate`
+
+`Candidate` is the primary leader-election abstraction.
+
+```java
+public interface Candidate {
+  Optional<byte[]> getLeaderData()
+      throws ZooKeeperConnectionException, KeeperException, InterruptedException;
+
+  Supplier<Boolean> offerLeadership(Leader leader)
+      throws JoinException, WatchException, InterruptedException;
+}
+```
+
+#### `getLeaderData()`
+
+Returns the current leader's data, if leader data is available.
+
+The returned value is an `Optional<byte[]>`:
+
+- A present value contains the leader-provided byte payload.
+- An empty value indicates that no leader data is currently available.
+
+This operation may fail because of ZooKeeper connectivity or keeper errors, and it may be interrupted.
+
+#### `offerLeadership(Leader leader)`
+
+Offers this candidate as a leader using the supplied `Leader` implementation.
+
+The method returns a `Supplier<Boolean>`, allowing the caller to obtain the Boolean value produced by the leadership operation through `get()`.
+
+The operation can throw:
+
+- `JoinException`
+- `WatchException`
+- `InterruptedException`
+
+The precise meaning and lifecycle of the returned Boolean are determined by the election implementation and supplied `Leader`.
+
+---
+
+### `CandidateImpl`
+
+`CandidateImpl` is the concrete implementation of `Candidate`.
+
+```java
+public class CandidateImpl implements Candidate {
+  public CandidateImpl(Group group);
+
+  public CandidateImpl(Group group, Supplier<byte[]> dataSupplier);
+
+  public CandidateImpl(
+      Group group,
+      Function<Iterable<String>, String> judge,
+      Supplier<byte[]> dataSupplier);
+}
+```
+
+All constructors require a `Group`, which represents the group in which the candidate participates.
+
+#### Constructor options
+
+| Constructor | Use when |
+|---|---|
+| `new CandidateImpl(group)` | You need a candidate with the default configuration. |
+| `new CandidateImpl(group, dataSupplier)` | Your candidate should provide leader data as bytes. |
+| `new CandidateImpl(group, judge, dataSupplier)` | You need both custom candidate-selection logic and leader data. |
+
+The `dataSupplier` supplies the `byte[]` payload that can later be observed through `getLeaderData()`.
+
+The `judge` receives an `Iterable<String>` and returns a `String`, allowing callers to provide custom decision logic when constructing the candidate.
+
+---
+
+### `ExceptionalCommand<E>`
+
+`ExceptionalCommand` is a functional interface for a command that performs no return-value-producing work but may throw a checked exception.
+
+```java
+public interface ExceptionalCommand<E extends Exception> {
+  void execute() throws E;
+}
+```
+
+It is useful when passing or storing operations that may fail with a specific checked exception type.
+
+---
+
+## Typical flow
+
+A typical leader-election integration follows these steps:
+
+1. Obtain or create a `Group`.
+2. Create a `CandidateImpl` for that group.
+3. Optionally provide leader data with a `Supplier<byte[]>`.
+4. Provide a `Leader` implementation.
+5. Call `offerLeadership`.
+6. Retain or invoke the returned `Supplier<Boolean>` as required by the application.
+7. Use `getLeaderData()` to inspect the current leader's optional data.
+
+---
+
+## Example: Offer leadership
+
+The following example creates a candidate, associates a small payload with it, and offers leadership.
+
+```java
+import com.twitter.common.zookeeper.Candidate;
+import com.twitter.common.zookeeper.CandidateImpl;
+
+import java.nio.charset.StandardCharsets;
+
+public final class ElectionParticipant {
+  private final Group group;
+  private final Leader leader;
+
+  public ElectionParticipant(Group group, Leader leader) {
+    this.group = group;
+    this.leader = leader;
+  }
+
+  public Supplier<Boolean> participate()
+      throws JoinException, WatchException, InterruptedException {
+
+    Candidate candidate = new CandidateImpl(
+        group,
+        () -> "orders-service".getBytes(StandardCharsets.UTF_8)
+    );
+
+    return candidate.offerLeadership(leader);
+  }
+}
+```
+
+The returned supplier can be used to retrieve the Boolean value associated with the leadership offer:
+
+```java
+Supplier<Boolean> leadership = participant.participate();
+
+Boolean result = leadership.get();
+```
+
+Applications should handle or propagate the exceptions declared by `offerLeadership`.
+
+---
+
+## Example: Read current leader data
+
+A candidate can query the optional data associated with the current leader.
+
+```java
+import com.twitter.common.zookeeper.Candidate;
+
+public final class LeaderDataReader {
+  public Optional<byte[]> readLeaderData(Candidate candidate)
+      throws ZooKeeperConnectionException, KeeperException, InterruptedException {
+
+    return candidate.getLeaderData();
+  }
+}
+```
+
+For example, an application can pass the returned `Optional<byte[]>` to its own decoding logic:
+
+```java
+Optional<byte[]> leaderData = reader.readLeaderData(candidate);
+
+// Decode or process leaderData according to the application's payload format.
+```
+
+The payload format is application-defined. A candidate may provide text, serialized configuration, endpoint information, or another byte-based representation through its `dataSupplier`.
+
+---
+
+## Example: Configure a custom judge
+
+When custom selection logic is needed, provide a `Function<Iterable<String>, String>` while constructing the candidate.
+
+```java
+Function<Iterable<String>, String> judge = candidateIds -> {
+  // Application-specific selection logic goes here.
+  // Return the selected String for the supplied candidate IDs.
+  return selectPreferredCandidate(candidateIds);
+};
+
+Supplier<byte[]> leaderData = () -> applicationLeaderData();
+
+Candidate candidate = new CandidateImpl(group, judge, leaderData);
+
+Supplier<Boolean> leadership = candidate.offerLeadership(leader);
+```
+
+The judge function is supplied by the application and receives an iterable collection of strings. The application is responsible for choosing an appropriate returned value for its election policy.
+
+---
+
+## Example: Use `ExceptionalCommand`
+
+`ExceptionalCommand` can be used with a lambda when an operation may throw a checked exception.
+
+```java
+ExceptionalCommand<InterruptedException> pause = () -> {
+  Thread.sleep(1_000);
+};
+
+try {
+  pause.execute();
+} catch (InterruptedException e) {
+  Thread.currentThread().interrupt();
+}
+```
+
+This is useful for representing checked-exception-producing work in APIs or application code that accept command-like callbacks.
+
+---
+
+## Error handling
+
+Leader-election operations expose checked failures directly:
+
+- Handle `ZooKeeperConnectionException` and `KeeperException` when retrieving leader data.
+- Handle `JoinException` and `WatchException` when offering leadership.
+- Restore the interrupt status when catching `InterruptedException` unless the application intentionally consumes the interruption.
+
+```java
+try {
+  Optional<byte[]> data = candidate.getLeaderData();
+  // Process data.
+} catch (InterruptedException e) {
+  Thread.currentThread().interrupt();
+} catch (ZooKeeperConnectionException | KeeperException e) {
+  // Apply application-specific error handling or retry policy.
+}
+```
+
+## API summary
+
+| Type | Purpose |
+|---|---|
+| `Candidate` | Interface for reading leader data and offering leadership. |
+| `CandidateImpl` | Concrete `Candidate` implementation configured with a `Group`, optional leader data supplier, and optional judge function. |
+| `ExceptionalCommand<E>` | Functional command that may throw a checked exception of type `E`. |

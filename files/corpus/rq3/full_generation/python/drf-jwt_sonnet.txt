@@ -1,0 +1,236 @@
+# drf-jwt
+
+`drf-jwt` provides JSON Web Token (JWT) authentication for Django REST Framework. It supplies an authentication backend, a set of API views for obtaining, verifying, refreshing, and impersonating tokens, and an optional blacklist app for revoking tokens server-side.
+
+## Features
+
+- **`JSONWebTokenAuthentication`** — a DRF authentication class that extracts a token from the request (either an `Authorization` header or a cookie), decodes it, and resolves it to a user.
+- **Ready-made views** for common JWT workflows: obtaining a token (login), verifying a token, refreshing a token, and impersonating another user.
+- **Pluggable payload/encoding hooks** so you can customize how tokens are built, encoded, and decoded without rewriting the authentication class.
+- **Token blacklisting** (optional Django app) to revoke tokens before their natural expiry, with a management command to prune stale, expired blacklist entries.
+- **Utility functions** for creating payloads, signing/decoding tokens, and validating them, usable independently of the DRF views if you need custom flows.
+
+## Installation
+
+Add `rest_framework_jwt` to your `INSTALLED_APPS`, and configure DRF to use `JSONWebTokenAuthentication`:
+
+```python
+INSTALLED_APPS = [
+    ...
+    "rest_framework",
+    "rest_framework_jwt",
+    # optional, for token revocation support
+    "rest_framework_jwt.blacklist",
+]
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_jwt.authentication.JSONWebTokenAuthentication",
+        ...
+    ),
+}
+```
+
+If you enable the blacklist app, run migrations:
+
+```bash
+python manage.py migrate
+```
+
+## Core Concepts
+
+### Authentication
+
+`JSONWebTokenAuthentication` implements DRF's `authenticate()` contract. Internally it:
+
+1. Pulls the token out of the request via `get_token_from_request`, which checks the `Authorization` header (`get_token_from_authorization_header`, using `prefixes_match` to validate the scheme prefix) and falls back to cookies (`get_token_from_cookies`).
+2. Decodes the token via `jwt_decode_token`.
+3. Resolves the payload to a user via `authenticate_credentials`, using `jwt_get_username_from_payload` to find the username claim.
+4. On failure, returns the appropriate `authenticate_header` for a `401` challenge.
+
+The class also exposes hooks (`jwt_create_payload`, `jwt_encode_payload`, `jwt_create_response_payload`) that mirror the standalone functions in `utils.py`, letting you override token creation/encoding/response formatting per-authentication-class if you subclass it.
+
+### Views
+
+- **`ObtainJSONWebTokenView`** — accepts credentials (via `JSONWebTokenSerializer`) and returns a signed token plus response payload.
+- **`VerifyJSONWebTokenView`** — accepts an existing token (via `VerifyAuthTokenSerializer`) and confirms it's valid.
+- **`RefreshJSONWebTokenView`** — accepts a token (via `RefreshAuthTokenSerializer`) and returns a newly issued token with an updated expiry.
+- **`ImpersonateJSONWebTokenView`** — allows a privileged user (see `IsSuperUser` permission) to obtain a token on behalf of another user (via `ImpersonateAuthTokenSerializer`).
+
+All of these extend `BaseJSONWebTokenAPIView`, which implements the shared `post()` flow: validate the serializer, then build a response payload.
+
+### Serializers
+
+- `JSONWebTokenSerializer` — validates login credentials and exposes `username_field` for whichever field is used as the username.
+- `VerifyAuthTokenSerializer` — validates that a submitted token is well-formed and unexpired.
+- `RefreshAuthTokenSerializer` — validates a token and produces the data needed to reissue it.
+- `ImpersonateAuthTokenSerializer` — validates an impersonation request (typically requiring an existing authenticated user with elevated permissions).
+
+### Utilities (`utils.py`)
+
+Low-level building blocks used by both the authentication class and the views:
+
+- `jwt_create_payload(user)` — builds the claims dict for a user.
+- `jwt_encode_payload(payload)` / `jwt_decode_token(token)` — sign and verify tokens.
+- `jwt_get_secret_key(payload=None)` — resolves the signing key (potentially per-user/per-payload).
+- `jwt_get_username_from_payload_handler(payload)` — extracts the username claim.
+- `jwt_create_response_payload(token, user=None, request=None, issued_at=None)` — shapes the final API response (e.g. `{"token": ..., "user": ...}`).
+- `check_payload(token)` / `check_user(payload)` — validation helpers used during decoding/authentication.
+- `unix_epoch(datetime_object=None)` — converts datetimes to unix timestamps for claims like `iat`/`exp`.
+- `get_username_field()` — resolves the configured username field on the user model.
+
+### Permissions
+
+- **`IsSuperUser`** — restricts a view (e.g. impersonation) to superusers.
+- **`IsNotBlacklisted`** (blacklist app) — denies access if the request's token has been revoked.
+
+### Blacklist app
+
+The `rest_framework_jwt.blacklist` package adds token revocation:
+
+- **`BlacklistedToken`** model stores revoked tokens; `BlacklistedTokenManager.delete_stale_tokens()` removes expired entries, and `is_blocked(token, payload)` checks whether a given token/payload pair is revoked.
+- **`BlacklistView`** — a `ModelViewSet` exposing a `create()` endpoint to blacklist a token, backed by `BlacklistTokenSerializer`.
+- **`IsNotBlacklisted`** permission — combine with `JSONWebTokenAuthentication` to reject blacklisted tokens on protected views.
+- **`delete_stale_tokens` signal handler** and the **`delete_stale_tokens` management command** automate cleanup of expired blacklist entries.
+- **Exceptions**: `MissingToken` and `InvalidAuthorizationCredentials`, both subclasses of DRF's `AuthenticationFailed`, raised when a request can't be authenticated for blacklist-related checks.
+
+### Management commands
+
+- `python manage.py delete_stale_tokens` — purges expired entries from the blacklist table.
+- `python manage.py obtain_token <pk>` — issues a token for a user by primary key, useful for scripting/testing.
+
+## Usage
+
+### Wiring up the standard endpoints
+
+```python
+# urls.py
+from django.urls import path
+from rest_framework_jwt.views import (
+    ObtainJSONWebTokenView,
+    VerifyJSONWebTokenView,
+    RefreshJSONWebTokenView,
+    ImpersonateJSONWebTokenView,
+)
+
+urlpatterns = [
+    path("auth/token/", ObtainJSONWebTokenView.as_view(), name="token-obtain"),
+    path("auth/token/verify/", VerifyJSONWebTokenView.as_view(), name="token-verify"),
+    path("auth/token/refresh/", RefreshJSONWebTokenView.as_view(), name="token-refresh"),
+    path("auth/token/impersonate/", ImpersonateJSONWebTokenView.as_view(), name="token-impersonate"),
+]
+```
+
+Obtaining a token:
+
+```bash
+curl -X POST http://localhost:8000/auth/token/ \
+    -d '{"username": "alice", "password": "s3cret"}' \
+    -H "Content-Type: application/json"
+```
+
+Using the token to authenticate subsequent requests:
+
+```bash
+curl http://localhost:8000/api/protected/ \
+    -H "Authorization: JWT <token>"
+```
+
+Refreshing a token before it expires:
+
+```bash
+curl -X POST http://localhost:8000/auth/token/refresh/ \
+    -d '{"token": "<token>"}' \
+    -H "Content-Type: application/json"
+```
+
+### Protecting a view
+
+```python
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+
+class ProtectedView(APIView):
+    authentication_classes = [JSONWebTokenAuthentication]
+
+    def get(self, request):
+        return Response({"user": request.user.username})
+```
+
+### Enabling blacklist support
+
+```python
+# settings.py
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_jwt.authentication.JSONWebTokenAuthentication",
+    ),
+}
+
+# urls.py
+from rest_framework.routers import DefaultRouter
+from rest_framework_jwt.blacklist.views import BlacklistView
+
+router = DefaultRouter()
+router.register("auth/blacklist", BlacklistView, basename="blacklist")
+```
+
+```python
+# views.py
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+from rest_framework_jwt.blacklist.permissions import IsNotBlacklisted
+
+class SecureView(APIView):
+    authentication_classes = [JSONWebTokenAuthentication]
+    permission_classes = [IsNotBlacklisted]
+
+    def get(self, request):
+        return Response({"message": "still valid"})
+```
+
+Blacklisting a token (revoking it):
+
+```bash
+curl -X POST http://localhost:8000/auth/blacklist/ \
+    -d '{"token": "<token>"}' \
+    -H "Content-Type: application/json" \
+    -H "Authorization: JWT <token>"
+```
+
+Cleaning up expired blacklist records periodically (e.g. via cron):
+
+```bash
+python manage.py delete_stale_tokens
+```
+
+### Issuing a token from the shell/scripts
+
+```bash
+python manage.py obtain_token 42
+```
+
+This prints a valid JWT for the user with primary key `42`, useful for testing or seeding scripts without going through the HTTP login flow.
+
+## Customization
+
+Because `jwt_create_payload`, `jwt_encode_payload`, `jwt_decode_token`, `jwt_get_username_from_payload`, and `jwt_create_response_payload` are exposed as classmethods on `JSONWebTokenAuthentication` (mirroring the equivalent free functions in `utils.py`), you can subclass the authentication class to customize claims, signing behavior, or response shape:
+
+```python
+from rest_framework_jwt.authentication import JSONWebTokenAuthentication
+
+class CustomJWTAuthentication(JSONWebTokenAuthentication):
+    @classmethod
+    def jwt_create_payload(cls, user):
+        payload = super().jwt_create_payload(user)
+        payload["org_id"] = user.organization_id
+        return payload
+```
+
+Then reference `CustomJWTAuthentication` in `DEFAULT_AUTHENTICATION_CLASSES` in place of the default.
+
+## License
+
+See the `LICENSE` file for details.

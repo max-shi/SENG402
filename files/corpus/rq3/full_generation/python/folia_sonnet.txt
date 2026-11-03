@@ -1,0 +1,254 @@
+# folia
+
+**folia** is a Python library for reading, creating, manipulating, and validating [FoLiA](https://folia.readthedocs.io/)-style linguistic annotation documents. FoLiA is a rich XML format for representing linguistically annotated text and speech corpora, covering everything from tokenization and part-of-speech tags to coreference chains, syntax trees, semantic roles, corrections, and metadata/provenance tracking.
+
+The library provides:
+
+- A complete object model for FoLiA documents (`folia.main`) — structural elements (words, sentences, paragraphs, tables, etc.), inline and span annotations (POS, lemma, entities, dependencies, semantic roles, coreference, sentiment, etc.), corrections and alternatives, and metadata/provenance handling.
+- A set/vocabulary definition system (`folia.foliaset`) for parsing and validating annotation class sets (taxonomies of classes and constraints used by annotations).
+- A query language implementation (`folia.fql`) — "FoLiA Query Language" — for selecting, filtering, and editing document content declaratively.
+- Assorted helper utilities (`folia.helpers`) for string/encoding handling.
+
+This library is suitable for building corpus tools, annotation pipelines, linguistic search engines, and format converters.
+
+## Installation
+
+```bash
+pip install folia
+```
+
+(Assumes a standard `setup.py`/`pyproject.toml`-based distribution; adjust to your actual packaging.)
+
+## Core Concepts
+
+### Documents
+
+Everything revolves around `folia.main.Document`, which represents a single FoLiA document. A `Document` owns a tree of `AbstractElement` subclasses (structural, inline, and span annotations), declarations of annotation types/sets, and metadata/provenance.
+
+```python
+from folia.main import Document
+
+doc = Document(id="example-doc")
+```
+
+Documents can be loaded from and saved to FoLiA XML:
+
+```python
+doc = Document(file="myfile.folia.xml")
+doc.load("myfile.folia.xml")
+doc.save("output.folia.xml")
+
+xmlstring = doc.xmlstring(pretty_print=True)
+```
+
+You can also parse in-memory XML trees:
+
+```python
+from folia.main import xmltreefromstring, xmltreefromfile
+```
+
+### Element Hierarchy
+
+The object model is organized around a few key abstract base classes:
+
+- **`AbstractElement`** — the base class for *every* FoLiA element. Provides XML/JSON (de)serialization, tree navigation (`ancestors`, `next`, `previous`, `context`), text/phonetic content access (`text`, `phon`), child management (`append`, `insert`, `remove`, `replace`), and RelaxNG schema generation.
+- **`AbstractStructureElement`** — structural containers such as `Text`, `Division`, `Paragraph`, `Sentence`, `Word`, `Table`, `List`, `Figure`, `Quote`, `Utterance`, `Event`, `Entry`, `Note`, etc. These form the document's hierarchical skeleton.
+- **`AbstractInlineAnnotation`** — annotations attached directly to a single structural element, e.g. `PosAnnotation`, `LemmaAnnotation`, `LangAnnotation`, `DomainAnnotation`, `SenseAnnotation`, `EtymologyAnnotation`, `SubjectivityAnnotation`, `ErrorDetection`.
+- **`AbstractSpanAnnotation`** — annotations that span multiple words/tokens, held inside an `AbstractAnnotationLayer`, e.g. `SyntacticUnit`, `Chunk`, `Entity`, `Dependency`, `CoreferenceChain`, `SemanticRole`, `Predicate`, `Sentiment`, `Statement`, `Observation`, `TimeSegment`, `Modality`.
+- **`AbstractAnnotationLayer`** — containers for span annotations of a specific kind, e.g. `SyntaxLayer`, `ChunkingLayer`, `EntitiesLayer`, `DependenciesLayer`, `CoreferenceLayer`, `SemanticRolesLayer`, `SentimentLayer`, `StatementLayer`, `ObservationLayer`, `TimingLayer`.
+- **`AbstractHigherOrderAnnotation`** — annotations about annotations, such as `Description`, `Comment`, `Metric`, `Correction`, `Alternative`, `AlternativeLayers`, `External`, `Relation`, `SpanRelation`, `Content`.
+- **`AbstractContentAnnotation`** — raw content carriers: `TextContent` and `PhonContent`.
+- **`AbstractTextMarkup`** — inline markup within text content: `TextMarkupString`, `TextMarkupStyle`, `TextMarkupCorrection`, `TextMarkupError`, `TextMarkupLanguage`, `TextMarkupWhitespace`, `TextMarkupHSpace`, `TextMarkupReference`, `TextMarkupGap`.
+- **`AbstractWord`** (mixin) — shared behavior for word-like elements (`Word`, `Hiddenword`, `Morpheme`, `Phoneme`): access to POS, lemma, sense, morphemes/phonemes, sentence/paragraph/division ancestry, and corrections.
+- **`Feature`** and subclasses (`ValueFeature`, `SynsetFeature`, `ActorFeature`, `PolarityFeature`, `StrengthFeature`, `HeadFeature`, `FunctionFeature`, `ModalityFeature`, `TimeFeature`, `LevelFeature`, `StyleFeature`, `FontFeature`, `SizeFeature`, `BegindatetimeFeature`, `EnddatetimeFeature`) — typed attribute/value pairs attached to annotations.
+
+Corrections are modeled with `Correction`, `New`, `Original`, `Current`, and `Suggestion`, allowing representation of edits, alternative readings, and error annotations, all navigable and constructible via `AllowCorrections.correct()`.
+
+### Annotation Types and Declarations
+
+Every kind of annotation belongs to an `AnnotationType`, and elements carry `Attrib` flags describing which core attributes (id, class, annotator, confidence, datetime, ...) they support. Before adding annotations, a `Document` typically needs a declaration:
+
+```python
+from folia.main import AnnotationType
+
+doc.declare(AnnotationType.POS, set="https://example.org/pos-set.foliaset.xml")
+```
+
+Declared annotation types/sets can be queried via `doc.declared()`, `doc.defaultset()`, `doc.defaultannotator()`, etc.
+
+### Annotators and Provenance
+
+`Annotator`, `Processor`, and `Provenance` model *who* or *what* (human, tool, pipeline stage) produced an annotation, supporting nested processor chains (`Processor.insert`/`append`), and are serializable via `.xml()`/`.json()`. `Document.xmlprovenance()`/`jsonprovenance()` expose the provenance chain of a document.
+
+### Sets and Vocabularies (`folia.foliaset`)
+
+Annotation class sets (controlled vocabularies with optional class hierarchies and constraints) are modeled by `SetDefinition` (and legacy variants `LegacySetDefinition`, `LegacyClassDefinition`, `LegacyConstraintDefinition`). These are used to validate that a document's annotation classes and their sub-classifications are legal:
+
+```python
+from folia.foliaset import SetDefinition
+
+setdef = SetDefinition(...)
+setdef.testclass("noun")          # is "noun" a valid class in this set?
+setdef.testconstraints(cls, features)
+for cls in setdef.classes():
+    print(cls)
+```
+
+`DeepValidationError` and `SetDefinitionError` are raised when a document's annotations violate a set's rules; `deepvalidation()` methods throughout `folia.main` invoke this checking.
+
+### Validation
+
+Top-level validation of a FoLiA XML file against the RelaxNG schema (and optionally deep, set-aware validation) is available via:
+
+```python
+from folia.main import validate
+
+validate("myfile.folia.xml", deep=True)
+```
+
+Schema generation utilities (`relaxng`, `relaxng_declarations`, and per-class `relaxng()` classmethods) support building/inspecting the RelaxNG grammar.
+
+### Querying with FQL (`folia.fql`)
+
+The FoLiA Query Language lets you select and manipulate document content declaratively, without manually walking the tree.
+
+```python
+from folia.fql import Query
+
+query = Query('SELECT w WHERE class = "noun"')
+results = query.parse(str(query))
+```
+
+Query building blocks include `Selector`, `Target`, `Span`, `SpanSet`, `Filter`, `Action`, `Context`, `Correction` (query-side), and `Alternative` (query-side), reflecting the different clauses an FQL statement can contain (`SELECT`, `WHERE`, span/target expressions, corrections, substitutions, and processor assignment via `Query.setprocessor`).
+
+### Corpora and Batch Processing
+
+For working with collections of documents:
+
+- `Corpus` / `CorpusFiles` — represent a set of FoLiA documents (e.g. from a directory of files).
+- `CorpusProcessor` — runs processing logic (`execute`, `run`) over a corpus, useful for batch annotation or analysis pipelines.
+- `Reader` — an iterator-style interface for reading/streaming documents or words (`findwords`, `initdoc`).
+- `findwords(doc, worditerator, *args, **kwargs)` — a module-level helper for searching words matching a pattern across a document.
+- `Pattern`, `RegExp`, `Query` (in `folia.main`) — support pattern-based word search (`findwords`), including variable-size/wildcard patterns (`Pattern.variablesize`, `Pattern.variablewildcards`, `Pattern.resolve`).
+
+## Usage Examples
+
+### Creating a document from scratch
+
+```python
+from folia.main import Document, AnnotationType, Text, Paragraph, Sentence, Word
+
+doc = Document(id="mydoc")
+doc.declare(AnnotationType.TOKEN, set="https://example.org/tokens.foliaset.xml")
+
+text = doc.append(Text)
+paragraph = text.append(Paragraph)
+sentence = paragraph.append(Sentence)
+
+sentence.append(Word, "Hello", id="mydoc.s.1.w.1")
+sentence.append(Word, "world", id="mydoc.s.1.w.2")
+
+print(doc.text())
+doc.save("mydoc.folia.xml")
+```
+
+### Loading and inspecting a document
+
+```python
+from folia.main import Document, PosAnnotation
+
+doc = Document(file="corpus/sample.folia.xml")
+
+for sentence in doc.sentences():
+    print(sentence.text())
+    for word in sentence.words():
+        pos = word.annotation(PosAnnotation) if word.hasannotation(PosAnnotation) else None
+        print(f"  {word.text():15s} POS={pos.cls if pos else '-'}")
+```
+
+### Adding a correction
+
+```python
+from folia.main import Document
+
+doc = Document(file="corpus/sample.folia.xml")
+word = doc.words(0)
+
+word.correct(
+    new="Teh",
+    original="The",
+    set="https://example.org/corrections.foliaset.xml",
+    cls="spelling",
+)
+```
+
+### Working with span annotations (e.g. named entities)
+
+```python
+from folia.main import Entity, EntitiesLayer
+
+sentence = doc.sentences(0)
+layer = sentence.append(EntitiesLayer)
+words = sentence.words()
+layer.append(Entity, *words[0:2], set="https://example.org/ner.foliaset.xml", cls="PER")
+```
+
+### Validating a document
+
+```python
+from folia.main import validate
+
+try:
+    validate("corpus/sample.folia.xml", deep=True)
+    print("Document is valid.")
+except Exception as e:
+    print("Validation failed:", e)
+```
+
+### Querying with FQL
+
+```python
+from folia.fql import Query
+
+q = Query('SELECT word WHERE text = "world" RETURN focus')
+result = q.parse(str(q))
+```
+
+### Batch processing a corpus
+
+```python
+from folia.main import CorpusFiles, CorpusProcessor
+
+class MyProcessor(CorpusProcessor):
+    def run(self, doc, *args, **kwargs):
+        for word in doc.words():
+            print(word.text())
+
+corpus = CorpusFiles("corpus/*.folia.xml")
+processor = MyProcessor(corpus)
+processor.execute()
+```
+
+## Error Handling
+
+The library defines a rich set of exceptions surfaced during parsing, validation, and manipulation, including:
+
+- `ParseError`, `MalformedXMLError`, `ModeError`, `MetaDataError`, `DocumentNotLoaded`
+- `NoSuchAnnotation`, `NoSuchText`, `NoSuchPhon`, `InconsistentText`, `UnresolvableTextContent`
+- `DuplicateAnnotationError`, `DuplicateIDError`, `InvalidReference`, `NoCommonAncestor`, `NoDefaultError`
+- `DeclarationError`, `GenerateIDException`
+- `DeepValidationError`, `SetDefinitionError` (from `folia.foliaset`)
+- `SyntaxError`, `QueryError` (from `folia.fql`)
+
+Catch these to handle malformed documents, missing declarations, or invalid queries gracefully.
+
+## Summary
+
+| Module | Purpose |
+|---|---|
+| `folia.main` | Core document object model: structural/inline/span annotations, metadata, provenance, validation, corpus processing |
+| `folia.foliaset` | Parsing and validation of annotation class sets/vocabularies |
+| `folia.fql` | FoLiA Query Language parser and executor |
+| `folia.helpers` | String/encoding utility functions |
+
+This library is intended as the foundation for tools that read, write, annotate, search, and validate richly-annotated linguistic corpora in the FoLiA format.

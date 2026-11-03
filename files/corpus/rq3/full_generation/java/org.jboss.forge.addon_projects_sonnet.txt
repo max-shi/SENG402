@@ -1,0 +1,198 @@
+# org.jboss.forge.addon:projects
+
+## Introduction
+
+The `projects` addon is a core building block of the JBoss Forge ecosystem. It provides an abstraction for working with software projects on disk — locating them, creating them, inspecting and modifying their metadata, managing dependencies, building them, and exposing project structure (resources, web resources, modules, classpaths) in a build-system-agnostic way.
+
+At its core, a `Project` is a `Faceted<ProjectFacet>` — meaning all project capabilities (dependency management, metadata, packaging, resources, etc.) are exposed as **facets** that can be installed, queried, and removed independently. This allows different build systems (Maven, Gradle, or a generic filesystem-based project) to plug into the same API surface via `ProjectProvider` implementations.
+
+The library also includes UI commands (built on the Forge UI framework) for common project operations such as building, managing dependencies, managing repositories, and scaffolding new projects through a wizard.
+
+## Core Concepts
+
+### `Project` and `Faceted<ProjectFacet>`
+
+A `Project` represents a project instance rooted at a `Resource<?>` (typically a directory on disk). It supports arbitrary attributes via `getAttribute`/`setAttribute`/`removeAttribute`, exposes its root directory, and optionally reports which `Stack` it belongs to.
+
+`AbstractProject` is a convenient base class implementing attribute storage and equality, meant to be extended by concrete project implementations (see `GenericProject`).
+
+### `ProjectFactory`
+
+The main entry point for obtaining `Project` instances:
+
+- **Finding** existing projects from a resource (`findProject`), optionally filtered by a `Predicate<Project>` or scoped to a specific `ProjectProvider`.
+- **Creating** new projects (`createProject`), including temporary, in-memory-style projects (`createTempProject`) useful for testing or ephemeral operations.
+- **Checking** whether a resource is (or is contained within) a project (`containsProject`).
+- **Listening** for project creation events via `ProjectListener` and `addProjectListener`.
+- **Cache management** via `invalidateCaches()`.
+
+### `ProjectProvider`
+
+Represents a build-system implementation (e.g., Maven, Gradle, or the bundled `GenericProjectProvider`). Each provider declares:
+
+- `getType()` — a unique identifier for the build system.
+- `getProvidedFacetTypes()` — which `ProvidedProjectFacet` types it natively supports.
+- `createProject(Resource<?>)` / `containsProject(Resource<?>)` — provider-specific detection and creation logic.
+- `priority()` — used to resolve ambiguity when multiple providers can handle the same resource.
+
+`AbstractProjectProvider` offers a default facet-resolution mechanism that subclasses can build upon.
+
+### `ProjectType`
+
+Describes a *kind* of project that can be scaffolded (e.g., a "generic" project, a "parent" (multi-module) project, or a "resources-only" project). Each `ProjectType`:
+
+- Declares required facets (`getRequiredFacets()`).
+- May contribute a setup wizard step (`getSetupFlow()`).
+- Declares stack compatibility (`supports(Stack)`), tying into the `Stack` system.
+- Has a `priority()` used when multiple types could apply.
+
+Built-in implementations include `GenericProjectType`, `ParentProjectType`, and `ResourcesProjectType`.
+
+### Facets
+
+Facets attach specific capabilities to a `Project`:
+
+| Facet | Purpose |
+|---|---|
+| `MetadataFacet` | Project name, group, version, top-level package, properties |
+| `DependencyFacet` | Direct/managed/effective dependencies and repositories |
+| `PackagingFacet` | Packaging type, build execution, final artifact/name |
+| `ResourcesFacet` | Main/test resource directories and files |
+| `WebResourcesFacet` | Web root directories and web resource files |
+| `ClassLoaderFacet` | Obtain a `URLClassLoader` for the project's classpath |
+| `ModuleFacet` | Sub-module listing for multi-module projects |
+| `StackFacet` | The technology `Stack` a project belongs to |
+
+Facets extending `ProvidedProjectFacet` are expected to be supplied by a `ProjectProvider`, while plain `ProjectFacet` implementations may be generic/build-system-independent.
+
+### Stacks
+
+A `Stack` (built via `StackBuilder.stack(name)`) models a technology stack by declaring which facets it includes or excludes. `StackSupport` and `ProjectType.supports(Stack)` let project types declare compatibility with particular stacks. `StackInspector` provides utilities to validate that a project satisfies a set of required facets and to discover facets related to a given type.
+
+### Dependencies
+
+`DependencyInstaller` is a higher-level convenience API over `DependencyFacet`, used to install (and check installation of) direct and managed dependencies on a project without manually manipulating the facet.
+
+### Building
+
+`PackagingFacet.createBuilder()` returns a `ProjectBuilder`, which lets you configure build arguments, test execution, profiles, and quiet/output-stream behavior, then trigger a build producing a `Resource<?>` (the built artifact) or throwing a `BuildException`. `BuildResult` / `BuildResultBuilder` represent the outcome of a build (success/failure plus `BuildMessage`s with severities).
+
+### UI Commands
+
+The library ships ready-made Forge UI commands for common tasks:
+
+- `BuildCommand` — build the current project.
+- `AddDependenciesCommandImpl` / `RemoveDependenciesCommandImpl` and their managed-dependency counterparts.
+- `HasDependenciesCommandImpl` / `HasManagedDependenciesCommandImpl` — check for dependency presence.
+- `AddRepositoryCommandImpl` / `RemoveRepositoryCommandImpl` — manage repositories.
+- `NewProjectWizardImpl` — scaffold a brand-new project, prompting for name, target location, project type, and top-level package.
+- `ProjectListFacetsCommand` / `ProjectListStackCommand` — introspection commands for facets and stacks.
+
+`AbstractProjectCommand` and `RequiresProjectPredicate` are base utilities ensuring commands only enable/execute when a valid project is in context.
+
+## Typical Usage
+
+### Locating or creating a project
+
+```java
+@Inject
+private ProjectFactory projectFactory;
+
+public void handle(Resource<?> someResource)
+{
+   Project project = projectFactory.findProject(someResource);
+   if (project == null)
+   {
+      // Not part of an existing project; create a new one
+      project = projectFactory.createProject(someResource, new GenericProjectProvider());
+   }
+
+   System.out.println("Project root: " + project.getRoot());
+}
+```
+
+### Reading and updating project metadata
+
+```java
+MetadataFacet metadata = project.getFacet(MetadataFacet.class);
+System.out.println("Name: " + metadata.getProjectName());
+System.out.println("Version: " + metadata.getProjectVersion());
+
+metadata.setProjectVersion("2.0.0-SNAPSHOT");
+metadata.setDirectProperty("java.version", "17");
+```
+
+### Installing a dependency
+
+```java
+@Inject
+private DependencyInstaller dependencyInstaller;
+
+public void addJunit(Project project)
+{
+   Dependency junit = DependencyBuilder.create()
+            .setGroupId("org.junit.jupiter")
+            .setArtifactId("junit-jupiter")
+            .setVersion("5.10.0")
+            .setScopeType("test");
+
+   if (!dependencyInstaller.isInstalled(project, junit))
+   {
+      dependencyInstaller.install(project, junit);
+   }
+}
+```
+
+### Building a project programmatically
+
+```java
+PackagingFacet packagingFacet = project.getFacet(PackagingFacet.class);
+
+ProjectBuilder builder = packagingFacet.createBuilder()
+         .runTests(false)
+         .profiles("release")
+         .quiet(true);
+
+try
+{
+   Resource<?> artifact = builder.build();
+   System.out.println("Built artifact: " + artifact);
+}
+catch (BuildException e)
+{
+   System.err.println("Build failed: " + e.getMessage());
+}
+```
+
+### Working with stacks and project types
+
+```java
+Stack webStack = StackBuilder.stack("web")
+         .includes(WebResourcesFacet.class)
+         .includes(ResourcesFacet.class);
+
+if (project.getStack().map(stack -> stack.supports(WebResourcesFacet.class)).orElse(false))
+{
+   WebResourcesFacet webResources = project.getFacet(WebResourcesFacet.class);
+   webResources.createWebResource("<html></html>".toCharArray(), "index.html");
+}
+```
+
+### Creating a temporary project (e.g., for testing)
+
+```java
+Project tempProject = projectFactory.createTempProject();
+MetadataFacet metadata = tempProject.getFacet(MetadataFacet.class);
+metadata.setProjectName("temp-test-project");
+```
+
+## Extending the Library
+
+To support a new build system:
+
+1. Implement `ProjectProvider` (or extend `AbstractProjectProvider`) declaring `getType()`, `getProvidedFacetTypes()`, `createProject`, `containsProject`, and `priority`.
+2. Implement the `ProvidedProjectFacet`-derived interfaces (`MetadataFacet`, `DependencyFacet`, `PackagingFacet`, etc.) backed by your build system's configuration files.
+3. Optionally contribute one or more `ProjectType`s describing the kinds of projects your build system can scaffold, along with a setup wizard (`UIWizardStep`).
+4. Register a `Stack` if your build system corresponds to a recognizable technology stack, so other tooling can query compatibility via `StackSupport`.
+
+The `generic` module (`GenericProject`, `GenericProjectProvider`, `GenericProjectType`, `GenericMetadataFacet`, `GenericProjectFacet`) serves as a minimal, filesystem-only reference implementation and is a useful starting point for understanding how the pieces fit together.

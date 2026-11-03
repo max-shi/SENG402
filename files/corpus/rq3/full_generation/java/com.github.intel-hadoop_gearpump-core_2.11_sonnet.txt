@@ -1,0 +1,245 @@
+# Gearpump Core
+
+Gearpump Core provides the foundational building blocks for building real-time, low-latency streaming applications on top of Akka, along with supporting infrastructure for network transport (Netty-based messaging), cgroup-based resource management (for container/process isolation on Linux), and a Java-friendly DSL/API for defining streaming DAGs.
+
+This module is composed of several loosely related but complementary subsystems:
+
+1. **Streaming Java API** — classes for building streaming topologies (`Graph`, `Processor`, `Task`, `StreamApplication`) and functional interfaces for common stream transformations (`MapFunction`, `FilterFunction`, `FlatMapFunction`, `ReduceFunction`, `GroupByFunction`).
+2. **Netty Transport Layer** — low-level message framing, serialization, and task-to-task messaging primitives used by the streaming engine to move data between tasks across the cluster.
+3. **Cgroup Resource Management** — utilities for creating, mounting, and managing Linux control groups (cgroups), used to enforce CPU/memory/etc. resource limits on worker processes.
+4. **Utilities** — helper classes for Akka actor lookup and custom log file rolling behavior.
+
+---
+
+## Streaming Java API
+
+The streaming API lets you define a topology of `Processor`s connected by `Partitioner`s inside a `Graph`, then wrap it all in a `StreamApplication` for submission to a Gearpump cluster.
+
+### Core Classes
+
+- **`Task`** (`io.gearpump.streaming.javaapi.Task`)
+  Base class for user-defined processing logic. Extend this and override `onStart`, `onNext`, and `onStop` to implement task behavior. Each `Task` has access to a `TaskContext` and `UserConfig` passed at construction time, and exposes `self()` to obtain its own `ActorRef`.
+
+- **`Processor<T extends Task>`**
+  Represents a stage in the streaming DAG that executes instances of a given `Task` subclass. A `Processor` can be configured with parallelism, description, and task configuration via a fluent builder-style API (`withParallelism`, `withDescription`, `withConfig`). Static factory methods `source(...)` and `sink(...)` create pre-built processors for reading from a `DataSource` or writing to a `DataSink`.
+
+- **`Graph`**
+  A directed graph of `Processor` nodes connected by `Partitioner` edges, describing how data flows and is partitioned between processing stages.
+
+- **`StreamApplication`**
+  Wraps a `Graph` and a `UserConfig` into a submittable Gearpump `Application`. This is the top-level object you submit to a cluster to run your streaming job.
+
+### Functional Interfaces
+
+Located under `io.gearpump.streaming.javaapi.dsl.functions`, these interfaces support a functional style of stream transformation, similar to common Java 8 stream idioms (all are `Serializable` so they can be shipped across the cluster):
+
+- `MapFunction<T, R>` — transform an element of type `T` into type `R`.
+- `FilterFunction<T>` — decide whether to keep an element.
+- `FlatMapFunction<T, R>` — transform one element into zero or more output elements.
+- `ReduceFunction<T>` — combine two elements of the same type into one.
+- `GroupByFunction<T, Group>` — extract a grouping key from an element.
+
+### Example: Defining a Simple Streaming Application
+
+```java
+import io.gearpump.streaming.javaapi.Graph;
+import io.gearpump.streaming.javaapi.Processor;
+import io.gearpump.streaming.javaapi.StreamApplication;
+import io.gearpump.streaming.javaapi.Task;
+import io.gearpump.streaming.task.TaskContext;
+import io.gearpump.streaming.task.StartTime;
+import io.gearpump.Message;
+import io.gearpump.cluster.UserConfig;
+
+public class WordCountTask extends Task {
+
+    public WordCountTask(TaskContext taskContext, UserConfig userConf) {
+        super(taskContext, userConf);
+    }
+
+    @Override
+    public void onStart(StartTime startTime) {
+        // initialize state
+    }
+
+    @Override
+    public void onNext(Message msg) {
+        String word = (String) msg.msg();
+        // process the word, emit downstream, etc.
+    }
+
+    @Override
+    public void onStop() {
+        // clean up resources
+    }
+}
+```
+
+```java
+import io.gearpump.streaming.javaapi.Graph;
+import io.gearpump.streaming.javaapi.Processor;
+import io.gearpump.streaming.javaapi.StreamApplication;
+import io.gearpump.cluster.UserConfig;
+import io.gearpump.partitioner.HashPartitioner;
+
+public class WordCountApp {
+    public static void main(String[] args) {
+        Processor<WordCountTask> wordCountProcessor =
+            new Processor<>(WordCountTask.class, 4, "word-counter", UserConfig.empty());
+
+        Graph graph = new Graph();
+        // add processors and connect them with partitioners
+        // graph.addVertex(wordCountProcessor);
+        // graph.addEdge(sourceProcessor, new HashPartitioner(), wordCountProcessor);
+
+        StreamApplication app = new StreamApplication(
+            "WordCount", UserConfig.empty(), graph);
+
+        // submit `app` to a running Gearpump cluster via the cluster client
+    }
+}
+```
+
+### Example: Using a Data Source / Sink Processor
+
+```java
+import io.gearpump.streaming.javaapi.Processor;
+import io.gearpump.streaming.task.DataSourceTask;
+import io.gearpump.streaming.task.DataSinkTask;
+import io.gearpump.cluster.UserConfig;
+import akka.actor.ActorSystem;
+
+ActorSystem system = ActorSystem.create("gearpump");
+
+Processor<DataSourceTask> source = Processor.source(
+    mySource, 2, "kafka-source", UserConfig.empty(), system);
+
+Processor<DataSinkTask> sink = Processor.sink(
+    mySink, 2, "hdfs-sink", UserConfig.empty(), system);
+```
+
+---
+
+## Netty Transport Layer
+
+These classes implement the low-level wire protocol used to transmit messages between tasks running on different nodes.
+
+- **`TaskMessage`** — an envelope carrying a message payload along with routing metadata: `sessionId`, `sourceTask`, and `targetTask` identifiers.
+- **`ITransportMessageSerializer`** — a pluggable serialization interface for converting objects to/from raw bytes on the wire (`getLength`, `serialize`, `deserialize`).
+- **`MessageDecoder`** — a Netty `FrameDecoder` that uses an `ITransportMessageSerializer` to decode incoming byte streams into complete messages.
+- **`WrappedChannelBuffer`** — adapts a Netty `ChannelBuffer` to the standard `DataInput` interface, allowing serializers to read primitive types directly from network buffers.
+- **`NettyRenameThreadFactory`** — a `ThreadFactory` implementation used to give Netty's worker threads clearer, identifiable names for debugging/monitoring purposes.
+
+### Example: Custom Serializer and Decoder
+
+```java
+import io.gearpump.transport.netty.ITransportMessageSerializer;
+import io.gearpump.transport.netty.MessageDecoder;
+import io.gearpump.transport.netty.TaskMessage;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+
+public class MyMessageSerializer implements ITransportMessageSerializer {
+
+    @Override
+    public int getLength(Object obj) {
+        // compute serialized length of obj
+        return 0;
+    }
+
+    @Override
+    public void serialize(DataOutput dataOutput, Object transportMessage) {
+        // write fields of the TaskMessage to dataOutput
+    }
+
+    @Override
+    public Object deserialize(DataInput dataInput, int length) {
+        // read fields back and reconstruct a TaskMessage
+        return null;
+    }
+}
+
+// Wire it into a Netty pipeline:
+MessageDecoder decoder = new MessageDecoder(new MyMessageSerializer());
+```
+
+---
+
+## Cgroup Resource Management
+
+The cgroup package provides a Java abstraction over Linux control groups, allowing Gearpump (or any JVM process) to programmatically create, configure, and tear down cgroups for resource isolation (CPU shares, quotas, task/process membership, etc.).
+
+### Core Classes
+
+- **`CgroupCenter`** — singleton entry point (`getInstance()`) for discovering mounted hierarchies, checking which resource subsystems are enabled, mounting/unmounting hierarchies, and creating/deleting cgroups.
+- **`Hierarchy`** — represents a mounted cgroup hierarchy, associated with one or more `ResourceType`s (e.g., `cpu`, `memory`, `blkio`) and a root `CgroupCommon` group.
+- **`CgroupCommon`** — represents an individual cgroup within a hierarchy. Supports adding tasks/processes, configuring release behavior, and traversing parent/child relationships.
+- **`CgroupCoreFactory`** — creates `CgroupCore` implementations (e.g., `CpuCore`) for a given set of resource types and directory.
+- **`CpuCore`** — a `CgroupCore` implementation for controlling CPU shares and CFS quota/period settings.
+- **`ResourceType`** — enumeration of supported cgroup subsystems: `blkio`, `cpu`, `cpuacct`, `cpuset`, `devices`, `freezer`, `memory`, `perf_event`, `net_cls`, `net_prio`.
+- **`CGroupResource`** — a data holder describing a resource's type, hierarchy ID, cgroup count, and enabled state, typically parsed from system cgroup information.
+- **`CgroupUtils`** — static helpers for file I/O, directory management, and parsing/serializing sets of `ResourceType`.
+- **`Constants`** — helper for resolving cgroup-related directory paths.
+- **`SystemOperation`** — low-level OS operations: mounting/unmounting filesystems and executing shell commands.
+
+### Example: Creating and Configuring a CPU Cgroup
+
+```java
+import io.gearpump.cluster.cgroup.CgroupCenter;
+import io.gearpump.cluster.cgroup.CgroupCommon;
+import io.gearpump.cluster.cgroup.Hierarchy;
+import io.gearpump.cluster.cgroup.ResourceType;
+import io.gearpump.cluster.cgroup.core.CpuCore;
+
+import java.util.Collections;
+import java.io.IOException;
+
+public class CgroupExample {
+    public static void main(String[] args) throws IOException {
+        CgroupCenter center = CgroupCenter.getInstance();
+
+        Hierarchy cpuHierarchy = center.busy(ResourceType.cpu);
+        if (cpuHierarchy == null) {
+            cpuHierarchy = new Hierarchy(
+                "cpu", Collections.singleton(ResourceType.cpu), "/sys/fs/cgroup/cpu");
+            center.mount(cpuHierarchy);
+        }
+
+        CgroupCommon myGroup = new CgroupCommon(
+            "gearpump-worker", cpuHierarchy, cpuHierarchy.getRootCgroups());
+        center.create(myGroup);
+
+        CpuCore cpuCore = (CpuCore) myGroup.getCores().get(ResourceType.cpu);
+        cpuCore.setCpuShares(512);
+        cpuCore.setCpuCfsQuotaUs(50000);
+
+        myGroup.addTask((int) Thread.currentThread().getId());
+    }
+}
+```
+
+---
+
+## Utilities
+
+- **`AkkaHelper.actorFor(ActorSystem system, String path)`** — convenience method for resolving an `ActorRef` given an actor path string.
+- **`RecreateRollingFileAppender`** — an extension of Log4j's `RollingFileAppender` that periodically checks (via `checkFileInterval`) whether the underlying log file needs to be recreated (e.g., after external log rotation/deletion), ensuring continuous logging without process restarts.
+
+### Example: Looking Up an Actor by Path
+
+```java
+import akka.actor.ActorRef;
+import akka.actor.ActorSystem;
+import io.gearpump.util.AkkaHelper;
+
+ActorSystem system = ActorSystem.create("gearpump");
+ActorRef worker = AkkaHelper.actorFor(system, "akka://gearpump/user/worker1");
+```
+
+---
+
+## Summary
+
+`gearpump-core` provides the essential scaffolding for building and running distributed streaming applications: a Java DSL for defining task graphs, a Netty-based transport layer for inter-task communication, cgroup utilities for resource isolation on worker nodes, and small Akka/logging utilities used throughout the platform. These pieces are typically used together when building custom streaming applications or extending the Gearpump runtime itself.

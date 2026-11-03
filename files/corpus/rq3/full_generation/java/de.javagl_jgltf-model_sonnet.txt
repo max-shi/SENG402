@@ -1,0 +1,224 @@
+# jgltf-model
+
+`jgltf-model` is a Java library for reading, representing, manipulating, and writing [glTF](https://www.khronos.org/gltf/) 3D assets. It provides a unified, version-agnostic object model (`GltfModel` and friends) that abstracts over both glTF 1.0 and glTF 2.0, along with low-level utilities for working with binary buffer data, accessors, images, animations, and math operations commonly needed in 3D rendering pipelines.
+
+The library does not perform rendering itself — instead, it focuses on parsing glTF assets into a convenient in-memory model, giving typed access to accessor data (vertex positions, indices, matrices, etc.), and supporting round-trip modification and writing of glTF files (as `.gltf` JSON, embedded, or binary `.glb`).
+
+## Core Concepts
+
+### Reading and writing assets
+
+- **`GltfAssetReader`** / **`GltfModelReader`** — read glTF assets from a `URI` or `Path`. `GltfAssetReader` gives you the raw asset representation (`GltfAsset`, containing the parsed glTF, binary chunk, and external references), while `GltfModelReader` gives you the fully resolved, high-level `GltfModel`.
+- **`GltfAssetWriter`** / **`GltfModelWriter`** — write assets or models back out as JSON, embedded (data-URI resources), or binary glTF.
+- **`GltfAsset`** — represents a raw glTF asset: the parsed glTF root object, optional binary data (for `.glb` files), and a list of `GltfReference`s to external resources (buffers, images, shaders) that can be resolved via `GltfReferenceResolver`.
+- **`GltfModels.create(GltfAsset)`** — converts a `GltfAsset` into a fully linked `GltfModel`.
+
+### The model hierarchy
+
+`GltfModel` is the central entry point, exposing lists of all top-level elements in a glTF document:
+
+```java
+GltfModel gltfModel = new GltfModelReader().read(uri);
+
+List<NodeModel> nodes = gltfModel.getNodeModels();
+List<MeshModel> meshes = gltfModel.getMeshModels();
+List<MaterialModel> materials = gltfModel.getMaterialModels();
+List<AccessorModel> accessors = gltfModel.getAccessorModels();
+```
+
+Every model element implements `ModelElement` (extensions, extras, and reference tracking), and named elements implement `NamedModelElement`. Key element types:
+
+- **`NodeModel`** — scene graph node with transform (matrix or TRS), children, meshes, camera, and skin.
+- **`SceneModel`** — a root list of `NodeModel`s.
+- **`MeshModel`** / **`MeshPrimitiveModel`** — geometry data, referencing `AccessorModel`s for attributes (`POSITION`, `NORMAL`, etc.), indices, and morph targets.
+- **`AccessorModel`** — describes typed, strided access into a `BufferViewModel`; use `AccessorDatas` to obtain typed data views (`AccessorFloatData`, `AccessorIntData`, etc.).
+- **`BufferViewModel`** / **`BufferModel`** — raw binary data storage.
+- **`MaterialModel`** (`PbrMaterialModel`, `TechniqueMaterialModel`) — material definitions, including PBR metallic-roughness workflow and texture references.
+- **`TextureModel`** / **`ImageModel`** — texture and image resources.
+- **`CameraModel`** — orthographic/perspective camera with projection matrix computation.
+- **`SkinModel`** — skinning joints and inverse bind matrices.
+- **`AnimationModel`** — animation channels, convertible into runtime `Animation` objects.
+
+The `de.javagl.jgltf.model.impl` package provides concrete, mutable `Default*Model` implementations (`DefaultGltfModel`, `DefaultNodeModel`, `DefaultAccessorModel`, etc.) that can be used to build glTF assets programmatically.
+
+### Accessor data
+
+Accessors describe typed elements (scalars, vectors, matrices) stored in a byte buffer. The `AccessorData` hierarchy gives typed access:
+
+- **`AccessorByteData`**, **`AccessorShortData`**, **`AccessorIntData`**, **`AccessorFloatData`**, **`AccessorDoubleData`** — typed views over accessor bytes, with `get`/`set`, min/max computation, and buffer creation.
+- **`AccessorDatas`** — factory methods to create the appropriate `AccessorData` for an `AccessorModel`, plus helpers for min/max and string formatting.
+- **`AccessorDataBuffers`** — bulk read/write helpers to copy accessor data into/from NIO buffers.
+- **`Quantization`** — utilities for quantizing/dequantizing float data to/from byte and short representations (e.g., for `KHR_mesh_quantization`-style workflows).
+
+### Animations
+
+- **`Animation`** — a single interpolated animation curve (`LINEAR`, `SLERP`, `STEP`) over keyframe times/values, notifying `AnimationListener`s as it updates.
+- **`AnimationManager`** / **`AnimationRunner`** — manage and drive a collection of `Animation`s over time.
+- **`GltfAnimations`** — converts `AnimationModel`s from a `GltfModel` into runtime `Animation` objects and creates an `AnimationManager`.
+
+### Extensions
+
+- **`ExtensionsModel`** — lists of used/required glTF extensions.
+- **`ExtensionHandler`** / **`ExtensionHandlerRegistry`** / **`ExtensionModels`** / **`GltfExtensions`** — infrastructure for converting extension data between raw glTF JSON representations and typed model objects.
+
+### Math and utilities
+
+- **`MathUtils`** — matrix/quaternion math (identity, multiply, invert, transpose, perspective projection, transform composition).
+- **`BoundingBoxes`** — compute the bounding box of an entire `GltfModel`.
+- **`Buffers`** — NIO `ByteBuffer` helper utilities (slicing, concatenation, type casting, buffer copying).
+- **`io.IO`**, **`io.UriResolvers`**, **`io.GltfReferenceResolver`** — URI/path resolution helpers for loading external resources referenced by a glTF asset.
+- **`io.MimeTypes`**, **`image.ImageUtils`**, **`image.PixelDatas`** — image format detection and pixel data extraction.
+
+### Building buffer structures
+
+For writing custom glTF assets, `de.javagl.jgltf.model.structure` offers a builder API:
+
+- **`BufferStructureBuilder`** — incrementally create `AccessorModel`s, `BufferViewModel`s, and `BufferModel`s from raw arrays.
+- **`BufferStructure`** — the resulting structure, with ID lookups for accessors/views/buffers.
+- **`GltfModelStructures`** — higher-level utility to reorganize an existing `GltfModel`'s buffer layout (e.g. for producing a binary `.glb`-ready or default-structured model).
+
+### Version-specific support
+
+- **`de.javagl.jgltf.model.v1`** — glTF 1.0 specific reading/creation (`GltfModelCreatorV1`, `GltfCreatorV1`, `BinaryGltfV1`, technique/program/shader model support).
+- **`de.javagl.jgltf.model.v2`** — glTF 2.0 specific reading/creation (`GltfModelCreatorV2`, `GltfCreatorV2`, PBR material defaults).
+
+Both produce the same unified `GltfModel` interface, so application code generally does not need to distinguish between versions.
+
+## Usage Examples
+
+### Reading a glTF file and inspecting geometry
+
+```java
+import de.javagl.jgltf.model.*;
+import de.javagl.jgltf.model.io.GltfModelReader;
+
+import java.net.URI;
+import java.nio.file.Paths;
+
+public class ReadExample {
+    public static void main(String[] args) throws Exception {
+        GltfModelReader reader = new GltfModelReader();
+        GltfModel gltfModel = reader.read(Paths.get("model.gltf"));
+
+        for (MeshModel meshModel : gltfModel.getMeshModels()) {
+            for (MeshPrimitiveModel primitive : meshModel.getMeshPrimitiveModels()) {
+                AccessorModel positionAccessor =
+                    primitive.getAttributes().get("POSITION");
+
+                AccessorFloatData positions =
+                    AccessorDatas.createFloat(positionAccessor);
+
+                for (int i = 0; i < positionAccessor.getCount(); i++) {
+                    float x = positions.get(i, 0);
+                    float y = positions.get(i, 1);
+                    float z = positions.get(i, 2);
+                    System.out.printf("Vertex %d: (%f, %f, %f)%n", i, x, y, z);
+                }
+            }
+        }
+
+        double[] boundingBox = BoundingBoxes.computeBoundingBoxMinMax(gltfModel);
+        System.out.println("Bounding box (min/max): " + java.util.Arrays.toString(boundingBox));
+    }
+}
+```
+
+### Walking the scene graph and computing transforms
+
+```java
+import de.javagl.jgltf.model.*;
+import de.javagl.jgltf.model.io.GltfModelReader;
+
+public class SceneGraphExample {
+    public static void main(String[] args) throws Exception {
+        GltfModel gltfModel = new GltfModelReader().read(new java.net.URI("file:///path/model.gltf"));
+
+        for (SceneModel scene : gltfModel.getSceneModels()) {
+            for (NodeModel rootNode : scene.getNodeModels()) {
+                printNode(rootNode, new double[16]);
+            }
+        }
+    }
+
+    private static void printNode(NodeModel node, double[] resultBuffer) {
+        double[] globalTransform = node.computeGlobalTransform(resultBuffer);
+        System.out.println(node.getName() + ": " + java.util.Arrays.toString(globalTransform));
+        for (NodeModel child : node.getChildren()) {
+            printNode(child, new double[16]);
+        }
+    }
+}
+```
+
+### Driving animations
+
+```java
+import de.javagl.jgltf.model.*;
+import de.javagl.jgltf.model.animation.*;
+import de.javagl.jgltf.model.io.GltfModelReader;
+
+public class AnimationExample {
+    public static void main(String[] args) throws Exception {
+        GltfModel gltfModel = new GltfModelReader().read(new java.net.URI("file:///path/model.gltf"));
+
+        AnimationManager animationManager =
+            GltfAnimations.createAnimationManager(AnimationPolicy.LOOP);
+
+        java.util.List<Animation> animations =
+            GltfAnimations.createModelAnimations(gltfModel.getAnimationModels());
+        animationManager.addAnimations(animations);
+
+        AnimationRunner runner = new AnimationRunner(animationManager);
+        runner.start();
+
+        // ... later, when shutting down:
+        // runner.stop();
+    }
+}
+```
+
+### Building a glTF asset from scratch and writing it out
+
+```java
+import de.javagl.jgltf.model.*;
+import de.javagl.jgltf.model.impl.*;
+import de.javagl.jgltf.model.io.GltfModelWriter;
+
+public class BuildExample {
+    public static void main(String[] args) throws Exception {
+        DefaultGltfModel gltfModel = new DefaultGltfModel();
+
+        DefaultBufferModel bufferModel = new DefaultBufferModel();
+        // ... configure buffer data, buffer views, and accessors ...
+
+        DefaultSceneModel sceneModel = new DefaultSceneModel();
+        DefaultNodeModel nodeModel = new DefaultNodeModel();
+        nodeModel.setTranslation(new double[] { 0, 1, 0 });
+        sceneModel.addNode(nodeModel);
+
+        gltfModel.addNodeModel(nodeModel);
+        gltfModel.addSceneModel(sceneModel);
+
+        new GltfModelWriter().write(gltfModel, new java.io.File("output.gltf"));
+    }
+}
+```
+
+## Package Overview
+
+| Package | Purpose |
+|---|---|
+| `de.javagl.jgltf.model` | Core model interfaces (`GltfModel`, `NodeModel`, `MeshModel`, `AccessorModel`, etc.) and math/utility helpers. |
+| `de.javagl.jgltf.model.impl` | Default, mutable implementations of the model interfaces. |
+| `de.javagl.jgltf.model.animation` | Runtime animation playback support. |
+| `de.javagl.jgltf.model.image` | Image decoding and pixel data extraction. |
+| `de.javagl.jgltf.model.io` | Reading/writing glTF assets and models, URI resolution, JSON handling. |
+| `de.javagl.jgltf.model.io.v1` / `io.v2` | Version-specific asset I/O. |
+| `de.javagl.jgltf.model.gl` / `gl.impl` | glTF 1.0-style technique/program/shader model support. |
+| `de.javagl.jgltf.model.extensions` | Extension handling infrastructure. |
+| `de.javagl.jgltf.model.structure` | Buffer/accessor/buffer-view structure building for writing custom assets. |
+| `de.javagl.jgltf.model.v1` / `v2` | Version-specific model creation from parsed glTF/GLB data. |
+
+## License
+
+See the repository for license details.

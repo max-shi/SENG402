@@ -1,0 +1,241 @@
+# shandy-sqlfmt
+
+`shandy-sqlfmt` is an opinionated code formatter for SQL, with first-class support for `jinja` templating (as used by tools like dbt). It parses SQL (and SQL embedded with jinja tags/blocks) into a structured representation, applies a consistent set of formatting rules, and renders back a normalized, nicely-wrapped SQL string. It also ships a CLI, a caching layer to avoid re-formatting unchanged files, and a "primer" tool for benchmarking the formatter against real-world open-source SQL projects.
+
+## What it does
+
+At a high level, sqlfmt:
+
+1. **Lexes** raw SQL/jinja source text into a stream of `Token`s using a dialect-specific set of `Rule`s.
+2. **Parses** those tokens into a tree of `Node`s attached to a `Query` object, tracking bracket nesting, jinja block nesting, and SQL clause structure.
+3. **Splits** the query into `Line`s at appropriate points (e.g. before/after keywords, commas, brackets).
+4. **Merges** lines back together where they fit within the configured line length, using segment-based grouping logic.
+5. **Formats embedded jinja** expressions/tags using an internal wrapper around `black`, so that jinja code inside `{{ }}` and `{% %}` tags is also styled consistently.
+6. **Renders** the final formatted SQL string, including well-formatted inline and standalone comments.
+
+This pipeline is exposed through a simple top-level API (`format_string`), a CLI (`sqlfmt`), and a set of lower-level building blocks that can be composed for custom tooling.
+
+## Core concepts and classes
+
+### Formatting entry points
+
+- **`format_string(source_string: str, mode: Mode) -> str`**
+  The simplest way to format a single SQL string. Takes raw SQL (optionally containing jinja) and a `Mode` configuration object, and returns the formatted string.
+
+- **`Mode`**
+  Holds configuration for a formatting run (e.g. line length, dialect selection, and other CLI-configurable options). Exposes a `color` property used for terminal output styling. A `Mode` instance is passed to nearly every top-level function.
+
+- **`run(files, mode, callback=None) -> Report`**
+  Formats a collection of files on disk (or checks them, depending on mode configuration) and returns a `Report` summarizing the results. Accepts an optional async callback for integrating with progress reporting.
+
+- **`get_matching_paths(paths, mode) -> Set[Path]`**
+  Resolves a collection of input paths (files and/or directories) into the concrete set of SQL files that should be formatted, respecting include/exclude configuration.
+
+- **`initialize_progress_bar(total, mode, force_progress_bar=False)`**
+  Sets up a `tqdm`-based progress bar and returns a callback suitable for passing to `run`, useful for CLI-like tooling.
+
+### Reporting
+
+- **`SqlFormatResult`**
+  Represents the outcome of formatting a single file: whether it changed (`has_changed`), whether an error occurred (`has_error`), and helpers to print results to stdout.
+
+- **`Report`**
+  Aggregates many `SqlFormatResult`s from a `run` call. Provides convenience accessors (`changed_results`, `unchanged_results`, `errored_results`) and counts (`number_changed`, `number_unchanged`, `number_errored`), plus `display_report` to print a human-readable summary.
+
+- **`style_output`, `unstyle_output`, `display_output`**
+  Low-level helpers for producing (and stripping) ANSI-colored terminal output, used internally by the CLI and `Report`.
+
+### Configuration
+
+- **`load_config_file(files, config_path) -> Config`**
+  Loads project configuration (e.g. from a `pyproject.toml`-like file), merging any explicit `config_path` with settings discovered relative to the files being formatted. Used by the CLI to build a `Mode`.
+
+### Caching
+
+To avoid redundant work on unchanged files:
+
+- **`get_cache_file() -> Path`** — locates the cache file on disk.
+- **`load_cache() -> Cache`** — loads previously recorded formatting results.
+- **`check_cache(cache, p) -> bool`** — checks whether a given path is already up-to-date in the cache.
+- **`write_cache(cache, results, mode)`** — persists new results after a formatting run.
+- **`clear_cache()`** — deletes the cache entirely.
+
+### Dialects
+
+- **`Dialect` (abstract base class)**
+  Defines the interface for a SQL dialect: `get_rules()` returns the list of lexing `Rule`s for that dialect, and `initialize_analyzer(line_length)` builds a ready-to-use `Analyzer`.
+
+- **`Polyglot`**
+  The default, general-purpose SQL dialect implementation.
+
+- **`ClickHouse`**
+  A `Polyglot` subclass adding/overriding rules for ClickHouse-specific SQL syntax.
+
+### Lexing and parsing
+
+- **`Rule`**
+  Describes a single lexing rule: a pattern to match and an action to take when matched. Rules are combined into rulesets that define a dialect's grammar.
+
+- **`Token` / `TokenType`**
+  `Token` is an immutable record (position, string value, and `TokenType`) produced by lexing. `TokenType` is an enum of all recognized token kinds (keywords, brackets, jinja constructs, operators, comments, names, numbers, etc.), with helper predicates like `is_opening_bracket()`, `is_jinja()`, `divides_queries()`, and `is_always_operator()`.
+
+- **`Analyzer`**
+  Drives the lexing/parsing process. Maintains rulesets (which can be pushed/popped for context-sensitive lexing, e.g. entering a jinja block), buffers tokens into `Node`s, and produces a `Query` via `parse_query(source_string)`.
+
+- **Action functions** (`add_node_to_buffer`, `handle_reserved_keyword`, `handle_jinja_block_start`, `handle_potentially_nested_tokens`, etc., in `actions.py`)
+  Lower-level callables invoked by `Rule`s during lexing to mutate the `Analyzer`'s state — e.g. buffering a token, switching rulesets when entering a jinja block, or raising a `SqlfmtBracketError` on mismatched brackets. These are primarily used internally to implement dialects but are part of the public surface for advanced customization.
+
+- **`NodeManager`**
+  Helper used by the `Analyzer` to construct `Node`s from `Token`s, compute correct whitespace between tokens, track open brackets, and standardize token values (e.g. keyword casing).
+
+### The parsed representation
+
+- **`Query`**
+  The root parsed object for a SQL statement or file, exposing all `tokens()` and `Node`s (`nodes()`) it contains.
+
+- **`Node`**
+  A single semantic unit in the parsed tree (a token plus contextual metadata), with many predicates describing its role: `is_unterm_keyword()`, `is_opening_bracket()`, `is_operator()`, `is_jinja_block_keyword()`, `divides_queries()`, and so on. Nodes track their own nesting `depth()` (SQL depth and jinja depth).
+
+- **`Comment`**
+  Represents a SQL comment attached to a line, with logic to detect its style (`is_c_style`, `is_inline`, `is_multiline`) and special cases like Databricks query hints or formatting-disabled directives, plus renderers (`render_inline`, `render_standalone`).
+
+### Line-based formatting
+
+- **`Line`**
+  A single (potentially merged) line of formatted output, built `from_nodes`. Provides many predicates used by the splitting/merging algorithm — `is_too_long`, `starts_with_unterm_keyword`, `contains_jinja`, `opens_new_bracket`, `closes_bracket_from_previous_line`, etc. — and `render_with_comments` to produce the final text.
+
+- **`LineSplitter`**
+  Breaks a single long `Line` into multiple `Line`s at valid split points (before/after keywords, commas, brackets), respecting nesting depth.
+
+- **`Segment` / `create_segments_from_lines`**
+  Groups sequences of related `Line`s (e.g. everything between a bracket's opening and closing) into a `Segment`, which supports queries like `head()`, `tail()`, and `tail_closes_head()` used by the merger.
+
+- **`LineMerger`**
+  Attempts to recombine split `Line`s into fewer, longer lines wherever they fit within the configured `line_length`, using `Segment`s to know what can be safely merged together (`create_merged_line`, `maybe_merge_lines`).
+
+- **`QueryFormatter`**
+  Orchestrates splitting and merging over an entire `Query`, producing a final formatted `Query`.
+
+- **`OperatorPrecedence`**
+  An `IntEnum` describing the relative precedence of SQL/jinja operators, used to decide preferred split/merge points around operators.
+
+### Jinja formatting
+
+- **`JinjaTag`**
+  Represents a single jinja tag (`{{ ... }}` or `{% ... %}`) extracted from the source, with helpers to detect multiline tags and macro-like definitions (`is_macro_like_def`), and to compute the maximum allowed code length for formatting.
+
+- **`BlackWrapper`**
+  Wraps the `black` Python formatter to format the Python-like expressions inside jinja tags, returning the formatted string and whether formatting succeeded.
+
+- **`JinjaFormatter`**
+  Applies `BlackWrapper`/`JinjaTag` logic to all jinja content within a `Line`, returning the resulting (possibly re-split) `Line`s.
+
+### Exceptions
+
+All library-specific errors derive from `SqlfmtError`:
+
+- `SqlfmtConfigError` — invalid configuration.
+- `SqlfmtUnicodeError` — source file cannot be decoded.
+- `SqlfmtParsingError` — general parsing failure.
+- `SqlfmtBracketError` — mismatched brackets or jinja tags.
+- `SqlfmtSegmentError` — invalid segment structure during merging.
+- `SqlfmtEquivalenceError` — formatted output is not semantically equivalent to input.
+
+Internal control-flow signals (not typically caught by consumers) include `SqlfmtControlFlowException`, `StopRulesetLexing`, and `CannotMergeException`.
+
+### Command-line interface
+
+- **`sqlfmt(ctx, files, config_path=None, **kwargs)`**
+  The Click-based CLI entry point. Formats or checks the given files/directories according to configuration loaded from `config_path` and/or discovered config files, and prints a `Report`.
+
+- **`show_welcome_message()`**
+  Prints an introductory banner, typically shown when `sqlfmt` is run with no arguments.
+
+### Benchmarking tool (`sqlfmt_primer`)
+
+- **`SQLProject`**
+  Describes an external open-source SQL project used for benchmarking (e.g. its repository and checkout info).
+
+- **`get_projects() -> List[SQLProject]`**
+  Returns the built-in list of benchmark projects.
+
+- **`get_project_source_tree(project, reset_cache, working_dir) -> Path`** / **`clone_and_checkout(project, working_dir) -> Path`**
+  Fetch and prepare a project's source tree for benchmarking.
+
+- **`clear_sqlfmt_cache()`**
+  Clears sqlfmt's cache before a benchmark run.
+
+- **`sqlfmt_primer(ctx, quiet, reset_cache, single_process, project_names)`**
+  CLI entry point that runs sqlfmt against a collection of real-world projects and reports on performance/success rates.
+
+## Usage examples
+
+### Formatting a SQL string in Python
+
+```python
+from sqlfmt.api import format_string
+from sqlfmt.mode import Mode
+
+sql = """
+select a,b,   c
+from my_table
+where a = 1 and b in (2,3,4)
+"""
+
+mode = Mode()
+formatted = format_string(sql, mode)
+print(formatted)
+```
+
+### Formatting files on disk
+
+```python
+from pathlib import Path
+from sqlfmt.api import run, get_matching_paths
+from sqlfmt.mode import Mode
+
+mode = Mode()
+paths = get_matching_paths([Path("models/")], mode)
+
+report = run(paths, mode)
+report.display_report()
+
+if report.number_errored() > 0:
+    for result in report.errored_results():
+        print(result)
+```
+
+### Using the CLI
+
+```bash
+# Format all SQL files under the models/ directory
+sqlfmt models/
+
+# Format a single file, using a custom config
+sqlfmt --config-path ./sqlfmt.toml models/staging/orders.sql
+```
+
+### Driving the lexer/parser directly
+
+```python
+from sqlfmt.dialect import Polyglot
+
+dialect = Polyglot()
+analyzer = dialect.initialize_analyzer(line_length=88)
+
+query = analyzer.parse_query("select 1 as one, 2 as two")
+
+for token in query.tokens():
+    print(token)
+
+for node in query.nodes():
+    print(node, node.depth())
+```
+
+### Running the benchmark suite
+
+```bash
+sqlfmt_primer --quiet
+```
+
+This clones a curated set of real-world SQL/dbt projects, formats them with the current version of sqlfmt, and reports on success/failure rates — useful for regression testing formatter changes against diverse, real-world SQL.

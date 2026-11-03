@@ -1,0 +1,3 @@
+ecosystem,n,min_words,p25_words,median_words,p75_words,max_words,n_capped_100k
+java,200,527,1594,4964.5,19552,100000,20
+python,200,515,1152,2930.5,8331,100000,2

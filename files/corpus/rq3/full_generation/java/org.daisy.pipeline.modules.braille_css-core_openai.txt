@@ -1,0 +1,185 @@
+# css-core
+
+`css-core` provides an API for inspecting the CSS properties supported by a print-oriented CSS profile.
+
+The main entry point is `SupportedPrintCSS`, which implements `SupportedCSS` and exposes methods to:
+
+- Check whether a media identifier is supported.
+- Test whether a CSS property name is supported.
+- Retrieve the default property descriptor and default value for a property.
+- Enumerate supported property names.
+- Map between property names and numeric ordinals.
+
+## Main API
+
+### `SupportedPrintCSS`
+
+```java
+public class SupportedPrintCSS implements SupportedCSS
+```
+
+`SupportedPrintCSS` represents the library's supported print-CSS configuration. Obtain its shared instance through:
+
+```java
+SupportedPrintCSS css = SupportedPrintCSS.getInstance();
+```
+
+#### Media support
+
+```java
+boolean isSupportedMedia(String media)
+```
+
+Checks whether a media identifier is supported.
+
+```java
+boolean supported = css.isSupportedMedia("print");
+```
+
+#### Property support
+
+```java
+boolean isSupportedCSSProperty(String property)
+```
+
+Checks whether a property name is defined by this CSS profile.
+
+```java
+if (css.isSupportedCSSProperty("color")) {
+    // The property is available in this profile.
+}
+```
+
+#### Default property information
+
+```java
+CSSProperty getDefaultProperty(String property)
+Term<?> getDefaultValue(String property)
+```
+
+Retrieves the default `CSSProperty` descriptor and default `Term<?>` value associated with a property name.
+
+```java
+CSSProperty defaultProperty = css.getDefaultProperty("color");
+Term<?> defaultValue = css.getDefaultValue("color");
+```
+
+Use `isSupportedCSSProperty` before requesting defaults when working with arbitrary property names.
+
+#### Property enumeration
+
+```java
+int getTotalProperties()
+Set<String> getDefinedPropertyNames()
+String getRandomPropertyName()
+```
+
+These methods provide access to the supported property collection:
+
+- `getTotalProperties()` returns the number of properties.
+- `getDefinedPropertyNames()` returns the defined property names.
+- `getRandomPropertyName()` returns a property name selected by the implementation.
+
+```java
+int count = css.getTotalProperties();
+
+for (String propertyName : css.getDefinedPropertyNames()) {
+    System.out.println(propertyName);
+}
+```
+
+#### Ordinal lookup
+
+```java
+int getOrdinal(String propertyName)
+String getPropertyName(int o)
+```
+
+Property names can be associated with integer ordinals. This is useful when code needs a compact or indexed representation of known property names.
+
+```java
+String propertyName = "color";
+
+if (css.isSupportedCSSProperty(propertyName)) {
+    int ordinal = css.getOrdinal(propertyName);
+    String resolvedName = css.getPropertyName(ordinal);
+
+    System.out.println(resolvedName);
+}
+```
+
+## Usage examples
+
+### Validate CSS property names
+
+Use `SupportedPrintCSS` to filter a collection of property names before further processing.
+
+```java
+import org.daisy.pipeline.braille.css.SupportedPrintCSS;
+
+public class PropertyValidator {
+
+    public static void main(String[] args) {
+        SupportedPrintCSS css = SupportedPrintCSS.getInstance();
+
+        String[] properties = { "color", "unknown-property" };
+
+        for (String property : properties) {
+            if (css.isSupportedCSSProperty(property)) {
+                System.out.println(property + " is supported");
+            } else {
+                System.out.println(property + " is not supported");
+            }
+        }
+    }
+}
+```
+
+### Inspect defaults for known properties
+
+```java
+import org.daisy.pipeline.braille.css.SupportedPrintCSS;
+
+public class DefaultInspector {
+
+    public static void main(String[] args) {
+        SupportedPrintCSS css = SupportedPrintCSS.getInstance();
+        String property = "color";
+
+        if (css.isSupportedCSSProperty(property)) {
+            Object defaultProperty = css.getDefaultProperty(property);
+            Object defaultValue = css.getDefaultValue(property);
+
+            System.out.println("Property: " + property);
+            System.out.println("Default property: " + defaultProperty);
+            System.out.println("Default value: " + defaultValue);
+        }
+    }
+}
+```
+
+### Build an indexed property list
+
+```java
+import org.daisy.pipeline.braille.css.SupportedPrintCSS;
+
+public class PropertyIndex {
+
+    public static void main(String[] args) {
+        SupportedPrintCSS css = SupportedPrintCSS.getInstance();
+
+        for (String propertyName : css.getDefinedPropertyNames()) {
+            int ordinal = css.getOrdinal(propertyName);
+            System.out.println(ordinal + ": " + propertyName);
+        }
+    }
+}
+```
+
+## Typical workflow
+
+1. Obtain the singleton with `SupportedPrintCSS.getInstance()`.
+2. Optionally verify the target media with `isSupportedMedia`.
+3. Validate property names with `isSupportedCSSProperty`.
+4. Retrieve default descriptors or values for supported properties.
+5. Use the property-name set or ordinal mapping when iterating over the complete supported property collection.

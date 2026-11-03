@@ -1,82 +1,28 @@
-# SENG402 — API Documentation Corpus Pipeline
+# Source code
 
-`source /Users/max/Documents/SENG402/SENG402/venv/bin/activate`
+Each folder has its own README listing what each file does. Run scripts from the repo root:
+`venv/bin/python3 src/<folder>/<script>.py`
 
-This pipeline collects API documentation from Java and Python libraries, extracts natural-language prose from it, and produces a clean text corpus ready for LIWC analysis.
+| Folder | Purpose | Results used for |
+|---|---|---|
+| [`pilot/`](pilot/README.md) | Screen 59 LIWC-22 categories down to a shortlist | Choosing the 15 categories |
+| [`corpus/`](corpus/README.md) | Sample libraries, clone them, extract and filter text | RQ1, RQ2, RQ4 language |
+| [`generation/`](generation/README.md) | Build the human and AI document pairs | RQ3, RQ4 authorship |
+| [`common/`](common/README.md) | Shared statistics, helpers and figures | Everything |
+| [`rq1/`](rq1/README.md) | Java vs Python, and the validity audit | RQ1 |
+| [`rq2/`](rq2/README.md) | Variation within and between languages | RQ2 |
+| [`rq3/`](rq3/README.md) | Human vs AI documentation | RQ3 |
+| [`rq4/`](rq4/README.md) | Classifiers and the AI detector | RQ4 |
+| [`md/`](md/README.md) | LLM prompts and the development log | RQ3 |
 
----
+Scripts find the project root from their own location, so they must stay exactly one folder
+below `src/`. Each adds all of the `src/` folders to its import path, so script names must stay
+unique. See [`RULES.md`](../RULES.md) for the rules these scripts apply.
 
-## Overview
+**Data flow:**
 
 ```
-Crawl / Clone  →  Raw files  →  Preprocess  →  LIWC input corpus
+pilot → the 15 categories
+corpus → libraries.csv → LIWC-22 (manual) → rq1, rq2, rq4 language
+generation → rq3_libraries_prose.csv → LIWC-22 (manual) → rq3, rq4 authorship
 ```
-
-| Stage | Script | Input | Output |
-|---|---|---|---|
-| Acquire Java docs | `crawl-clone/crawler.py` | `src/libraries/librariesJAVA.csv` | `files/raw/raw_java/` |
-| Acquire Python source | `crawl-clone/cloner.py` | `src/libraries/librariesPYTHON.csv` | `files/raw/raw_python/` |
-| Extract & clean text | `prepressor/preprocess.py` | `files/raw/` | `files/preprocess/preprocess_output_{timestamp}/` |
-
----
-
-## Step 1 — Acquire raw files
-
-### Java (`crawler.py`)
-Crawls each library's online Javadoc site and saves HTML pages locally.
-Only class/interface/package detail pages are kept — index and nav pages are discarded.
-
-```bash
-python src/crawl-clone/crawler.py
-```
-
-### Python (`cloner.py`)
-Clones each library's Git repository at the tagged release version.
-The source `.py` files are used directly in the next step.
-
-```bash
-python src/crawl-clone/cloner.py
-```
-
-Which libraries are fetched is controlled by the CSVs in `src/libraries/`:
-- `librariesJAVA.csv` — Java libraries with `seed_url` (Javadoc root)
-- `librariesPYTHON.csv` — Python libraries with `repo_url` and `git_tag`
-
-> **Tip:** Both scripts support a **pause** — press `Space` at any time to pause/resume.  
-> Progress is safe to interrupt; already-saved files are skipped on re-run.
-
----
-
-## Step 2 — Preprocess
-
-Extracts prose text from the raw files (stripping code, signatures, nav elements), filters short chunks, and concatenates everything per library into a single text field ready for LIWC.
-
-```bash
-python src/prepressor/preprocess.py                  # both ecosystems
-python src/prepressor/preprocess.py --lang java      # java only
-python src/prepressor/preprocess.py --lang python    # python only
-python src/prepressor/preprocess.py --libraries 1    # first library only
-python src/prepressor/preprocess.py --libraries 2-4  # libraries 2–4
-```
-
-Output lands in a timestamped directory:
-```
-files/preprocess/preprocess_output_{DD-MM-YY_HH-MM-SS}/
-    java/
-        java_chunks.csv      # one row per extracted prose chunk
-        java_libraries.csv   # one row per library (concatenated text) — LIWC input
-        preprocess_java.csv  # per-file extraction log
-    python/
-        python_chunks.csv
-        python_libraries.csv
-        preprocess_python.csv
-```
-
-The `*_libraries.csv` files are the primary LIWC inputs.
-
----
-
-## Re-running safely
-
-- **Crawler/Cloner**: already-downloaded files are detected and skipped, so re-runs are safe and resume from where you left off.
-- **Preprocessor**: each run creates a new timestamped output folder, so old results are never overwritten.

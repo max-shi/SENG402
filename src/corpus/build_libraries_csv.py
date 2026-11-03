@@ -1,5 +1,5 @@
 """
-build_libraries_csv — Consolidate the confirmatory sample into libraries.csv.
+build_libraries_csv: Consolidate the confirmatory sample into libraries.csv.
 
 Reads sample_manifest_final.csv (one row per confirmatory library, with a
 pointer to its cleaned text file) and writes a single libraries.csv with
@@ -8,7 +8,7 @@ to LIWC-22 desktop for the confirmatory phase, mirroring the pilot's
 _write_consolidated_libraries() step in preprocess.py.
 
 Usage:
-    venv/bin/python3 src/corpus/build_libraries_csv.py [--freeze-date YYYYMMDD]
+    venv/bin/python3 src/corpus/build_libraries_csv.py [--freeze-date <name>]
 """
 
 from __future__ import annotations
@@ -47,6 +47,12 @@ def main() -> None:
     rows = [r for r in rows if r["status"] == "primary_ready"]
     print(f"Found {len(rows)} primary_ready rows.")
 
+    # The extended n=2000 frame carries no domain tags; its
+    # manifest has no domain_tag column and libraries.csv omits `domain`.
+    has_domain = rows and "domain_tag" in rows[0]
+    columns = LIBRARIES_COLUMNS if has_domain else [
+        c for c in LIBRARIES_COLUMNS if c != "domain"]
+
     out_rows: list[dict] = []
     missing: list[str] = []
     for r in rows:
@@ -55,13 +61,23 @@ def main() -> None:
             missing.append(r["text_file_path"])
             continue
         text = text_path.read_text(encoding="utf-8")
-        out_rows.append({
+        if "\x00" in text:
+            # Defensive: a stray NUL byte breaks CSV readers (incl. LIWC).
+            # Found once in frame_n2000 (org.jbundle:org.jbundle.model,
+            # 1 byte in 349KB), almost certainly a binary artefact that
+            # slipped through prose extraction. Stripped here rather than
+            # tracing the exact source file, given the narrow scope.
+            print(f"  stripped {text.count(chr(0))} NUL byte(s) from {r['package_name']}")
+            text = text.replace("\x00", "")
+        out_row = {
             "library": r["package_name"],
             "ecosystem": r["ecosystem"],
-            "domain": r["domain_tag"],
             "n_words": r["word_count_post_clean"],
             "text": text,
-        })
+        }
+        if has_domain:
+            out_row["domain"] = r["domain_tag"]
+        out_rows.append(out_row)
 
     if missing:
         print(f"WARNING: {len(missing)} rows have no text file on disk:")
@@ -71,12 +87,12 @@ def main() -> None:
             print(f"    ...and {len(missing) - 10} more")
 
     with open(out_path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=LIBRARIES_COLUMNS)
+        w = csv.DictWriter(f, fieldnames=columns)
         w.writeheader()
         w.writerows(out_rows)
     print(f"Wrote {len(out_rows)} rows to {out_path}")
 
-    for eco in ("java", "python"):
+    for eco in sorted({r["ecosystem"] for r in out_rows}):
         n = sum(1 for r in out_rows if r["ecosystem"] == eco)
         print(f"  {eco:6s}  n={n}")
 

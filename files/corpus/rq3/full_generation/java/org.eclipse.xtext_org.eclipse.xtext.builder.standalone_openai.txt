@@ -1,0 +1,353 @@
+# org.eclipse.xtext.builder.standalone
+
+`org.eclipse.xtext.builder.standalone` provides APIs for running an Xtext-oriented build outside of an IDE. It brings together language-specific resource access, source generation, validation-related configuration, optional Java compilation, and incremental-build support.
+
+The central entry point is `StandaloneBuilder`. A builder is configured with source directories, classpath entries, one or more languages, and optional build settings, then executed with `launch()`.
+
+## Main concepts
+
+### `StandaloneBuilder`
+
+`StandaloneBuilder` coordinates a standalone build.
+
+Key configuration methods include:
+
+- `setBaseDir(String)` — set the build base directory.
+- `setSourceDirs(Iterable<String>)` — configure source directories for language resources.
+- `setJavaSourceDirs(Iterable<String>)` — configure Java source directories.
+- `setClassPathEntries(Iterable<String>)` — provide classpath entries.
+- `setLanguages(Map<String, LanguageAccess>)` — register the languages available to the build.
+- `setEncoding(String)` — select an encoding.
+- `setTempDir(File)` / `setTempDir(String)` — configure temporary-file storage.
+- `setIncrementalBuild(boolean)` — enable or disable incremental build mode.
+- `setFailOnValidationError(boolean)` — control whether validation errors should fail the build.
+- `setDebugLog(boolean)` — enable debug logging.
+- `setWriteStorageResources(boolean)` — control writing of storage resources.
+- `setClusteringConfig(ClusteringConfig)` — configure clustering behavior.
+- `launch()` — run the configured build.
+
+`getCompiler()` exposes the `IJavaCompiler` used by the builder, allowing compiler-specific configuration before a build is launched.
+
+### Language configuration and `LanguageAccess`
+
+A build can support multiple languages. `ILanguageConfiguration` describes a language in terms of:
+
+- a setup identifier returned by `getSetup()`;
+- its `OutputConfiguration` set;
+- whether it has Java support, via `isJavaSupport()`.
+
+`LanguageAccessFactory` creates the runtime `LanguageAccess` map used by `StandaloneBuilder`:
+
+```java
+Map<String, LanguageAccess> createLanguageAccess(
+    List<? extends ILanguageConfiguration> languageConfigs,
+    ClassLoader compilerClassLoder
+)
+```
+
+A `LanguageAccess` object exposes language-specific services, including:
+
+- `GeneratorDelegate` via `getGenerator()`;
+- `IStubGenerator` via `getStubGenerator()`;
+- `IResourceServiceProvider` via `getResourceServiceProvider()`;
+- resource-description, output-configuration, encoding, and validation services;
+- `createFileSystemAccess(File baseDir)` for creating a `JavaIoFileSystemAccess`.
+
+It also records whether the language links against Java types:
+
+```java
+languageAccess.setLinksAgainstJava(true);
+boolean usesJavaTypes = languageAccess.isLinksAgainstJava();
+```
+
+### Java compilation
+
+`IJavaCompiler` is the compiler abstraction:
+
+```java
+public interface IJavaCompiler {
+    CompilationResult compile(Iterable<String> sourceRoots, File outputClassDirectory);
+    void setClassPath(Iterable<String> classPath);
+    CompilerConfiguration getConfiguration();
+}
+```
+
+`EclipseJavaCompiler` is the provided implementation. In addition to the interface methods, it supports configurable output and error writers:
+
+```java
+EclipseJavaCompiler compiler = new EclipseJavaCompiler();
+compiler.setOutputWriter(outputWriter);
+compiler.setErrorWriter(errorWriter);
+```
+
+`CompilerConfiguration` controls compiler behavior:
+
+- source and target levels;
+- verbose output;
+- annotation-processing behavior;
+- preservation of formal parameter information;
+- incremental compilation state.
+
+For incremental compilation, provide a compiler state directory and an `IResourceDescription.Event.Listener`:
+
+```java
+compiler.getConfiguration().enableIncrementalCompilation(
+    compilerStateDirectory,
+    eventListener
+);
+```
+
+Use `disableIncrementalCompilation()` to remove that configuration.
+
+### Build clustering
+
+`ClusteringConfig` holds three values used to configure clustering:
+
+```java
+ClusteringConfig config = new ClusteringConfig(
+    minimumFreeMemory,
+    minimumClusterSize,
+    minimumPercentFreeMemory
+);
+```
+
+The configured values are available through:
+
+- `getMinimumFreeMemory()`
+- `getMinimumClusterSize()`
+- `getMinimumPercentFreeMemory()`
+
+### Incremental and classpath hashing support
+
+The `incremental` package contains utility types for tracking file and classpath changes.
+
+#### `BinaryFileHashing`
+
+`BinaryFileHashing` calculates hashes for individual files or directory contents:
+
+```java
+HashCode hash = BinaryFileHashing.processFile(file);
+
+BinaryFileHashing.processDirectory(
+    directory,
+    hashesByPath,
+    ".class"
+);
+```
+
+It also exposes the hash function used by the utility and an `unknownHashCode()` value.
+
+#### Classpath entry hashes
+
+`ClasspathInfos` determines a hash representation for a classpath entry:
+
+```java
+ClasspathInfos infos = new ClasspathInfos();
+ClasspathEntryHash hash = infos.hashClassesOrJar(classpathEntry);
+```
+
+A classpath hash can be:
+
+- `CoarseGrainedEntryHash`, represented by one `HashCode`, typically suitable for an archive or whole entry;
+- `FineGrainedEntryHash`, represented by a map from `IPath` to per-class `HashCode` values.
+
+Both implement `ClasspathEntryHash`, which supports visitor-based inspection:
+
+```java
+hash.accept(new ClasspathEntryHashVisitor() {
+    @Override
+    public void visitArchive(HashCode archiveHash) {
+        // Handle a coarse-grained archive hash.
+    }
+
+    @Override
+    public void visitClassFile(IPath fqn, HashCode classHash) {
+        // Handle an individual class-file hash.
+    }
+});
+```
+
+`ClasspathInfos.clear()` clears the stored classpath information.
+
+#### Resource collection and serialization
+
+`ResourceURICollector` collects resource URIs below a set of roots for selected file extensions:
+
+```java
+Set<URI> resources = new ResourceURICollector().collectAllResources(
+    roots,
+    fileExtensions
+);
+```
+
+`ExtendedEObjectInputStream` and `ExtendedEObjectOutputStream` add support for reading and writing hashes, paths, URI values, character arrays, and `SerializableResourceDescription` instances.
+
+## Usage examples
+
+### Configure and launch a standalone build
+
+The following example shows a typical orchestration flow. The application supplies `ILanguageConfiguration` instances for the languages it wants to build, creates `LanguageAccess` objects, configures a builder, and launches it.
+
+```java
+import java.io.File;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import org.eclipse.xtext.builder.standalone.LanguageAccess;
+import org.eclipse.xtext.builder.standalone.LanguageAccessFactory;
+import org.eclipse.xtext.builder.standalone.ILanguageConfiguration;
+import org.eclipse.xtext.builder.standalone.StandaloneBuilder;
+
+List<? extends ILanguageConfiguration> languageConfigurations =
+    Arrays.asList(myLanguageConfiguration);
+
+LanguageAccessFactory languageAccessFactory = new LanguageAccessFactory();
+
+Map<String, LanguageAccess> languages =
+    languageAccessFactory.createLanguageAccess(
+        languageConfigurations,
+        Thread.currentThread().getContextClassLoader()
+    );
+
+StandaloneBuilder builder = new StandaloneBuilder();
+builder.setBaseDir("/workspace/example-project");
+builder.setSourceDirs(Arrays.asList("src/main/example"));
+builder.setJavaSourceDirs(Arrays.asList("src/main/java"));
+builder.setClassPathEntries(Arrays.asList(
+    "lib/dependency.jar",
+    "build/classes"
+));
+builder.setTempDir(new File("build/tmp"));
+builder.setEncoding("UTF-8");
+builder.setLanguages(languages);
+
+builder.setFailOnValidationError(true);
+builder.setDebugLog(false);
+builder.setIncrementalBuild(true);
+
+boolean completed = builder.launch();
+if (!completed) {
+    throw new IllegalStateException("Standalone build did not complete successfully.");
+}
+```
+
+The language configuration can be supplied by any implementation of `ILanguageConfiguration`:
+
+```java
+import java.util.Set;
+
+import org.eclipse.xtext.builder.standalone.ILanguageConfiguration;
+import org.eclipse.xtext.generator.OutputConfiguration;
+
+public final class ExampleLanguageConfiguration
+        implements ILanguageConfiguration {
+
+    @Override
+    public String getSetup() {
+        return "com.example.MyLanguageSetup";
+    }
+
+    @Override
+    public Set<OutputConfiguration> getOutputConfigurations() {
+        return outputConfigurations;
+    }
+
+    @Override
+    public boolean isJavaSupport() {
+        return true;
+    }
+}
+```
+
+### Configure Java compiler options through the builder
+
+Use the compiler returned by `StandaloneBuilder` when compiler options need to be adjusted as part of the overall build setup.
+
+```java
+import java.io.File;
+
+import org.eclipse.xtext.builder.standalone.StandaloneBuilder;
+import org.eclipse.xtext.builder.standalone.compiler.CompilerConfiguration;
+import org.eclipse.xtext.builder.standalone.compiler.IJavaCompiler;
+
+StandaloneBuilder builder = new StandaloneBuilder();
+
+IJavaCompiler compiler = builder.getCompiler();
+compiler.setClassPath(classPathEntries);
+
+CompilerConfiguration configuration = compiler.getConfiguration();
+configuration.setSourceLevel("17");
+configuration.setTargetLevel("17");
+configuration.setVerbose(true);
+configuration.setSkipAnnotationProcessing(false);
+configuration.setPreserveInformationAboutFormalParameters(true);
+
+configuration.enableIncrementalCompilation(
+    new File("build/compiler-state"),
+    resourceDescriptionEventListener
+);
+
+// Configure builder sources, languages, and remaining options...
+boolean completed = builder.launch();
+```
+
+### Compile Java source roots directly
+
+The Java compiler can also be used without `StandaloneBuilder` when only compilation is needed.
+
+```java
+import java.io.File;
+import java.util.Arrays;
+
+import org.eclipse.xtext.builder.standalone.compiler.EclipseJavaCompiler;
+import org.eclipse.xtext.builder.standalone.compiler.CompilationResult;
+
+EclipseJavaCompiler compiler = new EclipseJavaCompiler();
+
+compiler.setClassPath(Arrays.asList(
+    "lib/api.jar",
+    "build/generated-sources"
+));
+
+compiler.getConfiguration().setSourceLevel("17");
+compiler.getConfiguration().setTargetLevel("17");
+
+CompilationResult result = compiler.compile(
+    Arrays.asList(
+        "src/main/java",
+        "build/generated-sources"
+    ),
+    new File("build/classes")
+);
+```
+
+### Hash compiled class files for change tracking
+
+For scenarios that need to compare classpath contents between builds, process a directory of class files into a path-to-hash map.
+
+```java
+import java.util.HashMap;
+import java.util.Map;
+
+import org.eclipse.core.runtime.IPath;
+
+import com.google.common.hash.HashCode;
+
+import org.eclipse.xtext.builder.standalone.incremental.BinaryFileHashing;
+
+Map<IPath, HashCode> classHashes = new HashMap<>();
+
+BinaryFileHashing.processDirectory(
+    "build/classes",
+    classHashes,
+    ".class"
+);
+```
+
+## Additional extension points
+
+- Implement `IIssueHandler` to receive an iterable of `Issue` objects and return whether the issues were handled.
+- Use `StandaloneBuilderFileCallback` where an `IFileCallback` is needed to receive `fileAdded(File)` and `fileDeleted(File)` notifications.
+- Use `fileEncodingSetup(Collection<LanguageAccess>, String)` when encoding setup needs to be applied to a collection of configured languages.
+- Use `clearResourceSet(ResourceSet)` to clear a resource set managed by surrounding build code.

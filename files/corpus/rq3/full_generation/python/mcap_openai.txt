@@ -1,0 +1,304 @@
+# mcap
+
+`mcap` is a Python library for writing and reading structured message-capture data. Its API supports:
+
+- Registering schemas and channels for message data
+- Writing timestamped messages, attachments, and metadata
+- Reading messages with topic and time-range filtering
+- Iterating messages in log-time or insertion order, optionally in reverse
+- Decoding message payloads through pluggable decoder factories
+- Accessing file headers, summaries, attachments, and metadata
+- Working with low-level records and binary data streams when needed
+
+The library exposes both high-level `Writer` and `McapReader` APIs and lower-level record, stream, chunk, and serialization utilities.
+
+## Main API
+
+### Writing data
+
+`Writer` creates a capture containing schemas, channels, messages, attachments, and metadata.
+
+Important writer methods:
+
+- `start(profile="", library=...)` — begin a capture and write its header.
+- `register_schema(name, encoding, data)` — register a message schema.
+- `register_channel(topic, message_encoding, schema_id, metadata={})` — register a topic/channel and return its channel ID.
+- `add_message(channel_id, log_time, data, publish_time, sequence=0)` — add a message payload.
+- `add_attachment(create_time, log_time, name, media_type, data)` — add an attachment.
+- `add_metadata(name, data)` — add named string metadata.
+- `finish()` — finalize the capture.
+
+`CompressionType` and `IndexType` are available for writer configuration where supported by the writer setup.
+
+### Reading data
+
+Use `make_reader()` to create an `McapReader` from a binary stream:
+
+```python
+from mcap.reader import make_reader
+
+reader = make_reader(stream, validate_crcs=True)
+```
+
+The returned reader may be a `SeekingReader` or `NonSeekingReader`, depending on the supplied stream.
+
+Reader methods include:
+
+- `iter_messages(...)` — iterate `(schema, channel, message)` tuples.
+- `iter_decoded_messages(...)` — iterate decoded messages using configured decoder factories.
+- `get_header()` — retrieve the capture header.
+- `get_summary()` — retrieve a `Summary`, when available.
+- `iter_attachments()` — iterate attachments.
+- `iter_metadata()` — iterate metadata records.
+
+Message iteration accepts optional filters:
+
+- `topics`: a topic string, an iterable of topic strings, or `None`
+- `start_time`: inclusive integer timestamp bound
+- `end_time`: inclusive integer timestamp bound
+- `log_time_order`: choose log-time ordering or insertion ordering
+- `reverse`: reverse the selected ordering
+
+### Records
+
+The `records` module provides representations of capture records:
+
+- `Header`, `Footer`, `DataEnd`
+- `Schema`, `Channel`, `Message`
+- `Chunk`, `ChunkIndex`, `MessageIndex`
+- `Attachment`, `AttachmentIndex`
+- `Metadata`, `MetadataIndex`
+- `Statistics`, `SummaryOffset`
+
+All record types derive from `McapRecord` and support binary serialization through `write()`. Record classes also provide `read()` methods for parsing from a `ReadDataStream`.
+
+### Decoding message payloads
+
+Implement `DecoderFactory` to provide payload decoders for particular message encodings and schemas:
+
+```python
+from typing import Any, Callable, Optional
+
+from mcap.decoder import DecoderFactory
+from mcap.records import Schema
+
+
+class Utf8DecoderFactory(DecoderFactory):
+    def decoder_for(
+        self,
+        message_encoding: str,
+        schema: Optional[Schema],
+    ) -> Optional[Callable[[bytes], Any]]:
+        if message_encoding == "utf-8":
+            return lambda payload: payload.decode("utf-8")
+        return None
+```
+
+Pass one or more factories to `make_reader()`:
+
+```python
+reader = make_reader(
+    stream,
+    validate_crcs=True,
+    decoder_factories=[Utf8DecoderFactory()],
+)
+```
+
+If no suitable decoder is available, decoding may raise `DecoderNotFoundError`.
+
+### Well-known identifiers
+
+The following classes provide named values for commonly used identifiers:
+
+- `Profile`
+- `SchemaEncoding`
+- `MessageEncoding`
+
+Use these where appropriate instead of duplicating encoding or profile strings throughout an application.
+
+## Example: write messages
+
+The following example shows a function that receives a configured `Writer`, starts a capture, registers a schema and channel, writes messages, adds metadata, and finishes the capture.
+
+```python
+from mcap.writer import Writer
+
+
+def write_temperature_capture(writer: Writer) -> None:
+    writer.start(
+        profile="example-profile",
+        library="example-application",
+    )
+
+    schema_id = writer.register_schema(
+        name="TemperatureReading",
+        encoding="jsonschema",
+        data=b'{"type":"object","properties":{"celsius":{"type":"number"}}}',
+    )
+
+    channel_id = writer.register_channel(
+        topic="/temperature",
+        message_encoding="json",
+        schema_id=schema_id,
+        metadata={
+            "unit": "celsius",
+            "source": "sensor-a",
+        },
+    )
+
+    writer.add_metadata(
+        name="capture-info",
+        data={
+            "environment": "test",
+            "operator": "example-user",
+        },
+    )
+
+    writer.add_message(
+        channel_id=channel_id,
+        log_time=1_000,
+        publish_time=1_000,
+        sequence=1,
+        data=b'{"celsius":21.5}',
+    )
+
+    writer.add_message(
+        channel_id=channel_id,
+        log_time=2_000,
+        publish_time=2_000,
+        sequence=2,
+        data=b'{"celsius":21.8}',
+    )
+
+    writer.add_attachment(
+        create_time=2_500,
+        log_time=2_500,
+        name="notes.txt",
+        media_type="text/plain",
+        data=b"Temperature sensor test capture.",
+    )
+
+    writer.finish()
+```
+
+The timestamps are integer values supplied by the calling application. Use a consistent timestamp convention throughout a capture.
+
+## Example: read and filter messages
+
+```python
+from mcap.reader import make_reader
+
+
+def print_messages(stream) -> None:
+    reader = make_reader(stream, validate_crcs=True)
+
+    header = reader.get_header()
+    print("Header:", header)
+
+    for schema, channel, message in reader.iter_messages(
+        topics="/temperature",
+        start_time=1_000,
+        end_time=10_000,
+        log_time_order=True,
+    ):
+        print("Schema:", schema)
+        print("Channel:", channel)
+        print("Message:", message)
+```
+
+To request reverse log-time order:
+
+```python
+for schema, channel, message in reader.iter_messages(
+    topics=["/temperature", "/humidity"],
+    log_time_order=True,
+    reverse=True,
+):
+    print(schema, channel, message)
+```
+
+To preserve insertion ordering instead of log-time ordering:
+
+```python
+for schema, channel, message in reader.iter_messages(
+    log_time_order=False,
+):
+    print(schema, channel, message)
+```
+
+## Example: decode messages
+
+```python
+from typing import Any, Callable, Optional
+
+from mcap.decoder import DecoderFactory
+from mcap.reader import make_reader
+from mcap.records import Schema
+
+
+class JsonTextDecoderFactory(DecoderFactory):
+    def decoder_for(
+        self,
+        message_encoding: str,
+        schema: Optional[Schema],
+    ) -> Optional[Callable[[bytes], Any]]:
+        if message_encoding == "json":
+            return lambda data: data.decode("utf-8")
+        return None
+
+
+def read_decoded_messages(stream) -> None:
+    reader = make_reader(
+        stream,
+        decoder_factories=[JsonTextDecoderFactory()],
+    )
+
+    for decoded_message in reader.iter_decoded_messages(
+        topics="/temperature",
+        log_time_order=True,
+    ):
+        print(decoded_message)
+```
+
+## Example: inspect non-message data
+
+```python
+from mcap.reader import make_reader
+
+
+def inspect_capture(stream) -> None:
+    reader = make_reader(stream)
+
+    print("Header:", reader.get_header())
+    print("Summary:", reader.get_summary())
+
+    for attachment in reader.iter_attachments():
+        print("Attachment:", attachment)
+
+    for metadata in reader.iter_metadata():
+        print("Metadata:", metadata)
+```
+
+## Lower-level APIs
+
+For applications that need direct binary or record-level access, `mcap` also exposes:
+
+- `ReadDataStream` for reading fixed-width integers, byte ranges, and prefixed strings
+- `RecordBuilder` for constructing serialized records
+- `StreamReader` for iterating raw `McapRecord` instances
+- `breakup_chunk()` and `get_chunk_data_stream()` for accessing chunk contents
+- `normalize_value()` and `stringify_record()` for record-oriented serialization and display
+- `ChunkBuilder` for accumulating channel, schema, and message records into a chunk
+
+The low-level APIs are useful for custom tooling, record inspection, transformation pipelines, and applications that need more control than the high-level reader and writer interfaces provide.
+
+## Errors
+
+The library defines an `McapError` base exception and several specialized errors:
+
+- `InvalidMagic` — the input does not begin with expected capture magic data.
+- `EndOfFile` — the stream ended before the requested data could be read.
+- `RecordLengthLimitExceeded` — a record exceeded a configured or supported length limit.
+- `UnsupportedCompressionError` — compressed data uses an unsupported compression type.
+- `DecoderNotFoundError` — no decoder was available for a requested decoded message.
+- `CRCValidationError` — checksum validation failed while reading chunk data.

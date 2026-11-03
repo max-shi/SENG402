@@ -1,0 +1,96 @@
+# css-core
+
+Part of the DAISY Pipeline braille modules, `css-core` provides the foundational infrastructure for CSS support within the braille processing pipeline. It defines what CSS media types and properties are recognized and supported, and exposes metadata about those properties (defaults, ordinals, names) that other components in the pipeline can rely on for CSS parsing, validation, and property resolution.
+
+## Overview
+
+The central piece of the public API is `SupportedPrintCSS`, a singleton implementation of the `SupportedCSS` interface. It acts as a registry describing which CSS features (media types and properties) are recognized by the "print" CSS profile used within the pipeline, and provides default values and indexing utilities for supported properties.
+
+### `SupportedPrintCSS`
+
+This class answers questions such as:
+
+- **Is a given CSS media type supported?** via `isSupportedMedia(String media)`.
+- **Is a given CSS property supported?** via `isSupportedCSSProperty(String property)`.
+- **What is the default value of a property?** via `getDefaultProperty(String property)` (returns a `CSSProperty` descriptor) and `getDefaultValue(String property)` (returns the default as a `Term<?>`).
+- **How many properties are known in total?** via `getTotalProperties()`.
+- **What are all the known property names?** via `getDefinedPropertyNames()`.
+- **Pick an arbitrary supported property name**, useful for testing or fallback logic, via `getRandomPropertyName()`.
+- **Map between property names and numeric ordinals**, useful for compact/indexed representations of properties, via `getOrdinal(String propertyName)` and `getPropertyName(int o)`.
+
+Because `SupportedPrintCSS` is a singleton, it is accessed via the static factory method `getInstance()` rather than being instantiated directly. This ensures a single, consistent source of truth for supported CSS features throughout the application.
+
+## Usage
+
+### Obtaining the singleton instance
+
+```java
+import org.daisy.pipeline.braille.css.SupportedPrintCSS;
+
+SupportedPrintCSS supportedCSS = SupportedPrintCSS.getInstance();
+```
+
+### Checking media and property support
+
+```java
+if (supportedCSS.isSupportedMedia("embossed")) {
+    // proceed with braille-specific CSS processing
+}
+
+if (supportedCSS.isSupportedCSSProperty("text-align")) {
+    // property is recognized; safe to process
+}
+```
+
+### Retrieving default property values
+
+```java
+import org.daisy.pipeline.braille.css.CSSProperty;
+import org.daisy.pipeline.braille.css.Term;
+
+CSSProperty defaultProp = supportedCSS.getDefaultProperty("text-align");
+Term<?> defaultTerm = supportedCSS.getDefaultValue("text-align");
+
+System.out.println("Default text-align: " + defaultTerm);
+```
+
+### Enumerating supported properties
+
+```java
+import java.util.Set;
+
+Set<String> allProperties = supportedCSS.getDefinedPropertyNames();
+System.out.println("Total supported properties: " + supportedCSS.getTotalProperties());
+
+for (String name : allProperties) {
+    System.out.println(name);
+}
+```
+
+### Working with property ordinals
+
+Ordinals provide a compact numeric representation of a property name, which can be useful when storing or comparing properties efficiently (e.g., in bitsets or arrays indexed by property).
+
+```java
+int ordinal = supportedCSS.getOrdinal("text-align");
+String propertyName = supportedCSS.getPropertyName(ordinal);
+
+assert propertyName.equals("text-align");
+```
+
+### Picking a random supported property (e.g. for testing)
+
+```java
+String randomProperty = supportedCSS.getRandomPropertyName();
+System.out.println("Randomly selected property: " + randomProperty);
+```
+
+## Typical Integration
+
+Other modules in the braille pipeline that parse or process CSS stylesheets typically consult `SupportedPrintCSS.getInstance()` to:
+
+1. Validate incoming CSS media queries and property declarations against what the pipeline actually understands.
+2. Fall back to sensible defaults when a property is not explicitly specified in a stylesheet.
+3. Efficiently index and compare CSS properties using the ordinal-based API rather than repeated string comparisons.
+
+This makes `css-core` a lightweight but essential dependency for any component in the pipeline that needs a consistent, authoritative view of which CSS constructs are supported and what their defaults are.

@@ -1,0 +1,156 @@
+# flaskwebgui
+
+Turn your Flask, FastAPI, Django, or Flask-SocketIO web app into a desktop-like application by launching it inside a native browser window — no Electron, no extra runtime dependencies. flaskwebgui runs your existing web server in the background and opens it in the system's browser (or a dedicated app-mode window if the browser supports it), giving your web app the feel of a standalone desktop application.
+
+## Features
+
+- Works with **Flask**, **FastAPI**, **Django**, and **Flask-SocketIO** out of the box.
+- Automatically detects installed browsers and launches them in "app mode" (a chromeless window) when possible, falling back to a normal browser tab otherwise.
+- Handles picking a free port, starting your server in a background thread/process, and shutting everything down cleanly when the browser window is closed.
+- Minimal integration: wrap your existing app object and call `run()`.
+
+## Installation
+
+```bash
+pip install flaskwebgui
+```
+
+## How it works
+
+flaskwebgui is built around a small set of pieces:
+
+### `FlaskUI`
+
+The main entry point. You construct a `FlaskUI` instance with your app object (and, depending on the framework, a server function), and call `.run()`. Internally it will:
+
+1. Determine a port to use (via `get_free_port` if none is specified).
+2. Start your server in a background `Thread` or `Process`.
+3. Locate and launch a browser pointed at your running app, preferring "app mode" windows via `get_browser_command`.
+4. Monitor the browser process and, once it's closed, shut the server down via `close_application` (and `kill_port` if needed).
+
+Key methods:
+
+- `get_browser_command(self)` — builds the command-line invocation used to launch the detected browser in app/kiosk mode (or a normal URL open, if no compatible browser is found).
+- `start_browser(self, server_process: Union[Thread, Process])` — launches the browser and supervises the given server process/thread, wiring up shutdown behavior once the browser window is closed.
+- `run(self)` — the main entry point: starts the server, opens the browser, and blocks/manages the application lifecycle until the window is closed.
+
+### Default server adapters
+
+flaskwebgui ships with framework-specific helpers that know how to run each type of app in a way compatible with `FlaskUI`. Each adapter exposes:
+
+- `get_server_kwargs(**kwargs)` — normalizes/prepares the keyword arguments needed to start that framework's server (host, port, app object, etc.).
+- `server(**server_kwargs)` — actually starts the server using those kwargs.
+
+These are:
+
+- `BaseDefaultServer` — shared base behavior for the framework-specific adapters below.
+- `DefaultServerFlask` — runs a Flask app.
+- `DefaultServerFastApi` — runs a FastAPI app (typically via an ASGI server).
+- `DefaultServerDjango` — runs a Django app/WSGI application.
+- `DefaultServerFlaskSocketIO` — runs a Flask app that uses Flask-SocketIO, using SocketIO's own run mechanism instead of Flask's default one.
+
+You generally don't need to call these directly — `FlaskUI` uses the appropriate one automatically based on how you configure it — but they're available if you need custom server startup behavior.
+
+### Utility functions
+
+- `get_free_port()` — finds an available local port to bind the server to.
+- `kill_port(port: int)` — forcibly frees a port, used during shutdown/cleanup.
+- `close_application()` — terminates the running server and cleans up resources.
+- `find_browser_in_paths(browser_paths: List[str])` — searches a list of candidate filesystem paths to locate an installed browser executable.
+
+## Usage
+
+### Flask
+
+```python
+from flask import Flask
+from flaskwebgui import FlaskUI
+
+app = Flask(__name__)
+
+@app.route("/")
+def index():
+    return "<h1>Hello from Flask desktop app!</h1>"
+
+ui = FlaskUI(app=app, server="flask")
+
+if __name__ == "__main__":
+    ui.run()
+```
+
+### FastAPI
+
+```python
+from fastapi import FastAPI
+from flaskwebgui import FlaskUI
+import uvicorn
+
+app = FastAPI()
+
+@app.get("/")
+def index():
+    return {"message": "Hello from FastAPI desktop app!"}
+
+ui = FlaskUI(app=app, server="fastapi", host="127.0.0.1", port=8000)
+
+if __name__ == "__main__":
+    ui.run()
+```
+
+### Django
+
+```python
+# manage.py-based project
+from flaskwebgui import FlaskUI
+
+# `application` is your Django WSGI app
+from myproject.wsgi import application
+
+ui = FlaskUI(app=application, server="django", host="127.0.0.1", port=8000)
+
+if __name__ == "__main__":
+    ui.run()
+```
+
+### Flask-SocketIO
+
+```python
+from flask import Flask
+from flask_socketio import SocketIO
+from flaskwebgui import FlaskUI
+
+app = Flask(__name__)
+socketio = SocketIO(app)
+
+@app.route("/")
+def index():
+    return "<h1>Realtime desktop app</h1>"
+
+ui = FlaskUI(app=app, server="flask_socketio", socketio=socketio)
+
+if __name__ == "__main__":
+    ui.run()
+```
+
+### Custom port and browser detection
+
+```python
+from flaskwebgui import FlaskUI, get_free_port
+
+port = get_free_port()
+
+ui = FlaskUI(app=app, server="flask", port=port, width=1024, height=768)
+ui.run()
+```
+
+## Lifecycle notes
+
+When the user closes the app's browser window, flaskwebgui detects this and calls `close_application()` to stop the background server thread/process and release the port via `kill_port`. This means you don't need to manually manage server shutdown — closing the window is enough to fully terminate your application.
+
+## Contributing
+
+Issues and pull requests are welcome. If you're adding support for a new framework, consider following the pattern established by `BaseDefaultServer` and its subclasses (`get_server_kwargs` + `server`) so it can be plugged into `FlaskUI` consistently.
+
+## License
+
+See `LICENSE` file for details.

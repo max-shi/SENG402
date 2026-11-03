@@ -1,0 +1,275 @@
+# prettyprinter
+
+`prettyprinter` is a syntax-highlighting, layout-aware pretty printer for Python. It is designed as a drop-in replacement for the standard library's `pprint` module, but with a modern rendering engine (a Wadler-style document/layout algorithm), support for colored terminal output, and an extensible registry that lets you teach it how to pretty-print your own classes — including dataclasses, attrs classes, Django models, NumPy arrays, `requests` objects, and more.
+
+Where the standard `pprint` module does simple, mostly line-based formatting, `prettyprinter` builds an intermediate *document* representation of your data (groups, nesting, fills, hard/soft line breaks) and then lays it out against a target width, so nested structures wrap cleanly and consistently regardless of how deeply they're nested.
+
+## Features
+
+- Drop-in style `pprint` / `pformat` functions with sensible defaults.
+- Colorized output (`cpprint`) with pluggable syntax highlighting styles.
+- A pretty-printer registry (`register_pretty`) so you can define how your own types are rendered.
+- Built-in support for many stdlib types (`datetime`, `uuid`, `Counter`, `defaultdict`, `Enum`, `Path`, `partial`, exceptions, etc.).
+- Optional integrations ("extras") for `dataclasses`, `attrs`, Django ORM, NumPy, `requests`, IPython, and more — installed on demand.
+- A low-level document/layout API (`doc`, `doctypes`, `layout`) for anyone who wants to build custom pretty-printing behavior from scratch.
+- Configurable global defaults via `set_default_config`.
+
+## Installation
+
+```bash
+pip install prettyprinter
+```
+
+Optional integrations are installed via `install_extras`, described below.
+
+## Quick start
+
+```python
+from prettyprinter import pprint, pformat
+
+data = {
+    "name": "Ada Lovelace",
+    "born": 1815,
+    "tags": {"mathematician", "writer"},
+    "notes": ["first programmer", "worked with Babbage"] * 5,
+}
+
+pprint(data)
+
+text = pformat(data)
+print(text)
+```
+
+`pprint` writes formatted output to a stream (`sys.stdout` by default), while `pformat` returns the formatted string. Both accept the same layout-related keyword arguments:
+
+```python
+pprint(
+    data,
+    indent=2,
+    width=79,
+    depth=None,
+    ribbon_width=71,
+    compact=False,
+    max_seq_len=1000,
+    sort_dict_keys=False,
+)
+```
+
+- `indent` — number of spaces used per nesting level.
+- `width` — the maximum total line width to lay out against.
+- `ribbon_width` — the "ribbon" width used by the smart layout algorithm to decide when to break lines even under the page width.
+- `depth` — maximum nesting depth to render before truncating.
+- `max_seq_len` — maximum number of items shown in sequences/mappings before truncation.
+- `compact` — pack items more tightly when they fit.
+- `sort_dict_keys` — sort dictionary keys before printing.
+
+## Colored output
+
+```python
+from prettyprinter import cpprint
+from prettyprinter.color import GitHubLightStyle, set_default_style
+
+cpprint(data)                       # uses the current default style
+cpprint(data, style=GitHubLightStyle)
+
+set_default_style(GitHubLightStyle) # change the default style globally
+```
+
+`cpprint` accepts the same layout arguments as `pprint`, plus a `style` keyword for choosing a `Style` (from the `colorful`-compatible styling system used internally).
+
+## Global configuration
+
+Rather than passing the same keyword arguments to every call, you can set library-wide defaults:
+
+```python
+from prettyprinter import set_default_config, get_default_config
+
+set_default_config(
+    width=100,
+    ribbon_width=90,
+    max_seq_len=200,
+    sort_dict_keys=True,
+)
+
+current = get_default_config()
+```
+
+Any argument left unspecified (using the internal "unset" sentinel) falls back to these defaults.
+
+## The `PrettyPrinter` object
+
+For applications that want an object-oriented, `pprint.PrettyPrinter`-like interface:
+
+```python
+from prettyprinter import PrettyPrinter
+
+printer = PrettyPrinter()
+printer.pprint(data)
+formatted = printer.pformat(data)
+printer.isrecursive(data)
+printer.isreadable(data)
+doc = printer.format(data)
+```
+
+## Teaching prettyprinter about your own types
+
+Custom pretty-printers are registered per-type (or via a predicate) using `register_pretty`. A pretty-printer function receives the value and a rendering context, and returns a document built from helpers like `pretty_call`, `sequence_of_docs`, and `bracket`.
+
+```python
+from prettyprinter import register_pretty, pretty_call
+
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+@register_pretty(Point)
+def pretty_point(value, ctx):
+    return pretty_call(ctx, Point, x=value.x, y=value.y)
+
+from prettyprinter import pprint
+pprint(Point(1, 2))
+# Point(x=1, y=2)
+```
+
+`register_pretty` can also be used as `register_pretty(predicate=lambda v: ...)` to match values dynamically rather than by exact type.
+
+You can check whether a type already has a registered pretty-printer with `is_registered`, and generate a canonical `repr()`-style string for any registered class instance with `pretty_repr`.
+
+```python
+from prettyprinter import pretty_repr
+
+repr_string = pretty_repr(Point(1, 2))
+```
+
+## Annotating values with comments
+
+`prettyprinter` supports attaching human-readable comments to values, which are rendered alongside the formatted output:
+
+```python
+from prettyprinter import pprint, comment, trailing_comment
+
+pprint(comment(42, "the answer"))
+pprint(trailing_comment([1, 2, 3], "a short list"))
+```
+
+## Installing optional extras
+
+Support for third-party and stdlib-adjacent types is organized into "extras" modules, each with an `install()` function. Rather than importing them individually, use `install_extras`:
+
+```python
+from prettyprinter import install_extras
+
+install_extras(
+    include=["dataclasses", "attrs", "django", "requests", "numpy", "ipython", "python"],
+    exclude=set(),
+    raise_on_error=False,
+    warn_on_error=True,
+)
+```
+
+Calling `install_extras()` with no arguments installs all available extras, skipping (and optionally warning about) any whose corresponding third-party library isn't installed. After installation, values of the relevant types are automatically recognized and pretty-printed:
+
+```python
+import dataclasses
+from prettyprinter import pprint, install_extras
+
+install_extras(include=["dataclasses"])
+
+@dataclasses.dataclass
+class User:
+    name: str
+    age: int
+
+pprint(User(name="Grace", age=85))
+```
+
+Available extras include:
+
+- `dataclasses` — pretty-print `@dataclass` instances.
+- `attrs` — pretty-print `attrs`-decorated classes.
+- `django` — pretty-print Django model instances and querysets, with configurable verbosity via `ModelVerbosity`, `inc`, and `dec`.
+- `numpy` — pretty-print `ndarray` values.
+- `requests` — pretty-print `Request`, `PreparedRequest`, `Response`, `Session`, and header objects from the `requests` library.
+- `ipython` — integrate with IPython's display hooks and Pygments styles.
+- `ipython_repr_pretty` — support objects implementing IPython's `_repr_pretty_` protocol.
+- `python` — additional built-in Python type support.
+
+## Built-in support for standard library types
+
+Even without extras, `prettyprinter` ships with pretty-printers for many common stdlib types: `uuid.UUID`, `datetime.datetime`/`date`/`time`/`timedelta`, timezone objects (including `pytz`), `collections.ChainMap`/`defaultdict`/`OrderedDict`/`deque`/`Counter`, `Enum` members, `types.MappingProxyType`, `functools.partial`, exceptions, `ast` nodes, and `pathlib.Path`.
+
+These are the functions used internally to render such values (`pretty_uuid`, `pretty_datetime`, `pretty_counter`, `pretty_path`, etc.) — you generally don't need to call them directly, but they're available if you want to compose your own pretty-printers around them.
+
+## Building custom documents (advanced)
+
+For full control over layout, `prettyprinter` exposes the underlying document-building primitives used internally. A "document" describes structure — text, grouping, nesting, and line breaks — independent of the final rendered width.
+
+```python
+from prettyprinter.doc import (
+    concat, group, align, nest, hang, fill, annotate, always_break,
+)
+
+doc = group(
+    concat([
+        "[",
+        nest(2, concat(["a", ",", "b", ",", "c"])),
+        "]",
+    ])
+)
+```
+
+Key building blocks:
+
+- `concat(docs)` — join documents together.
+- `group(doc)` — mark a region that should be laid out flat if it fits, or broken across lines otherwise.
+- `align` / `nest` / `hang` — control indentation relative to the current column or nesting level.
+- `fill(docs)` — lay out a sequence of documents, breaking only as needed to fit the width.
+- `annotate(annotation, doc)` — attach metadata (e.g. for syntax highlighting) to a region of a document.
+- `always_break(doc)` — force a group to break even if it would otherwise fit.
+- `flat_choice(when_broken, when_flat)` — choose different content depending on whether the enclosing group is broken.
+- `contextual(fn)` — build a document lazily using the current rendering context.
+
+Once you have a document, it can be normalized and laid out against a target width:
+
+```python
+from prettyprinter.doctypes import normalize_doc
+from prettyprinter.layout import layout_smart, layout_fast
+from prettyprinter.render import default_render_to_str
+
+normalized = normalize_doc(doc)
+sdocs = layout_smart(normalized, width=79, ribbon_frac=0.9)
+output = default_render_to_str(sdocs)
+print(output)
+```
+
+`layout_smart` uses a "ribbon width" heuristic for more human-friendly wrapping, while `layout_fast` is a simpler, faster layout algorithm. Both produce a stream of low-level `SDoc` instructions (`SLine`, `SAnnotationPush`, `SAnnotationPop`) which can be rendered with `default_render_to_str`/`default_render_to_stream`, or, for colored output, `colored_render_to_stream`.
+
+## Utilities
+
+A small set of general-purpose helpers used throughout the library are also exposed:
+
+```python
+from prettyprinter.utils import intersperse, find, take, compose, get_terminal_width
+
+list(intersperse(",", ["a", "b", "c"]))   # ['a', ',', 'b', ',', 'c']
+find(lambda x: x > 2, [1, 2, 3, 4])       # 3
+list(take(2, range(100)))                 # [0, 1]
+width = get_terminal_width(default=79)
+```
+
+## Summary
+
+| Task | Use |
+|---|---|
+| Print a value | `pprint(obj)` |
+| Get formatted string | `pformat(obj)` |
+| Colorized print | `cpprint(obj)` |
+| Object-oriented API | `PrettyPrinter` |
+| Set global defaults | `set_default_config` / `get_default_config` |
+| Register pretty-printing for a type | `register_pretty` |
+| Enable dataclasses/attrs/Django/NumPy/requests/IPython support | `install_extras` |
+| Attach comments to values | `comment`, `trailing_comment` |
+| Build custom layouts | `prettyprinter.doc`, `prettyprinter.layout` |
+
+`prettyprinter` aims to make debugging output and structured logging readable by default, while remaining fully extensible for custom types and layout strategies.

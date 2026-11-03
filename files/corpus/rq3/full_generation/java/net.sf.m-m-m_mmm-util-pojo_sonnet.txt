@@ -1,0 +1,150 @@
+# mmm-util-pojo
+
+`mmm-util-pojo` is a Java library that provides a unified, reflection-based abstraction for accessing and manipulating properties of Plain Old Java Objects (POJOs). It offers a rich introspection layer on top of the JDK's `java.beans` and reflection APIs, letting you read, write, and enumerate properties of arbitrary objects — including indexed properties (arrays/lists), mapped properties (maps), and "virtual" properties synthesized from getter/setter/add/remove/size method combinations — all through a consistent API, without hardcoding to JavaBean conventions.
+
+It also includes a simple factory abstraction for instantiating POJOs and a utility for recursively visiting object graphs.
+
+## Key Concepts
+
+### `PojoDescriptor` and `PojoDescriptorBuilder`
+
+The core abstraction is the `PojoDescriptor<POJO>`, which describes all discoverable properties of a given POJO type and lets you get/set property values, work with indexed/mapped property items, and query property collection sizes — all by property name (or by a typed `TypedProperty<V>` for compile-time-safe access).
+
+You obtain a `PojoDescriptor` from a `PojoDescriptorBuilder`:
+
+```java
+PojoDescriptorBuilderFactory factory = PojoDescriptorBuilderFactoryImpl.getInstance();
+PojoDescriptorBuilder builder = factory.createPublicMethodDescriptorBuilder();
+PojoDescriptor<Person> descriptor = builder.getDescriptor(Person.class);
+```
+
+`PojoDescriptorBuilderFactory` can create builders that introspect:
+
+- **public methods** (`createPublicMethodDescriptorBuilder()`) — classic getter/setter style access
+- **private fields** (`createPrivateFieldDescriptorBuilder()`) — direct field access
+- a **custom combination** of method/field visibility (`createDescriptorBuilder(methodVisibility, fieldVisibility)`)
+
+### `PojoPropertyDescriptor` and `PojoPropertyAccessor`
+
+Each property exposed by a `PojoDescriptor` is represented by a `PojoPropertyDescriptor`, which in turn exposes one or more `PojoPropertyAccessor`s — typed handles for a specific way of accessing the property:
+
+- `PojoPropertyAccessorNonArg` — plain getter (`invoke(pojoInstance)`)
+- `PojoPropertyAccessorOneArg` — plain setter (`invoke(pojoInstance, value)`)
+- `PojoPropertyAccessorIndexedNonArg` / `PojoPropertyAccessorIndexedOneArg` — indexed get/set (e.g. `getItem(int)`, `setItem(int, value)`)
+- `PojoPropertyAccessorTwoArg` — mapped setters (e.g. `put(key, value)`)
+
+Each accessor is associated with a `PojoPropertyAccessorMode<ACCESSOR>` describing its role (get, set, add, remove, size, indexed-get, indexed-set, mapped-get, mapped-set, etc.) and whether it is a reading or writing operation.
+
+Accessors can be built directly from a `Method` or `Field` via implementations of `PojoPropertyAccessorBuilder<ACCESSOR>` (e.g. `PojoPropertyAccessorGetBuilder`, `PojoPropertyAccessorSetBuilder`, `PojoPropertyAccessorAddBuilder`, `PojoPropertyAccessorRemoveBuilder`, `PojoPropertyAccessorSizeBuilder`, `PojoPropertyAccessorGetIndexedBuilder`, `PojoPropertyAccessorSetIndexedBuilder`, `PojoPropertyAccessorGetMappedBuilder`, `PojoPropertyAccessorSetMappedBuilder`).
+
+The library also synthesizes higher-level "proxy" accessors (e.g. `PojoPropertyAccessorProxyGetByIndex`, `PojoPropertyAccessorProxyGetByKey`, `PojoPropertyAccessorProxyAdd`, `PojoPropertyAccessorProxyGetSize`) that adapt a container-typed property (list, map, collection) into indexed or mapped access, even if the POJO class itself doesn't declare an explicit indexed/mapped accessor method.
+
+### Property Enhancement
+
+A `PojoDescriptorEnhancer` can post-process a descriptor, adding derived or "virtual" accessors — for example, deriving indexed access to a `List` property from its getter, or singularizing collection property names (`items` → `item`). The default implementation, `DefaultPojoDescriptorEnhancer`, can be configured to add singular accessors and/or virtual accessors, and uses a `Singularizer` to derive singular property names from plural ones.
+
+### Introspection
+
+`PojoMethodIntrospector` and `PojoFieldIntrospector` control which methods/fields of a class are considered when building a descriptor (e.g. filtering by visibility, static modifier). Default implementations (`PojoMethodIntrospectorImpl`, `PojoFieldIntrospectorImpl`) and no-op implementations (`NoPojoMethodIntrospector`, `NoPojoFieldIntrospector`) are provided.
+
+### `TypedProperty<T>`
+
+`TypedProperty<T>` is a typed, path-aware property reference. It carries the property's name (`segment`), its declared Java type, an optional human-readable `title`, and an optional parent path, allowing construction of dotted property paths (e.g. `address.city`) via `createPath(...)`/`appendPath(...)`. It can be used with `PojoDescriptor.getProperty(pojo, TypedProperty<V>)` / `setProperty(...)` for compile-time type-safe property access, avoiding casts and typos in property names.
+
+### `PojoFactory`
+
+`PojoFactory` (and its implementations `SimplePojoFactory`, `DefaultPojoFactory`, `GuessingPojoFactory`) instantiate POJOs of a given class. `DefaultPojoFactory` is aware of collection types via a `CollectionFactoryManager`, and `GuessingPojoFactory` extends this to attempt sensible default implementations even for abstract/interface types.
+
+### `PojoUtil`
+
+`PojoUtil` (implemented by `PojoUtilImpl`) offers `visitObjectRecursive(Object, Filter<Object>)`, which walks an object graph — following properties discovered via a `PojoDescriptorBuilder` — and invokes a `Filter<Object>` callback on each visited object, optionally protecting against cycles.
+
+### Errors
+
+Property-related failures are reported via `PojoPropertyNotFoundException` (thrown when a named or typed property/accessor does not exist or is not in the requested mode). Descriptive, localizable messages for these and other error conditions are provided through `NlsBundleUtilPojoRoot`.
+
+### Spring Integration
+
+`UtilPojoSpringConfig` wires up the library's core components (`PojoUtil`, `PojoDescriptorBuilderFactory`, `PojoFactory`, `ExtendedPojoDescriptorDependencies`, `PojoDescriptorEnhancer`) for use in a Spring application context.
+
+## Usage Examples
+
+### Getting and setting properties by name
+
+```java
+PojoDescriptorBuilderFactory factory = PojoDescriptorBuilderFactoryImpl.getInstance();
+PojoDescriptorBuilder builder = factory.createPublicMethodDescriptorBuilder();
+
+Person person = new Person();
+PojoDescriptor<Person> descriptor = builder.getDescriptor(Person.class);
+
+descriptor.setProperty(person, "name", "Alice");
+Object name = descriptor.getProperty(person, "name");
+```
+
+### Type-safe access with `TypedProperty`
+
+```java
+TypedProperty<String> NAME = new TypedProperty<String>(String.class, "name");
+
+descriptor.setProperty(person, NAME, "Bob");
+String name = descriptor.getProperty(person, NAME);
+```
+
+### Working with indexed / collection properties
+
+```java
+PojoDescriptor<Order> orderDescriptor = builder.getDescriptor(Order.class);
+Order order = new Order();
+
+// Add an item to a "items" collection property
+orderDescriptor.addPropertyItem(order, "items", new OrderItem("Widget"));
+
+// Determine how many items are present
+int size = orderDescriptor.getPropertySize(order, "items");
+
+// Access/replace an item by index
+Object first = orderDescriptor.getPropertyItem(order, "items", 0);
+orderDescriptor.setPropertyItem(order, "items", 0, new OrderItem("Gadget"));
+```
+
+### Instantiating POJOs
+
+```java
+PojoFactory pojoFactory = new DefaultPojoFactory();
+Person newPerson = pojoFactory.newInstance(Person.class);
+```
+
+### Converting a POJO to a `Map`
+
+```java
+Map<String, Object> asMap = builder.pojo2Map(person);
+```
+
+### Recursively visiting an object graph
+
+```java
+PojoUtil pojoUtil = PojoUtilImpl.getInstance();
+
+pojoUtil.visitObjectRecursive(order, new Filter<Object>() {
+  public boolean accept(Object value) {
+    System.out.println("Visited: " + value);
+    return true; // continue traversal into this object's properties
+  }
+});
+```
+
+### Building descriptors with custom visibility rules
+
+```java
+PojoDescriptorBuilderFactory factory = new PojoDescriptorBuilderFactoryImpl();
+PojoDescriptorBuilder builder = factory.createDescriptorBuilder(
+    VisibilityModifier.PUBLIC,   // methods
+    VisibilityModifier.PRIVATE); // fields
+
+PojoDescriptor<Person> descriptor = builder.getDescriptor(Person.class);
+```
+
+## Summary
+
+`mmm-util-pojo` decouples code from the concrete shape of a POJO's accessors, offering a single, extensible API to read/write simple, indexed, and mapped properties by name or type, enumerate properties, convert POJOs to maps, instantiate objects, and traverse object graphs — making it well suited for generic frameworks such as mappers, form binders, serializers, and validation engines.

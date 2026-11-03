@@ -1,0 +1,107 @@
+# directories
+
+`io.github.soc:directories` is a small Java library that provides access to the platform-specific standard directories used for storing configuration, data, cache, and other application files. It follows the conventions of each supported operating system (Linux, macOS, and Windows) to determine appropriate locations, saving you from having to hardcode or manually detect these paths yourself.
+
+The library exposes three main entry points:
+
+- **`BaseDirectories`** — general-purpose system directories (home, config, cache, data, etc.) not tied to any specific application.
+- **`ProjectDirectories`** — application-specific directories, namespaced by a qualifier, organization, and application name (e.g. `com.example.MyApp`).
+- **`UserDirectories`** — well-known user directories such as Desktop, Documents, Downloads, Music, Pictures, Videos, Public, and Templates.
+
+Internally, the library dispatches to OS-specific implementations (`Linux`, `MacOs`, `Windows`) that know how to resolve these paths according to each platform's conventions (e.g. XDG Base Directory Specification on Linux, `NSSearchPathForDirectoriesInDomains`-style conventions on macOS, and the Windows known-folder API). These implementation classes are used internally by the public API but are also exposed for advanced use cases.
+
+If the library is run on an operating system it does not recognize, an `UnsupportedOperatingSystemException` is thrown.
+
+## Overview
+
+### `BaseDirectories`
+
+Provides a snapshot of system-wide base directories relevant to the current user, such as home, configuration, cache, and data directories. Retrieved via the static factory method:
+
+```java
+BaseDirectories baseDirs = BaseDirectories.get();
+```
+
+The returned object exposes its contents through `toString()`, and supports `equals()`/`hashCode()` for comparison purposes.
+
+### `ProjectDirectories`
+
+Provides application-specific directories, computed from a reverse-DNS-style qualifier, an organization name, and an application name. There are two ways to construct an instance:
+
+```java
+// Explicit fields
+ProjectDirectories projDirs = ProjectDirectories.from("com", "Example Corp", "My App");
+
+// Or from a single dotted/qualified path string
+ProjectDirectories projDirs2 = ProjectDirectories.fromPath("com.example.myapp");
+```
+
+These directories typically resolve to per-application subfolders inside the user's configuration, cache, and data directories, following platform conventions (e.g. `~/.config/myapp` on Linux, `~/Library/Application Support/com.Example-Corp.My-App` on macOS, or `%APPDATA%\Example Corp\My App` on Windows).
+
+### `UserDirectories`
+
+Provides paths to standard user-facing folders (Desktop, Documents, Downloads, Music, Pictures, Public, Templates, Videos), retrieved similarly:
+
+```java
+UserDirectories userDirs = UserDirectories.get();
+```
+
+### `UnsupportedOperatingSystemException`
+
+Thrown by any of the above `get()`/`from()`/`fromPath()` methods when the library cannot determine directory conventions for the current operating system.
+
+### Internal implementation classes
+
+The `dev.dirs.impl` package contains OS-specific helper classes used by the public API:
+
+- **`Linux`** — resolves XDG user directories, runtime directories, and executable directory locations by inspecting environment variables and configuration files.
+- **`MacOs`** — computes per-application support directory paths based on qualifier, organization, and application name.
+- **`Windows`** — wraps Windows-specific known-folder lookups (Music, Desktop, Documents, Downloads, Pictures, Public, Templates, Videos, Roaming/Local AppData, user profile) and computes per-application paths.
+- **`Util`** — shared string utility functions (null/empty checks, fallback value resolution, qualifier stripping, and whitespace normalization) used to build and sanitize directory names across platforms.
+
+These classes are public but are primarily intended for internal use by `BaseDirectories`, `ProjectDirectories`, and `UserDirectories`. Most consumers of the library should not need to call them directly.
+
+## Usage Example
+
+```java
+import dev.dirs.BaseDirectories;
+import dev.dirs.ProjectDirectories;
+import dev.dirs.UserDirectories;
+import dev.dirs.UnsupportedOperatingSystemException;
+
+public class Example {
+    public static void main(String[] args) {
+        try {
+            // General system directories
+            BaseDirectories baseDirs = BaseDirectories.get();
+            System.out.println("Base directories: " + baseDirs);
+
+            // Application-specific directories
+            ProjectDirectories projDirs =
+                ProjectDirectories.from("com", "Example Corp", "My App");
+            System.out.println("Project directories: " + projDirs);
+
+            // User-facing folders
+            UserDirectories userDirs = UserDirectories.get();
+            System.out.println("User directories: " + userDirs);
+
+        } catch (UnsupportedOperatingSystemException e) {
+            System.err.println("This platform is not supported: " + e.getMessage());
+        }
+    }
+}
+```
+
+## Notes on Equality and Representation
+
+All three primary result classes (`BaseDirectories`, `ProjectDirectories`, `UserDirectories`) override `toString()`, `equals()`, and `hashCode()`, making them convenient to log, compare, and use as keys in collections when caching or testing directory resolution behavior.
+
+## Platform Support
+
+The library supports:
+
+- **Linux** (via XDG conventions and environment variable inspection)
+- **macOS** (via standard Application Support directory layout)
+- **Windows** (via known-folder resolution and AppData conventions)
+
+Attempting to use the library on any other platform will result in an `UnsupportedOperatingSystemException`.

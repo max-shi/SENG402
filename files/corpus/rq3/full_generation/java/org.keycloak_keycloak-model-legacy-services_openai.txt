@@ -1,0 +1,334 @@
+# org.keycloak:keycloak-model-legacy-services
+
+`org.keycloak:keycloak-model-legacy-services` provides legacy service components for:
+
+- Exporting realm model data to a directory or a single file
+- Importing realm model data from a directory or a single file
+- Importing realm, user, and federated-user representations from streams
+- Exposing administrative resources for cache maintenance and storage-provider operations
+
+The library is built around `KeycloakSession` and `KeycloakSessionFactory` and includes provider factories for integration with the surrounding provider lifecycle.
+
+## Main components
+
+### Export providers
+
+Export providers implement `ExportProvider` and export model data from a `KeycloakSessionFactory`.
+
+| Class | Purpose |
+| --- | --- |
+| `DirExportProvider` | Exports data into a directory. |
+| `SingleFileExportProvider` | Exports data into one `File`. |
+| `MultipleStepsExportProvider<T>` | Base export provider supporting realm filtering and user export configuration. |
+| `DirExportProviderFactory` | Factory for directory export providers. |
+| `SingleFileExportProviderFactory` | Factory for single-file export providers. |
+
+#### `DirExportProvider`
+
+`DirExportProvider` extends `MultipleStepsExportProvider<DirExportProvider>`, so it supports the shared export configuration methods:
+
+- `withRealmName(String realmName)`
+- `withUsersPerFile(int usersPerFile)`
+- `withUsersExportStrategy(UsersExportStrategy usersExportStrategy)`
+- `exportModel()`
+- `exportRealm(String realmName)`
+
+It also provides directory-specific configuration:
+
+- `withDir(String dir)`
+- `writeRealm(String fileName, RealmRepresentation rep)`
+- `recursiveDeleteDir(File dirPath)`
+
+#### `SingleFileExportProvider`
+
+`SingleFileExportProvider` exports into a configured file:
+
+- `withFile(File file)`
+- `withRealmName(String realmName)`
+- `exportModel()`
+- `close()`
+
+### Import providers
+
+Import providers support importing exported data using an import `Strategy`.
+
+| Class | Purpose |
+| --- | --- |
+| `DirImportProvider` | Imports realm data from a directory. |
+| `SingleFileImportProvider` | Imports realm data from one file. |
+| `DirImportProviderFactory` | Factory for directory import providers. |
+| `SingleFileImportProviderFactory` | Factory for single-file import providers. |
+
+Both import implementations are file-based import providers and provide:
+
+- `importModel()`
+- `isMasterRealmExported()`
+- `close()`
+
+`DirImportProvider` additionally supports:
+
+- `withDir(String dir)`
+- `withRealmName(String realmName)`
+- `importRealm(String realmName, Strategy strategy)`
+
+### Import utilities
+
+`ImportUtils` contains static helpers for importing representations and stream-based content:
+
+- `importRealms(...)`
+- `importRealm(...)`
+- `importFromStream(...)`
+- `getRealmsFromStream(...)`
+- `importUsersFromStream(...)`
+- `importFederatedUsersFromStream(...)`
+
+These methods are useful when application code already has realm representations or receives import content through an `InputStream`.
+
+### Provider factories
+
+The directory and single-file import/export implementations each have a corresponding factory:
+
+- `DirExportProviderFactory`
+- `SingleFileExportProviderFactory`
+- `DirImportProviderFactory`
+- `SingleFileImportProviderFactory`
+
+Factories expose a common lifecycle-style API:
+
+```java
+void init(Config.Scope config);
+void postInit(KeycloakSessionFactory factory);
+void close();
+
+String getId();
+List<ProviderConfigProperty> getConfigMetadata();
+```
+
+They create providers for a session through:
+
+```java
+ExportProvider create(KeycloakSession session);
+ImportProvider create(KeycloakSession session);
+```
+
+### Administrative resources
+
+The library also includes admin resource providers for cache and storage-provider operations.
+
+| Provider | Resource returned by `getResource(...)` | Main operation |
+| --- | --- | --- |
+| `ClearKeysCacheRealmAdminProvider` | `ClearKeysCacheResource` | `clearKeysCache()` |
+| `ClearRealmCacheRealmAdminProvider` | `ClearRealmCacheResource` | `clearRealmCache()` |
+| `ClearUserCacheRealmAdminProvider` | `ClearUserCacheResource` | `clearUserCache()` |
+| `UserStorageProviderRealmAdminProvider` | `UserStorageProviderResource` | User-storage synchronization and cleanup operations |
+
+The `UserStorageProviderResource` supports:
+
+- Resolving a simple-name mapping with `getSimpleName(String id)`
+- Synchronizing users with `syncUsers(String id, String action)`
+- Removing imported users with `removeImportedUsers(String id)`
+- Unlinking users with `unlinkUsers(String id)`
+- Synchronizing mapper data with `syncMapperData(String parentId, String mapperId, String direction)`
+- Obtaining an error code from an exception with `getErrorCode(Throwable throwable)`
+
+`ClientStorageProviderResource` provides:
+
+- `getSimpleName(String id)`
+
+## Usage examples
+
+### Export a realm to a directory
+
+Configure a `DirExportProvider` with an export directory, optionally limit the export to one realm, and configure how users are split or exported.
+
+```java
+KeycloakSessionFactory sessionFactory = obtainSessionFactory();
+
+DirExportProvider exporter = new DirExportProvider(sessionFactory)
+        .withDir("/var/backups/keycloak-export")
+        .withRealmName("example-realm")
+        .withUsersPerFile(500)
+        .withUsersExportStrategy(usersExportStrategy);
+
+try {
+    exporter.exportModel();
+} finally {
+    exporter.close();
+}
+```
+
+To export a particular realm directly:
+
+```java
+DirExportProvider exporter = new DirExportProvider(sessionFactory)
+        .withDir("/var/backups/keycloak-export");
+
+try {
+    exporter.exportRealm("example-realm");
+} finally {
+    exporter.close();
+}
+```
+
+### Export data to a single file
+
+Use `SingleFileExportProvider` when the export should be written to one file.
+
+```java
+KeycloakSessionFactory sessionFactory = obtainSessionFactory();
+File exportFile = new File("/var/backups/realm-export.json");
+
+SingleFileExportProvider exporter =
+        new SingleFileExportProvider(sessionFactory)
+                .withFile(exportFile);
+
+try {
+    exporter.withRealmName("example-realm").exportModel();
+} finally {
+    exporter.close();
+}
+```
+
+### Import data from a directory
+
+Create a `DirImportProvider` with the desired import strategy, configure the directory and optional realm name, then invoke `importModel()`.
+
+```java
+KeycloakSessionFactory sessionFactory = obtainSessionFactory();
+Strategy strategy = importStrategy;
+
+DirImportProvider importer = new DirImportProvider(sessionFactory, strategy)
+        .withDir("/var/backups/keycloak-export")
+        .withRealmName("example-realm");
+
+try {
+    boolean masterRealmIncluded = importer.isMasterRealmExported();
+
+    importer.importModel();
+
+    System.out.println("Master realm included: " + masterRealmIncluded);
+} finally {
+    importer.close();
+}
+```
+
+A specific realm can also be imported directly:
+
+```java
+DirImportProvider importer = new DirImportProvider(sessionFactory, strategy)
+        .withDir("/var/backups/keycloak-export");
+
+try {
+    importer.importRealm("example-realm", strategy);
+} finally {
+    importer.close();
+}
+```
+
+### Import data from a single file
+
+```java
+KeycloakSessionFactory sessionFactory = obtainSessionFactory();
+File importFile = new File("/var/backups/realm-export.json");
+Strategy strategy = importStrategy;
+
+SingleFileImportProvider importer =
+        new SingleFileImportProvider(sessionFactory, importFile, strategy);
+
+try {
+    importer.importModel();
+} finally {
+    importer.close();
+}
+```
+
+### Import realm data from a stream
+
+`ImportUtils` can import directly from an input stream using an `ObjectMapper`.
+
+```java
+KeycloakSession session = obtainSession();
+ObjectMapper mapper = new ObjectMapper();
+Strategy strategy = importStrategy;
+
+try (InputStream input = openImportStream()) {
+    ImportUtils.importFromStream(session, mapper, input, strategy);
+}
+```
+
+To inspect realm representations before importing them:
+
+```java
+try (InputStream input = openImportStream()) {
+    Map<String, RealmRepresentation> realms =
+            ImportUtils.getRealmsFromStream(mapper, input);
+
+    for (Map.Entry<String, RealmRepresentation> entry : realms.entrySet()) {
+        System.out.println("Found realm: " + entry.getKey());
+    }
+}
+```
+
+### Invoke user-storage operations
+
+`UserStorageProviderResource` is constructed with a session, permission evaluator, and admin event builder.
+
+```java
+UserStorageProviderResource resource =
+        new UserStorageProviderResource(session, auth, adminEvent);
+
+String providerId = "storage-provider-id";
+String action = "sync-action";
+
+SynchronizationResult result = resource.syncUsers(providerId, action);
+
+Map<String, String> providerName = resource.getSimpleName(providerId);
+
+resource.removeImportedUsers(providerId);
+resource.unlinkUsers(providerId);
+```
+
+Mapper data synchronization accepts both a parent provider identifier and a mapper identifier:
+
+```java
+SynchronizationResult result = resource.syncMapperData(
+        "storage-provider-id",
+        "mapper-id",
+        "sync-direction"
+);
+```
+
+### Clear caches through admin resources
+
+The cache resources can be created with the current session, authorization evaluator, and admin event builder.
+
+```java
+ClearRealmCacheResource realmCache =
+        new ClearRealmCacheResource(session, auth, adminEvent);
+
+realmCache.clearRealmCache();
+```
+
+Equivalent resources are available for key and user cache operations:
+
+```java
+new ClearKeysCacheResource(session, auth, adminEvent).clearKeysCache();
+
+new ClearUserCacheResource(session, auth, adminEvent).clearUserCache();
+```
+
+## Resource provider integration
+
+The administrative provider classes implement both `AdminRealmResourceProviderFactory` and `AdminRealmResourceProvider`. They can create provider instances for a session and return a resource object for a realm:
+
+```java
+ClearRealmCacheRealmAdminProvider provider =
+        new ClearRealmCacheRealmAdminProvider();
+
+provider.init(config);
+provider.postInit(sessionFactory);
+
+Object resource = provider.getResource(session, realm, auth, adminEvent);
+```
+
+The returned object is the corresponding cache or storage-provider resource and can be used through its concrete API.

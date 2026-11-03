@@ -1,0 +1,530 @@
+# python-gitlab
+
+`python-gitlab` is a Python client library for working with GitLab-style REST and GraphQL APIs. It provides:
+
+- A central `Gitlab` client for authentication, HTTP requests, search, Markdown rendering, licensing, and version information.
+- A large resource-oriented API covering projects, groups, users, issues, merge requests, pipelines, jobs, packages, runners, snippets, wikis, and more.
+- Reusable manager and object abstractions for listing, retrieving, creating, updating, and deleting API resources.
+- Helpers for pagination, streaming downloads, retry handling, configuration, CLI integration, and typed resource attributes.
+
+## Core concepts
+
+### `Gitlab`
+
+`Gitlab` is the primary client class. It exposes API-wide operations and lower-level HTTP helpers.
+
+```python
+gl = Gitlab.from_config(
+    gitlab_id="work",
+    config_files=["~/.config/gitlab.cfg"],
+)
+
+gl.auth()
+
+server_version, revision = gl.version()
+print(f"Connected to GitLab {server_version} ({revision})")
+```
+
+The client supports common API operations directly:
+
+```python
+rendered = gl.markdown(
+    "# Release notes\n\nThis text is rendered by the server.",
+    gfm=True,
+)
+
+print(rendered)
+```
+
+It can also perform searches:
+
+```python
+results = gl.search(
+    scope="projects",
+    search="documentation",
+)
+
+for item in results:
+    print(item)
+```
+
+For lower-level integration needs, use the HTTP helpers:
+
+```python
+project_data = gl.http_get("/projects/42")
+
+response = gl.http_post(
+    "/some/endpoint",
+    post_data={"enabled": True},
+)
+
+headers = gl.http_head("/projects/42")
+```
+
+Available request helpers include:
+
+- `http_get()`
+- `http_head()`
+- `http_list()`
+- `http_post()`
+- `http_put()`
+- `http_patch()`
+- `http_delete()`
+- `http_request()`
+
+These methods support query parameters, request data, uploads, raw responses, streaming, timeout control, retries, and extra headers.
+
+### Resource objects and managers
+
+The library models API entities as `RESTObject` subclasses. Examples include:
+
+- `Project`
+- `Group`
+- `User`
+- `ProjectIssue`
+- `ProjectMergeRequest`
+- `ProjectPipeline`
+- `ProjectJob`
+- `ProjectSnippet`
+- `ProjectWiki`
+- `ProjectRelease`
+- `Runner`
+- `Topic`
+
+Each resource type is paired with a corresponding manager class, such as `ProjectManager`, `GroupManager`, `ProjectIssueManager`, or `ProjectPipelineManager`.
+
+Managers provide operations appropriate to their resource type. The reusable manager mixins define a consistent vocabulary:
+
+| Operation | Typical manager method |
+|---|---|
+| Retrieve one resource | `get()` |
+| List resources | `list()` |
+| Create a resource | `create()` |
+| Update a resource | `update()` |
+| Delete a resource | `delete()` |
+| Check resource headers | `head()` |
+| Set a named value | `set()` |
+
+For example, a project-oriented manager can retrieve and create projects, while a project issue manager can retrieve, list, create, update, and delete issues.
+
+```python
+# `projects` is a ProjectManager supplied by an application integration.
+project = projects.get(42)
+
+print(project.asdict())
+print(project.to_json())
+```
+
+Resource objects commonly provide object-level operations such as:
+
+- `save()` for persisting changed attributes.
+- `delete()` for deleting the object.
+- `refresh()` for reloading the resource.
+- `asdict()` and `to_json()` for serialization.
+- `get_id()` and `encoded_id()` for identifiers.
+
+```python
+project = projects.get(42)
+
+project.description = "Updated project description"
+project.save()
+
+print(project.pformat())
+```
+
+## Pagination and iteration
+
+List-oriented calls can return either a normal list or a `RESTObjectList` / `GitlabList` pagination object.
+
+```python
+items = gl.http_list(
+    "/projects",
+    query_data={"per_page": 20},
+)
+
+for item in items:
+    print(item)
+```
+
+When using an iterator-enabled manager list operation, pagination metadata is available:
+
+```python
+# `issues` is a manager supporting list operations.
+page = issues.list(iterator=True, per_page=50)
+
+print(page.current_page())
+print(page.next_page())
+print(page.total_pages())
+print(page.total())
+
+for issue in page:
+    print(issue)
+```
+
+Pagination objects expose:
+
+- `current_page()`
+- `prev_page()`
+- `next_page()`
+- `per_page()`
+- `total_pages()`
+- `total()`
+- `next()`
+
+## Projects and repositories
+
+`Project` is one of the central resource objects. In addition to standard object behavior, it supports repository and project-management operations.
+
+```python
+project = projects.get(42)
+
+languages = project.languages()
+print(languages)
+
+project.star()
+project.archive()
+project.unarchive()
+```
+
+Repository-related methods include:
+
+```python
+entries = project.repository_tree(
+    path="src",
+    ref="main",
+    recursive=True,
+)
+
+for entry in entries:
+    print(entry)
+```
+
+Other repository operations include:
+
+- `repository_blob()`
+- `repository_raw_blob()`
+- `repository_compare()`
+- `repository_contributors()`
+- `repository_archive()`
+- `repository_merge_base()`
+- `update_submodule()`
+- `delete_merged_branches()`
+
+Projects also support actions such as:
+
+- `trigger_pipeline()`
+- `snapshot()`
+- `transfer()`
+- `share()` and `unshare()`
+- `mirror_pull()` and `mirror_pull_details()`
+- `housekeeping()`
+- `restore()`
+- `upload()`
+
+## Issues and merge requests
+
+Project issues provide collaboration and time-tracking actions.
+
+```python
+# `project_issues` is a ProjectIssueManager.
+issue = project_issues.get(17)
+
+issue.time_estimate("2h")
+issue.add_spent_time("30m")
+
+participants = issue.participants()
+for participant in participants:
+    print(participant)
+
+issue.todo()
+issue.subscribe()
+```
+
+Project issue objects also support:
+
+- `move()`
+- `reorder()`
+- `related_merge_requests()`
+- `closed_by()`
+- `time_stats()`
+- `reset_time_estimate()`
+- `reset_spent_time()`
+- `user_agent_detail()`
+
+Merge requests support review and merge workflow operations.
+
+```python
+# `merge_requests` is a ProjectMergeRequestManager.
+merge_request = merge_requests.get(12)
+
+merge_request.approve()
+merge_request.rebase()
+
+changes = merge_request.changes()
+print(changes)
+
+result = merge_request.merge(
+    merge_commit_message="Merge feature branch",
+    should_remove_source_branch=True,
+)
+```
+
+Additional merge request operations include:
+
+- `unapprove()`
+- `reset_approvals()`
+- `merge_ref()`
+- `cancel_merge_when_pipeline_succeeds()`
+- `related_issues()`
+- `closes_issues()`
+- `commits()`
+- `subscribe()` and `unsubscribe()`
+- `todo()`
+- time-tracking methods
+
+## Pipelines, jobs, and artifacts
+
+Pipelines can be created, retrieved, canceled, retried, and deleted.
+
+```python
+# `pipelines` is a ProjectPipelineManager.
+pipeline = pipelines.create({"ref": "main"})
+
+pipeline = pipelines.get(pipeline.id)
+pipeline.retry()
+```
+
+Jobs can be controlled and can download artifacts or traces.
+
+```python
+# `jobs` is a ProjectJobManager.
+job = jobs.get(1001)
+
+job.play()
+
+trace = job.trace()
+print(trace.decode("utf-8"))
+```
+
+Many download methods support three modes:
+
+1. Return the complete content as `bytes`.
+2. Stream content to a callback with `action=`.
+3. Return an iterator with `iterator=True`.
+
+```python
+# Stream a job trace chunk by chunk.
+for chunk in job.trace(iterator=True, chunk_size=8192):
+    process_chunk(chunk)
+```
+
+This streaming pattern is also available for operations such as:
+
+- Job artifacts and individual artifact files.
+- Project artifacts.
+- Repository archives and raw blobs.
+- Project files.
+- Snippet content.
+- Secure files.
+- Project snapshots.
+- Generic package downloads.
+- Project and group exports.
+
+## Files, snippets, and uploads
+
+Project files can be retrieved, decoded, created, updated, deleted, and downloaded in raw form.
+
+```python
+# `files` is a ProjectFileManager.
+file_obj = files.get(
+    file_path="README.md",
+    ref="main",
+)
+
+content = file_obj.decode()
+print(content.decode("utf-8"))
+```
+
+A file object can be saved or deleted with commit metadata:
+
+```python
+file_obj.save(
+    branch="main",
+    commit_message="Update README",
+)
+
+file_obj.delete(
+    branch="main",
+    commit_message="Remove obsolete README",
+)
+```
+
+Resources that include `UploadMixin`, such as projects and wikis, support file upload:
+
+```python
+upload = project.upload(
+    filename="diagram.png",
+    filepath="/tmp/diagram.png",
+)
+
+print(upload)
+```
+
+## Groups and users
+
+Groups support project transfer, hierarchy changes, search, sharing, LDAP synchronization, and restoration.
+
+```python
+# `groups` is a GroupManager.
+group = groups.get(10)
+
+group.share(
+    group_id=22,
+    group_access=30,
+)
+
+group.transfer(group_id=5)
+```
+
+Users support administrative lifecycle and relationship actions:
+
+```python
+# `users` is a UserManager.
+user = users.get(101)
+
+user.block()
+user.unblock()
+
+user.follow()
+user.unfollow()
+```
+
+User actions also include:
+
+- `activate()` and `deactivate()`
+- `approve()` and `reject()`
+- `ban()` and `unban()`
+
+## GraphQL
+
+The library exposes synchronous and asynchronous GraphQL clients:
+
+- `GraphQL`
+- `AsyncGraphQL`
+
+Both provide an `execute()` method.
+
+```python
+result = graphql.execute(
+    """
+    query {
+      currentUser {
+        id
+      }
+    }
+    """
+)
+```
+
+For asynchronous code:
+
+```python
+result = await async_graphql.execute(
+    """
+    query {
+      currentUser {
+        id
+      }
+    }
+    """
+)
+```
+
+## Configuration
+
+Configuration-related types include:
+
+- `GitlabConfigParser`
+- `ConfigError`
+- `GitlabIDError`
+- `GitlabDataError`
+- `GitlabConfigMissingError`
+- `GitlabConfigHelperError`
+
+Use `Gitlab.from_config()` to construct a client from one or more configuration files, or `Gitlab.merge_config()` to merge options with a selected configuration entry.
+
+```python
+gl = Gitlab.from_config(
+    gitlab_id="production",
+    config_files=["/etc/gitlab/client.cfg"],
+)
+```
+
+## Errors
+
+All library-specific exceptions inherit from `GitlabError`.
+
+Important exception families include:
+
+- `GitlabAuthenticationError`
+- `GitlabConnectionError`
+- `GitlabHttpError`
+- `GitlabParsingError`
+- `GitlabOperationError`
+- `GitlabListError`
+- `GitlabGetError`
+- `GitlabCreateError`
+- `GitlabUpdateError`
+- `GitlabDeleteError`
+
+Resource-specific operation errors are also available for actions such as canceling jobs or pipelines, approving merge requests, importing projects, uploading files, manipulating topics, and managing licenses.
+
+```python
+try:
+    gl.auth()
+    data = gl.http_get("/projects/42")
+except GitlabAuthenticationError:
+    print("Authentication failed")
+except GitlabConnectionError:
+    print("Could not connect to the server")
+except GitlabHttpError:
+    print("The server returned an HTTP error")
+```
+
+## CLI support
+
+The library includes command-line support through:
+
+- `main()`
+- `docs()`
+- `register_custom_action()`
+- `GitlabCLI`
+- `extend_parser()`
+- `run()`
+
+`register_custom_action()` can register specialized actions for resource-oriented CLI workflows.
+
+## Utility types
+
+Useful supporting types include:
+
+- `EncodedId` for identifiers that require encoding.
+- `Retry` for retry decision handling.
+- `MaskingFormatter` for logging with credential masking.
+- `GitlabEnum` and enums such as `AccessLevel`, `Visibility`, `NotificationLevel`, `SearchScope`, `DetailedMergeStatus`, and `PipelineStatus`.
+- Attribute helpers including `JsonAttribute`, `ArrayAttribute`, `FileAttribute`, and `ImageAttribute`.
+
+## Resource coverage
+
+The resource API spans a broad set of GitLab functionality, including:
+
+- Projects, groups, namespaces, members, and users.
+- Issues, merge requests, discussions, notes, labels, milestones, iterations, and todos.
+- Pipelines, schedules, jobs, artifacts, environments, deployments, and runners.
+- Repositories, branches, tags, commits, files, releases, snippets, and wikis.
+- Packages, container registry repositories, registry tags, and protection rules.
+- Access tokens, deploy tokens, deploy keys, personal tokens, and service accounts.
+- Webhooks, integrations, feature flags, audit events, notifications, and application settings.
+- Imports, exports, templates, secure files, Geo nodes, Sidekiq metrics, and more.
+
+The common `RESTObject` and manager interfaces make these resources behave consistently while still exposing domain-specific operations where needed.

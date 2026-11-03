@@ -1,0 +1,142 @@
+# org.osgi.util.pushstream
+
+## Introduction
+
+`org.osgi.util.pushstream` is a reactive streaming library for Java that provides a push-based (as opposed to pull-based) alternative to the `java.util.stream` API. Where the JDK's `Stream` API is driven by a consumer pulling values from a source, a `PushStream` is driven by a source pushing values (and other events) to consumers, with built-in support for asynchronous processing, backpressure, buffering, and error handling.
+
+The library is built around the concept of `PushEvent`s — discrete signals (data, error, or close) that flow from a `PushEventSource` through a pipeline of stream operations to terminal consumers. It integrates with OSGi's Promise library (`org.osgi.util.promise.Promise`) for asynchronous result handling, and provides configurable buffering, queueing, and pushback strategies for controlling the rate at which events flow through a pipeline.
+
+This makes it well suited for scenarios such as processing asynchronous event feeds, sensor data, UI events, or any producer/consumer scenario where the producer should not be blocked indefinitely by slow consumers.
+
+## Core Concepts
+
+### PushEvent
+
+`PushEvent<T>` is the fundamental unit of data flowing through a stream. An event is one of three types:
+
+- **Data** — carries a payload (`PushEvent.data(payload)`)
+- **Error** — carries a `Throwable` (`PushEvent.error(t)`)
+- **Close** — signals normal termination (`PushEvent.close()`)
+
+Error and close events are *terminal* (`isTerminal()`), meaning no further events should follow them. The `nodata()` method allows re-typing a terminal event for use in generic pipelines.
+
+### PushEventConsumer and PushEventSource
+
+- `PushEventConsumer<T>` is a functional interface that accepts a `PushEvent<? extends T>` and returns a `long` "backpressure" value telling the source how long to wait before sending more data.
+- `PushEventSource<T>` is a functional interface representing something that can produce events. Calling `open(consumer)` connects a consumer and returns an `AutoCloseable` used to disconnect.
+
+These two interfaces are the low-level building blocks; most application code will instead work with the higher-level `PushStream` abstraction.
+
+### PushStream
+
+`PushStream<T>` is the primary API developers interact with. It offers a fluent, `java.util.stream`-like API with intermediate operations (`map`, `filter`, `flatMap`, `distinct`, `sorted`, `limit`, `skip`, `window`, `coalesce`, `buffer`, `merge`, `fork`, `split`, `adjustBackPressure`, etc.) and terminal operations that return `Promise`s (`forEach`, `collect`, `reduce`, `count`, `toArray`, `anyMatch`, `findFirst`, etc.), reflecting the asynchronous nature of the pipeline.
+
+Because `PushStream` extends `AutoCloseable`, streams can be closed explicitly or via try-with-resources, and `onClose`/`onError` allow registering callbacks for lifecycle events.
+
+### Buffering and Backpressure
+
+Push-based pipelines need a way to decouple fast producers from slow consumers. This is handled through:
+
+- **`QueuePolicy<T, U>`** — decides how an event is offered to an internal buffering queue (e.g. block, discard oldest, or fail). Predefined strategies are available via `QueuePolicyOption` (`DISCARD_OLDEST`, `BLOCK`, `FAIL`).
+- **`PushbackPolicy<T, U>`** — computes how long (in milliseconds) the upstream source should pause before sending more events, based on the current state of the buffer queue. Predefined strategies are available via `PushbackPolicyOption` (`FIXED`, `ON_FULL_FIXED`, `ON_FULL_EXPONENTIAL`, `LINEAR`), and a configurable implementation, `ThresholdPushbackPolicy`, triggers pushback once a queue size threshold is crossed.
+- **`BufferBuilder<R, T, U>`** — a fluent builder for configuring buffering behavior (queue implementation, queue policy, pushback policy, parallelism, executor, scheduler) before producing a result of type `R`. `PushStreamBuilder<T, U>` is a specialization of `BufferBuilder` that produces a `PushStream<T>`.
+
+### PushStreamProvider
+
+`PushStreamProvider` is the entry point for creating streams, event sources, and consumers:
+
+- `createStream` / `buildStream` — wrap a `PushEventSource` in a `PushStream`, optionally with buffering configuration.
+- `createEventSourceFromStream` / `buildEventSourceFromStream` — turn an existing `PushStream` back into a `PushEventSource`, so it can be reused as a source for another pipeline.
+- `createSimpleEventSource` / `buildSimpleEventSource` — create a `SimplePushEventSource`, a manually-driven event source suitable for pushing values from arbitrary application code.
+- `createBufferedConsumer` / `buildBufferedConsumer` — wrap a `PushEventConsumer` with an internal buffer to decouple it from its caller.
+- `streamOf` — convenience methods for turning a plain `java.util.stream.Stream` into a `PushStream`.
+
+### SimplePushEventSource
+
+`SimplePushEventSource<T>` is a concrete, manually-driven `PushEventSource` intended for producing events from imperative code. It exposes `publish(T)`, `endOfStream()`, and `error(Throwable)` methods to push events into any connected stream, along with `isConnected()` and `connectPromise()` to track subscriber lifecycle.
+
+## Typical Workflow
+
+1. Create a `PushEventSource` — either manually via `SimplePushEventSource`, by adapting an existing `Stream` (`streamOf`), or by implementing `PushEventSource` yourself.
+2. Wrap it in a `PushStream` using `PushStreamProvider.createStream` or `buildStream` (the latter allowing buffering/backpressure configuration via `PushStreamBuilder`).
+3. Apply intermediate operations (`map`, `filter`, `window`, etc.) to transform the stream.
+4. Consume the results with a terminal operation (`forEach`, `collect`, `reduce`, etc.), which returns a `Promise` you can compose with other asynchronous work.
+5. Optionally close the stream, or let a terminal operation and `onClose` handlers manage cleanup.
+
+## Usage Examples
+
+### Example 1: Manually publishing events into a stream
+
+```java
+PushStreamProvider provider = new PushStreamProvider();
+
+// Create a manually-driven event source
+SimplePushEventSource<String> source = provider.createSimpleEventSource(String.class);
+
+// Build a stream from it
+PushStream<String> stream = provider.createStream(source);
+
+Promise<Void> done = stream
+        .filter(s -> !s.isEmpty())
+        .map(String::toUpperCase)
+        .forEach(System.out::println);
+
+// Elsewhere in the application, push data
+source.publish("hello");
+source.publish("");
+source.publish("world");
+source.endOfStream();
+```
+
+### Example 2: Buffering with a custom queue and pushback policy
+
+```java
+PushStreamProvider provider = new PushStreamProvider();
+
+PushStream<Integer> stream = provider
+        .<Integer, BlockingQueue<PushEvent<? extends Integer>>>buildStream(mySource)
+        .withBuffer(new ArrayBlockingQueue<>(100))
+        .withQueuePolicy(QueuePolicyOption.BLOCK.getPolicy())
+        .withPushbackPolicy(
+            ThresholdPushbackPolicy.createIncrementalThresholdPushbackPolicy(80, 50))
+        .withParallelism(4)
+        .build();
+
+Promise<Long> count = stream
+        .filter(i -> i % 2 == 0)
+        .buffer()
+        .count();
+```
+
+### Example 3: Converting a plain Stream into a PushStream
+
+```java
+PushStreamProvider provider = new PushStreamProvider();
+
+Promise<Optional<Integer>> max = provider
+        .streamOf(List.of(3, 7, 2, 9, 4).stream())
+        .filter(i -> i > 2)
+        .max(Integer::compareTo);
+```
+
+### Example 4: Windowing and coalescing events over time
+
+```java
+PushStream<Sensor.Reading> readings = provider.createStream(sensorEventSource);
+
+Promise<Void> done = readings
+        .window(Duration.ofSeconds(5), readingsInWindow -> readingsInWindow.size())
+        .forEach(countPerWindow -> System.out.println("Readings in window: " + countPerWindow));
+```
+
+## Summary
+
+- **`PushEvent`** — the data/error/close signal type flowing through the system.
+- **`PushEventSource` / `PushEventConsumer`** — low-level producer/consumer contracts.
+- **`PushStream`** — the high-level, fluent, asynchronous stream API.
+- **`PushStreamProvider`** — factory for creating streams, event sources, and consumers.
+- **`SimplePushEventSource`** — a manually-driven event source for imperative publishing.
+- **`BufferBuilder` / `PushStreamBuilder`** — fluent configuration of buffering, queueing, and backpressure.
+- **`QueuePolicy` / `QueuePolicyOption`** and **`PushbackPolicy` / `PushbackPolicyOption` / `ThresholdPushbackPolicy`** — strategies controlling how buffering and backpressure behave under load.
+
+Together these types provide a complete toolkit for building asynchronous, backpressure-aware event processing pipelines in OSGi and plain Java applications.

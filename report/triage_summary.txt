@@ -1,0 +1,20 @@
+Source file    : scopus_export_Sep 16-2026_5ddeaba8-8afe-407f-b706-e6eac4e272a3.csv
+Records in     : 1624
+
+FUNNEL
+  retrieved            1624
+  - duplicate (DOI)    2
+  - pre-2010 (I2)      84
+  - out of scope       934
+  = to manual screen   604
+
+Out-of-scope rules fired:
+  no software+language signal  442
+  clinical                     281
+  social                       142
+  education                    34
+  finance                      19
+  other_nlp                    16
+
+The excluded buckets are suggestions. Final decisions are in the
+`final_decision` column of triage_result.csv.

@@ -1,0 +1,112 @@
+# web-fragments
+
+`web-fragments` is a small Django library for building **composable pieces of HTML** ("fragments") that can be rendered independently or assembled together into a full page. It provides a `Fragment` class for collecting HTML content and its associated resources (CSS, JavaScript, and JS initialization calls), and a `FragmentView` base class for Django views that render either a fragment (for embedding) or a full standalone HTML page (for direct browsing/testing).
+
+This pattern is especially useful when building modular UIs — for example, a page composed of several independently-developed widgets, each rendered by its own view, where each widget needs to bring its own CSS/JS without clobbering the others or duplicating `<script>`/`<link>` tags.
+
+## Installation
+
+```bash
+pip install web-fragments
+```
+
+Add the app to your Django settings:
+
+```python
+INSTALLED_APPS = [
+    ...
+    "web_fragments.apps.WebFragmentsConfig",
+]
+```
+
+## Core Concepts
+
+### `Fragment`
+
+A `Fragment` represents a piece of renderable content plus the resources it depends on.
+
+- **Content** — the body HTML of the fragment, added via `add_content`.
+- **Resources** — CSS, JavaScript, or arbitrary text/URL resources needed to render the fragment correctly, added via `add_css`, `add_css_url`, `add_javascript`, `add_javascript_url`, `add_resource`, and `add_resource_url`.
+- **JS initialization** — a JavaScript function call (with optional JSON-serializable arguments) to run once the fragment is inserted into the DOM, via `initialize_js`.
+- **Composition** — fragments can absorb the resources of other fragments with `add_fragment_resources` (single fragment) or `add_resources` (a list of fragments), which is how a parent fragment collects the CSS/JS needed by its children without duplicating the actual body content.
+- **Rendering helpers** — `body_html()`, `head_html()`, and `foot_html()` return the HTML for the fragment's content and its resources split by placement (head vs. foot), while `resources_to_html(placement)` and the static `resource_to_html(resource)` handle the low-level rendering of individual resources.
+- **Serialization** — `to_dict()` / `from_dict(pods)` convert a `Fragment` to and from a plain dict, which is useful for passing fragments across process boundaries (e.g. caching, APIs, or message queues).
+
+### `FragmentView`
+
+`FragmentView` is a Django class-based view (subclassing `django.views.generic.View`) intended to be subclassed by your own views:
+
+- `render_to_fragment(request, **kwargs)` — **the method you override.** It should build and return a `Fragment` representing the piece of UI this view is responsible for.
+- `get(request, *args, **kwargs)` — the default `GET` handler. It calls `render_to_fragment` and decides whether to return the fragment's HTML directly or wrap it in a full standalone page, typically based on a query parameter or request header indicating whether the client wants a fragment or a full page.
+- `render_to_standalone_html(request, fragment, **kwargs)` — wraps a `Fragment`'s content and resources into a complete, renderable HTML document (`<html>`, `<head>`, `<body>`), useful for browsing a fragment on its own during development.
+- `render_standalone_response(request, fragment, **kwargs)` — convenience method that calls `render_to_standalone_html` and wraps the result in an `HttpResponse`.
+
+## Usage Example
+
+### Defining a fragment-producing view
+
+```python
+from web_fragments.fragment import Fragment
+from web_fragments.views import FragmentView
+
+
+class GreetingFragmentView(FragmentView):
+    def render_to_fragment(self, request, name="World", **kwargs):
+        fragment = Fragment(f"<div class='greeting'>Hello, {name}!</div>")
+        fragment.add_css(".greeting { color: teal; font-weight: bold; }")
+        fragment.add_javascript_url("https://cdn.example.com/greeting.js")
+        fragment.initialize_js("GreetingWidget", {"name": name})
+        return fragment
+```
+
+Requesting this view normally (e.g. `GET /greeting/?name=Ada`) will return a full standalone HTML page (via `render_standalone_response`), while requesting it with a flag indicating fragment-only mode will return just the fragment's HTML — ready to be embedded into a larger page.
+
+### Composing fragments together
+
+A parent view can build several child fragments, combine their resources, and render them together as a single page:
+
+```python
+from web_fragments.fragment import Fragment
+from web_fragments.views import FragmentView
+
+
+class DashboardFragmentView(FragmentView):
+    def render_to_fragment(self, request, **kwargs):
+        header = Fragment("<header>My Dashboard</header>")
+        header.add_css(".header { font-size: 1.5em; }")
+
+        widget = Fragment("<div class='widget'>Widget content</div>")
+        widget.add_css_url("https://cdn.example.com/widget.css")
+        widget.add_javascript("console.log('widget loaded');")
+
+        page = Fragment()
+        page.add_content(header.body_html())
+        page.add_content(widget.body_html())
+        page.add_resources([header, widget])
+
+        return page
+```
+
+Here, `page` ends up with the combined body HTML of both sub-fragments, plus all of their deduplicated CSS/JS resources, ready to be rendered as one cohesive page or embedded fragment.
+
+### Serializing a fragment
+
+```python
+fragment = Fragment("<p>Cacheable content</p>")
+fragment.add_css(".note { background: #eef; }")
+
+data = fragment.to_dict()
+# ... store `data` in cache, session, or send over the wire ...
+
+restored_fragment = Fragment.from_dict(data)
+html = restored_fragment.body_html()
+```
+
+## Summary
+
+| Component | Purpose |
+|---|---|
+| `Fragment` | Holds HTML content plus CSS/JS/other resources; supports composition and serialization |
+| `FragmentView` | Django view base class that renders a `Fragment` as either an embeddable fragment or a full standalone page |
+
+Together, `Fragment` and `FragmentView` provide a lightweight toolkit for building modular, resource-aware UI components in Django applications.

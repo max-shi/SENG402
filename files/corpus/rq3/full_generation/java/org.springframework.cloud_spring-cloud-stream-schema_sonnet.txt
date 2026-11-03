@@ -1,0 +1,178 @@
+# Spring Cloud Stream Schema
+
+Spring Cloud Stream Schema provides schema-based message conversion support for Spring Cloud Stream applications, with first-class support for Apache Avro. It enables applications to serialize and deserialize messages using Avro schemas, register and retrieve schemas from a schema registry, and manage schema evolution between producers and consumers.
+
+## Overview
+
+The library is organized around a few core concerns:
+
+### Schema Registry Client
+
+The `SchemaRegistryClient` interface abstracts communication with a schema registry service. It supports registering new schemas and fetching existing ones either by numeric ID or by a `SchemaReference` (subject, version, and format).
+
+Implementations provided out of the box:
+
+- **`DefaultSchemaRegistryClient`** — talks to the Spring Cloud Schema Registry server via a `RestTemplate`.
+- **`ConfluentSchemaRegistryClient`** — talks to a Confluent-compatible schema registry, using a `RestTemplate` and `ObjectMapper` for HTTP/JSON interaction.
+- **`CachingRegistryClient`** — a decorator that wraps any `SchemaRegistryClient` delegate and caches registration and fetch results to reduce round-trips to the registry.
+
+Supporting types:
+
+- **`SchemaReference`** — identifies a schema by subject, version, and format.
+- **`SchemaRegistrationResponse`** — the result of registering a schema, containing the assigned ID and its `SchemaReference`.
+- **`ParsedSchema`** — wraps an Avro `Schema` together with its string representation and (once registered) its `SchemaRegistrationResponse`.
+- **`SchemaNotFoundException`** — thrown when a requested schema cannot be located.
+
+Client configuration is handled by `SchemaRegistryClientConfiguration`, which builds a `SchemaRegistryClient` bean, and `SchemaRegistryClientProperties`, which exposes the registry `endpoint` and whether caching (`cached`) should be applied automatically.
+
+### Avro Message Conversion
+
+The library ships message converters that integrate Avro serialization with Spring's messaging infrastructure:
+
+- **`AvroSchemaMessageConverter`** — a standalone converter for Avro payloads. You can supply a fixed `Schema` or point it at a `schemaLocation` `Resource`. Useful when you don't need a remote schema registry and want to manage schemas locally.
+- **`AvroSchemaRegistryClientMessageConverter`** — a converter that integrates with a `SchemaRegistryClient` to dynamically register and resolve schemas at runtime. It supports:
+  - dynamic schema generation from Java classes (`setDynamicSchemaGenerationEnabled`)
+  - pre-declared schema locations (`setSchemaLocations`) and imports (`setSchemaImports`)
+  - a configurable subject naming strategy (`setSubjectNamingStrategy`)
+  - a reader schema for schema evolution scenarios (`setReaderSchema`)
+  - a subject `prefix` (`setPrefix`)
+
+Both converters delegate core Avro operations (schema derivation, reading, and writing) to an `AvroSchemaServiceManager`.
+
+### Avro Schema Service Manager
+
+`AvroSchemaServiceManager` is the low-level abstraction for Avro schema and data operations:
+
+- `getSchema(Class<?>)` — derive an Avro `Schema` from a Java class.
+- `getDatumWriter(Class<?>, Schema)` — obtain a `DatumWriter` for serialization.
+- `getDatumReader(Class<?>, Schema readerSchema, Schema writerSchema)` — obtain a `DatumReader` for deserialization, supporting schema evolution between reader and writer schemas.
+- `readData(...)` — deserialize a byte payload into an instance of the target class.
+
+`AvroSchemaServiceManagerImpl` is the default implementation used by both message converters.
+
+### Subject Naming Strategies
+
+`SubjectNamingStrategy` determines how an Avro `Schema` maps to a subject name in the schema registry:
+
+- **`DefaultSubjectNamingStrategy`** — derives a subject name from the schema's simple name.
+- **`QualifiedSubjectNamingStrategy`** — derives a subject name using the schema's fully qualified name (including namespace).
+
+### Auto-configuration
+
+- **`AvroMessageConverterAutoConfiguration`** — automatically configures an `AvroSchemaRegistryClientMessageConverter` bean (wired to a `SchemaRegistryClient`) and a `CacheManager` bean, enabling schema caching out of the box.
+- **`AvroMessageConverterProperties`** — externalizes converter configuration, including `readerSchema`, `schemaLocations`, `schemaImports`, `dynamicSchemaGenerationEnabled`, `prefix`, and `subjectNamingStrategy`.
+
+## How the pieces fit together
+
+```
+ Application code
+       │
+       ▼
+AvroSchemaRegistryClientMessageConverter  ──uses──►  AvroSchemaServiceManager
+       │                                                     │
+       ▼                                                     ▼
+ SchemaRegistryClient                              Avro DatumReader/DatumWriter
+       │
+       ▼
+ DefaultSchemaRegistryClient / ConfluentSchemaRegistryClient
+       │ (optionally wrapped by)
+       ▼
+ CachingRegistryClient
+```
+
+When a message is sent, the converter derives (or looks up) the Avro `Schema` for the payload type, registers it with the `SchemaRegistryClient` if necessary (obtaining a `SchemaReference`/ID), and serializes the payload using a `DatumWriter`. On the consuming side, the converter fetches the writer's schema (by ID or reference) from the registry, resolves it against the local reader schema, and uses a `DatumReader` to deserialize the payload — supporting schema evolution.
+
+## Usage Examples
+
+### Registering a schema registry client
+
+```java
+@Configuration
+public class SchemaRegistryConfig {
+
+    @Bean
+    public SchemaRegistryClient schemaRegistryClient() {
+        DefaultSchemaRegistryClient client = new DefaultSchemaRegistryClient();
+        client.setEndpoint("http://localhost:8990");
+        return new CachingRegistryClient(client);
+    }
+}
+```
+
+### Using a Confluent-compatible registry
+
+```java
+@Bean
+public SchemaRegistryClient confluentSchemaRegistryClient(RestTemplate restTemplate, ObjectMapper mapper) {
+    ConfluentSchemaRegistryClient client = new ConfluentSchemaRegistryClient(restTemplate, mapper);
+    client.setEndpoint("http://localhost:8081");
+    return client;
+}
+```
+
+### Configuring the Avro message converter with a schema registry
+
+```java
+@Bean
+public AvroSchemaRegistryClientMessageConverter avroMessageConverter(
+        SchemaRegistryClient schemaRegistryClient,
+        CacheManager cacheManager) throws Exception {
+
+    AvroSchemaRegistryClientMessageConverter converter =
+            new AvroSchemaRegistryClientMessageConverter(schemaRegistryClient, cacheManager);
+
+    converter.setDynamicSchemaGenerationEnabled(true);
+    converter.setSubjectNamingStrategy(new QualifiedSubjectNamingStrategy());
+    converter.setPrefix("myapp");
+    converter.afterPropertiesSet();
+
+    return converter;
+}
+```
+
+### Using a standalone Avro converter with a fixed schema
+
+```java
+Resource schemaResource = new ClassPathResource("schemas/User.avsc");
+
+AvroSchemaMessageConverter converter = new AvroSchemaMessageConverter();
+converter.setSchemaLocation(schemaResource);
+```
+
+### Registering and fetching a schema directly
+
+```java
+SchemaRegistryClient client = new DefaultSchemaRegistryClient();
+
+SchemaRegistrationResponse response =
+        client.register("user-created", "avro", userAvroSchemaString);
+
+int schemaId = response.getId();
+SchemaReference reference = response.getSchemaReference();
+
+// Later, fetch by ID
+String schemaById = client.fetch(schemaId);
+
+// Or fetch by subject/version/format
+String schemaByReference = client.fetch(reference);
+```
+
+### Auto-configuration
+
+When `spring-cloud-stream-schema` is on the classpath along with a `SchemaRegistryClient` bean, `AvroMessageConverterAutoConfiguration` automatically provides:
+
+- An `AvroSchemaRegistryClientMessageConverter` bean wired to your `SchemaRegistryClient`.
+- A `CacheManager` bean used for caching schema lookups and registrations.
+
+Configure converter behavior via `AvroMessageConverterProperties`, e.g. in `application.yml`:
+
+```yaml
+spring:
+  cloud:
+    stream:
+      schema:
+        avro:
+          dynamic-schema-generation-enabled: true
+          prefix: myapp
+          subject-naming-strategy: org.springframework.cloud.stream.schema.avro.QualifiedSubjectNamingStrategy
+```

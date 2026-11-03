@@ -1,0 +1,219 @@
+# openeo
+
+**openeo** is a Python client library for interacting with [openEO](https://openeo.org/) compliant earth observation processing backends. It provides a high-level, Pythonic API for connecting to openEO back-ends, discovering collections and processes, building process graphs (data cube expressions), running synchronous and batch computations, managing batch jobs at scale, and working with the resulting data (raster and vector cubes, machine learning models, UDFs, and more).
+
+## Features
+
+- Connect to openEO back-ends with basic, OIDC (multiple flows), or bearer token authentication
+- Discover collections, processes, file formats, and service types exposed by a back-end
+- Build data cube and vector cube pipelines using a fluent, chainable API
+- Full mirror of the openEO process namespace (`openeo.processes`) for building process graphs programmatically, including custom callbacks and user-defined processes (UDPs)
+- Submit synchronous downloads or asynchronous batch jobs, poll status, download and validate results
+- Manage large numbers of batch jobs across one or more back-ends with `MultiBackendJobManager`, backed by CSV, Parquet, or STAC-API job databases
+- Run and test User-Defined Functions (UDFs) locally against xarray-based data cubes
+- Compute common spectral indices (NDVI, EVI, etc.) via `openeo.extra.spectral_indices`
+- Split large areas of interest into per-tile jobs (`openeo.extra.job_management`)
+- Upload/download artifacts to object storage providers advertised by a back-end (`openeo.extra.artifacts`)
+- Utilities for RFC 3339 date/time handling, bounding boxes, version comparisons, and testing helpers for comparing xarray results
+
+## Installation
+
+```bash
+pip install openeo
+```
+
+## Quick start
+
+### Connecting and authenticating
+
+```python
+import openeo
+
+connection = openeo.connect("openeo.example.org")
+connection.authenticate_oidc()          # interactive/device-flow OIDC
+# or
+connection.authenticate_basic("user", "password")
+```
+
+### Discovering what a back-end offers
+
+```python
+print(connection.list_collection_ids())
+print(connection.describe_collection("SENTINEL2_L2A"))
+print(connection.list_processes())
+```
+
+### Building and running a simple data cube pipeline
+
+```python
+from openeo.util import rfc3339
+
+cube = connection.load_collection(
+    "SENTINEL2_L2A",
+    spatial_extent={"west": 5.0, "south": 51.2, "east": 5.1, "north": 51.3},
+    temporal_extent=["2021-01-01", "2021-02-01"],
+    bands=["B04", "B08"],
+)
+
+ndvi = cube.ndvi(nir="B08", red="B04")
+result = ndvi.save_result(format="GTiff")
+
+# Synchronous download
+result.download("ndvi.tiff")
+```
+
+### Running a batch job
+
+```python
+job = ndvi.execute_batch(
+    outputfile="ndvi.tiff",
+    title="NDVI computation",
+    job_options={"driver-memory": "2G"},
+)
+print(job.status())
+job.get_results().download_files("results/")
+```
+
+### Building process graphs with `openeo.processes`
+
+The `openeo.processes` module exposes every standard openEO process as a Python function, returning `ProcessBuilder` instances that can be composed and passed as callbacks:
+
+```python
+from openeo.processes import array_element, subtract
+
+def my_reducer(data):
+    b1 = array_element(data, index=0)
+    b2 = array_element(data, index=1)
+    return subtract(b1, b2)
+
+difference = cube.reduce_dimension(dimension="bands", reducer=my_reducer)
+```
+
+### User-Defined Processes (UDPs)
+
+```python
+from openeo.api.process import Parameter
+
+connection.save_user_defined_process(
+    user_defined_process_id="ndvi_diff",
+    process_graph=difference,
+    parameters=[Parameter.raster_cube(name="data")],
+    public=True,
+)
+
+udp_cube = connection.datacube_from_process("ndvi_diff", data=cube)
+```
+
+### Running User-Defined Functions (UDFs)
+
+```python
+from openeo.rest._datacube import UDF
+
+udf = UDF.from_file("smooth_timeseries.py", runtime="Python")
+smoothed = cube.apply_dimension(process=udf, dimension="t")
+```
+
+UDFs can also be tested locally without a back-end:
+
+```python
+from openeo.udf.run_code import execute_local_udf
+
+result = execute_local_udf("smooth_timeseries.py", datacube="input.nc", fmt="netcdf")
+```
+
+### Managing many batch jobs
+
+`MultiBackendJobManager` orchestrates large batches of jobs (e.g. one per tile or date range) across one or more back-ends, tracking their progress in a job database (CSV, Parquet, or STAC API-backed).
+
+```python
+import pandas as pd
+from openeo.extra.job_management import MultiBackendJobManager, CsvJobDatabase
+
+manager = MultiBackendJobManager()
+manager.add_backend("prod", connection=connection, parallel_jobs=4)
+
+def start_job(row, connection, **kwargs):
+    cube = connection.load_collection(
+        "SENTINEL2_L2A",
+        spatial_extent=row["bbox"],
+        temporal_extent=[row["start"], row["end"]],
+    )
+    return cube.save_result("GTiff").create_job()
+
+df = pd.DataFrame([
+    {"bbox": {"west": 5.0, "south": 51.2, "east": 5.1, "north": 51.3},
+     "start": "2021-01-01", "end": "2021-02-01"},
+])
+
+job_db = CsvJobDatabase("jobs.csv")
+manager.run_jobs(df=df, start_job=start_job, job_db=job_db)
+```
+
+For large areas of interest, `openeo.extra.job_management.split_area` can divide a polygon into a grid of smaller tiles, producing a `GeoDataFrame` suitable for feeding into `run_jobs`.
+
+### Spectral indices
+
+```python
+from openeo.extra.spectral_indices import compute_indices
+
+indexed = compute_indices(cube, ["NDVI", "EVI"])
+```
+
+### Local (serverless) processing
+
+For quick experimentation without a remote back-end, `openeo.local.connection.LocalConnection` executes process graphs directly against local files using xarray, returning an `xr.DataArray`.
+
+```python
+from openeo.local import LocalConnection
+
+local_conn = LocalConnection(local_collections_path=".")
+cube = local_conn.load_collection("my_local_collection.nc")
+result = cube.execute()
+```
+
+## Core concepts
+
+| Concept | Description |
+|---|---|
+| `Connection` | Entry point to a specific openEO back-end; created via `openeo.connect()`. Handles authentication, discovery, and job/graph submission. |
+| `DataCube` | Represents a raster data cube and its processing pipeline as a chain of openEO processes. Most cube operations (filtering, reducing, applying UDFs, masking, resampling, etc.) return a new `DataCube`. |
+| `VectorCube` | Analogous to `DataCube` but for vector/geometry-based data (e.g. results of `aggregate_spatial`, `load_geojson`). |
+| `MlModel` | Represents a trained machine learning model (e.g. random forest) usable for prediction within a process graph. |
+| `SaveResult` / `StacResource` | Represents the terminal, exportable result of a cube pipeline, produced by `save_result()`; supports batch job creation, downloading, and STAC workspace export. |
+| `BatchJob` | Handle to a submitted batch job on a back-end: start/stop, poll status, fetch logs, download results. |
+| `RESTUserDefinedProcess` | Handle to a user-defined process stored on a back-end. |
+| `Parameter` | Describes a named, typed parameter for use in UDPs or parameterized process graphs. |
+| `PGNode` / `ProcessBuilder` / `ProcessBuilderBase` | Low-level and high-level building blocks for constructing openEO process graphs programmatically. |
+| `UDF` | Represents a User-Defined Function (code, runtime, version, context) usable in `apply`, `reduce_dimension`, `apply_dimension`, etc. |
+| `MultiBackendJobManager` | Coordinates and monitors many batch jobs across one or more back-ends, persisting state in a job database. |
+| `JobDatabaseInterface` (`CsvJobDatabase`, `ParquetJobDatabase`, `STACAPIJobDatabase`) | Pluggable storage backends for job tracking metadata used by `MultiBackendJobManager`. |
+| `CollectionMetadata` / `CubeMetadata` | Structured representation of a collection's/cube's dimensions and bands, used internally to validate and inform cube operations. |
+| `XarrayDataCube` / `UdfData` | Data containers passed to and from UDFs when executed locally or on a back-end. |
+
+## Authentication
+
+The library supports multiple authentication mechanisms via `Connection`:
+
+- `authenticate_basic(username, password)`
+- `authenticate_oidc(...)` — auto-selects an appropriate OIDC flow (authorization code, device code, etc.)
+- `authenticate_oidc_client_credentials(...)`
+- `authenticate_oidc_resource_owner_password_credentials(...)`
+- `authenticate_oidc_refresh_token(...)`
+- `authenticate_oidc_device(...)`
+- `authenticate_oidc_access_token(...)`
+- `authenticate_bearer_token(...)`
+
+Credentials and OIDC provider/client configuration can be persisted locally using `AuthConfig` and `RefreshTokenStore`, and managed from the command line via the `openeo-auth` CLI tool (see `openeo.rest.auth.cli`).
+
+## Testing utilities
+
+The `openeo.testing` subpackage provides helpers for testing code built on top of openeo, including:
+
+- `assert_xarray_dataarray_allclose` / `assert_xarray_dataset_allclose` / `assert_job_results_allclose` — compare computed results (including full batch job outputs) against expected xarray data with configurable tolerances
+- `DummyBackend` (`openeo.rest._testing`) — mock an openEO back-end for unit tests using `requests_mock`
+- `StacDummyBuilder` — construct minimal valid STAC items/collections/catalogs for test fixtures
+- `TestDataLoader` — load and preprocess bundled test data files (JSON, text, bytes)
+
+## License
+
+See the `LICENSE` file in this repository for details.

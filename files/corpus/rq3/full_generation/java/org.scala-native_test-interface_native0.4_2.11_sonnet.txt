@@ -1,0 +1,94 @@
+# test-interface_native
+
+Java/Scala interface definitions for compiling Scala source code down to Native Intermediate Representation (NIR) artifacts, as part of the Scala Native toolchain.
+
+## Overview
+
+This library provides a small, focused API for invoking the NIR compiler programmatically. It exposes two main types:
+
+### `NIRCompiler`
+
+The core interface for compiling Scala source code into `.nir` files. Implementations of this interface wrap the underlying Scala Native compiler and expose two convenient entry points:
+
+- `Path[] compile(String source)` — Compiles a snippet of Scala source code passed directly as a string, and returns the paths to the resulting compiled artifacts (typically `.nir` files, one per generated class/module).
+- `Path[] compile(Path base)` — Compiles Scala source files found under the given base path (e.g., a directory containing `.scala` files), returning the paths to all resulting compiled artifacts.
+
+This interface is typically used by tooling, test harnesses, or build integrations that need to compile Scala code on the fly and inspect or consume the resulting NIR output, without going through a full build pipeline.
+
+### `CompilationFailedException`
+
+A checked exception thrown when compilation fails. It wraps a descriptive `message` explaining why the compilation could not complete (e.g., due to syntax errors or semantic errors in the supplied source). Consumers of `NIRCompiler` should be prepared to catch this exception around calls to `compile`.
+
+## Relationship Between Types
+
+`NIRCompiler` is the primary entry point of this library — any code that needs to turn Scala source into NIR artifacts will obtain (or be given) an instance of `NIRCompiler` and call one of its `compile` methods. If the compilation process encounters an error, a `CompilationFailedException` is thrown instead of returning a result, allowing callers to handle compilation failures explicitly and distinctly from other kinds of errors (e.g., I/O errors).
+
+## Usage Examples
+
+### Compiling an inline source snippet
+
+```java
+import scala.scalanative.api.NIRCompiler;
+import scala.scalanative.api.CompilationFailedException;
+import java.nio.file.Path;
+
+public class Example {
+    public static void main(String[] args) {
+        NIRCompiler compiler = obtainCompiler(); // provided by your build/test tooling
+
+        String source =
+            "object Hello {\n" +
+            "  def main(args: Array[String]): Unit = println(\"Hello, NIR!\")\n" +
+            "}";
+
+        try {
+            Path[] artifacts = compiler.compile(source);
+            for (Path artifact : artifacts) {
+                System.out.println("Compiled artifact: " + artifact);
+            }
+        } catch (CompilationFailedException e) {
+            System.err.println("Compilation failed: " + e.getMessage());
+        }
+    }
+
+    private static NIRCompiler obtainCompiler() {
+        // Obtain an implementation of NIRCompiler from your test harness or build tool
+        throw new UnsupportedOperationException("implementation-specific");
+    }
+}
+```
+
+### Compiling a directory of Scala sources
+
+```java
+import scala.scalanative.api.NIRCompiler;
+import scala.scalanative.api.CompilationFailedException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
+public class DirectoryExample {
+    public static void main(String[] args) {
+        NIRCompiler compiler = obtainCompiler();
+        Path sourceDir = Paths.get("src/main/scala");
+
+        try {
+            Path[] artifacts = compiler.compile(sourceDir);
+            System.out.println("Compiled " + artifacts.length + " artifact(s) from " + sourceDir);
+        } catch (CompilationFailedException e) {
+            System.err.println("Compilation failed: " + e.getMessage());
+        }
+    }
+
+    private static NIRCompiler obtainCompiler() {
+        throw new UnsupportedOperationException("implementation-specific");
+    }
+}
+```
+
+## Error Handling
+
+Always wrap calls to `NIRCompiler.compile(...)` in a `try/catch` for `CompilationFailedException`. This exception indicates that the provided source (whether a string snippet or a directory of files) could not be successfully compiled to NIR, and its message contains details useful for diagnosing the failure.
+
+## Intended Audience
+
+This library is intended for tool authors, test-framework integrators, and build-system maintainers working within the Scala Native ecosystem who need programmatic access to the NIR compilation step, rather than for typical application developers who simply want to build and run Scala Native projects.

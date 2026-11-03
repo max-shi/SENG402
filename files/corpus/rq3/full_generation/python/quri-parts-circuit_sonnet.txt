@@ -1,0 +1,160 @@
+# quri-parts-circuit
+
+`quri-parts-circuit` is the core circuit-representation package of the QURI Parts ecosystem. It provides the fundamental data structures and utilities for building, manipulating, transpiling, and inspecting quantum circuits — both fixed (non-parametric) and parametric — in a backend-agnostic way. Other QURI Parts packages (simulators, hardware backends, algorithms) build on top of the abstractions defined here.
+
+This package focuses on:
+
+- **Circuit protocols and containers**: interfaces describing what a "quantum circuit" or "parametric quantum circuit" must support, plus mutable/immutable implementations.
+- **Gates**: factories for producing standard gate objects (Pauli gates, rotations, multi-controlled gates, unitary matrix gates, etc.), including gate-name classification utilities.
+- **Parametric circuits and parameter mappings**: linear parameter mappings that let you build ansätze with a small number of "outer" parameters controlling many "inner" gate angles, along with parameter-shift utilities for differentiation.
+- **Transpilers**: a large collection of composable circuit transformation passes for gate decomposition, gate-set conversion, fusion/optimization, qubit remapping, and topology-aware SWAP insertion.
+- **Noise instructions**: declarative descriptions of noise channels (depolarizing, amplitude/phase damping, Kraus, etc.) that can be attached to circuits/gates for noisy simulation elsewhere in the ecosystem.
+- **Utilities**: circuit drawing, Clifford-gate checks, and helpers for building controlled-rotation subcircuits.
+
+## Key concepts
+
+### Circuit protocols
+
+- `QuantumCircuitProtocol` — the minimal read-only interface for a circuit: `qubit_count()`, `cbit_count()`, `depth()`.
+- `MutableQuantumCircuitProtocol` — extends the above with `add_gate`, `extend`, and a full set of `add_<GateName>_gate(...)` convenience methods (`add_X_gate`, `add_CNOT_gate`, `add_RZ_gate`, `add_UnitaryMatrix_gate`, `measure`, etc.) for building circuits incrementally.
+- `GateSequence` / `is_gate_sequence` — helpers for recognizing raw sequences of gates as circuit-like objects.
+
+### Parametric circuits
+
+- `ParametricQuantumCircuitProtocol` — a circuit whose gates may depend on `Parameter` objects; supports `bind_parameters`, `freeze`, `primitive_circuit`, and exposes its `ParameterMapping`.
+- `MutableParametricQuantumCircuitProtocol` — mutable counterpart supporting gate addition.
+- `LinearMappedParametricQuantumCircuit` / `ImmutableLinearMappedParametricQuantumCircuit` — a parametric circuit where a set of "outer" parameters is mapped *linearly* onto the circuit's actual gate parameters (`add_parameter`, `add_ParametricRX_gate`, `add_ParametricPauliRotation_gate`, `combine`, `bind_parameters`). This is the standard building block for variational ansätze.
+- `ParameterMapping` / `ParameterMappingBase` / `LinearParameterMapping` — describe how outer parameters map to inner circuit parameters; support combination (`combine`) and derivative extraction (`get_derivatives`), which underlies parameter-shift gradients.
+- `ShiftedParameters` — computes the shifted-parameter sets and coefficients needed to evaluate analytic gradients via the parameter-shift rule.
+
+### Gates
+
+- `gates.py` exposes factory objects (e.g. `XFactory`, `RZFactory`, `CNOTFactory`, `PauliRotationFactory`, `ParametricRXFactory`, multi-controlled variants like `MCXFactory`, `MCRZFactory`, etc.) used to construct `QuantumGate` / `ParametricQuantumGate` instances.
+- `gate_names.py` provides `TypeGuard`-based classification functions (`is_single_qubit_gate_name`, `is_two_qubit_gate_name`, `is_parametric_gate_name`, `is_pauli_name`, `is_gate_name`, ...) for introspecting gate name strings.
+- `clifford_gate.py` — `is_clifford(gate)` checks whether a given gate is a Clifford gate.
+
+### Noise
+
+`noise/noise_instruction.py` provides constructors for common noise channels — `BitFlipNoise`, `PhaseFlipNoise`, `DepolarizingNoise`, `GeneralDepolarizingNoise`, `PauliNoise`, `KrausNoise`, `ResetNoise`, `PhaseDampingNoise`, `AmplitudeDampingNoise`, `PhaseAmplitudeDampingNoise`, `ThermalRelaxationNoise`, `ProbabilisticNoise` — each returning a `GateNoiseInstruction` that can be scoped to specific qubits and/or gate types.
+
+### Transpilers
+
+The `transpile` subpackage offers a rich set of composable circuit transformation passes, all implementing `CircuitTranspilerProtocol` (or `ParametricCircuitTranspilerProtocol` for parametric circuits):
+
+- **Composition helpers**: `SequentialTranspiler` (chain multiple transpilers), `ParallelDecomposer`, `IdentityTranspiler`.
+- **Gate decomposition**: `GateDecomposer` / `GateKindDecomposer` base classes, and dozens of concrete decomposers such as `CNOT2CZHTranspiler`, `H2RXRYTranspiler`, `TOFFOLI2CNOTTTranspiler`, `U3ToRZSqrtXTranspiler`, `PauliDecomposeTranspiler`, `PauliRotationDecomposeTranspiler`, `SingleQubitUnitaryMatrix2RYRZTranspiler`, `TwoQubitUnitaryMatrixKAKTranspiler`.
+- **Gate-set conversion**: `GateSetConversionTranspiler`, `RotationConversionTranspiler`, `CliffordConversionTranspiler`, `Rotation2NamedTranspiler`, `CliffordRZSetTranspiler`.
+- **Circuit cleanup/optimization**: `CNOTHCNOTFusingTranspiler`, `FuseRotationTranspiler`, `NormalizeRotationTranspiler`, `ZeroRotationEliminationTranspiler`, `IdentityInsertionTranspiler`, `IdentityEliminationTranspiler`.
+- **Qubit/topology handling**: `QubitRemappingTranspiler`, `SquareLattice` + `SquareLatticeSWAPInsertionTranspiler`, `SWAPInsertionTranspiler`.
+- **Approximation**: `CliffordApproximationTranspiler`.
+- **Unitary decomposition helpers**: `su2_decompose`, `su4_decompose`.
+
+### Topology
+
+`SquareLattice` models a 2D grid of qubits (`xsize`, `ysize`, `is_adjacent`, `qubit_path`) used together with `SquareLatticeSWAPInsertionTranspiler` to route circuits onto grid-connected hardware.
+
+### Drawing
+
+`draw_circuit(circuit, line_length=80)` prints an ASCII-art rendering of a circuit or parametric circuit to help with debugging.
+
+### Controlled-rotation helpers
+
+`add_controlled_RX_gate` / `add_controlled_RY_gate` append a controlled rotation (built from primitive gates) onto a `LinearMappedParametricQuantumCircuit`.
+
+## Installation
+
+```bash
+pip install quri-parts-circuit
+```
+
+## Usage examples
+
+### Building a simple circuit
+
+```python
+from quri_parts.circuit import QuantumCircuit  # MutableQuantumCircuitProtocol implementation
+
+circuit = QuantumCircuit(3)
+circuit.add_H_gate(0)
+circuit.add_CNOT_gate(0, 1)
+circuit.add_CNOT_gate(1, 2)
+circuit.add_RZ_gate(2, 0.5)
+circuit.measure([0, 1, 2], [0, 1, 2])
+
+print(circuit.qubit_count(), circuit.depth())
+```
+
+### Building a parametric ansatz with a linear parameter mapping
+
+```python
+from quri_parts.circuit import LinearMappedParametricQuantumCircuit
+
+ansatz = LinearMappedParametricQuantumCircuit(4)
+theta = ansatz.add_parameter("theta")
+phi = ansatz.add_parameter("phi")
+
+# Outer parameters can be combined linearly to drive multiple gates
+ansatz.add_ParametricRY_gate(0, theta)
+ansatz.add_ParametricRZ_gate(1, {theta: 2.0, phi: -1.0})
+ansatz.add_ParametricPauliRotation_gate([2, 3], [1, 3], phi)
+
+frozen = ansatz.freeze()
+bound_circuit = frozen.bind_parameters([0.3, 0.7])
+```
+
+### Transpiling a circuit to a target gate set
+
+```python
+from quri_parts.circuit.transpile import (
+    SequentialTranspiler,
+    CNOT2CZHTranspiler,
+    RZ2RXRYTranspiler,
+    ZeroRotationEliminationTranspiler,
+)
+
+transpiler = SequentialTranspiler([
+    CNOT2CZHTranspiler(),
+    RZ2RXRYTranspiler(),
+    ZeroRotationEliminationTranspiler(),
+])
+
+decomposed_circuit = transpiler(circuit)
+```
+
+### Routing a circuit onto a square-lattice device
+
+```python
+from quri_parts.circuit.topology.square_lattice import (
+    SquareLattice,
+    SquareLatticeSWAPInsertionTranspiler,
+)
+
+lattice = SquareLattice(4, 4)
+routing_transpiler = SquareLatticeSWAPInsertionTranspiler(lattice)
+routed_circuit = routing_transpiler(circuit)
+```
+
+### Attaching noise instructions
+
+```python
+from quri_parts.circuit.noise import DepolarizingNoise, AmplitudeDampingNoise
+
+noise_1 = DepolarizingNoise(error_prob=0.001, qubit_indices=[0, 1])
+noise_2 = AmplitudeDampingNoise(
+    amplitude_damping_rate=0.01,
+    excited_state_population=0.0,
+    target_gates=["CNOT"],
+)
+```
+
+### Inspecting and drawing a circuit
+
+```python
+from quri_parts.circuit.utils.circuit_drawer import draw_circuit
+
+draw_circuit(circuit, line_length=100)
+```
+
+## Relationship to the rest of QURI Parts
+
+This package defines the shared circuit vocabulary (`QuantumCircuitProtocol`, `ParametricQuantumCircuitProtocol`, gate factories, transpilers, noise instructions) that other QURI Parts components — state representations, estimators, samplers, hardware backend adapters, and higher-level algorithms — consume and produce. Circuits built or transpiled with this library can be handed off to simulator or hardware backend packages for execution.

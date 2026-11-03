@@ -1,0 +1,221 @@
+# apache-airflow-providers-docker
+
+This package provides Apache Airflow integrations for running and managing
+[Docker](https://www.docker.com/) containers as part of your workflows. It
+includes a connection hook for talking to the Docker Engine API, operators
+for running containers (both standalone and as Docker Swarm services), and
+a `@docker_task` decorator for writing TaskFlow-style tasks that execute
+inside a Docker container.
+
+## Features
+
+- **`DockerHook`** — manages Docker connections and exposes a low-level
+  `APIClient` for interacting with a Docker daemon.
+- **`DockerOperator`** — runs a command inside a Docker container as an
+  Airflow task.
+- **`DockerSwarmOperator`** — extends `DockerOperator` to run a container as
+  a Docker Swarm service instead of a standalone container.
+- **`docker_task`** decorator — lets you write a Python function that is
+  packaged and executed inside a Docker container, TaskFlow-style.
+- **Custom exceptions** — `DockerContainerFailedException` and
+  `DockerContainerFailedSkipException` for surfacing container failure and
+  skip semantics in task logs and task state.
+
+## Installation
+
+```bash
+pip install apache-airflow-providers-docker
+```
+
+This provider requires Apache Airflow to be installed and expects the
+`docker` Python SDK to be available (it is pulled in as a dependency).
+
+## Core Components
+
+### `DockerHook`
+
+`DockerHook` is a Airflow `BaseHook` subclass responsible for establishing
+and caching a connection to a Docker daemon, and building the underlying
+`docker.APIClient`.
+
+Key methods/properties:
+
+- `construct_tls_config(ca_cert=None, client_cert=None, client_key=None, verify=True, assert_hostname=None, ssl_version=None) -> TLSConfig | bool` — static/class helper to build a TLS configuration object for connecting to a TLS-secured Docker daemon.
+- `api_client` — property returning the underlying `APIClient`.
+- `client_created` — property/flag indicating whether the client has already been instantiated.
+- `get_conn() -> APIClient` — returns a ready-to-use Docker `APIClient`, creating it if necessary.
+- `get_connection_form_widgets()` / `get_ui_field_behaviour()` — used by the Airflow UI to render and customize the Docker connection form.
+
+Use `DockerHook` directly when you need programmatic access to the Docker
+API from within custom code (e.g., a custom operator or sensor), rather
+than running a full container task.
+
+### `DockerOperator`
+
+`DockerOperator` is a Airflow `BaseOperator` that runs a Docker image as a
+container, streams its logs into the task log, and reports success/failure
+back to Airflow.
+
+Key members:
+
+- `hook` — property returning the `DockerHook` associated with this operator's connection.
+- `cli` — property returning the underlying `APIClient` used to talk to Docker.
+- `execute(context: Context) -> list[str] | str | None` — runs the container and returns its output (useful for XCom).
+- `format_command(command: list[str] | str | None) -> list[str] | str | None` — static helper that normalizes a command argument (string or list) before passing it to Docker.
+- `on_kill()` — stops/removes the container if the Airflow task is killed.
+- `unpack_environment_variables(env_str: str) -> dict` — static helper that parses a delimited string of environment variables into a dictionary, for use when configuring the container's environment.
+
+If the container exits with a non-zero status, the operator raises
+`DockerContainerFailedException` (or `DockerContainerFailedSkipException` if
+configured to treat certain exit codes as a "skip" rather than a failure).
+
+### `DockerSwarmOperator`
+
+`DockerSwarmOperator` extends `DockerOperator` to deploy the container as a
+Docker Swarm **service** rather than running it directly. It reuses most of
+`DockerOperator`'s configuration and connection handling but overrides
+execution to create, monitor, and clean up a swarm service.
+
+- `execute(context: Context) -> None` — deploys the service, waits for it to complete, and streams logs.
+- `format_args(args: list[str] | str | None) -> list[str] | None` — static helper that normalizes service arguments.
+- `on_kill()` — removes the swarm service if the task is killed.
+
+### `docker_task` decorator
+
+```python
+def docker_task(
+    python_callable: Callable | None = None,
+    multiple_outputs: bool | None = None,
+    **kwargs,
+) -> TaskDecorator
+```
+
+Wraps a Python callable so that it is executed inside a Docker container as
+part of an Airflow TaskFlow DAG. Under the hood it builds a `DockerOperator`
+configured to run the given function, allowing you to combine the
+convenience of TaskFlow with the isolation of Docker containers. Any
+additional `kwargs` are forwarded to configure the underlying container
+execution (image, environment, mounts, etc., as supported by
+`DockerOperator`).
+
+### Exceptions
+
+- **`DockerContainerFailedException`** (extends `AirflowException`) — raised
+  when a container/service exits with a failing status, marking the
+  Airflow task as failed.
+- **`DockerContainerFailedSkipException`** (extends `AirflowSkipException`)
+  — raised when a container/service exit status is configured to be
+  treated as a skip, marking the Airflow task as skipped instead of
+  failed.
+
+### Utility functions
+
+- `stringify(line: str | bytes)` — normalizes a log line (bytes or str) into a plain string for logging.
+- `fetch_logs(log_stream, log: Logger)` — consumes a Docker log stream and writes each line to the provided Airflow task logger.
+- `get_base_airflow_version_tuple() -> tuple[int, int, int]` — returns the installed Airflow version as a tuple, used internally for compatibility checks across Airflow versions.
+
+## Usage Examples
+
+### Running a container with `DockerOperator`
+
+```python
+from airflow import DAG
+from airflow.providers.docker.operators.docker import DockerOperator
+from datetime import datetime
+
+with DAG(
+    dag_id="docker_operator_example",
+    start_date=datetime(2024, 1, 1),
+    schedule=None,
+    catchup=False,
+) as dag:
+    run_container = DockerOperator(
+        task_id="run_my_container",
+        image="python:3.11-slim",
+        api_version="auto",
+        auto_remove="success",
+        command="python -c \"print('Hello from inside a container!')\"",
+        docker_url="unix://var/run/docker.sock",
+        network_mode="bridge",
+        environment={"MY_ENV_VAR": "value"},
+    )
+```
+
+### Running a Docker Swarm service
+
+```python
+from airflow.providers.docker.operators.docker_swarm import DockerSwarmOperator
+
+run_swarm_service = DockerSwarmOperator(
+    task_id="run_swarm_service",
+    image="python:3.11-slim",
+    command="python -c \"print('Hello from a swarm service!')\"",
+    docker_url="unix://var/run/docker.sock",
+    replicas=1,
+)
+```
+
+### Using the `docker_task` TaskFlow decorator
+
+```python
+from airflow.decorators import dag
+from airflow.providers.docker.decorators.docker import docker_task
+from datetime import datetime
+
+
+@dag(start_date=datetime(2024, 1, 1), schedule=None, catchup=False)
+def docker_taskflow_example():
+    @docker_task(image="python:3.11-slim", multiple_outputs=False)
+    def process_data():
+        # This function body is executed inside a Docker container.
+        data = [1, 2, 3]
+        return sum(data)
+
+    process_data()
+
+
+docker_taskflow_example()
+```
+
+### Using `DockerHook` directly
+
+```python
+from airflow.providers.docker.hooks.docker import DockerHook
+
+hook = DockerHook(docker_conn_id="docker_default")
+client = hook.get_conn()
+
+for image in client.images():
+    print(image["RepoTags"])
+```
+
+### Building a TLS configuration
+
+```python
+from airflow.providers.docker.hooks.docker import DockerHook
+
+tls_config = DockerHook.construct_tls_config(
+    ca_cert="/certs/ca.pem",
+    client_cert="/certs/client-cert.pem",
+    client_key="/certs/client-key.pem",
+    verify=True,
+)
+```
+
+## Handling Container Failures
+
+By default, a failing container run raises `DockerContainerFailedException`,
+causing the Airflow task instance to be marked as failed. If your workflow
+configures certain exit codes to be treated as "no-op" results instead,
+`DockerContainerFailedSkipException` is raised and the task instance is
+marked as skipped, allowing downstream tasks to respond accordingly (e.g.,
+via trigger rules).
+
+## Connections
+
+Configure a Docker connection (`docker_conn_id`, default `docker_default`)
+in the Airflow UI or via environment variables/secrets backend. The
+connection form (rendered via `get_connection_form_widgets` and
+`get_ui_field_behaviour`) allows you to specify the Docker daemon URL,
+registry credentials, TLS certificates, and other client options used by
+`DockerHook`, `DockerOperator`, and `DockerSwarmOperator`.

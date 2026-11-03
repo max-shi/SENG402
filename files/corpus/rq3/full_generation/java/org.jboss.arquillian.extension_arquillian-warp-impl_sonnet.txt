@@ -1,0 +1,142 @@
+# Arquillian Warp Implementation
+
+`arquillian-warp-impl` is the core implementation module for **Arquillian Warp**, an extension to the Arquillian test framework that allows integration tests to inspect server-side state during the processing of a client-triggered HTTP request. It bridges client-side test code (running in the test JVM) and server-side code (running inside the deployed application) so that assertions can be executed inside the server's request lifecycle, with results propagated back to the client test.
+
+This module contains the client-side execution engine, the server-side request interception/delegation machinery, the shared communication protocol between client and server, and supporting utilities (HTTP proxying, filtering, serialization, class transformation, etc.) that make this possible.
+
+## How it works, conceptually
+
+A Warp-enabled test typically:
+
+1. Defines an **activity** — client-side code that triggers an HTTP request against the deployed application (e.g. clicking a link, submitting a form, calling a REST endpoint).
+2. Defines one or more **inspections** — server-side code (annotated methods on serializable `Inspection` objects) that should run while the server processes that request.
+3. Executes the activity through the Warp runtime, which transparently:
+   - Enriches the outgoing HTTP request with a serialized payload describing what to inspect.
+   - Intercepts the request on the server, runs the inspections in the appropriate request context, and captures results.
+   - Enriches the HTTP response with the serialized results.
+   - Deserializes the results back on the client and verifies them against test expectations.
+
+This module wires together the pieces required for that round-trip: a local HTTP proxy that intercepts client requests, a servlet filter/delegator on the server that recognizes and processes enriched requests, and a shared command/serialization layer used to move data (and even remote command execution) between the two sides.
+
+## Main components
+
+### Client side
+
+**Execution & orchestration**
+- `WarpExecutionObserver`, `WarpExecutionInitializer`, `DefaultWarpExecutor` (`WarpExecutor`) — drive the lifecycle of executing an activity: advertising enrichment, running the activity, waiting for the response, and cleaning up.
+- `DefaultWarpRequestSpecifier` (`WarpRequestSpecifier`) — the fluent, developer-facing entry point used to configure and launch a Warp interaction: which requests to observe, which inspections to run, and how to group them.
+- `WarpContext` / `WarpContextImpl` and `WarpGroup` / `WarpGroupImpl` — hold the state of a single Warp execution: registered groups of expected requests, their observers/filters, inspections, and collected results.
+- `DefaultExecutionSynchronizer` (`ExecutionSynchronizer`) — coordinates timing between the client thread that performs the activity and the background processing of enrichment/deenrichment.
+- `DefaultWarpRuntime` — holds runtime-scoped builders (`WarpActivityBuilder`, `HttpFilterBuilder`) used while composing a Warp call.
+
+**HTTP interception & enrichment**
+- `DefaultHttpFiltersSource`, `HttpRequestWrapper` — integrate with an embedded HTTP proxy to intercept outgoing requests and adapt them to a library-neutral `HttpRequest` type.
+- `HttpRequestEnrichmentService` / `DefaultHttpRequestEnrichmentService` — decide which requests match registered inspections and attach a serialized `RequestPayload`.
+- `HttpResponseDeenrichmentService` / `DefaultResponseDeenrichmentService` — detect and strip Warp's payload from HTTP responses.
+- `HttpResponseTransformationService` / `DefaultResponseTransformationService` — apply any necessary response transformation once deenrichment info is available.
+- `EnrichmentObserver` — listens to enrichment/deenrichment lifecycle events (`FilterHttpRequest`, `EnrichHttpRequest`, `FilterHttpResponse`, `DeenrichHttpResponse`, `TransformHttpResponse`) and coordinates the services above.
+- Filter builder API — `DefaultHttpFilterBuilder` (`HttpFilterBuilder`), `DefaultUriMatcherBuilder`, `DefaultMethodMatcherBuilder`, `DefaultHttpHeaderMatcherBuilder`, `DefaultHttpParameterMatcherBuilder`, `NotHttpFilterChainBuilder` — a fluent DSL for building matchers that decide which HTTP requests a `RequestObserver`/inspection group applies to (by URI, method, headers, parameters).
+- `FaviconIgnore`, `OnlyFirstRequest` — built-in `RequestFilter` implementations for common filtering needs.
+
+**Proxying**
+- `DefaultProxyService` (`ProxyService`) and related events `RequireProxy`/`StartProxy`/`AbstractProxyInitializationEvent` — start/stop a local HTTP proxy (via LittleProxy) that sits between the test client and the deployed application so requests/responses can be intercepted.
+- `DefaultURLMapping` (`URLMapping`), `RealURLToProxyURLMapping`, `ProxyURLToContextMapping`, `ProxyHolder` — track mappings between real application URLs and their proxied counterparts, and associate proxy URLs with the operational context (test class/method) that requested them.
+- `ProxyObserver`, `ProxyUsageTracker` — lifecycle glue that starts proxies at suite start, registers them per test, and tears them down afterward.
+- `ProxyURLProvider` — an Arquillian `@ArquillianResource` resource provider that injects the proxy URL into test code.
+
+**Context management**
+- `OperationalContexts`, `OperationalContext`, `OperationalContextRetriver`, `OperationalContextInitializer`, `Contextualizer` — manage Arquillian's suite/class/test/application/warp-scoped contexts and allow instances to be wrapped so their methods execute within the correct context.
+- `WarpExecutionContextImpl` — a Warp-scoped context activated/destroyed around each Warp execution.
+
+**Deployment support**
+- `DeploymentEnricher` (`ProtocolArchiveProcessor`) — augments the test deployment archive with everything Warp's server-side component needs (filters, servlets, classes).
+- `DeploymentValidator` — validates that a deployment is correctly configured for Warp use.
+
+**Bytecode transformation**
+- `TransformedInspection`, `MigratedInspection`, `CtClassAsset` — transform user-authored `Inspection` classes (via Javassist) so they can be safely serialized and executed on the server, and packaged as deployable assets.
+
+**Result verification**
+- `ResponsePayloadVerifier` — after a response comes back, verifies that all expected inspection methods actually ran and that the test result was successful, raising failures like `InspectionMethodWasNotInvokedException` otherwise.
+
+### Server side
+
+- `WarpFilter` (`Filter`) — the servlet filter installed in the deployment that detects Warp-enriched requests and hands them off for special processing instead of (or in addition to) normal servlet processing.
+- `RequestDelegator`, `RequestDelegationService`, `CommandBusOnServer` — decide whether an incoming request should be delegated to Warp's command-processing logic rather than the application, and perform that delegation.
+- `HttpRequestProcessor`, `WarpRequestProcessor`, `WarpLifecycle` — process an incoming enriched request: extract the `RequestPayload`, run the registered `Inspection`s within the request lifecycle, build a `ResponsePayload`, and write it back onto the HTTP response.
+- `DefaultHttpRequestDeenricher` (`HttpRequestDeenricher`... via `RequestDeenricher`), `DefaultHttpResponseEnricher` (`ResponseEnricher`) — server-side counterparts that read the incoming payload and write the outgoing payload.
+- `InspectionRegistry`, `PayloadRegistry`, `InspectionRegistratryInitializer` — track which inspections are currently active and cache request/response payloads by serial ID during a single HTTP call.
+- `LifecycleManagerImpl` (`LifecycleManager`), `LifecycleManagerObserver` — a per-request event bus used to fire lifecycle events (`BeforeRequest`, `AfterRequest`, `ActivateManager`, `PassivateManager`, etc.) that drive the server-side pipeline.
+- `RequestContextImpl` (`RequestContext`), `RequestContextHandler`, `ManagerActivationObserver` — manage a request-scoped context activated for the duration of processing a single HTTP call.
+- `CommandServiceOnServer`, `WarpCommandService` — server-side implementations of the shared `CommandService`, allowing commands to be executed either locally on the server or dispatched back to the client.
+- Resource providers `HttpServletRequestProvider`, `HttpServletResponseProvider`, `ServletRequestProvider`, `ServletResponseProvider` — inject the current servlet request/response into inspection code via `@ArquillianResource`.
+
+### Shared (client + server)
+
+- `Command`, `CommandService`, `CommandPayload`, `OperationMode` — a simple RPC-like mechanism (`CommandBusOnClient`, `CommandServiceOnClient`) allowing a `Command` object to be serialized, sent to the other side, executed, and its result/exception returned.
+- `RequestPayload`, `ResponsePayload`, `ExecutedMethod` — the serializable data structures exchanged between client and server: the set of inspections to run, and the resulting executed methods / test result / response metadata.
+- `SerializedAnnotation`, `SerializedMethod` — helpers for serializing annotations and methods as part of `ExecutedMethod`/inspection metadata.
+
+### Utilities
+
+- `SerializationUtils`, `Base64`/`BaseNCodec` — serialize objects to bytes or Base64 strings for transport inside HTTP headers/bodies.
+- `URLUtils`, `PortProber`, `EphemeralPortRangeDetector` implementations (`FixedIANAPortRange`, `LinuxEphemeralPortRangeDetector`, `OlderWindowsVersionEphemeralPortDetector`) — networking helpers used by the proxy subsystem to find free ports and build/rewrite URLs.
+- `AnnotationInstanceProvider`, `NullMemberException` — build annotation instances dynamically (used when reconstructing qualifiers from serialized data).
+- `ShrinkWrapUtils`, `SeparatedClassLoader`, `SeparateInvocator` — package classes into ShrinkWrap archives and run code in isolated classloaders, supporting the bytecode transformation pipeline.
+- `Rethrow`, `Platform`, `WarpTestValidator`, `ClassLoaderUtils` — miscellaneous helpers for exception handling, OS detection, and validating whether a test class is set up correctly for Warp.
+
+### Extension registration
+
+- `WarpExtension` (`LoadableExtension`) — registers all client-side observers, services, and resource providers with Arquillian.
+- `WarpRemoteExtension` (`RemoteLoadableExtension`) — registers the server-side observers and services that run inside the container.
+- `WarpRuntimeInitializer` — injects and cleans up the `WarpRuntime` around test class execution.
+
+## Typical usage
+
+Most developers interact with Warp through its public test-facing annotations and the `Warp` entry point (not shown here), which internally delegates to the classes in this module. The example below illustrates, at the level of this module's API, how an activity is dispatched and inspected.
+
+```java
+// A server-side Inspection (simplified) capturing whether a servlet attribute was set.
+public class MyInspection implements Inspection {
+
+    @AfterServlet
+    public void verify(HttpServletRequest request) {
+        Assert.assertEquals("value", request.getAttribute("myAttribute"));
+    }
+}
+```
+
+```java
+// Client-side test code driving a Warp execution through the request specifier.
+WarpRequestSpecifier specifier = new DefaultWarpRequestSpecifier();
+
+specifier
+    .initiate(new Activity() {
+        @Override
+        public void perform() {
+            // trigger the HTTP call under test, e.g. via HttpClient or a browser driver
+            httpClient.get(applicationUrl + "/some-endpoint");
+        }
+    })
+    .observe(specifier.observe(new NotHttpFilterChainBuilder(
+            new DefaultHttpFilterBuilder()) {
+        // configure filtering via uri()/method()/header()/parameter() builders
+    }))
+    .inspect(new MyInspection())
+    .execute();
+```
+
+Under the hood, `execute()` triggers a `WarpExecutionObserver` chain that:
+
+1. Fires `AdvertiseEnrichment`, activating the `WarpExecutionContext` and registering inspections in the `InspectionRegistry`.
+2. Runs the `Activity`, during which the local HTTP proxy (`DefaultProxyService`, `DefaultHttpFiltersSource`) intercepts the outgoing request, matches it against registered filters, and enriches it with a `RequestPayload` (`EnrichmentObserver`, `DefaultHttpRequestEnrichmentService`).
+3. On the server, `WarpFilter` and `RequestDelegator` detect the enriched request, and `WarpLifecycle`/`HttpRequestProcessor` execute the matching `Inspection`s, producing a `ResponsePayload`.
+4. The response is deenriched and transformed back on the client (`DefaultResponseDeenrichmentService`, `DefaultResponseTransformationService`).
+5. `ResponsePayloadVerifier` checks that all expected inspection methods executed and reports any failures, surfaced through exceptions such as `InspectionMethodWasNotInvokedException`, `TooManyRequestsException`, or `WarpSynchronizationException`.
+
+## Extending Warp
+
+Because most services are exposed as interfaces (`HttpRequestEnrichmentService`, `HttpResponseDeenrichmentService`, `HttpResponseTransformationService`, `RequestObserverChainManager`, `ProxyService`, `EphemeralPortRangeDetector`, etc.), alternative implementations can be supplied through Arquillian's `ServiceLoader` mechanism to customize how requests are matched, enriched, or proxied, without modifying the core execution flow.
+
+## License
+
+This module is part of the Arquillian project and is distributed under the same license as the rest of the Arquillian ecosystem.

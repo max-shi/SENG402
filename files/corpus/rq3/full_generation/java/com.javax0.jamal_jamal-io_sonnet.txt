@@ -1,0 +1,83 @@
+# jamal-io
+
+`jamal-io` is a [Jamal](https://github.com/verhas/jamal) macro package that provides I/O related macros for Jamal documents. It lets a Jamal document interact with the file system and the underlying operating system directly during macro processing — copying, writing, reading, and removing files, creating directories, querying the current working directory and OS name, executing external commands, and printing output during document generation.
+
+This library is intended to be used as a Jamal extension: once it is on the classpath, its macros become available inside `.jam` documents (or any Jamal-processed source) using the standard Jamal macro syntax.
+
+## Overview of macros
+
+All macros implement Jamal's `Macro` interface, and most of them use one of the `Scanner` marker interfaces (`WholeInput`, `FirstLine`, or plain `Scanner`) to control how Jamal parses their arguments. Several also implement `InnerScopeDependent`, meaning their behavior is tied to the lexical/scope context in which they are invoked (for example, resolving relative paths or scoped resources).
+
+### File and directory manipulation
+
+- **`Copy`** — Copies a file (or files) from a source location to a destination. Uses `Scanner.WholeInput`, so its entire macro body is treated as a single input string to be parsed for source/target arguments.
+- **`Mkdir`** — Creates a directory (and, typically, any missing parent directories). Scope-dependent, and uses `Scanner.FirstLine` parsing, so its arguments are expected on the first line of the macro body.
+- **`Remove`** — Deletes a file or directory. Also scope-dependent and uses `Scanner.FirstLine` parsing.
+- **`IoFile`** — A general-purpose file handle/reference macro, used to define or resolve a file resource that other I/O macros (such as `Write`) can operate on. Scope-dependent and parses its whole input.
+
+### Reading and writing content
+
+- **`Write`** — Writes content (typically the macro's body, or content associated with a file reference) to a file. Scope-dependent, and uses the general `Scanner` interface for flexible argument parsing.
+- **`Print`** — Prints content to an output stream (such as standard output) during macro evaluation. Scope-dependent, general `Scanner` parsing.
+
+### Process and environment information
+
+- **`Exec`** — Executes an external OS command/process and returns its output as the macro's result. Uses `Scanner.FirstLine` parsing, so the command is expected on the first line of the macro body.
+- **`Cwd`** — Returns the current working directory as a string.
+- **`OsName`** — Returns the name of the operating system Jamal is currently running on.
+
+## How the pieces fit together
+
+These macros are typically combined inside a Jamal document to script simple build-, deployment-, or documentation-generation tasks that need to touch the file system or environment:
+
+1. `Cwd` and `OsName` let a document introspect its environment to make conditional decisions.
+2. `Mkdir` ensures target directories exist.
+3. `IoFile` defines a file reference that `Write` (and sometimes `Copy`) then use to persist content.
+4. `Copy` and `Remove` manage existing files.
+5. `Exec` invokes external tools, and `Print` surfaces diagnostic or generated output.
+
+## Usage examples
+
+> Note: exact macro argument syntax follows standard Jamal macro-call conventions (e.g. `{@macroName arguments}`); the examples below illustrate the intended workflow.
+
+### Creating a directory and writing a file
+
+```
+{@mkdir output/reports}
+
+{@ioFile report output/reports/summary.txt}
+{@write report}
+Build completed on {@cwd} running {@osName}.
+{@end write}
+```
+
+This ensures the `output/reports` directory exists, defines a file reference named `report`, and writes generated text — including the current working directory and OS name — into that file.
+
+### Copying and cleaning up files
+
+```
+{@copy source=config/template.yaml target=output/config.yaml}
+
+{@if {@osName}==Linux
+    {@exec chmod +x output/deploy.sh}
+}
+
+{@remove output/tmp.log}
+```
+
+This copies a configuration template into the output directory, conditionally executes a shell command on Linux systems to make a script executable, and finally removes a temporary log file.
+
+### Printing diagnostic output
+
+```
+{@print}
+Current directory: {@cwd}
+Operating system: {@osName}
+{@end print}
+```
+
+This prints environment information to the console (or configured output stream) while the document is being processed, which is useful for debugging build scripts embedded in Jamal documents.
+
+## Summary
+
+`jamal-io` turns Jamal from a pure text/macro processor into a lightweight scripting tool for file system and process interaction, making it suitable for generating build artifacts, scaffolding directory structures, and gluing together shell commands as part of document or code generation pipelines.

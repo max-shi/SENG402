@@ -1,0 +1,526 @@
+# rethinkdb-driver
+
+`com.rethinkdb:rethinkdb-driver` is a Java driver for building and executing ReQL-style database queries. It provides:
+
+- A fluent query-expression API for databases, tables, documents, sequences, grouping, geospatial values, time values, and administrative operations.
+- Synchronous and asynchronous query execution through `Connection`.
+- Typed result mapping with Jackson `Class<T>` and `TypeReference<T>` targets.
+- Cursor-like `Result<T>` objects for sequences and feeds.
+- Structured error types for driver, compile, runtime, permission, availability, and authentication failures.
+
+## Core concepts
+
+### `RethinkDB`
+
+`RethinkDB` is the top-level entry point. It extends `TopLevel`, which exposes constructors for queries such as:
+
+- Database and table access: `db`, `table`, `dbCreate`, `tableCreate`
+- Value construction: `expr`, `array`, `hashMap`, `object`
+- Control flow and functions: `branch`, `do_`, `error`
+- Time and geospatial values: `time`, `now`, `point`, `polygon`
+- Global query terms: `range`, `random`, `uuid`, `http`
+
+It also creates `Connection.Builder` instances and exposes a configurable Jackson `ObjectMapper` for result conversion.
+
+```java
+import com.rethinkdb.RethinkDB;
+
+RethinkDB r = new RethinkDB();
+```
+
+### `Connection`
+
+`Connection` represents a database connection. Create one from a `Connection.Builder`, connect it, select a default database if needed, and close it when finished.
+
+```java
+import com.rethinkdb.net.Connection;
+
+Connection conn = new Connection(r.connection()).connect();
+
+conn.use("application");
+
+// ... run queries ...
+
+conn.close();
+```
+
+Useful lifecycle methods include:
+
+- `connect()` / `connectAsync()`
+- `reconnect()` / `reconnectAsync()`
+- `isOpen()`
+- `close()` / `closeAsync()`
+- `noreplyWait()`
+- `server()`
+- `hasOngoingQueries()`
+
+### Query expressions: `ReqlAst` and `ReqlExpr`
+
+Every query term is represented by a `ReqlAst`. Most expressions are `ReqlExpr` instances, which expose chainable operations.
+
+For example, a table expression can be filtered, ordered, projected, and limited:
+
+```java
+var query = r.table("users")
+    .filter(user -> user.g("active").eq(true))
+    .orderBy("name")
+    .pluck("id", "name", "email")
+    .limit(20);
+```
+
+Queries are not executed until one of the `run...` methods is called.
+
+### Tables and databases
+
+`Db` represents a database expression and provides database-scoped operations:
+
+```java
+r.db("application").table("users");
+r.db("application").tableCreate("users");
+r.db("application").tableDrop("users");
+r.db("application").tableList();
+```
+
+`Table` represents a table expression and adds table-specific operations:
+
+```java
+r.table("users").get("user-123");
+r.table("users").getAll("admin", "editor");
+r.table("users").insert(document);
+r.table("users").indexCreate("email");
+r.table("users").indexWait("email");
+```
+
+### Documents and options
+
+Use `hashMap()` to construct object-like documents fluently:
+
+```java
+var user = r.hashMap("id", "user-123")
+    .with("name", "Ada")
+    .with("email", "ada@example.test")
+    .with("active", true);
+```
+
+`OptArgs` represents optional arguments. It can be built incrementally or created with `OptArgs.of(...)`.
+
+```java
+import com.rethinkdb.model.OptArgs;
+
+OptArgs options = OptArgs.of("conflict", "replace")
+    .with("return_changes", true);
+```
+
+Several query terms expose `optArg(...)` directly, including `insert`, `update`, `delete`, `filter`, `between`, `orderBy`, `changes`, `tableCreate`, and others.
+
+---
+
+## Executing queries
+
+`ReqlAst` supplies several execution styles.
+
+| Method family | Use |
+|---|---|
+| `run(...)` | Execute and return a `Result<T>` cursor. |
+| `runAsync(...)` | Execute asynchronously and return `CompletableFuture<Result<T>>`. |
+| `runAtom(...)` | Execute a query expected to yield a single value. |
+| `runAtomAsync(...)` | Asynchronous single-value execution. |
+| `runGrouping(...)` | Execute grouped output and convert it to `Map<K, Set<V>>`. |
+| `runUnwrapping(...)` | Execute while using the driver's list-unwrapping behavior. |
+| `runNoReply(...)` | Execute without waiting for a reply. |
+
+Most execution methods accept some combination of:
+
+- `Connection`
+- `OptArgs` run options
+- `Result.FetchMode`
+- `Class<T>` for simple typed mapping
+- Jackson `TypeReference<T>` for generic types
+
+### Insert a document
+
+```java
+import com.rethinkdb.net.Connection;
+
+RethinkDB r = new RethinkDB();
+Connection conn = new Connection(r.connection()).connect();
+
+var user = r.hashMap("id", "user-123")
+    .with("name", "Ada")
+    .with("email", "ada@example.test")
+    .with("active", true);
+
+Object result = r.table("users")
+    .insert(user)
+    .runAtom(conn);
+
+conn.close();
+```
+
+### Read typed documents
+
+Use `Class<T>` when each result row maps to a Java class.
+
+```java
+import com.rethinkdb.net.Result;
+
+public class User {
+    public String id;
+    public String name;
+    public String email;
+    public boolean active;
+}
+
+Result<User> users = r.table("users")
+    .filter(user -> user.g("active").eq(true))
+    .orderBy("name")
+    .run(conn, User.class);
+
+for (User user : users) {
+    System.out.println(user.name);
+}
+
+users.close();
+```
+
+`Result<T>` is both an `Iterator<T>` and an `Iterable<T>`. It also supports:
+
+```java
+var list = users.toList();
+
+var names = users.stream()
+    .map(user -> user.name)
+    .toList();
+```
+
+Close a `Result` when you are finished with it, particularly for long-running or feed-like queries.
+
+### Fetch a single document
+
+Use `runAtom(...)` when the query is expected to produce one value.
+
+```java
+User user = r.table("users")
+    .get("user-123")
+    .runAtom(conn, User.class);
+
+if (user != null) {
+    System.out.println(user.email);
+}
+```
+
+### Run asynchronously
+
+```java
+import java.util.concurrent.CompletableFuture;
+import com.rethinkdb.net.Result;
+
+CompletableFuture<Result<User>> future = r.table("users")
+    .filter(user -> user.g("active").eq(true))
+    .runAsync(conn, User.class);
+
+future.thenAccept(result -> {
+    try {
+        result.forEach(user -> System.out.println(user.name));
+    } finally {
+        result.close();
+    }
+});
+```
+
+For a single value:
+
+```java
+CompletableFuture<User> futureUser = r.table("users")
+    .get("user-123")
+    .runAtomAsync(conn, User.class);
+```
+
+---
+
+## Fluent query operations
+
+`ReqlExpr` offers the chainable expression API. Common categories include:
+
+### Comparison and logic
+
+```java
+var query = r.table("users")
+    .filter(user ->
+        user.g("age").ge(18)
+            .and(user.g("active").eq(true))
+    );
+```
+
+Available comparison and logical operations include:
+
+- `eq`, `ne`
+- `lt`, `le`, `gt`, `ge`
+- `and`, `or`, `not`
+- `branch`
+
+### Field and object operations
+
+```java
+var query = r.table("users")
+    .get("user-123")
+    .pluck("id", "name", "email")
+    .merge(r.hashMap("source", "application"));
+```
+
+Useful methods include:
+
+- `g(...)` / `getField(...)`
+- `pluck(...)`, `without(...)`, `withFields(...)`
+- `hasFields(...)`
+- `merge(...)`
+- `keys()`, `values()`
+- `bracket(...)`
+
+### Sequence operations
+
+```java
+var query = r.table("orders")
+    .filter(order -> order.g("status").eq("paid"))
+    .map(order -> order.g("total"))
+    .sum();
+```
+
+Sequence and collection operations include:
+
+- `filter`, `map`, `concatMap`, `reduce`, `fold`
+- `orderBy`, `skip`, `limit`, `slice`
+- `distinct`, `count`, `isEmpty`
+- `union`, `difference`
+- `nth`, `sample`
+- `sum`, `avg`, `min`, `max`
+- `group`, `ungroup`
+
+### Update and delete operations
+
+```java
+Object updateResult = r.table("users")
+    .get("user-123")
+    .update(r.hashMap("active", false))
+    .runAtom(conn);
+
+Object deleteResult = r.table("users")
+    .get("user-123")
+    .delete()
+    .runAtom(conn);
+```
+
+Updates can also be expressed as functions:
+
+```java
+Object result = r.table("users")
+    .get("user-123")
+    .update(user -> r.hashMap("login_count", user.g("login_count").add(1)))
+    .runAtom(conn);
+```
+
+### Lambdas
+
+Many sequence operations accept typed functional interfaces:
+
+- `ReqlFunction0`
+- `ReqlFunction1`
+- `ReqlFunction2`
+- `ReqlFunction3`
+- `ReqlFunction4`
+
+For example:
+
+```java
+var totals = r.table("orders")
+    .map(order -> order.g("total"))
+    .reduce((left, right) -> left.add(right));
+```
+
+The lambda arguments are `ReqlExpr` values, allowing expressions to be composed directly in Java.
+
+---
+
+## Grouped results
+
+Grouped queries can be returned as a `Map<K, Set<V>>` with `runGrouping(...)`.
+
+```java
+import java.util.Map;
+import java.util.Set;
+
+Map<String, Set<User>> usersByRole = r.table("users")
+    .group("role")
+    .runGrouping(conn, String.class, User.class);
+```
+
+For generic or nested types, use helpers from `Types`.
+
+```java
+import com.rethinkdb.utils.Types;
+
+var groupType = Types.groupOf(String.class, User.class);
+
+Map<String, Set<User>> usersByRole = r.table("users")
+    .group("role")
+    .runGrouping(conn, groupType);
+```
+
+`GroupedResult<G, V>` represents an individual group and provides:
+
+- `getGroup()`
+- `getValues()`
+- `GroupedResult.toMap(...)`
+
+---
+
+## Typed result conversion
+
+The driver uses an `ObjectMapper` for converting returned values to Java objects.
+
+```java
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+RethinkDB.setResultMapper(new ObjectMapper());
+
+ObjectMapper mapper = RethinkDB.getResultMapper();
+```
+
+Use `Types` to create reusable generic `TypeReference` instances:
+
+```java
+import com.rethinkdb.utils.Types;
+
+var stringListType = Types.listOf(String.class);
+var stringSetType = Types.setOf(String.class);
+var userMapType = Types.mapOf(String.class, User.class);
+```
+
+Example:
+
+```java
+var results = r.table("users")
+    .pluck("name")
+    .run(conn, Types.mapOf(String.class, String.class));
+```
+
+---
+
+## Change and feed results
+
+The API exposes `changes()` on expressions and tables, and `Result<T>` exposes `isFeed()`.
+
+```java
+Result<Object> changes = r.table("users")
+    .changes()
+    .run(conn);
+
+try {
+    while (changes.hasNext()) {
+        Object change = changes.next();
+        System.out.println(change);
+    }
+} finally {
+    changes.close();
+}
+```
+
+`Result` also provides:
+
+- `bufferedCount()`
+- `connectionToken()`
+- `responseType()`
+- `profile()`
+- `overrideFetchMode(...)`
+- `next(long timeout, TimeUnit unit)`
+
+---
+
+## Time, JSON, binary, and geospatial expressions
+
+The top-level API provides constructors for several specialized values.
+
+```java
+var timestamp = r.now();
+var point = r.point(-73.9857, 40.7484);
+var geojson = r.geojson("{\"type\":\"Point\",\"coordinates\":[-73.9857,40.7484]}");
+var binary = r.binary(new byte[] {1, 2, 3});
+```
+
+Expression methods include:
+
+- Time: `toIso8601`, `toEpochTime`, `inTimezone`, `year`, `month`, `day`
+- JSON: `json`, `toJson`, `toJsonString`
+- Geospatial: `distance`, `intersects`, `includes`, `circle`, `polygonSub`
+- Binary: `binary`, `coerceTo`
+
+---
+
+## Errors
+
+All driver errors derive from `ReqlError`, which extends `RuntimeException`.
+
+Important error categories include:
+
+- `ReqlDriverError`
+  - `ReqlAuthError`
+  - `ReqlDriverCompileError`
+- `ReqlCompileError`
+  - `ReqlServerCompileError`
+- `ReqlRuntimeError`
+  - `ReqlAvailabilityError`
+    - `ReqlOpFailedError`
+    - `ReqlOpIndeterminateError`
+  - `ReqlInternalError`
+  - `ReqlNonExistenceError`
+  - `ReqlPermissionError`
+  - `ReqlQueryLogicError`
+  - `ReqlResourceLimitError`
+  - `ReqlUserError`
+- `ReqlClientError`
+
+Errors may carry the originating `ReqlAst` term and a `Backtrace`.
+
+```java
+import com.rethinkdb.gen.exc.ReqlError;
+
+try {
+    r.table("users").get("missing-id").runAtom(conn);
+} catch (ReqlError error) {
+    System.err.println(error.getMessage());
+
+    if (error.getTerm() != null) {
+        System.err.println("Query: " + error.getTerm());
+    }
+
+    if (error.getBacktrace() != null) {
+        System.err.println("Backtrace: " + error.getBacktrace().getRaw());
+    }
+}
+```
+
+---
+
+## Low-level protocol types
+
+Most applications should use `RethinkDB`, `Connection`, and the fluent query API. The library also exposes protocol-oriented types for advanced integrations:
+
+- `Query` — serializable query envelope with factories such as `createStart`, `createContinue`, and `createStop`.
+- `Response` — database response, including response type, profile data, backtrace, and error conversion.
+- `ConnectionSocket` — socket abstraction.
+- `ResponsePump` — asynchronous response dispatcher.
+- Protocol enums: `QueryType`, `ResponseType`, `ResponseNote`, `TermType`, `ErrorType`, `Version`, `Protocol`, and `DatumType`.
+
+`ResponseType.isError()` identifies error responses, while `ResponseNote.isFeed()` identifies feed-related response notes.
+
+---
+
+## Resource management checklist
+
+When using the driver:
+
+1. Connect a `Connection` before running queries.
+2. Close `Result` instances after consuming sequence or feed results.
+3. Close the `Connection` when the application shuts down.
+4. Use `noreplyWait()` before shutdown if no-reply queries must be synchronized.
+5. Handle `ReqlError` and its subclasses where query failures need application-specific handling.

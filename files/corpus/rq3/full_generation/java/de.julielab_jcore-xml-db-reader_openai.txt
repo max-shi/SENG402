@@ -1,0 +1,313 @@
+# de.julielab:jcore-xml-db-reader
+
+`jcore-xml-db-reader` provides Java and Apache UIMA-oriented components for reading database-backed XML content and populating UIMA CAS/JCas instances.
+
+Its API centers on two related tasks:
+
+1. **Reading XML-oriented records through a UIMA collection reader** using `XMLDBReader`.
+2. **Mapping database row values into a `JCas`** using `CasPopulator`, `Row2CasMapper`, and `XMLMapper`.
+
+The library is intended for applications where database results are represented as `byte[][]` row data and must be converted into typed UIMA annotations and document content.
+
+## Main API
+
+### `XMLDBReader`
+
+```java
+public class XMLDBReader extends DBReader {
+    public void initialize(UimaContext context) throws ResourceInitializationException;
+    public void getNext(JCas jcas) throws IOException, CollectionException;
+}
+```
+
+`XMLDBReader` is a UIMA collection reader. It extends `DBReader` and populates a supplied `JCas` when UIMA calls `getNext`.
+
+Use this class when the library is part of a UIMA collection-processing pipeline. The UIMA framework initializes the reader and repeatedly requests the next document.
+
+### `Initializer`
+
+```java
+public class Initializer {
+    public Initializer(
+        String mappingFileStr,
+        String[] rowMappingArray,
+        Supplier<List<Map<String, Object>>> columnsToRetrieveSupplier
+    ) throws ResourceInitializationException;
+
+    public XMLMapper getXmlMapper();
+    public Row2CasMapper getRow2CasMapper();
+}
+```
+
+`Initializer` prepares the mapping components required for CAS population:
+
+- an `XMLMapper`, obtained with `getXmlMapper()`;
+- a `Row2CasMapper`, obtained with `getRow2CasMapper()`.
+
+It accepts:
+
+- `mappingFileStr`: a mapping-file string;
+- `rowMappingArray`: row-mapping definitions;
+- `columnsToRetrieveSupplier`: a lazy supplier for column metadata.
+
+### `Row2CasMapper`
+
+```java
+public class Row2CasMapper {
+    public Row2CasMapper(
+        String[] rowMappingArray,
+        Supplier<List<Map<String, Object>>> columnsToRetrieveSupplier
+    ) throws ResourceInitializationException;
+
+    public LinkedHashMap<Integer, RowMapElement> getRowMapping();
+    public void mapRowToType(byte[][] arrayArray, JCas jcas) throws CollectionException;
+}
+```
+
+`Row2CasMapper` maps database-row values into a `JCas`.
+
+- `mapRowToType(...)` performs the row-to-CAS mapping.
+- `getRowMapping()` exposes the resolved mapping as an ordered `LinkedHashMap`, keyed by integer row positions.
+
+The row data is supplied as `byte[][]`, where each array element represents one row value.
+
+### `CasPopulator`
+
+```java
+public class CasPopulator {
+    public CasPopulator(
+        DataBaseConnector dbc,
+        XMLMapper xmlMapper,
+        Row2CasMapper row2CasMapper,
+        String[] rowMappingArray,
+        int truncationSize
+    );
+
+    public CasPopulator(
+        DataBaseConnector dbc,
+        XMLMapper xmlMapper,
+        Row2CasMapper row2CasMapper,
+        String[] rowMappingArray
+    );
+
+    public void populateCas(
+        JCas jcas,
+        byte[][] arrayArray,
+        BiConsumer<byte[][], JCas> dbProcessingMetaDataSetter
+    ) throws CasPopulationException;
+}
+```
+
+`CasPopulator` coordinates CAS population from a database row. It combines:
+
+- a `DataBaseConnector`;
+- an `XMLMapper`;
+- a `Row2CasMapper`;
+- row-mapping definitions.
+
+The overload with `truncationSize` allows an additional integer configuration value to be supplied. The overload without it can be used where no explicit truncation value is needed.
+
+`populateCas(...)` receives:
+
+- the target `JCas`;
+- row data as `byte[][]`;
+- an optional metadata callback represented by `BiConsumer<byte[][], JCas>`.
+
+The callback can inspect the original row and add database-processing metadata to the populated CAS.
+
+### `CasPopulationException`
+
+```java
+public class CasPopulationException extends Exception
+```
+
+`CasPopulationException` represents failures while populating a CAS. It provides the standard exception constructors for messages and causes.
+
+## Component relationship
+
+A typical direct integration looks like this:
+
+```text
+mapping configuration
+        │
+        ▼
+   Initializer
+    │       │
+    ▼       ▼
+XMLMapper  Row2CasMapper
+    │       │
+    └───┬───┘
+        ▼
+   CasPopulator
+        │
+        ▼
+      JCas
+```
+
+For UIMA collection-reader usage, `XMLDBReader` provides the higher-level entry point:
+
+```text
+UIMA framework
+      │
+      ▼
+ XMLDBReader
+      │
+      ▼
+ populated JCas instances
+```
+
+## Usage examples
+
+### Use `XMLDBReader` in a UIMA pipeline
+
+`XMLDBReader` is designed to be initialized by the UIMA runtime. The framework supplies a `UimaContext`, then invokes `getNext(JCas)` for each item.
+
+```java
+XMLDBReader reader = new XMLDBReader();
+
+// In a UIMA runtime, initialization is performed by the framework.
+reader.initialize(uimaContext);
+
+// Also normally called by the framework while processing the collection.
+reader.getNext(jcas);
+```
+
+Handle the declared UIMA and I/O exceptions when invoking the methods directly:
+
+```java
+try {
+    reader.initialize(uimaContext);
+    reader.getNext(jcas);
+} catch (ResourceInitializationException e) {
+    // Handle invalid or unavailable reader configuration.
+} catch (CollectionException e) {
+    // Handle CAS collection or mapping failures.
+} catch (IOException e) {
+    // Handle input/output failures while reading the next item.
+}
+```
+
+### Build mapping components with `Initializer`
+
+Use `Initializer` when application code needs access to the XML and row-to-CAS mappers.
+
+```java
+String mappingFile = "...";
+String[] rowMappings = {
+    "..."
+};
+
+Supplier<List<Map<String, Object>>> columnsSupplier = () -> {
+    List<Map<String, Object>> columns = new ArrayList<>();
+
+    Map<String, Object> firstColumn = new HashMap<>();
+    firstColumn.put("name", "document_xml");
+    columns.add(firstColumn);
+
+    return columns;
+};
+
+Initializer initializer = new Initializer(
+    mappingFile,
+    rowMappings,
+    columnsSupplier
+);
+
+XMLMapper xmlMapper = initializer.getXmlMapper();
+Row2CasMapper row2CasMapper = initializer.getRow2CasMapper();
+```
+
+The exact contents of the mapping string, row mappings, and column metadata depend on the database schema and mapping configuration used by the application.
+
+### Map a row directly into a `JCas`
+
+If row data has already been retrieved, use `Row2CasMapper` directly.
+
+```java
+Row2CasMapper row2CasMapper = new Row2CasMapper(
+    rowMappings,
+    columnsSupplier
+);
+
+byte[][] row = new byte[][] {
+    "<document>Example content</document>".getBytes(StandardCharsets.UTF_8),
+    "example-id".getBytes(StandardCharsets.UTF_8)
+};
+
+try {
+    row2CasMapper.mapRowToType(row, jcas);
+} catch (CollectionException e) {
+    // Handle a row-to-CAS mapping failure.
+}
+```
+
+To inspect the resolved row mapping:
+
+```java
+LinkedHashMap<Integer, RowMapElement> mapping = row2CasMapper.getRowMapping();
+
+for (Map.Entry<Integer, RowMapElement> entry : mapping.entrySet()) {
+    Integer rowPosition = entry.getKey();
+    RowMapElement mappingElement = entry.getValue();
+
+    // Inspect the mapping entry as needed.
+}
+```
+
+### Populate a CAS and attach row-derived metadata
+
+`CasPopulator` is appropriate when both XML processing and row-to-CAS mapping should be performed together.
+
+```java
+DataBaseConnector databaseConnector = /* obtain a connector */;
+Initializer initializer = new Initializer(
+    mappingFile,
+    rowMappings,
+    columnsSupplier
+);
+
+CasPopulator populator = new CasPopulator(
+    databaseConnector,
+    initializer.getXmlMapper(),
+    initializer.getRow2CasMapper(),
+    rowMappings
+);
+
+byte[][] row = /* obtain database row values */;
+
+try {
+    populator.populateCas(
+        jcas,
+        row,
+        (originalRow, targetJCas) -> {
+            // Add application-specific metadata to targetJCas.
+            // originalRow contains the source byte-array values.
+        }
+    );
+} catch (CasPopulationException e) {
+    // Handle CAS population failure.
+}
+```
+
+If no metadata needs to be added, pass a no-op callback:
+
+```java
+populator.populateCas(jcas, row, (originalRow, targetJCas) -> {
+    // No additional metadata.
+});
+```
+
+## Error handling
+
+The API exposes several checked exception types:
+
+| Operation | Exception |
+|---|---|
+| Constructing `Initializer` | `ResourceInitializationException` |
+| Constructing `Row2CasMapper` | `ResourceInitializationException` |
+| Mapping a row with `Row2CasMapper` | `CollectionException` |
+| Populating with `CasPopulator` | `CasPopulationException` |
+| Initializing `XMLDBReader` | `ResourceInitializationException` |
+| Reading the next item with `XMLDBReader` | `IOException`, `CollectionException` |
+
+In UIMA applications, allow the framework to manage reader initialization and collection processing where possible. For direct integration, catch and handle the declared exceptions at the boundary of the application’s database-reading or pipeline-processing code.

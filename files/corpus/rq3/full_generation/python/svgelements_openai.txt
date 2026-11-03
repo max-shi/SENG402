@@ -1,0 +1,552 @@
+# svgelements
+
+`svgelements` is a Python library for parsing, creating, transforming, inspecting, and serializing SVG documents and SVG geometry.
+
+The API centers around:
+
+- SVG document and element objects (`SVG`, `Group`, `Path`, `Rect`, `Circle`, `Text`, and others)
+- Geometric primitives (`Point`, `Angle`, `Matrix`)
+- Path segments (`Line`, Bézier curves, `Arc`, `Move`, `Close`)
+- SVG-oriented values such as `Length` and `Color`
+- Serialization helpers (`tostring`, `write`)
+
+It is suitable for applications that need to load SVG content, traverse or select elements, calculate bounds and path lengths, transform geometry, edit paths, or write SVG back out.
+
+## Installation
+
+Install the package with your preferred Python package manager:
+
+```bash
+pip install svgelements
+```
+
+## Quick start
+
+Parse an SVG document, find an element by ID, inspect it, and write the document back to a string:
+
+```python
+from svgelements import SVG, tostring
+
+svg = SVG.parse(
+    """
+    <svg width="200" height="100">
+        <rect id="box" x="10" y="10" width="80" height="40" fill="steelblue" />
+    </svg>
+    """
+)
+
+box = svg.get_element_by_id("box")
+
+if box is not None:
+    print(box.bbox())
+    print(box.d())
+
+print(tostring(svg))
+```
+
+`SVG.parse()` accepts a source value and returns an `SVG` object. The resulting document behaves as a group of child elements and provides document-oriented lookup and traversal methods.
+
+## Main concepts
+
+### SVG documents and elements
+
+`SVG` represents an SVG document and inherits from `Group`. It can contain nested groups and drawable elements.
+
+```python
+from svgelements import SVG
+
+svg = SVG.parse('<svg><circle id="dot" cx="20" cy="20" r="10"/></svg>')
+
+dot = svg.get_element_by_id("dot")
+all_elements = svg.elements()
+```
+
+Useful document methods include:
+
+- `SVG.parse(source, ...)` — parse SVG content.
+- `get_element_by_id(id)` — retrieve an element by ID.
+- `get_element_by_url(url)` — retrieve an element referenced by a URL-like value.
+- `elements(conditional=None)` — obtain document elements, optionally filtered.
+- `viewbox_transform()` — obtain the document viewbox transform.
+- `render(**kwargs)` — resolve render-related values and context.
+
+Most SVG element objects derive from `SVGElement`, which provides common property and XML facilities:
+
+- `set(key, value)` — set an attribute/property.
+- `render(**kwargs)` — render contextual values.
+- `string_xml()` — produce XML text for the element.
+- `write_xml(f, **kwargs)` — write XML to a file-like object.
+
+### Groups and reusable structure
+
+`Group` is both an SVG element and a Python `list`, allowing it to contain SVG children.
+
+```python
+from svgelements import Group, Rect, Circle
+
+group = Group()
+group.append(Rect())
+group.append(Circle())
+
+for child in group:
+    print(type(child).__name__)
+```
+
+Groups provide:
+
+- `select(conditional=None)` — select child elements.
+- `bbox(transformed=True, with_stroke=False)` — calculate a combined bounding box.
+- `union_bbox(elements, transformed=True, with_stroke=False)` — calculate a bounding box for a collection.
+- `reify()` — apply or resolve transformable state.
+
+`Use` has a similar list-like, transformable structure and also supports `select()` and `bbox()`.
+
+### Shapes
+
+`Shape` is the common base for geometry-bearing SVG objects. It supports operations shared by paths and basic SVG shapes:
+
+- `segments(transformed=True)` — obtain path-like segments.
+- `d(relative=False, transformed=True)` — serialize shape geometry as SVG path data.
+- `bbox(transformed=True, with_stroke=False)` — calculate bounds.
+- `length(error=..., min_depth=...)` — calculate path length.
+- `point(position, error=...)` — find a point at a normalized position.
+- `npoint(positions, error=...)` — find multiple points.
+- `reify()` — resolve transforms into geometry where supported.
+
+Concrete shape types include:
+
+- `Rect`
+- `Ellipse`
+- `Circle`
+- `SimpleLine`
+- `Polyline`
+- `Polygon`
+- `Path`
+
+For example, a rectangle can be treated as path geometry:
+
+```python
+from svgelements import SVG
+
+svg = SVG.parse(
+    '<svg><rect x="5" y="10" width="40" height="20" rx="4"/></svg>'
+)
+
+rect = svg[0]
+
+print(rect.bbox())
+print(rect.length())
+print(rect.d())
+```
+
+### Paths and segments
+
+`Path` is a mutable sequence of path segments. It can parse SVG path data, be built programmatically, be reversed, split into subpaths, and converted back to SVG `d` data.
+
+```python
+from svgelements import Path
+
+path = Path()
+path.move((10, 10))
+path.line((100, 10))
+path.line((100, 60))
+path.closed()
+
+print(path.d())
+print(path.length())
+print(path.bbox())
+```
+
+Path construction methods include:
+
+- `move(*points, relative=False, **kwargs)`
+- `line(*points, relative=False, **kwargs)`
+- `vertical(*y_points, relative=False, **kwargs)`
+- `horizontal(*x_points, relative=False, **kwargs)`
+- `quad(*points, relative=False, **kwargs)`
+- `smooth_quad(*points, relative=False, **kwargs)`
+- `cubic(*points, relative=False, **kwargs)`
+- `smooth_cubic(*points, relative=False, **kwargs)`
+- `arc(*arc_args, relative=False, **kwargs)`
+- `closed(relative=False)`
+
+Other useful path operations:
+
+- `parse(pathdef)` — parse SVG path data.
+- `reverse()` — reverse path direction.
+- `subpath(index)` — retrieve a subpath.
+- `count_subpaths()` / `as_subpaths()` — inspect subpaths.
+- `as_points()` — obtain path points.
+- `approximate_arcs_with_cubics(error=0.1)`
+- `approximate_arcs_with_quads(error=0.1)`
+- `approximate_bezier_with_circular_arcs(error=0.01)`
+
+A path contains `PathSegment` instances. Segment classes include:
+
+- `Move`
+- `Close`
+- `Line`
+- `QuadraticBezier`
+- `CubicBezier`
+- `Arc`
+
+Segments support geometry operations such as `point()`, `length()`, `bbox()`, `reverse()`, `d()`, and `intersect()`.
+
+```python
+from svgelements import Path
+
+path = Path()
+path.parse("M 0,0 C 20,40 60,40 80,0")
+
+for segment in path:
+    print(segment.d())
+
+print(path.point(0.5))
+```
+
+### Bézier curves and arcs
+
+`QuadraticBezier` and `CubicBezier` represent Bézier curve segments. They provide `npoint()`, `bbox()`, `length()`, and smoothness checks through `is_smooth_from(previous)`.
+
+`Arc` represents an elliptical arc and includes ellipse- and angle-oriented helpers:
+
+- `theta()` and `delta()`
+- `rx()`, `ry()`, and `radius()`
+- `get_rotation()`
+- `get_start_angle()` / `get_end_angle()`
+- `point_at_angle(angle)`
+- `point_at_t(t)`
+- `angle_at_point(p)`
+- `t_at_point(p)`
+- `as_quad_curves(...)`
+- `as_cubic_curves(...)`
+- `is_circular()`
+
+### Points and angles
+
+`Point` provides common two-dimensional geometric operations.
+
+```python
+from svgelements import Point
+
+start = Point(0, 0)
+end = Point(30, 40)
+
+print(start.distance_to(end))
+print(start.angle_to(end))
+
+midpoint = start.move_towards(end, 0.5)
+print(midpoint)
+```
+
+Available point helpers include:
+
+- `distance_to(p2)`
+- `angle_to(p2)`
+- `polar_to(angle, distance)`
+- `move_towards(p2, amount=1)`
+- `reflected_across(p)`
+- `matrix_transform(matrix)`
+- `convex_hull(pts)`
+- `orientation(p, q, r)`
+- `distance(p1, p2)`
+- `polar(p1, angle, r)`
+- `angle(p1, p2)`
+- `towards(p1, p2, amount)`
+
+`Angle` is a float-like angle type with unit conversion and parsing support.
+
+```python
+from svgelements import Angle
+
+angle = Angle.degrees(90)
+
+print(angle.as_radians())
+print(angle.as_gradians())
+print(angle.is_orthogonal())
+
+parsed = Angle.parse("45deg")
+print(parsed.as_degrees())
+```
+
+Angle constructors and converters include:
+
+- `Angle.parse(angle_string)`
+- `Angle.radians(radians)`
+- `Angle.degrees(degrees)`
+- `Angle.gradians(gradians)`
+- `Angle.turns(turns)`
+- `normalized()`
+- `as_radians()`, `as_degrees()`, `as_positive_degrees()`
+- `as_gradians()`, `as_turns()`
+
+### Affine transformations
+
+`Matrix` represents transformations such as translation, scaling, rotation, and skewing. Matrices can be parsed from transform text, composed before or after existing transforms, inverted, and applied to points or vectors.
+
+```python
+from svgelements import Matrix, Point
+
+transform = Matrix()
+transform.post_translate(20, 10)
+transform.post_rotate(45)
+transform.post_scale(2)
+
+point = Point(5, 0)
+result = transform.transform_point(point)
+
+print(result)
+print(transform.determinant())
+```
+
+Create a matrix directly with class helpers:
+
+```python
+from svgelements import Matrix
+
+scale = Matrix.scale(2, 3)
+translate = Matrix.translate(10, 20)
+rotate = Matrix.rotate(30)
+
+combined = Matrix()
+combined.post_cat(scale, translate, rotate)
+```
+
+Important `Matrix` APIs include:
+
+- `parse(transform_str)`
+- `render(...)`
+- `inverse()`
+- `reset()`
+- `is_identity()`
+- `determinant()`
+- `transform_point(v)`
+- `transform_vector(v)`
+- `point_in_matrix_space(v0)`
+- `point_in_inverse_space(v0)`
+
+Composition methods are available in both orders:
+
+- `post_cat(*components)` and `pre_cat(*components)`
+- `post_scale(...)`, `post_translate(...)`, `post_rotate(...)`, `post_skew(...)`
+- `pre_scale(...)`, `pre_translate(...)`, `pre_rotate(...)`, `pre_skew(...)`
+
+Convenience constructors include:
+
+- `Matrix.identity()`
+- `Matrix.scale(...)`, `Matrix.scale_x(...)`, `Matrix.scale_y(...)`
+- `Matrix.translate(...)`, `Matrix.translate_x(...)`, `Matrix.translate_y(...)`
+- `Matrix.rotate(...)`
+- `Matrix.skew(...)`, `Matrix.skew_x(...)`, `Matrix.skew_y(...)`
+- `Matrix.affine(...)`
+- `Matrix.perspective(...)`
+- `Matrix.map(...)` and `Matrix.map3(...)`
+
+### Lengths
+
+`Length` represents SVG-style length values and provides conversion helpers.
+
+```python
+from svgelements import Length
+
+length = Length("25mm")
+
+print(length.value_in_units())
+print(length.in_pixels())
+print(length.in_inches())
+print(length.to_cm())
+```
+
+Lengths can be resolved against rendering context:
+
+```python
+value = length.value(
+    ppi=96,
+    relative_length=200,
+    font_size=16,
+    font_height=19,
+)
+```
+
+Available conversion methods include:
+
+- `value_in_units()`
+- `in_pixels()`
+- `in_inches()`
+- `to_mm(...)`
+- `to_cm(...)`
+- `to_inch(...)`
+- `value(...)`
+- `Length.str(s)`
+
+### Colors
+
+`Color` parses and converts color values, exposes individual channels, supports HSL/RGB conversion, and can blend colors.
+
+```python
+from svgelements import Color
+
+color = Color.parse("#336699")
+
+print(color.rgb())
+print(color.rgba())
+print(color.hex())
+print(color.hsl())
+
+color.opacity(0.5)
+print(color.hexa())
+```
+
+Construct or parse colors with:
+
+- `Color.parse(color_string)`
+- `Color.parse_color_lookup(v)`
+- `Color.parse_color_hex(hex_string)`
+- `Color.parse_color_rgb(values)`
+- `Color.parse_color_rgbp(values)`
+- `Color.parse_color_hsl(values)`
+- `Color.rgb_to_int(r, g, b, opacity=1.0)`
+- `Color.hsl_to_int(h, s, l, opacity=1.0)`
+- `Color.distinct(index)`
+
+Channel and representation accessors include:
+
+- `rgb()` / `rgb(value)`
+- `rgba()` / `rgba(value)`
+- `argb()` / `argb(value)`
+- `bgr()` / `bgr(value)`
+- `red()`, `green()`, `blue()`
+- `alpha()` and `opacity()`
+- `hex()`, `hexrgb()`, `hexa()`
+- `hsl()`, `hue()`, `saturation()`, `lightness()`
+
+Color analysis and composition methods include:
+
+- `luminance()`, `luma()`
+- `intensity()`, `brightness()`, `blackness()`
+- `distance_to(other)`
+- `blend(other, opacity=None)`
+- `Color.over(c1, c2)`
+
+## Transforming parsed geometry
+
+Elements that are transformable expose `render()`, `reify()`, `bbox()`, and `rotation()` through the `Transformable` interface.
+
+A typical workflow is:
+
+1. Parse an SVG document.
+2. Locate a shape or group.
+3. Render contextual lengths or transforms if needed.
+4. Reify the transform into geometry.
+5. Inspect bounds, segments, or path data.
+
+```python
+from svgelements import SVG
+
+svg = SVG.parse(
+    """
+    <svg>
+        <g id="drawing" transform="translate(10, 20) rotate(15)">
+            <rect x="0" y="0" width="80" height="30" />
+        </g>
+    </svg>
+    """
+)
+
+drawing = svg.get_element_by_id("drawing")
+
+if drawing is not None:
+    print("Bounds before reification:", drawing.bbox(transformed=True))
+
+    drawing.reify()
+
+    print("Bounds after reification:", drawing.bbox(transformed=True))
+```
+
+## Viewboxes, patterns, and images
+
+`Viewbox` provides viewbox property and transformation support:
+
+- `set_viewbox(viewbox)`
+- `transform(element)`
+- `viewbox_transform(...)`
+
+`SVG`, `Pattern`, and `Image` also expose `viewbox_transform()`.
+
+`Image` supports loading image data and deriving values from the loaded image:
+
+```python
+from svgelements import Image
+
+image = Image()
+image.load(directory="assets")
+
+print(image.bbox())
+```
+
+Image-related methods include:
+
+- `load(directory=None)`
+- `load_data()`
+- `load_file(directory)`
+- `set_values_by_image()`
+
+## Text and metadata
+
+`Text` represents SVG text and supports rendering, transforms, bounds, and font-related inspection:
+
+- `parse_font(font)`
+- `font_list()`
+- `weight()`
+- `font_face()`
+- `bbox(...)`
+- `reify()`
+
+`Title` and `Desc` represent SVG title and description metadata.
+
+## Clipping and patterns
+
+`ClipPath` is a list-like SVG element for clip-path content.
+
+`Pattern` is a list-like SVG element with rendering and viewbox support:
+
+- `viewbox_transform()`
+- `render(**kwargs)`
+
+## Writing SVG
+
+Use `tostring()` to serialize a node to text, or `write()` to write it to a file-like object.
+
+```python
+from svgelements import SVG, write
+
+svg = SVG.parse('<svg><circle cx="25" cy="25" r="20"/></svg>')
+
+with open("output.svg", "w", encoding="utf-8") as f:
+    write(svg, f, pretty=True)
+```
+
+For individual elements, `string_xml()` and `write_xml()` are also available:
+
+```python
+element_xml = svg[0].string_xml()
+print(element_xml)
+```
+
+## API map
+
+| Area | Main types |
+|---|---|
+| SVG document tree | `SVG`, `SVGElement`, `Group`, `Use`, `ClipPath`, `Pattern` |
+| Basic shapes | `Rect`, `Ellipse`, `Circle`, `SimpleLine`, `Polyline`, `Polygon` |
+| Paths | `Path`, `Subpath`, `PathSegment`, `Move`, `Close`, `Line`, `QuadraticBezier`, `CubicBezier`, `Arc` |
+| Geometry | `Point`, `Angle`, `Matrix` |
+| SVG values | `Length`, `Color`, `Viewbox` |
+| Content elements | `Text`, `Image`, `Title`, `Desc` |
+| XML output | `tostring`, `write` |
+
+## Notes on coordinate-dependent operations
+
+Several operations accept optional parameters such as `ppi`, `relative_length`, `width`, `height`, `font_size`, `font_height`, and `viewbox`. Supply these when resolving SVG values whose final geometry depends on document dimensions, font metrics, relative units, or viewbox context.
+
+For geometric calculations, methods commonly offer `transformed=True` so callers can choose whether bounds and segments should account for transforms.

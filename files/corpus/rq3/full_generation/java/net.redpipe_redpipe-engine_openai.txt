@@ -1,0 +1,712 @@
+# redpipe-engine
+
+`net.redpipe:redpipe-engine` is a Java server-engine library built around Vert.x, RESTEasy, RxJava-style asynchronous types, JSON configuration, SQL connections, templates, mail delivery, security filters, and a plugin lifecycle.
+
+At its core, the library starts a REST-oriented server, exposes application-wide services through `AppGlobals`, and provides integration points for:
+
+- RESTEasy resources and providers
+- Vert.x request handling
+- Reactive request and response processing
+- SQL connection access
+- Templated HTTP responses and email
+- Authentication and authorization
+- Request lifecycle plugins
+- Swagger model conversion
+
+## Core concepts
+
+### `Server`
+
+`Server` is the main application lifecycle entry point.
+
+```java
+Server server = new Server();
+```
+
+It can be started with resource/provider classes:
+
+```java
+Completable start(Class<?>... resourceOrProviderClasses)
+```
+
+or with a default JSON configuration:
+
+```java
+Completable start(JsonObject defaultConfig, Class<?>... resourceOrProviderClasses)
+```
+
+Once started, the server exposes the Vert.x instance and application globals:
+
+```java
+Vertx vertx = server.getVertx();
+AppGlobals globals = server.getAppGlobals();
+```
+
+Shutdown is asynchronous as well:
+
+```java
+Completable close()
+```
+
+### `AppGlobals`
+
+`AppGlobals` is the application-wide service container. It holds commonly required runtime services such as:
+
+- `JsonObject` configuration
+- Vert.x instance
+- RESTEasy router/deployment
+- SQL client and reactive SQL connection access
+- Named `TemplateRenderer` instances
+- A `Mailer`
+- Arbitrary user-defined globals
+
+The current globals instance can be accessed statically:
+
+```java
+AppGlobals globals = AppGlobals.get();
+```
+
+Applications may also replace or clear the active globals:
+
+```java
+AppGlobals previous = AppGlobals.set(globals);
+AppGlobals.clear();
+```
+
+Custom application services can be stored by key:
+
+```java
+globals.setGlobal("featureFlags", featureFlags);
+
+Object featureFlags = globals.getGlobal("featureFlags");
+```
+
+Or by class:
+
+```java
+globals.setGlobal(MyService.class, myService);
+
+MyService service = globals.getGlobal(MyService.class);
+```
+
+### Reactive types
+
+Most lifecycle, rendering, database, and mail operations return reactive types:
+
+- `Completable` for operations that complete without a value
+- `Single<T>` for operations that produce one value
+- `Maybe<T>` for operations that may produce a value
+
+The library includes RESTEasy async-response providers for `Completable` and `Maybe<?>`, allowing reactive values to participate in REST response handling.
+
+There are provider classes in both:
+
+- `net.redpipe.engine.rxjava`
+- `net.redpipe.engine.rxjava2`
+
+Use the package appropriate to the reactive types used by your application.
+
+---
+
+## Starting an application
+
+The following example starts a server with a JAX-RS resource class and a provider class.
+
+```java
+import io.vertx.core.json.JsonObject;
+import net.redpipe.engine.core.Server;
+
+public final class Application {
+
+    public static void main(String[] args) {
+        JsonObject config = new JsonObject()
+            .put("environment", "development");
+
+        Server server = new Server();
+
+        server.start(config, HealthResource.class, MyExceptionMapper.class)
+            .subscribe(
+                () -> System.out.println("Server started"),
+                error -> error.printStackTrace()
+            );
+    }
+}
+```
+
+A resource class can be a regular RESTEasy/JAX-RS resource:
+
+```java
+import javax.ws.rs.GET;
+import javax.ws.rs.Path;
+import javax.ws.rs.Produces;
+import javax.ws.rs.core.MediaType;
+
+@Path("/health")
+public class HealthResource {
+
+    @GET
+    @Produces(MediaType.TEXT_PLAIN)
+    public String health() {
+        return "ok";
+    }
+}
+```
+
+The `Server` also provides a `main(String[] args)` entry point for applications that use its built-in startup behavior.
+
+---
+
+## Application globals
+
+Use `AppGlobals` when code needs access to server-level services without passing them through every method.
+
+```java
+import io.vertx.core.json.JsonObject;
+import net.redpipe.engine.core.AppGlobals;
+
+public class ApplicationInfo {
+
+    public JsonObject config() {
+        return AppGlobals.get().getConfig();
+    }
+
+    public Class<?> mainClass() {
+        return AppGlobals.get().getMainClass();
+    }
+}
+```
+
+Available services include:
+
+```java
+AppGlobals globals = AppGlobals.get();
+
+JsonObject config = globals.getConfig();
+Vertx vertx = globals.getVertx();
+Router router = globals.getRouter();
+
+SQLClient sqlClient = globals.getDbClient();
+Single<SQLConnection> connection = globals.getDbConnection();
+
+Mailer mailer = globals.getMailer();
+TemplateRenderer renderer = globals.getTemplateRenderer("default");
+```
+
+`AppGlobalsContextProvider` implements a context-provider contract for installing, restoring, and capturing `AppGlobals` state:
+
+```java
+AppGlobalsContextProvider provider = new AppGlobalsContextProvider();
+
+AppGlobals previous = provider.install(globals);
+try {
+    // Code executed with the supplied globals installed.
+} finally {
+    provider.restore(previous);
+}
+```
+
+---
+
+## Database access
+
+`SQLUtil` provides reactive helpers for obtaining and using SQL connections.
+
+```java
+import net.redpipe.engine.db.SQLUtil;
+import io.vertx.ext.sql.SQLConnection;
+import rx.Single;
+
+public class UserRepository {
+
+    public Single<String> loadUserName() {
+        return SQLUtil.doInConnection(connection -> queryUserName(connection));
+    }
+
+    private Single<String> queryUserName(SQLConnection connection) {
+        // Perform application-specific SQL work with the connection.
+        return Single.just("example-user");
+    }
+}
+```
+
+For operations that do not return a value, use `doInConnectionCompletable`:
+
+```java
+import net.redpipe.engine.db.SQLUtil;
+import rx.Completable;
+
+public class AuditRepository {
+
+    public Completable recordEvent() {
+        return SQLUtil.doInConnectionCompletable(connection -> {
+            // Perform application-specific update work with the connection.
+            return Completable.complete();
+        });
+    }
+}
+```
+
+To obtain a connection directly:
+
+```java
+Single<SQLConnection> connection = SQLUtil.getConnection();
+```
+
+---
+
+## Templates and HTTP responses
+
+### `Template`
+
+`Template` represents a named template plus a variable map. It can render to a JAX-RS `Response`.
+
+```java
+import net.redpipe.engine.template.Template;
+
+Template page = new Template("account")
+    .set("userName", "Ada")
+    .set("title", "Account");
+
+Single<Response> response = page.render(request);
+```
+
+`Template` can also select a variant for a JAX-RS request:
+
+```java
+Single<String> variant = page.selectVariant(request);
+```
+
+### `TemplateRenderer`
+
+A `TemplateRenderer` renders template names and variables directly:
+
+```java
+TemplateRenderer renderer = AppGlobals.get()
+    .getTemplateRenderer("default");
+
+Single<Response> response = renderer.render(
+    "welcome",
+    Map.of("name", "Ada")
+);
+```
+
+Before rendering, a caller can check whether a renderer supports a template:
+
+```java
+if (renderer.supportsTemplate("welcome")) {
+    return renderer.render("welcome", variables);
+}
+```
+
+### `AbstractTemplate`
+
+`AbstractTemplate` is the shared base type for templates and mail messages. It provides template naming and variable storage:
+
+```java
+AbstractTemplate template = new AbstractTemplate("welcome")
+    .set("name", "Ada");
+
+String name = template.getName();
+Map<String, Object> variables = template.getVariables();
+```
+
+It also provides media-type helpers based on file extensions or template paths:
+
+```java
+MediaType type = AbstractTemplate.parseMediaType("html");
+
+MediaType typeFromPath =
+    AbstractTemplate.parseMediaType("pages/profile.html", "html");
+```
+
+`TemplateResponseFilter` is a RESTEasy response filter that participates in template response processing.
+
+---
+
+## Sending mail
+
+`Mail` is a template-backed email object. It supports text and HTML rendering as well as common message fields.
+
+```java
+import net.redpipe.engine.mail.Mail;
+
+Mail email = new Mail("welcome")
+    .set("name", "Ada")
+    .from("noreply@example.test")
+    .to("ada@example.test")
+    .subject("Welcome");
+
+email.send()
+    .subscribe(
+        () -> System.out.println("Mail sent"),
+        error -> error.printStackTrace()
+    );
+```
+
+A message can also be sent through the configured `Mailer` explicitly:
+
+```java
+import net.redpipe.engine.core.AppGlobals;
+import net.redpipe.engine.mail.Mail;
+import net.redpipe.engine.mail.Mailer;
+
+Mailer mailer = AppGlobals.get().getMailer();
+
+Mail email = new Mail("password-reset")
+    .set("resetUrl", "https://example.test/reset/token")
+    .to("user@example.test")
+    .subject("Reset your password");
+
+mailer.send(email).subscribe();
+```
+
+Render message content without sending it:
+
+```java
+Single<Buffer> text = email.renderText();
+Maybe<Buffer> html = email.renderHtml();
+```
+
+### Mailer implementations
+
+The library exposes two `Mailer` implementations:
+
+- `ProdMailer`, constructed with a `Vertx` instance and server configuration
+- `MockMailer`, useful where sent messages need to be inspected
+
+Example using `MockMailer`:
+
+```java
+import net.redpipe.engine.mail.Mail;
+import net.redpipe.engine.mail.MockMailer;
+
+MockMailer mailer = new MockMailer();
+
+Mail email = new Mail("notification")
+    .to("user@example.test")
+    .subject("A notification");
+
+mailer.send(email).subscribe();
+
+List<SentMail> messages = mailer.getMailsSentTo("user@example.test");
+```
+
+---
+
+## RESTEasy integration
+
+The engine includes RESTEasy support for several commonly used types.
+
+### JSON and buffers
+
+- `JsonObjectBodyReader` reads Vert.x `JsonObject` request bodies.
+- `JsonObjectBodyWriter` writes Vert.x `JsonObject` response entities.
+- `BufferBodyWriter` writes Vert.x `Buffer` response entities.
+
+For example, a resource can use Vert.x JSON values:
+
+```java
+import io.vertx.core.json.JsonObject;
+
+public JsonObject status() {
+    return new JsonObject()
+        .put("status", "ok");
+}
+```
+
+### Files
+
+`FileResource` exposes:
+
+```java
+Response getFile(String path) throws IOException
+```
+
+This can be used by a resource that needs to produce a response for a file path.
+
+### Exception mapping
+
+The library includes general and security-specific exception mappers:
+
+- `DefaultExceptionMapper`
+- `AuthenticationExceptionMapper`
+- `AuthorizationExceptionMapper`
+
+Security exceptions can be raised directly:
+
+```java
+throw new AuthenticationException("Authentication required");
+```
+
+```java
+throw new AuthorizationException("Insufficient permissions");
+```
+
+---
+
+## Security
+
+The security API is built around RESTEasy filters, Vert.x request state, and asynchronous authorization decisions.
+
+### Authentication and authorization failures
+
+Use the supplied runtime exceptions to signal access failures:
+
+```java
+import net.redpipe.engine.security.AuthenticationException;
+import net.redpipe.engine.security.AuthorizationException;
+
+throw new AuthenticationException("Invalid credentials");
+
+// or
+
+throw new AuthorizationException("Permission denied");
+```
+
+### Authorization filters
+
+`AuthorizationFilter` is a request filter constructed from authorization-specification annotations:
+
+```java
+Collection<Annotation> specifications = List.of(/* authorization annotations */);
+
+AuthorizationFilter filter = new AuthorizationFilter(specifications);
+```
+
+`AuthorizationFilterFeature` is a RESTEasy `DynamicFeature` that configures authorization filtering for resource information.
+
+### Authorization handlers
+
+`AuthorizingAnnotationHandler` defines asynchronous authorization evaluation:
+
+```java
+public abstract Single<Boolean> assertAuthorized(Annotation authzSpec);
+```
+
+The engine provides Vert.x-oriented handlers:
+
+- `VertxPermissionAnnotationHandler`
+- `VertxUserAnnotationHandler`
+
+These handlers evaluate authorization specifications against the current Vert.x-backed request context.
+
+### Login support
+
+`BaseSecurityResource` provides login and logout-oriented operations:
+
+```java
+Single<Response> loginAuth(
+    String username,
+    String password,
+    String returnUrl,
+    Session session,
+    RoutingContext ctx,
+    AuthProvider auth
+);
+```
+
+It also provides a logout operation:
+
+```java
+Response logout(
+    UriInfo uriInfo,
+    RoutingContext ctx,
+    AppGlobals globals
+);
+```
+
+`LoginRedirectFilter` is a request filter intended for login redirect behavior.
+
+---
+
+## Vert.x request integration
+
+### `ResteasyFilterContext`
+
+`ResteasyFilterContext` adapts a RESTEasy `ContainerRequestContext` to Vert.x's `RoutingContext` interface.
+
+```java
+ResteasyFilterContext context =
+    new ResteasyFilterContext(requestContext);
+```
+
+This allows code expecting a Vert.x `RoutingContext` to access request-oriented functionality such as:
+
+- request and response objects
+- route and path data
+- query parameters
+- cookies
+- body data
+- sessions and users
+- failure state
+- rerouting
+
+Examples:
+
+```java
+String id = context.pathParam("id");
+List<String> tags = context.queryParam("tag");
+
+context.put("requestId", "abc-123");
+
+String requestId = context.get("requestId");
+
+context.fail(500);
+```
+
+### `RxVertxProvider`
+
+`RxVertxProvider` is a RESTEasy container request filter and can participate in request processing where Vert.x/Rx integration is required.
+
+### Plugin request handling
+
+`VertxPluginRequestHandler` is a Vert.x `Handler<HttpServerRequest>` that accepts a RESTEasy deployment and a list of plugins:
+
+```java
+VertxPluginRequestHandler handler =
+    new VertxPluginRequestHandler(
+        vertx,
+        deployment,
+        plugins
+    );
+```
+
+Additional constructors support a servlet mapping prefix and security domain.
+
+`PluginRequestDispatcher` extends RESTEasy's request dispatcher and accepts plugins for dispatch-time request behavior.
+
+`VertxHttpResponseWithWorkaround` extends the Vert.x RESTEasy response implementation and includes:
+
+```java
+void prepareChunkStream()
+```
+
+---
+
+## Plugins
+
+Extend `Plugin` to participate in engine and request lifecycle events.
+
+Available hooks include:
+
+```java
+public Completable preInit();
+public Completable init();
+public Completable shutdown();
+public Completable deployToResteasy(VertxResteasyDeployment deployment);
+
+public Completable preRoute();
+public Completable postRoute();
+
+public void aroundRequest(
+    HttpRequest req,
+    RunnableWithException<IOException> continuation
+) throws IOException;
+```
+
+A plugin can override only the hooks it needs:
+
+```java
+import net.redpipe.engine.spi.Plugin;
+import rx.Completable;
+
+public class LoggingPlugin extends Plugin {
+
+    @Override
+    public Completable init() {
+        System.out.println("Initializing logging plugin");
+        return Completable.complete();
+    }
+
+    @Override
+    public void aroundRequest(
+        HttpRequest request,
+        RunnableWithException<IOException> continuation
+    ) throws IOException {
+        long startedAt = System.nanoTime();
+
+        try {
+            continuation.run();
+        } finally {
+            long elapsed = System.nanoTime() - startedAt;
+            System.out.println("Request completed in " + elapsed + "ns");
+        }
+    }
+
+    @Override
+    public Completable shutdown() {
+        System.out.println("Stopping logging plugin");
+        return Completable.complete();
+    }
+}
+```
+
+`RunnableWithException<T>` is a functional interface for continuations that may throw a checked exception:
+
+```java
+public interface RunnableWithException<T extends Throwable> {
+    void run() throws T;
+}
+```
+
+---
+
+## Swagger support
+
+`RxModelConverter` implements Swagger's `ModelConverter` contract. It can be registered where Swagger model conversion is configured to handle reactive response types during model/property resolution.
+
+Its public conversion methods are:
+
+```java
+Property resolveProperty(
+    Type type,
+    ModelConverterContext context,
+    Annotation[] annotations,
+    Iterator<ModelConverter> chain
+);
+
+Model resolve(
+    Type type,
+    ModelConverterContext context,
+    Iterator<ModelConverter> chain
+);
+```
+
+---
+
+## Miscellaneous utilities
+
+### Modes
+
+`Mode` identifies development and production modes:
+
+```java
+Mode mode = Mode.DEV;
+
+// or
+
+Mode mode = Mode.PROD;
+```
+
+### Bean configuration
+
+`MyBeanConfig` extends Swagger's `BeanConfig` and exposes the configured class set:
+
+```java
+MyBeanConfig config = new MyBeanConfig();
+
+Set<Class<?>> classes = config.classes();
+```
+
+### Exception rethrowing
+
+`RedpipeUtil.rethrow` provides a generic rethrow helper:
+
+```java
+try {
+    // work
+} catch (Throwable error) {
+    return RedpipeUtil.rethrow(error);
+}
+```
+

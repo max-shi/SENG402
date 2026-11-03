@@ -1,0 +1,179 @@
+# domino-jna
+
+**domino-jna** is a Java library that provides direct, native access to the HCL/IBM Domino C API using JNA (Java Native Access), without requiring the traditional Domino Java API (`lotus.domino.*`) or a Domino/Notes runtime environment beyond the native libraries themselves. It exposes low-level database, document, view, formula, calendaring, DXL, HTML conversion, full-text search, and ACL operations directly, along with higher-level convenience classes that wrap the native handles into safer, more idiomatic Java objects.
+
+This library is intended for developers who need fine-grained, high-performance access to Domino data structures — including access patterns that are difficult or impossible through the standard Domino Java API — such as bulk collection reads, direct ID table manipulation, composite/rich-text record navigation, and native memory handle management.
+
+## Key Concepts
+
+### Native Memory & Handle Management
+
+Domino's C API is handle-based (32-bit or 64-bit handles depending on platform), and domino-jna mirrors this closely:
+
+- **`DHANDLE` / `HANDLE`** (with `DHANDLE32`/`DHANDLE64`, `HANDLE32`/`HANDLE64` implementations) represent native Domino data and object handles.
+- **`IRecyclableNotesObject`** and **`IAllocatedMemory`** are the two core lifecycle interfaces used throughout the library: recyclable objects (documents, formulas, collections, compound text writers, etc.) implement `recycle()`, while raw allocated memory blocks implement `free()`.
+- **`NotesGC`** is the central garbage-collection helper. Code that creates native objects is expected to run inside `NotesGC.runWithAutoGC(...)`, which ensures all handles created during that scope are automatically recycled/freed afterwards, preventing native memory leaks.
+- **`Mem`, `Mem32`, `Mem64`** provide low-level OS memory allocation/locking primitives used internally by higher-level wrapper classes.
+
+### Formula Engine
+
+- **`FormulaExecution`** compiles and evaluates Domino formula language against notes, returning typed results (`evaluate`, `evaluateExt`, static `evaluateAsString`). It supports formula analysis (`analyze()`), attribute inspection (`FormulaAttributes`), and exposes the list of built-in functions/commands (`getAllFunctions()`, `getAllCommands()`).
+- **`FormulaCompiler`** / **`FormulaDecompiler`** provide raw compile/decompile access to formula byte code.
+- **`FormulaCompilationError`** is thrown with detailed line/column/offset information when a formula fails to compile.
+- **`DQL`** offers a fluent builder for Domino Query Language (DQL) expressions (`DQL.and(...)`, `DQL.contains(...)`, `DQL.in(...)`, etc.), useful for querying databases with the modern query engine.
+
+### Documents, Items, and Collections
+
+- **`INoteSummary`** / **`IItemTableData`** / **`IItemValueTableData`** are read-oriented interfaces for accessing item values from notes and collection lookup buffers, with type-safe getters (`getAsString`, `getAsInteger`, `getAsTimeDate`, list variants, etc.).
+- **`TypedItemAccess`** is an abstract base implementing `INoteSummary` on top of a generic `get(String)` accessor.
+- **`ItemDecoder`** contains static helpers for decoding raw native item value memory (numbers, text, text lists, time/date values) into Java objects.
+- **`NotesLookupResultBufferDecoder`** decodes raw collection lookup buffers (from `NIFReadEntries`/`NIFFindByKey` style calls) into structured `IItemTableData`/`IItemValueTableData` results.
+- **`CollectionDataCache`** is a size-bounded cache for collection data with optional usage statistics, useful for speeding up repeated view/collection reads.
+- **`IViewColumn`** describes a single view column (item name, title, formula, sort order).
+
+### Design Elements
+
+- **`NotesForm`** wraps a form design note, exposing its fields (`getFields()`), aliases, reader/author access lists, and update/recycle lifecycle.
+- **`DirectoryScanner`** scans a server directory for databases/files matching given `FileType` flags and an optional selection formula, returning `SearchResultData` entries.
+
+### Calendaring & Scheduling
+
+A large family of enums (`CalendarProcess`, `CalendarRead`, `CalendarReadRange`, `CalendarWrite`, `CalendarActionOptions`, `CalendarNoteOpen`, `CalendarRangeRepeat`) model options for the Domino calendaring API (creating, updating, reading, and processing calendar entries and notices), along with `ScheduleAttr` and `ScheduleOptions` for free-time/busy-time schedule lookups.
+
+### DXL Import/Export
+
+- **`DXLExporter`** exports notes, ID tables, ACLs, or entire databases to DXL (XML), with fine control over rich text handling (`DXLRichtextOption`), MIME handling, character sets, validation, and omitted content (attachments, OLE objects, pictures).
+- **`DXLImporter`** imports DXL into a database, with configurable options for how ACL/design/document conflicts are resolved (`DXLImportOption`), validation (`XMLValidationOption`), and logging.
+
+### HTML & Rich Text Conversion
+
+- **`HtmlConvertProperties`** and **`HtmlConvertOption`** configure conversion of Domino rich text/items to HTML.
+- **`IHtmlConversionResult`**, **`IHtmlApiReference`**, **`IHtmlImageRef`**, **`IHtmlAttachmentRef`** represent the output of an HTML conversion: text, embedded references (links, images, attachments), and target metadata (`TargetType`, `ReferenceType`, `CommandId`).
+- **`CompoundTextWriter`** builds rich text (CD record) content programmatically — adding text with styles/fonts, images, document links, database/collection links, file hotspots, and raw CD records — useful for generating richtext fields or composing documents.
+- **`CDFileRichTextNavigator`** navigates CD (Composite Data) records stored in a file, useful for inspecting or extracting rich text structure record-by-record.
+
+### Security / ACL
+
+- **`AclLevel`** and **`AclFlag`** model Domino ACL access levels (Manager, Editor, Author, Reader, etc.) and per-entry flags (person/group/server, admin server access, etc.).
+- **`ECL`** provides access to a user's or name list's Execution Control List capabilities (`ECLCapability`), including trust decisions for signed code (`trustSignerOfNote`, `trustNoSignatureUser`).
+
+### Errors
+
+- **`NotesError`** is the base runtime exception type, carrying the native Domino status code (`getId()`).
+- **`FormulaCompilationError`** and **`LotusScriptCompilationError`** carry rich diagnostic detail (line, column, offset, error text) for compilation failures.
+- **`NotesErrorUtils`** converts native status codes to human-readable messages and `NotesError` instances, using pluggable **`IErrorTextProvider`** implementations (with **`DefaultErrorTextProvider`** as the default).
+
+### Low-Level Native Layer
+
+The `INotesNativeAPI`, `INotesNativeAPI32`, `INotesNativeAPI64` (and version-specific variants like `INotesNativeAPIV1200`, `INotesNativeAPIV1201`, `INotesNativeAPI32V1000`) interfaces expose the raw JNA bindings to the Domino C API functions (`NSFDbOpen`, `NSFNoteOpen`, `NIFReadEntries`, `FTSearch`, `CompoundTextAddCDRecords`, `CalCreateEntry`, etc.), separated by pointer width and Domino version. These are accessed via singleton holders such as `NotesNativeAPI.get()`, `NotesNativeAPI32.get()`, and `NotesNativeAPI64.get()`. Most application code will not need to call these directly, as they are wrapped by the higher-level classes described above.
+
+## Usage Examples
+
+### Evaluating a formula against a note
+
+```java
+import com.mindoo.domino.jna.formula.FormulaExecution;
+import com.mindoo.domino.jna.gc.NotesGC;
+
+NotesGC.runWithAutoGC(() -> {
+    // Assume 'note' is an already-opened NotesNote instance
+    String subject = FormulaExecution.evaluateAsString("@Subject", note);
+    System.out.println("Subject: " + subject);
+    return null;
+});
+```
+
+### Building and evaluating a reusable formula with typed access
+
+```java
+import com.mindoo.domino.jna.formula.FormulaExecution;
+import com.mindoo.domino.jna.errors.FormulaCompilationError;
+
+try {
+    FormulaExecution formula = new FormulaExecution("@Upper(Subject)");
+    List<Object> result = formula.evaluate(note);
+    System.out.println(result);
+    formula.recycle();
+} catch (FormulaCompilationError e) {
+    System.err.println("Compile error at line " + e.getCompileErrorLine() +
+        ", column " + e.getCompileErrorColumn() + ": " + e.getCompileError());
+}
+```
+
+### Composing a DQL query
+
+```java
+import com.mindoo.domino.jna.dql.DQL;
+import com.mindoo.domino.jna.dql.DQL.DQLTerm;
+
+DQLTerm query = DQL.and(
+    DQL.item("Form").isEqualTo("Contact"),
+    DQL.contains("Smith")
+);
+```
+
+### Scanning a server directory for databases
+
+```java
+import com.mindoo.domino.jna.directory.DirectoryScanner;
+import com.mindoo.domino.jna.constants.FileType;
+import java.util.EnumSet;
+
+DirectoryScanner scanner = new DirectoryScanner(
+    "MyServer/MyOrg",
+    "mail",
+    EnumSet.of(FileType.DBANY, FileType.RECURSE)
+);
+
+for (SearchResultData result : scanner.scan()) {
+    System.out.println(result);
+}
+```
+
+### Building rich text content with CompoundTextWriter
+
+```java
+import com.mindoo.domino.jna.internal.CompoundTextWriter;
+import com.mindoo.domino.jna.richtext.TextStyle;
+import com.mindoo.domino.jna.richtext.FontStyle;
+
+CompoundTextWriter ct = ... ; // obtained from a note's rich text item context
+ct.addText("Hello, world!", new TextStyle("MyStyle"), new FontStyle());
+ct.addDocLink(otherNote, "See related document");
+ct.closeItemContext();
+```
+
+### Exporting a document to DXL
+
+```java
+import com.mindoo.domino.jna.dxl.DXLExporter;
+import java.io.FileOutputStream;
+
+DXLExporter exporter = new DXLExporter();
+exporter.setOutputXmlDecl(true);
+try (FileOutputStream out = new FileOutputStream("note.xml")) {
+    exporter.exportNote(note, out);
+} finally {
+    exporter.free();
+}
+```
+
+### Working with the Execution Control List
+
+```java
+import com.mindoo.domino.jna.ecl.ECL;
+import com.mindoo.domino.jna.ecl.ECLType;
+import java.util.EnumSet;
+
+ECL ecl = ECL.getInstance(ECLType.JAVA_APPLET, "CN=John Doe/O=Acme");
+EnumSet<ECLCapability> capabilities = ecl.getCapabilities();
+System.out.println("Capabilities: " + capabilities);
+```
+
+## Memory Management Best Practices
+
+Because this library operates directly on native Domino handles, always wrap code that allocates native objects (notes, formulas, collections, compound text, ID tables, etc.) inside `NotesGC.runWithAutoGC(...)`, or explicitly call `recycle()` / `free()` on objects implementing `IRecyclableNotesObject` / `IAllocatedMemory` when you are done with them. Failing to do so can lead to native memory/handle leaks, since the JVM garbage collector has no visibility into Domino's own memory pools.
+
+## License
+
+See the repository's license file for terms of use.

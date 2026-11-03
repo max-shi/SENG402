@@ -1,0 +1,244 @@
+# rethinkdb-driver
+
+A Java driver for [RethinkDB](https://rethinkdb.com), the distributed document database with a powerful, chainable query language (ReQL). This library lets you build ReQL queries using a fluent Java API, execute them against a RethinkDB cluster, and consume the results as POJOs, `Map`s, streams, or cursors — synchronously or asynchronously.
+
+## Features
+
+- A fluent, strongly-typed builder API for constructing ReQL queries (filtering, joins, aggregation, geospatial queries, date/time manipulation, and more).
+- Synchronous and asynchronous (`CompletableFuture`-based) query execution.
+- Automatic conversion of query results into POJOs via Jackson (`Class<T>` / `TypeReference<T>`), plain `Object`s, or grouped `Map` results.
+- Cursor-based streaming of large result sets, with configurable fetch/buffering behavior.
+- A rich hierarchy of typed exceptions mirroring RethinkDB's own error classification (compile errors, runtime errors, availability errors, etc).
+- Connection management with reconnect, no-reply writes, and clean shutdown semantics.
+
+## Core Concepts
+
+### `RethinkDB`
+
+The entry point to the library. It extends `TopLevel`, which exposes all the top-level ReQL term constructors (`db`, `table`, `expr`, `row`, `now`, `uuid`, and dozens more). A single global instance is conventionally created and reused:
+
+```java
+import com.rethinkdb.RethinkDB;
+
+public class Db {
+    public static final RethinkDB r = RethinkDB.r;
+}
+```
+
+From `RethinkDB` you also obtain a `Connection.Builder` to configure and open connections:
+
+```java
+Connection conn = r.connection()
+    .hostname("localhost")
+    .port(28015)
+    .db("test")
+    .connect();
+```
+
+### `ReqlAst` and `ReqlExpr`
+
+`ReqlAst` is the base class for every ReQL term. It provides the `run`, `runAsync`, `runAtom`, `runAtomAsync`, `runUnwrapping`, `runGrouping`, and `runNoReply` families of methods used to execute a query against a `Connection`.
+
+`ReqlExpr` extends `ReqlAst` and adds the bulk of the ReQL method-chaining API: `filter`, `map`, `pluck`, `merge`, `orderBy`, `group`, `between`, `eqJoin`, `update`, `delete`, geospatial operations (`distance`, `intersects`, `includes`), string/date/time helpers, and arithmetic/comparison operators.
+
+Every specific ReQL term (`Get`, `Insert`, `Update`, `Filter`, `TableCreate`, `Changes`, etc., under `com.rethinkdb.gen.ast`) is a concrete subclass of `ReqlExpr` or `ReqlAst`, constructed internally as you chain calls together — you rarely instantiate them directly.
+
+### `TopLevel`
+
+Declares the "static" ReQL functions that don't apply to an existing expression, such as `r.db(...)`, `r.table(...)`, `r.expr(...)`, `r.now()`, `r.uuid()`, `r.branch(...)`, `r.object(...)`, `r.range(...)`, `r.time(...)`, day/month constants (`r.monday()`, `r.january()`, ...), and more. `RethinkDB` inherits all of these.
+
+### `Connection`
+
+Represents a network connection to a RethinkDB server.
+
+- `connect()` / `connectAsync()` — open the connection.
+- `use(String db)` — switch the default database.
+- `run(...)` / `runAsync(...)` — low-level execution used internally by `ReqlAst.run`.
+- `server()` / `serverAsync()` — fetch information about the connected server.
+- `noreplyWait()` / `noreplyWaitAsync()` — block until all no-reply writes have completed.
+- `reconnect()` / `reconnectAsync()` — re-establish the connection.
+- `close()` / `closeAsync()` — shut down the connection and any pending queries.
+
+Connections are built via `RethinkDB.connection()`, which returns a `Connection.Builder` supporting host/port/db/auth/SSL configuration (configured fluently before calling `.connect()`).
+
+### `Result<T>`
+
+Returned by `run`/`runAsync`. Represents either a single value ("atom") or a cursor over a sequence of values.
+
+- Implements `Iterator<T>` and `Iterable<T>` for simple iteration.
+- `toList()`, `stream()`, `parallelStream()`, `collect(...)` for bulk consumption.
+- `first()`, `single()`, `next()`, `next(timeout, unit)` for point access.
+- `close()` to release server-side cursor resources.
+- `overrideFetchMode(FetchMode)` to control how eagerly the cursor pre-fetches results from the server.
+
+### Running Queries
+
+`ReqlAst` offers several execution styles:
+
+| Method family | Behavior |
+|---|---|
+| `run` / `runAsync` | Returns a `Result<T>` (cursor or atom wrapper). |
+| `runAtom` / `runAtomAsync` | Returns the raw value directly (for queries expected to produce a single atom). |
+| `runUnwrapping` / `runUnwrappingAsync` | Like `run`, but unwraps single-element array responses. |
+| `runGrouping` / `runGroupingAsync` | Converts a grouped ReQL result into a `Map<K, Set<V>>`. |
+| `runNoReply` | Fires a write without waiting for a server acknowledgment. |
+
+All of these accept optional `OptArgs` (global query options), a `Result.FetchMode`, and a target type (`Class<T>` or Jackson's `TypeReference<T>`) for automatic deserialization.
+
+### `OptArgs`, `Arguments`, `MapObject`
+
+- `OptArgs` — a `LinkedHashMap<String, ReqlAst>` used for optional named arguments to a term (e.g. `durability`, `returnChanges`) or as global run options.
+- `Arguments` — an `ArrayList<ReqlAst>` used internally to hold positional arguments to a term constructor, with helpers to coerce plain Java objects into `ReqlAst` values.
+- `MapObject<K, V>` — a convenience `LinkedHashMap` with a fluent `.with(key, value)` builder, handy for constructing ReQL object literals from Java.
+
+### `Types`
+
+Helper factory for building Jackson `TypeReference`s used with the typed `run`/`runAtom`/`runGrouping` overloads: `Types.of(Class)`, `Types.listOf(...)`, `Types.setOf(...)`, `Types.mapOf(...)`, and `Types.groupOf(...)` (for `GroupedResult`).
+
+### `GroupedResult<G, V>`
+
+Represents one group produced by a ReQL `group` term when deserialized as a POJO, pairing the group key with its list of values. `GroupedResult.toMap(...)` converts a list of these into a `Map<G, Set<V>>`.
+
+### Errors
+
+All driver and server errors extend `ReqlError` (itself a `RuntimeException`), mirroring RethinkDB's error taxonomy:
+
+- `ReqlDriverError`, `ReqlDriverCompileError`, `ReqlAuthError` — client/driver-side issues.
+- `ReqlCompileError` / `ReqlServerCompileError` — query compilation failures.
+- `ReqlRuntimeError` and its subclasses — `ReqlQueryLogicError`, `ReqlNonExistenceError`, `ReqlResourceLimitError`, `ReqlUserError`, `ReqlPermissionError`, `ReqlInternalError`.
+- `ReqlAvailabilityError` and its subclasses — `ReqlOpFailedError`, `ReqlOpIndeterminateError`.
+
+Each carries an optional `Backtrace` and the offending `ReqlAst` term for debugging. `ErrorBuilder` is used internally to construct the appropriate error type from a server `Response`.
+
+### Sockets and Pumps
+
+For advanced use cases (custom transport or testing), the driver exposes the `ConnectionSocket` interface (raw read/write/close operations) and `ResponsePump` (dispatches asynchronous responses to waiting callers by query token). `DefaultConnectionFactory` provides the default TCP-based implementations.
+
+## Usage Examples
+
+### Setting up a connection
+
+```java
+import com.rethinkdb.RethinkDB;
+import com.rethinkdb.net.Connection;
+
+public class Example {
+    public static final RethinkDB r = RethinkDB.r;
+
+    public static void main(String[] args) {
+        Connection conn = r.connection()
+            .hostname("localhost")
+            .port(28015)
+            .db("test")
+            .connect();
+
+        // ... run queries ...
+
+        conn.close();
+    }
+}
+```
+
+### Creating a database and table
+
+```java
+r.dbCreate("myApp").run(conn);
+r.db("myApp").tableCreate("users").run(conn);
+```
+
+### Inserting documents
+
+```java
+import com.rethinkdb.model.MapObject;
+
+MapObject<String, Object> user = new MapObject<String, Object>()
+    .with("name", "Alice")
+    .with("age", 30);
+
+r.db("myApp").table("users").insert(user).run(conn);
+```
+
+### Querying and filtering
+
+```java
+import com.rethinkdb.net.Result;
+
+Result<Object> result = r.db("myApp")
+    .table("users")
+    .filter(row -> row.g("age").gt(21))
+    .run(conn);
+
+for (Object user : result) {
+    System.out.println(user);
+}
+```
+
+### Typed results with POJOs
+
+```java
+public class User {
+    public String name;
+    public int age;
+}
+
+List<User> adults = r.db("myApp")
+    .table("users")
+    .filter(row -> row.g("age").gt(21))
+    .run(conn, User.class)
+    .toList();
+```
+
+### Fetching a single value
+
+```java
+long count = r.db("myApp").table("users").count().runAtom(conn, Long.class);
+```
+
+### Grouping results
+
+```java
+import com.rethinkdb.utils.Types;
+import java.util.Map;
+import java.util.Set;
+
+Map<Integer, Set<User>> byAge = r.db("myApp")
+    .table("users")
+    .group("age")
+    .runGrouping(conn, Types.of(Integer.class), Types.of(User.class));
+```
+
+### Asynchronous execution
+
+```java
+r.db("myApp").table("users").run(conn, User.class)
+    .thenAccept(res -> res.toList().forEach(System.out::println));
+```
+
+### Watching changes on a table
+
+```java
+Result<Object> changes = r.db("myApp").table("users").changes().run(conn);
+
+changes.forEach(change -> {
+    System.out.println("Change detected: " + change);
+});
+```
+
+### Handling errors
+
+```java
+import com.rethinkdb.gen.exc.ReqlNonExistenceError;
+import com.rethinkdb.gen.exc.ReqlOpFailedError;
+
+try {
+    r.db("myApp").table("users").get("missing-id").runAtom(conn);
+} catch (ReqlNonExistenceError e) {
+    System.out.println("Document not found: " + e.getMessage());
+} catch (ReqlOpFailedError e) {
+    System.out.println("Operation failed: " + e.getMessage());
+}
+```
+
+## License
+
+See the repository's `LICENSE` file for licensing details.

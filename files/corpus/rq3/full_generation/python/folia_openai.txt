@@ -1,0 +1,751 @@
+# folia
+
+`folia` is a Python library for building, reading, validating, querying, and serializing richly annotated documents.
+
+Its API models documents as a hierarchy of structural elements—such as text, divisions, paragraphs, sentences, words, tables, lists, and figures—and attaches linguistic or higher-order annotations to those elements. Supported annotation concepts include part-of-speech, lemmas, syntax, dependencies, entities, morphology, phonology, coreference, semantic roles, sentiment, timing, relations, corrections, alternatives, metadata, and provenance.
+
+The library also provides:
+
+- XML and JSON serialization
+- XML parsing and validation
+- Annotation-set declarations and aliases
+- Text and phonetic-content retrieval
+- Navigation and selection through document trees
+- Correction and alternative-reading support
+- Corpus processing helpers
+- A query language API
+- Set-definition and constraint handling
+
+## Core concepts
+
+### Documents
+
+`Document` is the main container for an annotated document. It manages document content, declarations, metadata, provenance, identifiers, and serialization.
+
+Common operations include:
+
+```python
+from folia.main import Document, Text, Paragraph, Sentence, Word
+
+doc = Document()
+
+text = doc.create(Text)
+paragraph = text.add(Paragraph)
+sentence = paragraph.add(Sentence)
+
+sentence.add(Word)
+```
+
+Documents can be saved, loaded, serialized, and searched:
+
+```python
+doc.save("document.xml")
+
+xml = doc.xmlstring()
+data = doc.json()
+
+for word in doc.words():
+    print(word.text())
+```
+
+### Structural elements
+
+The document tree is built from `AbstractElement` subclasses. Important structural classes include:
+
+- `Text`
+- `Division`
+- `Paragraph`
+- `Sentence`
+- `Word`
+- `Hiddenword`
+- `Utterance`
+- `Quote`
+- `Speech`
+- `List`, `ListItem`
+- `Table`, `Row`, `Cell`, `TableHead`
+- `Figure`, `Caption`
+- `Head`
+- `Event`, `Label`
+- `Note`, `Definition`, `Term`, `Example`, `Entry`
+
+Structural elements support tree operations such as:
+
+- `append()`, `insert()`, `add()`, `remove()`
+- `replace()` and `substitute()`
+- `copy()` and `move()`
+- `select()` and `count()`
+- `ancestors()` and `ancestor()`
+- `next()` and `previous()`
+- `leftcontext()`, `rightcontext()`, and `context()`
+
+For example:
+
+```python
+for sentence in doc.sentences():
+    print(sentence.text())
+
+for paragraph in doc.select(Paragraph):
+    print(paragraph.text())
+```
+
+### Text and phonetic content
+
+Most document elements provide methods for retrieving text and phonetic content:
+
+```python
+sentence_text = sentence.text()
+word_text = word.text()
+
+has_text = word.hastext()
+has_phon = word.hasphon()
+
+phonetic_value = word.phon()
+```
+
+Text access supports several options, including correction handling, whitespace normalization, strictness, hidden content, and tokenization retention:
+
+```python
+text = doc.text(
+    cls="current",
+    retaintokenisation=False,
+    hidden=False,
+    trim_spaces=True,
+)
+```
+
+Text content can also be explicitly added or updated through `TextContent` and `PhonContent`:
+
+```python
+word.settext("example")
+word.setdocument(doc)
+```
+
+## Annotation model
+
+Annotations are represented as elements associated with structural elements, words, spans, or layers.
+
+### Inline annotations
+
+Inline annotations are attached directly to structure elements such as words. Available inline annotation classes include:
+
+- `PosAnnotation`
+- `LemmaAnnotation`
+- `SenseAnnotation`
+- `EtymologyAnnotation`
+- `LangAnnotation`
+- `DomainAnnotation`
+- `SubjectivityAnnotation`
+- `ErrorDetection`
+
+Words expose convenience accessors for several annotation types:
+
+```python
+pos = word.pos()
+lemma = word.lemma()
+sense = word.sense()
+etymology = word.etymology()
+domain = word.domain()
+```
+
+Generic annotation inspection is also available:
+
+```python
+if word.hasannotation(PosAnnotation):
+    annotation = word.annotation(PosAnnotation)
+
+for annotation in word.annotations(PosAnnotation):
+    print(annotation)
+```
+
+### Features
+
+`Feature` is the base class for feature-style annotations. Available feature classes include:
+
+- `ValueFeature`
+- `Metric`
+- `ModalityFeature`
+- `TimeFeature`
+- `LevelFeature`
+- `FunctionFeature`
+- `HeadFeature`
+- `SynsetFeature`
+- `ActorFeature`
+- `PolarityFeature`
+- `StrengthFeature`
+- `BegindatetimeFeature`
+- `EnddatetimeFeature`
+- `StyleFeature`
+- `FontFeature`
+- `SizeFeature`
+
+Features can be retrieved by subset:
+
+```python
+feature = element.feat("subset-name")
+```
+
+### Span annotations and layers
+
+Span annotations describe one or more words or other referenced units. `AbstractSpanAnnotation` is the base class for span-oriented annotations.
+
+Available span annotation classes include:
+
+- `SyntacticUnit`
+- `Chunk`
+- `Entity`
+- `Dependency`
+- `Modality`
+- `CoreferenceChain`
+- `SemanticRole`
+- `Predicate`
+- `Sentiment`
+- `Statement`
+- `Observation`
+- `TimeSegment`
+
+Several span-role classes are also available:
+
+- `Headspan`
+- `DependencyDependent`
+- `Source`
+- `Target`
+- `Scope`
+- `Cue`
+- `StatementRelation`
+- `CoreferenceLink`
+
+Span annotations can be associated with words using `setspan()` and inspected through word references:
+
+```python
+span.setspan(word1, word2, word3)
+
+for reference in span.wrefs():
+    print(reference)
+```
+
+Span annotations are commonly grouped into annotation layers:
+
+- `SyntaxLayer`
+- `ChunkingLayer`
+- `EntitiesLayer`
+- `DependenciesLayer`
+- `ModalitiesLayer`
+- `MorphologyLayer`
+- `PhonologyLayer`
+- `CoreferenceLayer`
+- `SemanticRolesLayer`
+- `StatementLayer`
+- `SentimentLayer`
+- `ObservationLayer`
+- `SpanRelationLayer`
+- `TimingLayer`
+
+Layers support lookup and sorting:
+
+```python
+layer.sort()
+
+existing = layer.findspan(word1, word2)
+```
+
+### Morphology and phonology
+
+Subtoken annotations are represented by `Morpheme` and `Phoneme`.
+
+Words provide convenient accessors:
+
+```python
+morphemes = word.morphemes()
+phonemes = word.phonemes()
+
+first_morpheme = word.morpheme(0)
+first_phoneme = word.phoneme(0)
+```
+
+## Corrections and alternatives
+
+The correction model supports original, current, new, and suggested content.
+
+Relevant classes include:
+
+- `Correction`
+- `New`
+- `Original`
+- `Current`
+- `Suggestion`
+- `Alternative`
+- `AlternativeLayers`
+
+A `Correction` can be queried for its available alternatives:
+
+```python
+if correction.hascurrent():
+    current = correction.current()
+
+if correction.hasoriginal():
+    original = correction.original()
+
+for suggestion in correction.suggestions():
+    print(suggestion)
+```
+
+Elements can retrieve corrections directly:
+
+```python
+latest = word.getcorrection()
+all_corrections = word.getcorrections()
+```
+
+Text retrieval accepts a `CorrectionHandling` value, allowing callers to request an appropriate correction state:
+
+```python
+text = element.text(correctionhandling=CorrectionHandling.CURRENT)
+```
+
+Some elements also provide direct editing operations through `correct()`.
+
+Sentence-level word editing helpers include:
+
+```python
+sentence.correctwords(originalwords, newwords)
+sentence.splitword(originalword, newword1, newword2)
+sentence.mergewords(newword, originalword1, originalword2)
+sentence.deleteword(word)
+sentence.insertword(newword, previous_word)
+sentence.insertwordleft(newword, next_word)
+```
+
+Words themselves can be split:
+
+```python
+word.split(newword1, newword2)
+```
+
+## Metadata and provenance
+
+Documents expose common metadata accessors:
+
+```python
+doc.title("Example document")
+doc.date("2024-01-01")
+doc.publisher("Example publisher")
+doc.license("Example license")
+doc.language("en")
+```
+
+The same methods can be called without a value to retrieve the current value:
+
+```python
+title = doc.title()
+language = doc.language()
+```
+
+Provenance is managed using `Provenance` and `Processor`:
+
+```python
+from folia.main import Processor, Provenance
+
+provenance = Provenance()
+processor = Processor.create()
+provenance.append(processor)
+
+xml = provenance.xmlstring()
+data = provenance.json()
+```
+
+A `Processor` may contain nested processors and supports updates and matching:
+
+```python
+processor.update(name="annotation-step")
+processor.append(Processor.create())
+
+last_processor = processor.last()
+matches = processor.match(other_processor)
+```
+
+Documents can declare annotation types and sets:
+
+```python
+doc.declare(annotationtype, set="example-set")
+
+is_declared = doc.declared(annotationtype, set="example-set")
+default_set = doc.defaultset(annotationtype)
+```
+
+Declarations can also be inspected for annotators, processors, defaults, and aliases:
+
+```python
+doc.alias(annotationtype, "example-set")
+doc.unalias(annotationtype, "alias")
+
+processors = doc.getprocessors(annotationtype, "example-set")
+annotators = doc.getannotators(annotationtype, "example-set")
+```
+
+## Reading, writing, and validation
+
+### Load and save documents
+
+```python
+from folia.main import Document
+
+doc = Document()
+doc.load("input.xml")
+
+doc.save("output.xml")
+```
+
+### Serialize to XML or JSON
+
+```python
+xml_tree = doc.xml()
+xml_text = doc.xmlstring()
+
+json_data = doc.json()
+```
+
+Individual elements can also be serialized:
+
+```python
+element_xml = sentence.xmlstring()
+element_json = sentence.json()
+```
+
+The `Form` class is accepted by serialization methods that expose a `form` argument:
+
+```python
+doc.save("output.xml", form=Form.NORMAL)
+```
+
+### Parse XML
+
+XML trees can be obtained from strings or files:
+
+```python
+from folia.main import xmltreefromstring, xmltreefromfile
+
+tree = xmltreefromstring("<document />")
+tree = xmltreefromfile("input.xml")
+```
+
+### Validate documents
+
+Use `validate()` to validate a document file:
+
+```python
+from folia.main import validate
+
+result = validate("document.xml")
+deep_result = validate("document.xml", deep=True)
+```
+
+Available validation-related exceptions include:
+
+- `MalformedXMLError`
+- `ParseError`
+- `DeclarationError`
+- `DuplicateIDError`
+- `DuplicateAnnotationError`
+- `InvalidReference`
+- `InconsistentText`
+- `UnresolvableTextContent`
+- `NoDefaultError`
+- `MetaDataError`
+
+## Selecting and navigating elements
+
+Elements and documents expose a consistent selection API:
+
+```python
+words = doc.select(Word)
+word_count = doc.count(Word)
+
+sentences = paragraph.select(Sentence)
+```
+
+Selection can be filtered by annotation set and recursion options:
+
+```python
+entities = doc.select(Entity, set="entity-set", recursive=True)
+```
+
+Navigation helpers make it possible to inspect document order and context:
+
+```python
+next_word = word.next(Word)
+previous_word = word.previous(Word)
+
+left = word.leftcontext(3)
+right = word.rightcontext(3)
+context = word.context(5)
+
+parent_sentence = word.ancestor(Sentence)
+all_ancestors = list(word.ancestors())
+```
+
+## References and relations
+
+References provide links between document elements or external targets.
+
+Relevant classes include:
+
+- `Reference`
+- `WordReference`
+- `LinkReference`
+- `Relation`
+- `SpanRelation`
+
+References can be resolved:
+
+```python
+target = reference.resolve()
+```
+
+Relations expose their targets and can resolve references against document collections:
+
+```python
+relation.resolve()
+targets = relation.targets()
+```
+
+## Query support
+
+The query API provides components for parsing and working with a query language.
+
+Key classes include:
+
+- `Query`
+- `Selector`
+- `Target`
+- `Filter`
+- `Span`
+- `SpanSet`
+- `Action`
+- `Context`
+- `Alternative`
+- `Correction`
+- `UnparsedQuery`
+
+Typical parsing flow:
+
+```python
+from folia.fql import Query
+
+query = Query()
+query.parse("...")
+```
+
+Selectors can be parsed and matched against candidate elements:
+
+```python
+from folia.fql import Selector
+
+selector = Selector.parse("...")
+matches = selector.match(query, candidate)
+```
+
+`SpanSet` provides convenience methods for selecting and testing membership:
+
+```python
+selected = spans.select(...)
+is_part_of = spans.partof(collection)
+```
+
+The query API also includes dedicated errors:
+
+```python
+from folia.fql import SyntaxError, QueryError
+```
+
+## Set definitions and constraints
+
+Set definitions describe classes, subsets, ordering, and constraints for annotation sets.
+
+The main class is `SetDefinition`:
+
+```python
+from folia.foliaset import SetDefinition
+
+definition = SetDefinition()
+
+definition.testclass("class-id")
+definition.testconstraints("class-id", features)
+
+subset = definition.subset("subset-id")
+classes = definition.classes()
+ordered = definition.orderedclasses()
+
+data = definition.json()
+```
+
+Set-definition validation may raise:
+
+- `DeepValidationError`
+- `SetDefinitionError`
+
+Legacy XML-oriented definition classes are also available:
+
+- `LegacyConstraintDefinition`
+- `LegacyClassDefinition`
+- `LegacySetDefinition`
+
+## Corpus processing
+
+The library includes corpus-oriented abstractions:
+
+- `Corpus`
+- `CorpusFiles`
+- `CorpusProcessor`
+- `Reader`
+
+`CorpusProcessor` provides an execution interface:
+
+```python
+from folia.main import CorpusProcessor
+
+processor = CorpusProcessor()
+processor.execute()
+
+processor.run()
+```
+
+`Reader` includes document initialization and word-search support:
+
+```python
+from folia.main import Reader
+
+reader = Reader()
+reader.initdoc()
+
+for match in reader.findwords(...):
+    print(match)
+```
+
+## Utility functions
+
+### Text and byte helpers
+
+```python
+from folia.helpers import u, b, isstring
+
+text = u(value)
+raw = b(text)
+is_text = isstring(value)
+```
+
+### Time and whitespace helpers
+
+```python
+from folia.main import parsetime, parse_datetime, norm_spaces, postprocess_spaces
+
+time_value = parsetime("...")
+date_value = parse_datetime("...")
+
+normalized = norm_spaces("some   text")
+processed = postprocess_spaces("some   text")
+```
+
+### Identifier helpers
+
+```python
+from folia.main import isncname, makencname
+
+valid = isncname("identifier")
+safe_identifier = makencname("identifier with spaces")
+```
+
+### Annotation-type helpers
+
+```python
+from folia.main import (
+    annotationtype2str,
+    str2annotationtype,
+    annotationtypeisspan,
+)
+
+name = annotationtype2str(annotationtype)
+annotationtype = str2annotationtype(name)
+is_span_annotation = annotationtypeisspan(annotationtype)
+```
+
+### Pattern helpers
+
+`Pattern` supports variable-size matching patterns:
+
+```python
+from folia.main import Pattern
+
+pattern = Pattern()
+
+if pattern.variablesize():
+    distributions = pattern.resolve(size=3, distribution=None)
+```
+
+## Error handling
+
+The API defines dedicated exception classes for common failure modes:
+
+```python
+from folia.main import (
+    DuplicateIDError,
+    DuplicateAnnotationError,
+    InvalidReference,
+    InconsistentText,
+    DeclarationError,
+    ParseError,
+)
+
+try:
+    doc.save("output.xml")
+except DuplicateIDError:
+    # Handle duplicate identifiers
+    pass
+except DeclarationError:
+    # Handle missing or invalid annotation declarations
+    pass
+```
+
+For query handling:
+
+```python
+from folia.fql import SyntaxError, QueryError
+
+try:
+    query.parse("...")
+except SyntaxError:
+    pass
+except QueryError:
+    pass
+```
+
+## Typical workflow
+
+A typical application using `folia` may follow this sequence:
+
+1. Create or load a `Document`.
+2. Add structural content such as `Text`, `Paragraph`, `Sentence`, and `Word`.
+3. Declare the annotation types and sets used by the document.
+4. Add inline annotations, span annotations, layers, features, relations, or corrections.
+5. Inspect content with `text()`, `phon()`, `select()`, and navigation methods.
+6. Validate the resulting document.
+7. Save the document as XML or export it as JSON.
+
+```python
+from folia.main import Document, Text, Paragraph, Sentence, Word
+
+doc = Document()
+
+text = doc.create(Text)
+paragraph = text.add(Paragraph)
+sentence = paragraph.add(Sentence)
+
+word = sentence.add(Word)
+
+# Inspect the constructed content
+for item in doc.words():
+    print(item.text())
+
+# Serialize or save the document
+print(doc.xmlstring())
+doc.save("output.xml")
+```

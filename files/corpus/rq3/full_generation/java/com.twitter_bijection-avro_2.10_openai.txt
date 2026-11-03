@@ -1,0 +1,193 @@
+# com.twitter:bijection-avro_2.10
+
+`com.twitter:bijection-avro_2.10` exposes Base64 encoding and decoding utilities for Java applications.
+
+The API provides:
+
+- A reusable `Base64` codec with configurable URL-safe output and line formatting.
+- Static convenience methods for common Base64 operations.
+- Validation helpers for Base64 data.
+- Conversion helpers between `BigInteger` values and Base64-compatible byte representations.
+- A general `BaseNCodec` base API for encoding, decoding, alphabet checks, and encoded-length estimation.
+
+## Main types
+
+### `BaseNCodec`
+
+`BaseNCodec` is the general codec API. It provides methods for converting byte arrays to encoded bytes or strings and back again.
+
+```java
+BaseNCodec codec = new BaseNCodec();
+
+byte[] encoded = codec.encode(input);
+byte[] decoded = codec.decode(encoded);
+
+String text = codec.encodeToString(input);
+byte[] restored = codec.decode(text);
+```
+
+Available operations include:
+
+| Method | Purpose |
+|---|---|
+| `encode(byte[])` | Encodes binary data into encoded bytes. |
+| `encodeToString(byte[])` | Encodes binary data into a `String`. |
+| `encodeAsString(byte[])` | Alternative string-encoding method. |
+| `decode(byte[])` | Decodes encoded bytes. |
+| `decode(String)` | Decodes an encoded string. |
+| `isInAlphabet(byte[], boolean)` | Checks whether bytes belong to the codec alphabet, optionally allowing whitespace/padding. |
+| `isInAlphabet(String)` | Checks whether a string belongs to the codec alphabet. |
+| `getEncodedLength(byte[])` | Returns the expected encoded length for an input byte array. |
+
+### `Base64`
+
+`Base64` extends `BaseNCodec` and supplies Base64-specific behavior.
+
+It can be created with default settings or configured for URL-safe encoding and line formatting:
+
+```java
+Base64 standard = new Base64();
+Base64 urlSafe = new Base64(true);
+
+Base64 wrapped = new Base64(76);
+Base64 customWrapped = new Base64(76, new byte[] { '\r', '\n' });
+Base64 customUrlSafe = new Base64(76, new byte[] { '\r', '\n' }, true);
+```
+
+Use `isUrlSafe()` to inspect whether an instance was configured for URL-safe output:
+
+```java
+Base64 codec = new Base64(true);
+
+if (codec.isUrlSafe()) {
+    System.out.println("Using URL-safe Base64");
+}
+```
+
+## Quick start
+
+### Encode and decode bytes
+
+For one-off Base64 conversion, use the static helpers:
+
+```java
+import com.twitter.bijection.codec.Base64;
+
+byte[] payload = "hello world".getBytes();
+
+String encoded = Base64.encodeBase64String(payload);
+byte[] decoded = Base64.decodeBase64(encoded);
+
+String restored = new String(decoded);
+System.out.println(restored); // hello world
+```
+
+### Use URL-safe Base64
+
+URL-safe Base64 is available as byte-array and string-returning helpers:
+
+```java
+import com.twitter.bijection.codec.Base64;
+
+byte[] tokenBytes = "user:12345".getBytes();
+
+String token = Base64.encodeBase64URLSafeString(tokenBytes);
+byte[] original = Base64.decodeBase64(token);
+```
+
+You can also use a configured codec instance:
+
+```java
+Base64 codec = new Base64(true);
+
+byte[] encoded = codec.encode("value".getBytes());
+byte[] decoded = codec.decode(encoded);
+```
+
+### Create chunked output
+
+The API includes helpers for producing chunked Base64 output:
+
+```java
+import com.twitter.bijection.codec.Base64;
+
+byte[] document = loadDocumentBytes();
+
+byte[] chunked = Base64.encodeBase64Chunked(document);
+```
+
+For explicit control over chunking and URL-safe mode:
+
+```java
+byte[] encoded = Base64.encodeBase64(
+    document,
+    true,   // chunked
+    false   // standard, non-URL-safe Base64
+);
+```
+
+An overload accepting `maxResultSize` is also available when the encoded output must remain within a specified size limit:
+
+```java
+byte[] encoded = Base64.encodeBase64(
+    document,
+    false,
+    true,
+    4096
+);
+```
+
+### Validate Base64 input
+
+Use the validation methods before accepting or decoding user-provided data:
+
+```java
+import com.twitter.bijection.codec.Base64;
+
+String suppliedValue = getRequestParameter("payload");
+
+if (Base64.isBase64(suppliedValue)) {
+    byte[] data = Base64.decodeBase64(suppliedValue);
+    process(data);
+} else {
+    throw new IllegalArgumentException("Expected Base64 input");
+}
+```
+
+Byte-oriented validation is also available:
+
+```java
+byte[] candidate = readBytes();
+
+boolean valid = Base64.isBase64(candidate);
+boolean validArray = Base64.isArrayByteBase64(candidate);
+
+for (byte b : candidate) {
+    if (!Base64.isBase64(b)) {
+        System.out.println("Found a non-Base64 byte");
+        break;
+    }
+}
+```
+
+### Encode and decode `BigInteger` values
+
+`Base64` includes utility methods for representing a `BigInteger` as bytes and reconstructing it later:
+
+```java
+import com.twitter.bijection.codec.Base64;
+import java.math.BigInteger;
+
+BigInteger value = new BigInteger("12345678901234567890");
+
+byte[] encodedInteger = Base64.encodeInteger(value);
+BigInteger decodedInteger = Base64.decodeInteger(encodedInteger);
+
+assert value.equals(decodedInteger);
+```
+
+## API relationship
+
+`BaseNCodec` defines the shared encoding and decoding operations. `Base64` builds on that API with Base64-specific constructors, validation methods, static utility functions, URL-safe encoding options, chunked output support, and `BigInteger` helpers.
+
+For simple one-time conversions, prefer the static methods on `Base64`. For repeated work with the same configuration—such as URL-safe mode or a chosen line length—create and reuse a `Base64` instance.

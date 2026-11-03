@@ -1,0 +1,275 @@
+# progressbar2
+
+A flexible, extensible library for displaying progress bars, timers, and
+other visual feedback in terminal applications. `progressbar2` wraps
+iterables, provides a rich set of composable widgets, and supports
+advanced features like color output, multi-bar dashboards, ETA
+estimation, and stdout/stderr redirection so that your logging doesn't
+clobber the progress display.
+
+## Features
+
+- Drop-in wrapper for iterables (`progressbar.progressbar(...)`) as well
+  as a full-featured `ProgressBar` class for manual control.
+- A large library of widgets (`Timer`, `ETA`, `Percentage`, `Bar`,
+  `AnimatedMarker`, `DataSize`, `FileTransferSpeed`, `Variable`, and more)
+  that can be mixed and matched to build custom bar layouts.
+- Automatic and adaptive ETA calculation, including smoothing algorithms
+  (`ExponentialMovingAverage`, `DoubleExponentialMovingAverage`).
+- Terminal color support, including RGB/HSL color models, gradients, and
+  automatic detection of terminal color capabilities.
+- `MultiBar` for rendering multiple concurrent progress bars (e.g. for
+  parallel jobs or workers).
+- Stream wrapping utilities so `print()` calls and logging output don't
+  interfere with an active progress bar.
+- A command-line entry point (`progressbar/__main__.py`) for wrapping
+  the progress of piped data.
+
+## Installation
+
+```bash
+pip install progressbar2
+```
+
+## Quick Start
+
+The simplest way to use the library is to wrap an iterable:
+
+```python
+import time
+import progressbar
+
+for i in progressbar.progressbar(range(100)):
+    time.sleep(0.02)
+```
+
+This automatically detects the length of the iterable, renders a bar,
+timer, percentage, and ETA, and cleans up when the loop finishes.
+
+## Core Concepts
+
+### `ProgressBar`
+
+The central class of the library. It is iterable, so it can be used
+directly in `for` loops, or manually driven with `.start()`, `.update()`,
+and `.finish()`.
+
+```python
+import time
+from progressbar import ProgressBar
+
+bar = ProgressBar(max_value=200)
+bar.start()
+for i in range(200):
+    time.sleep(0.01)
+    bar.update(i + 1)
+bar.finish()
+```
+
+Related classes:
+
+- **`DataTransferBar`** – a `ProgressBar` preconfigured with widgets
+  suited to file/data transfer (size, speed, ETA).
+- **`NullBar`** – a no-op progress bar that silently ignores all calls,
+  useful for disabling progress output without changing calling code.
+
+### Widgets
+
+Widgets are the building blocks used to render each part of the bar.
+They are passed as a list to `ProgressBar(widgets=[...])` and rendered
+left to right. Common widgets include:
+
+| Widget | Purpose |
+|---|---|
+| `Bar`, `ReverseBar`, `BouncingBar` | The classic progress bar shape |
+| `GranularBar` | A bar with finer-grained fill characters |
+| `MultiRangeBar`, `MultiProgressBar` | Bars showing multiple sub-ranges/values |
+| `Percentage`, `SimpleProgress` | Numeric/percentage progress display |
+| `Timer`, `ETA`, `AbsoluteETA`, `AdaptiveETA`, `SmoothingETA` | Elapsed time and time-remaining estimates |
+| `DataSize`, `FileTransferSpeed`, `AdaptiveTransferSpeed` | Byte counts and transfer rates |
+| `AnimatedMarker` | A spinner-like animated character |
+| `Counter` | Raw item counter |
+| `FormatLabel`, `FormatCustomText` | Free-form templated text |
+| `Variable`, `DynamicMessage` | User-supplied named values interpolated into text |
+| `CurrentTime` | Displays the current wall-clock time |
+| `FormatLabelBar`, `PercentageLabelBar` | Bars with an embedded formatted/percentage label |
+| `JobStatusBar` | A bar variant intended for showing job/task status |
+
+Example combining widgets:
+
+```python
+import progressbar
+
+widgets = [
+    'Processing: ',
+    progressbar.Percentage(),
+    ' ',
+    progressbar.Bar(marker='#'),
+    ' ',
+    progressbar.Timer(),
+    ' ',
+    progressbar.ETA(),
+]
+
+with progressbar.ProgressBar(max_value=500, widgets=widgets) as bar:
+    for i in range(500):
+        bar.update(i + 1)
+```
+
+### Variables and Custom Text
+
+`Variable` and `FormatCustomText` allow injecting arbitrary named values
+into the bar's text, which can be updated on each iteration:
+
+```python
+import progressbar
+
+widgets = [
+    'Task: ', progressbar.Variable('task_name'),
+    ' Status: ', progressbar.Variable('status'),
+]
+
+bar = progressbar.ProgressBar(max_value=10, widgets=widgets)
+bar.start()
+for i in range(10):
+    bar.update(i + 1, task_name=f'job-{i}', status='running')
+bar.finish()
+```
+
+### Smoothing Algorithms
+
+`SmoothingAlgorithm`, `ExponentialMovingAverage`, and
+`DoubleExponentialMovingAverage` power the adaptive ETA widgets by
+smoothing noisy timing samples into more stable estimates.
+
+## Multiple Bars: `MultiBar`
+
+`MultiBar` behaves like a dictionary of named `ProgressBar` instances and
+manages rendering them together, e.g. for parallel workers:
+
+```python
+import time
+import threading
+from progressbar import MultiBar
+
+multibar = MultiBar()
+
+def worker(name, total):
+    bar = multibar[name] = multibar.get(name)  # obtains/creates a bar
+    for i in range(total):
+        time.sleep(0.05)
+        bar.update(i + 1)
+    bar.finish()
+
+multibar.start()
+threads = [
+    threading.Thread(target=worker, args=(f'job-{n}', 50))
+    for n in range(4)
+]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()
+multibar.stop()
+```
+
+`MultiBar` also exposes `render()`, `print()`, `flush()`, `run()`,
+`join()`, and `get_sorted_bars()` (ordering controlled via `SortKey`) for
+finer control over how concurrent bars are displayed and sorted.
+
+## Color Support
+
+The `progressbar.terminal` subsystem provides rich color handling:
+
+- `Color`, `RGB`, `HSL` — color representations with conversion helpers
+  (`to_ansi_16`, `to_ansi_256`, `to_windows`, `hex`, `interpolate`, etc.).
+- `Colors` — a registry/factory for named colors.
+- `ColorGradient` — interpolates between colors based on a progress
+  value, useful for coloring a bar as it fills.
+- `apply_colors(text, percentage, fg=..., bg=...)` — applies foreground
+  and background colors to a piece of text, optionally based on
+  progress percentage.
+- `ColorSupport` (an `IntEnum`) with `ColorSupport.from_env()` to detect
+  what level of color the current terminal supports.
+
+Example: a bar that changes color as it progresses.
+
+```python
+import progressbar
+from progressbar.terminal.base import Colors, ColorGradient
+
+gradient = ColorGradient(Colors.register.__self__)  # gradient across registered colors
+
+widgets = [
+    progressbar.Percentage(),
+    ' ',
+    progressbar.Bar(),
+]
+
+bar = progressbar.ProgressBar(max_value=100, widgets=widgets)
+```
+
+*(See `progressbar/terminal/base.py` for the full color API, including
+`SGRColor`, `WindowsColor`, and `DummyColor` for cross-platform ANSI/
+Windows console handling.)*
+
+## Redirecting Output
+
+Long-running loops often print or log while a progress bar is active.
+`StreamWrapper` (and its underlying `WrappingIO`) let you safely capture
+`stdout`/`stderr` so printed text appears above the bar instead of
+corrupting it:
+
+```python
+import time
+import progressbar
+from progressbar.utils import StreamWrapper
+
+stream_wrapper = StreamWrapper()
+
+with progressbar.ProgressBar(max_value=10) as bar:
+    stream_wrapper.wrap(stdout=True)
+    for i in range(10):
+        print(f'Processing item {i}')
+        time.sleep(0.1)
+        bar.update(i + 1)
+    stream_wrapper.unwrap(stdout=True)
+```
+
+The `progressbar/terminal/stream.py` module also provides
+`LineOffsetStreamWrapper` and `LastLineStream`, which allow writing
+output at specific line offsets — handy for combining multiple bars or
+status lines with regular log output (as used internally by `MultiBar`).
+
+## Command Line Usage
+
+The library ships with a CLI entry point that can wrap the progress of
+piped commands, parsing arguments via `create_argument_parser()` and
+supporting human-readable byte sizes through `size_to_bytes()`:
+
+```bash
+python -m progressbar --max-value 1000000 some_command
+```
+
+## Utility Functions
+
+- `deltas_to_seconds(*deltas)` — normalizes timedeltas/floats into
+  seconds.
+- `no_color(value)` / `len_color(value)` — strip ANSI codes from a
+  string, or compute the visible length of colored text.
+- `env_flag(name, default)` — read boolean flags from environment
+  variables (e.g. to force-enable/disable color or redirection
+  behavior).
+- `is_terminal(fd)` / `is_ansi_terminal(fd)` — detect whether a file
+  descriptor is an interactive/ANSI-capable terminal.
+
+## Summary
+
+At its core, `progressbar2` separates **state** (the `ProgressBar` and
+its `data()`/`percentage()`), **presentation** (the widget classes), and
+**environment concerns** (color support, terminal detection, and stream
+wrapping), while `MultiBar` and the terminal stream utilities extend
+this model to support multiple simultaneous bars and richer console
+layouts. Most everyday usage only requires `progressbar.progressbar(...)`
+or `ProgressBar`, with widgets and colors available for more advanced,
+customized displays.

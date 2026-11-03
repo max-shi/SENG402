@@ -1,0 +1,190 @@
+# vertx-db2-client
+
+Reactive, non-blocking IBM DB2 client for [Eclipse Vert.x](https://vertx.io). Built on top of Vert.x's SQL client abstractions, `vertx-db2-client` lets you connect to and interact with DB2 databases using an asynchronous, callback/`Future`-based API, without blocking your event loop threads.
+
+The client speaks the DRDA (Distributed Relational Database Architecture) wire protocol directly, handling connection handshakes, authentication, prepared statement management, and result set decoding internally so that application code only needs to work with the high-level Vert.x SQL Client APIs (`SqlClient`, `SqlConnection`, `Pool`, `Row`, `RowSet`, etc.).
+
+## Features
+
+- Non-blocking connections to DB2 (and DB2 for z/OS) servers
+- Connection pooling via Vert.x `Pool`
+- Connection URI parsing (`jdbc`-style DB2 connection strings)
+- Prepared statement caching
+- SSL/TLS support
+- Distributed tracing integration via `TracingPolicy`
+- Fine-grained connection options (host, port, credentials, database, pipelining limit, custom properties)
+
+## Main Concepts
+
+### `DB2ConnectOptions`
+
+Configuration object describing how to connect to a DB2 server: host, port, user, password, database, prepared statement cache settings, pipelining limit, SSL options, tracing policy, and arbitrary connection properties.
+
+It extends the generic Vert.x `SqlConnectOptions`, and can be constructed from:
+
+- A `JsonObject`
+- Another `SqlConnectOptions`
+- A connection URI string, via `DB2ConnectOptions.fromUri(String)`
+
+```java
+DB2ConnectOptions connectOptions = new DB2ConnectOptions()
+  .setHost("localhost")
+  .setPort(50000)
+  .setDatabase("testdb")
+  .setUser("db2inst1")
+  .setPassword("secret");
+```
+
+or from a URI:
+
+```java
+DB2ConnectOptions connectOptions =
+  DB2ConnectOptions.fromUri("db2://db2inst1:secret@localhost:50000/testdb");
+```
+
+### `DB2Connection`
+
+Represents a single, non-pooled connection to a DB2 server. It extends the generic Vert.x `SqlConnection`, so you get access to `query()`, `preparedQuery()`, transactions, etc. It also adds DB2-specific operations:
+
+- `ping()` – verify connectivity
+- `debug()` – diagnostic helper
+- `exceptionHandler(...)` / `closeHandler(...)` – lifecycle callbacks
+- `cast(SqlConnection)` – safely downcast a generic `SqlConnection` obtained through other Vert.x SQL Client APIs to a `DB2Connection`
+
+Connections are created with:
+
+```java
+DB2Connection.connect(vertx, connectOptions)
+```
+
+or directly from a connection URI:
+
+```java
+DB2Connection.connect(vertx, "db2://db2inst1:secret@localhost:50000/testdb")
+```
+
+### `DB2Builder`
+
+A fluent builder for creating either a connection `Pool` or a single `SqlClient`, allowing configuration of connect options, pool options, and other client settings through a `ClientBuilder`.
+
+```java
+Pool pool = DB2Builder.pool(builder -> builder
+  .with(new PoolOptions().setMaxSize(8))
+  .connectingTo(connectOptions)
+);
+```
+
+### `DB2Exception`
+
+A `DatabaseException` subtype thrown when DB2 returns an error. Carries the DB2 error code and SQL state so calling code can branch on specific failure conditions.
+
+### `DB2Driver` (SPI)
+
+The `Driver<DB2ConnectOptions>` implementation used internally by Vert.x's generic SQL Client SPI mechanism to discover and instantiate DB2 pools/connections, parse connection URIs, and wrap raw connections. Most applications will not need to use this class directly — use `DB2Builder` or `DB2Connection`/`Pool` factory methods instead.
+
+## Internal Implementation
+
+The rest of the API surface (packages under `io.vertx.db2client.impl` and `io.vertx.db2client.impl.drda`) implements the DRDA wire protocol and connection lifecycle, including:
+
+- **Protocol codec**: `DB2Codec`, `DRDARequest`/`DRDAResponse` and their subclasses (`DRDAConnectRequest`, `DRDAConnectResponse`, `DRDAQueryRequest`, `DRDAQueryResponse`) build and parse DRDA network messages for connection setup, security handshakes, prepare/execute/fetch cycles, and cursor management.
+- **Authentication**: `AuthenticationCommandBase` and `InitialHandshakeCommand` drive the initial handshake and security exchange with the server.
+- **Metadata & type mapping**: `ColumnMetaData`, `ConnectionMetaData`, `DB2DatabaseMetadata`, `ClientTypes`, `Typdef`, and `Decimal` handle column descriptions, DB2-to-Java type mapping, and DB2's packed decimal encoding.
+- **Result handling**: `Cursor`, `DB2RowImpl`, and `DB2RowId` provide row-by-row access to result set data, including DB2-specific types such as ROWID.
+- **Session/statement management**: `Section` and `SectionManager` manage server-side prepared statement sections; `DB2Package` models DRDA package identifiers.
+- **Connection plumbing**: `DB2SocketConnection`, `DB2ConnectionImpl`, `DB2ConnectionFactory`, and `Db2PoolOptions` implement the low-level socket connection, connection factory, and pool configuration used by the public API.
+
+These classes are implementation details and are not intended to be used directly by application code, though they are documented here for completeness and for contributors working on the library itself.
+
+## Usage Examples
+
+### Connecting with a single connection
+
+```java
+Vertx vertx = Vertx.vertx();
+
+DB2ConnectOptions connectOptions = new DB2ConnectOptions()
+  .setHost("localhost")
+  .setPort(50000)
+  .setDatabase("testdb")
+  .setUser("db2inst1")
+  .setPassword("secret");
+
+DB2Connection.connect(vertx, connectOptions).onComplete(ar -> {
+  if (ar.succeeded()) {
+    DB2Connection connection = ar.result();
+    connection.query("SELECT * FROM employees")
+      .execute()
+      .onComplete(rows -> {
+        if (rows.succeeded()) {
+          rows.result().forEach(row ->
+            System.out.println(row.getString("NAME")));
+        } else {
+          rows.cause().printStackTrace();
+        }
+        connection.close();
+      });
+  } else {
+    ar.cause().printStackTrace();
+  }
+});
+```
+
+### Using a connection pool
+
+```java
+DB2ConnectOptions connectOptions = DB2ConnectOptions
+  .fromUri("db2://db2inst1:secret@localhost:50000/testdb");
+
+PoolOptions poolOptions = new PoolOptions().setMaxSize(5);
+
+Pool pool = DB2Builder.pool(builder -> builder
+  .connectingTo(connectOptions)
+  .with(poolOptions)
+);
+
+pool.preparedQuery("SELECT * FROM employees WHERE department = ?")
+  .execute(Tuple.of("ENGINEERING"))
+  .onComplete(ar -> {
+    if (ar.succeeded()) {
+      RowSet<Row> rows = ar.result();
+      for (Row row : rows) {
+        System.out.println(row.getString("NAME"));
+      }
+    } else {
+      ar.cause().printStackTrace();
+    }
+  });
+```
+
+### Handling errors
+
+```java
+pool.query("SELECT * FROM non_existing_table")
+  .execute()
+  .onComplete(ar -> {
+    if (ar.failed() && ar.cause() instanceof DB2Exception) {
+      DB2Exception e = (DB2Exception) ar.cause();
+      System.out.println("DB2 error: " + e.getMessage());
+    }
+  });
+```
+
+### Checking connectivity
+
+```java
+DB2Connection.connect(vertx, connectOptions).onComplete(ar -> {
+  if (ar.succeeded()) {
+    DB2Connection conn = ar.result();
+    conn.ping().onComplete(pingResult -> {
+      if (pingResult.succeeded()) {
+        System.out.println("Connection is alive");
+      }
+      conn.close();
+    });
+  }
+});
+```
+
+## License
+
+This library is part of the Vert.x project and is distributed under the terms described in the project's root repository.

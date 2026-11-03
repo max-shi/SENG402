@@ -1,0 +1,321 @@
+# blended.util_2.12
+
+`de.wayofquality.blended:blended.util_2.12` provides small Java utility classes for common infrastructure tasks:
+
+- Reading, writing, renaming, and copying file/stream content
+- Resolving resources as streams or XML transformation resources
+- Loading XML documents, running XPath queries, and validating XML
+- Inspecting and accessing JavaBean-style properties through reflection
+
+The API is organized as a set of focused utility classes. Most operations are static; `XMLSupport` is instantiated for a specific XML location.
+
+## Main components
+
+| Class | Purpose |
+| --- | --- |
+| `FileHelper` | Read and write byte content, read streams, and rename files. |
+| `StreamCopySupport` | Copy data from an `InputStream` to an `OutputStream`. |
+| `ResourceResolver` | Open a resource as an `InputStream` and act as a JAXP `URIResolver`. |
+| `XMLSupport` | Load XML into a DOM `Document`, evaluate XPath expressions, and validate XML against a schema location. |
+| `ReflectionHelper` | Discover property names and getter/setter methods, and get or set property values dynamically. |
+
+## File and stream utilities
+
+### `FileHelper`
+
+`FileHelper` contains byte-oriented file and stream operations.
+
+```java
+import blended.util.FileHelper;
+
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+
+File output = new File("message.txt");
+
+FileHelper.writeFile(
+    output,
+    "Hello from blended.util".getBytes(StandardCharsets.UTF_8)
+);
+
+byte[] bytes = FileHelper.readFile("message.txt");
+String text = new String(bytes, StandardCharsets.UTF_8);
+
+System.out.println(text);
+```
+
+Available methods:
+
+```java
+FileHelper.writeFile(File file, byte[] content);
+byte[] content = FileHelper.readFile(String location);
+byte[] content = FileHelper.readStream(InputStream stream);
+boolean renamed = FileHelper.renameFile(File source, File destination, Boolean force);
+```
+
+`renameFile` returns whether the rename operation succeeded. Its `force` argument allows callers to control the rename operation when a destination-related conflict must be considered.
+
+### `StreamCopySupport`
+
+Use `StreamCopySupport` when an input stream should be copied directly to an output stream.
+
+```java
+import blended.util.StreamCopySupport;
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
+
+try (
+    InputStream input = new FileInputStream("source.bin");
+    OutputStream output = new FileOutputStream("target.bin")
+) {
+    StreamCopySupport.copyStream(input, output);
+}
+```
+
+The method has the following signature:
+
+```java
+StreamCopySupport.copyStream(InputStream in, OutputStream out);
+```
+
+## Resource loading
+
+`ResourceResolver` can open a location as an `InputStream`.
+
+```java
+import blended.util.ResourceResolver;
+
+import java.io.InputStream;
+
+try (InputStream stream = ResourceResolver.openFile("config.xml")) {
+    if (stream == null) {
+        throw new IllegalStateException("Could not open config.xml");
+    }
+
+    byte[] data = stream.readAllBytes();
+    System.out.println("Read " + data.length + " bytes");
+}
+```
+
+When resource lookup should use a particular class loader, pass it explicitly:
+
+```java
+ClassLoader loader = Thread.currentThread().getContextClassLoader();
+
+try (InputStream stream = ResourceResolver.openFile("config.xml", loader)) {
+    // Consume the resource stream.
+}
+```
+
+### Using `ResourceResolver` with XML transformation APIs
+
+Because `ResourceResolver` implements `javax.xml.transform.URIResolver`, it can be supplied to a JAXP `TransformerFactory` where external URI resolution is needed.
+
+```java
+import blended.util.ResourceResolver;
+
+import javax.xml.transform.TransformerFactory;
+
+TransformerFactory factory = TransformerFactory.newInstance();
+factory.setURIResolver(new ResourceResolver());
+```
+
+The resolver exposes:
+
+```java
+Source resolve(String href, String base);
+```
+
+This is the callback used by transformation APIs to resolve referenced resources.
+
+## XML support
+
+`XMLSupport` represents XML loaded from a location. It can provide the parsed DOM document, evaluate an XPath query, and validate the document using a schema location.
+
+```java
+import blended.util.XMLSupport;
+
+XMLSupport xml = new XMLSupport("example.xml");
+
+String name = xml.applyXPath("/application/name/text()");
+System.out.println("Application name: " + name);
+```
+
+A caller can also provide a class loader:
+
+```java
+ClassLoader loader = Thread.currentThread().getContextClassLoader();
+
+XMLSupport xml = new XMLSupport("example.xml", loader);
+String version = xml.applyXPath("/application/version/text()");
+```
+
+### Accessing the DOM document
+
+```java
+import blended.util.XMLSupport;
+
+import org.w3c.dom.Document;
+
+XMLSupport xml = new XMLSupport("example.xml");
+Document document = xml.getDocument();
+
+System.out.println(document.getDocumentElement().getNodeName());
+```
+
+### Validating XML
+
+```java
+import blended.util.XMLSupport;
+
+XMLSupport xml = new XMLSupport("example.xml");
+xml.validate("example.xsd");
+```
+
+The main API is:
+
+```java
+Document document = xml.getDocument();
+String result = xml.applyXPath(String query);
+xml.validate(String schemaLocation);
+```
+
+## Reflection and property access
+
+`ReflectionHelper` supports reflective inspection and access to object properties.
+
+### Discover property names
+
+```java
+import blended.util.ReflectionHelper;
+
+import java.util.List;
+
+Object settings = loadSettings();
+
+List<String> propertyNames = ReflectionHelper.getPropertyNames(settings);
+
+for (String propertyName : propertyNames) {
+    System.out.println(propertyName);
+}
+```
+
+### Read a property
+
+```java
+import blended.util.ReflectionHelper;
+
+Object configuration = loadConfiguration();
+
+String host = ReflectionHelper.getProperty(configuration, "host");
+Integer port = ReflectionHelper.getProperty(configuration, "port");
+
+System.out.println(host + ":" + port);
+```
+
+The generic return type allows assignment directly to an expected property type:
+
+```java
+String name = ReflectionHelper.getProperty(user, "name");
+```
+
+`getProperty` also accepts a variable number of property-name arguments:
+
+```java
+Object value = ReflectionHelper.getProperty(object, "firstProperty", "secondProperty");
+```
+
+### Set a property
+
+```java
+import blended.util.ReflectionHelper;
+
+ReflectionHelper.setProperty(configuration, "localhost", "host");
+ReflectionHelper.setProperty(configuration, 8080, "port");
+```
+
+Like property reads, property writes accept one or more property-name arguments:
+
+```java
+ReflectionHelper.setProperty(object, value, "firstProperty", "secondProperty");
+```
+
+### Inspect getters and setters
+
+```java
+import blended.util.ReflectionHelper;
+
+import java.lang.reflect.Method;
+import java.util.List;
+
+List<Method> getters = ReflectionHelper.getGetterMethods(MyConfiguration.class);
+List<Method> setters = ReflectionHelper.getSetterMethods(MyConfiguration.class);
+
+for (Method getter : getters) {
+    System.out.println("Getter: " + getter.getName());
+}
+
+for (Method setter : setters) {
+    System.out.println("Setter: " + setter.getName());
+}
+```
+
+Property names can also be derived from methods or from a class/property-type combination:
+
+```java
+String propertyName = ReflectionHelper.getPropertyName(getterMethod);
+
+String nameForType = ReflectionHelper.getPropertyName(
+    MyConfiguration.class,
+    String.class
+);
+```
+
+## Combined example: load, inspect, and query XML
+
+The utilities can be used together when working with resource-backed configuration.
+
+```java
+import blended.util.FileHelper;
+import blended.util.ResourceResolver;
+import blended.util.XMLSupport;
+
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
+public class ConfigurationExample {
+    public static void main(String[] args) throws Exception {
+        // Read the XML resource as bytes.
+        try (InputStream input = ResourceResolver.openFile("application.xml")) {
+            byte[] xmlBytes = FileHelper.readStream(input);
+            System.out.println(new String(xmlBytes, StandardCharsets.UTF_8));
+        }
+
+        // Load the same location as XML and query it.
+        XMLSupport xml = new XMLSupport("application.xml");
+
+        String applicationName =
+            xml.applyXPath("/application/name/text()");
+
+        System.out.println("Application: " + applicationName);
+    }
+}
+```
+
+## Error handling
+
+Several operations declare checked exceptions, including XML loading, XPath evaluation, validation, file reads, and file writes. Callers should either handle these exceptions locally or propagate them from their own API.
+
+```java
+try {
+    XMLSupport xml = new XMLSupport("example.xml");
+    String value = xml.applyXPath("/root/value/text()");
+    System.out.println(value);
+} catch (Exception e) {
+    // Handle resource, parsing, XPath, or validation-related failures.
+    e.printStackTrace();
+}
+```

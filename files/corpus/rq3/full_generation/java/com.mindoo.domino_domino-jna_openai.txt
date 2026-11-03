@@ -1,0 +1,530 @@
+# domino-jna
+
+`com.mindoo.domino:domino-jna` is a Java library for working with HCL Domino/Notes data and services through native APIs. Its public API provides Java-level objects and utilities for common Domino concepts, including:
+
+- Databases, notes, views, collections, folders, and ID tables
+- Formula compilation, evaluation, analysis, and formula metadata
+- DQL query construction
+- DXL import and export
+- Rich text and compound-text creation
+- MIME conversion and attachment handling
+- Calendar, scheduling, and out-of-office operations
+- ACLs, ECL capabilities, names lists, and security-related operations
+- Full-text indexing and search
+- HTML conversion and reference extraction
+- Directory scanning and server-related operations
+- Native handle, memory, and lifecycle management
+
+The library exposes both higher-level Java-oriented APIs and lower-level native API bindings for advanced integrations.
+
+## Highlights
+
+### Formula evaluation
+
+`FormulaExecution` compiles and evaluates Domino formulas against `NotesNote` objects. It also supports formula analysis, function discovery, command discovery, and configurable evaluation behavior.
+
+```java
+import com.mindoo.domino.jna.formula.FormulaExecution;
+
+import java.util.List;
+
+String formula = "@UpperCase(Subject)";
+
+try (/* manage the surrounding Domino object lifecycle */) {
+  FormulaExecution execution = new FormulaExecution(formula);
+
+  System.out.println("Formula: " + execution.getFormula());
+  System.out.println("Uses NotesTimeDate values: " + execution.isPreferNotesTimeDates());
+
+  // Given an existing NotesNote:
+  // List<Object> values = execution.evaluate(note);
+
+  List<String> functions = FormulaExecution.getAllFunctions();
+  List<String> parameters = FormulaExecution.getFunctionParameters("@UpperCase");
+
+  execution.recycle();
+}
+```
+
+Convenience methods are also available when a formula only needs to be evaluated once:
+
+```java
+// Given an existing NotesNote named note:
+// String subject = FormulaExecution.evaluateAsString("Subject", note);
+// List<Object> result = FormulaExecution.evaluate("@Text(@Created)", note);
+```
+
+Formula compilation failures are represented by `FormulaCompilationError`, which provides formula text and source location information:
+
+```java
+import com.mindoo.domino.jna.errors.FormulaCompilationError;
+import com.mindoo.domino.jna.formula.FormulaExecution;
+
+try {
+  new FormulaExecution("@If(");
+}
+catch (FormulaCompilationError e) {
+  System.err.println("Formula: " + e.getFormula());
+  System.err.println("Error: " + e.getCompileError());
+  System.err.println("Line: " + e.getCompileErrorLine());
+  System.err.println("Column: " + e.getCompileErrorColumn());
+}
+```
+
+## DQL query construction
+
+The `DQL` class provides static factory methods for building DQL terms. The API includes item, view, formula, containment, view/folder membership, logical combination, and special-value terms.
+
+```java
+import com.mindoo.domino.jna.dql.DQL;
+import com.mindoo.domino.jna.dql.DQLTerm;
+
+DQLTerm query = DQL.and(
+    DQL.item("Form").isEqualTo("Request"),
+    DQL.item("Status").isEqualTo("Open"),
+    DQL.not(DQL.item("Archived").isEqualTo("1"))
+);
+```
+
+Additional query components can be composed using the provided factories:
+
+```java
+DQLTerm viewScopedQuery = DQL.and(
+    DQL.in("All Requests"),
+    DQL.contains("urgent", "approval"),
+    DQL.formula("@Created >= @Adjust(@Today; 0; 0; -30; 0; 0; 0)")
+);
+```
+
+Useful special values include:
+
+```java
+DQL.modifiedInThisFile();
+DQL.documentUniqueId();
+DQL.created();
+```
+
+## DXL import and export
+
+`DXLExporter` and `DXLImporter` provide configurable import/export of Domino content as DXL. Both own native resources and implement `IAllocatedMemory`, so release them with `free()` when finished.
+
+### Exporting a note
+
+```java
+import com.mindoo.domino.jna.dxl.DXLExporter;
+
+import java.io.OutputStream;
+
+// Given an existing NotesNote named note and an OutputStream named output:
+DXLExporter exporter = new DXLExporter();
+
+try {
+  exporter.setOutputXmlDecl(true);
+  exporter.setOutputDoctype(false);
+  exporter.setOmitRichtextAttachments(false);
+
+  exporter.exportNote(note, output);
+
+  if (exporter.exportErrorWasLogged()) {
+    System.err.println(exporter.getDxlExportResultLog());
+  }
+}
+finally {
+  exporter.free();
+}
+```
+
+### Exporting selected IDs from a database
+
+```java
+import com.mindoo.domino.jna.dxl.DXLExporter;
+
+import java.io.OutputStream;
+import java.util.List;
+
+// Given an existing NotesDatabase named database:
+List<Integer> noteIds = List.of(0x1234, 0x5678);
+
+DXLExporter exporter = new DXLExporter();
+try {
+  exporter.setOmitOLEObjects(true);
+  exporter.setUncompressAttachments(true);
+
+  exporter.exportIDs(database, noteIds, output);
+}
+finally {
+  exporter.free();
+}
+```
+
+### Importing DXL
+
+```java
+import com.mindoo.domino.jna.dxl.DXLImporter;
+
+// Given an existing NotesDatabase named targetDatabase:
+String dxl = """
+    <note>
+      <!-- DXL content -->
+    </note>
+    """;
+
+DXLImporter importer = new DXLImporter();
+try {
+  importer.setCreateFullTextIndex(false);
+  importer.setExitOnFirstFatalError(true);
+
+  importer.importDxl(dxl, targetDatabase);
+
+  if (importer.importErrorWasLogged()) {
+    System.err.println(importer.getResultLog());
+  }
+}
+finally {
+  importer.free();
+}
+```
+
+## HTML conversion configuration
+
+`HtmlConvertProperties` represents options used while converting Domino content to HTML. Options can be specified with typed `HtmlConvertOption` values or custom string keys.
+
+```java
+import com.mindoo.domino.jna.html.HtmlConvertOption;
+import com.mindoo.domino.jna.html.HtmlConvertProperties;
+
+HtmlConvertProperties properties = HtmlConvertProperties.modernDefaults()
+    .setUserAgent("MyApplication/1.0")
+    .option(HtmlConvertOption.XMLCompatibleHTML)
+    .option(HtmlConvertOption.ForceSectionExpand)
+    .option(HtmlConvertOption.AttachmentLink, "true");
+
+System.out.println(properties.getOptions());
+```
+
+HTML conversion results can expose:
+
+- Converted text via `IHtmlConversionResult.getText()`
+- Parsed URL and resource references via `getReferences()`
+- Image references via `getImages()`
+- Attachment references via `getAttachments()`
+- MIME output via `toMIME()`
+
+An image reference can be streamed directly:
+
+```java
+// Given an IHtmlImageRef named imageRef:
+imageRef.writeImage(outputStream);
+
+// Or write to a file:
+// imageRef.writeImage(new File("image." + imageRef.getFormat()));
+```
+
+## Directory scanning
+
+`DirectoryScanner` scans a server directory using one or more `FileType` filters.
+
+```java
+import com.mindoo.domino.jna.constants.FileType;
+import com.mindoo.domino.jna.directory.DirectoryScanner;
+
+import java.util.EnumSet;
+
+DirectoryScanner scanner = new DirectoryScanner(
+    "",
+    "data",
+    EnumSet.of(FileType.ANYNOTEFILE)
+);
+
+// Optionally provide a selection formula:
+var results = scanner.scan("SELECT @All");
+```
+
+Use `scan()` when no formula is required, or `scan(String formula)` to restrict results.
+
+## Collection caching
+
+`CollectionDataCache` is a serializable cache for collection-related data. It supports a configurable maximum size, cache clearing, and optional usage statistics.
+
+```java
+import com.mindoo.domino.jna.CollectionDataCache;
+
+CollectionDataCache cache = new CollectionDataCache(1_000);
+
+cache.enableUsageStats();
+
+System.out.println("Maximum size: " + cache.getMaxCacheSize());
+System.out.println("Current entries: " + cache.size());
+
+// Use APIs that accept or use collection cache data.
+
+System.out.println("Cache usage: " + cache.getCacheUsageStats());
+
+cache.resetCacheUsageStats();
+cache.flush();
+```
+
+## Rich text and compound text
+
+`CompoundTextWriter` builds Domino compound text and rich-text content. It supports text, styles, links, rendered notes, embedded rich-text data, images, attachment hotspots, and compound-text files.
+
+```java
+import com.mindoo.domino.jna.internal.CompoundTextWriter;
+
+// Given an existing CompoundTextWriter named writer:
+writer
+    .addText("Introduction")
+    .addText("\nThis content was created programmatically.")
+    .addDocLink(note, "Open related document")
+    .addFileHotspot(attachment, "Download attachment");
+
+// Complete the compound-text context when finished:
+// writer.closeItemContext();
+// writer.recycle();
+```
+
+Standalone rich text can be closed independently with `closeStandaloneContext()`.
+
+## ACL, security, and ECL
+
+The `constants` package contains enums representing ACL levels, ACL flags, note classes, update flags, database options, search flags, and other Domino bitmask-based options.
+
+For example, ACL flags can be converted to and from bitmasks:
+
+```java
+import com.mindoo.domino.jna.constants.AclFlag;
+
+import java.util.EnumSet;
+import java.util.Set;
+
+EnumSet<AclFlag> flags = EnumSet.of(
+    AclFlag.CREATE_FOLDER,
+    AclFlag.CREATE_PRAGENT
+);
+
+int mask = AclFlag.toBitMaskInt(flags);
+
+Set<AclFlag> decoded = AclFlag.valuesOf(mask);
+```
+
+`ECL` provides access to execution-control-list capabilities and trust operations:
+
+```java
+import com.mindoo.domino.jna.ecl.ECL;
+
+// Given a supported ECLType and user name:
+ECL ecl = ECL.getInstance(eclType, userName);
+
+System.out.println(ecl.getCapabilities());
+```
+
+## Date and time values
+
+The API supports Domino date/time values through `NotesTimeDate`, `NotesTimeDateStruct`, and `InnardsConverter`.
+
+`NotesTimeDateStruct` can be created from standard Java date/time values and converted back to `Calendar` or `Date`.
+
+```java
+import com.mindoo.domino.jna.internal.structs.NotesTimeDateStruct;
+
+import java.util.Calendar;
+import java.util.Date;
+
+NotesTimeDateStruct now = NotesTimeDateStruct.newInstance(new Date());
+
+Calendar calendar = now.toCalendar();
+Date date = now.toDate();
+
+now.setTomorrow();
+boolean hasDate = now.hasDate();
+boolean hasTime = now.hasTime();
+```
+
+`InnardsConverter` also provides Java Time integration:
+
+```java
+import com.mindoo.domino.jna.internal.InnardsConverter;
+
+import java.time.LocalDate;
+import java.time.LocalTime;
+
+int[] dateInnards = InnardsConverter.encodeInnards(LocalDate.now());
+int[] timeInnards = InnardsConverter.encodeInnards(LocalTime.now());
+
+LocalDate date = InnardsConverter.toJavaDate(dateInnards);
+LocalTime time = InnardsConverter.toJavaTime(timeInnards);
+```
+
+## Item and summary value access
+
+`INoteSummary`, `IItemValueTableData`, and `IItemTableData` provide typed access to note-summary and item-table values.
+
+Available conversions include:
+
+- Strings and string lists
+- Abbreviated Notes names and name lists
+- `Calendar` and `NotesTimeDate` values
+- Numeric values (`Double`, `Integer`, and `Long`)
+- Lists of dates and numeric values
+- Profile-document metadata
+
+Example:
+
+```java
+// Given an INoteSummary named summary:
+String subject = summary.getAsString("Subject", "(no subject)");
+String author = summary.getAsNameAbbreviated("From", "");
+Integer priority = summary.getAsInteger("Priority", 0);
+```
+
+## Native resource lifecycle
+
+Many Domino-backed objects hold native handles. Such objects expose one of these lifecycle contracts:
+
+- `IRecyclableNotesObject` — release with `recycle()`
+- `IAllocatedMemory` — release with `free()`
+
+Always release these resources deterministically.
+
+```java
+FormulaExecution execution = new FormulaExecution("@Now");
+
+try {
+  // Use execution
+}
+finally {
+  if (!execution.isRecycled()) {
+    execution.recycle();
+  }
+}
+```
+
+For allocated-memory objects:
+
+```java
+DXLExporter exporter = new DXLExporter();
+
+try {
+  // Use exporter
+}
+finally {
+  if (!exporter.isFreed()) {
+    exporter.free();
+  }
+}
+```
+
+`NotesGC` provides lifecycle-related diagnostics and automatic-GC execution helpers:
+
+```java
+import com.mindoo.domino.jna.gc.NotesGC;
+
+NotesGC.setDebugLoggingEnabled(true);
+
+String result = NotesGC.runWithAutoGC(() -> {
+  // Perform operations using recyclable Domino objects.
+  return "completed";
+});
+
+System.out.println(result);
+```
+
+Useful diagnostic methods include:
+
+```java
+int openObjects = NotesGC.getNumberOfOpenObjectHandles();
+int openMemory = NotesGC.getNumberOfOpenMemoryHandles();
+```
+
+## Constants and bitmasks
+
+The library models many Domino native constants as Java enums. Most option enums provide a `getValue()` method and a bitmask helper.
+
+Common categories include:
+
+| Area | Examples |
+|---|---|
+| ACLs | `AclLevel`, `AclFlag` |
+| Databases | `CreateDatabase`, `OpenDatabase`, `DatabaseOption`, `DBCompact`, `CopyDatabase` |
+| Notes | `NoteClass`, `OpenNote`, `UpdateNote`, `ItemType` |
+| Views and collections | `Navigate`, `Find`, `ReadMask`, `OpenCollection`, `NIFSignal` |
+| Search | `Search`, `FTSearch`, `FTIndex`, `DBQuery` |
+| Calendar | `CalendarProcess`, `CalendarRead`, `CalendarWrite`, `ScheduleOptions` |
+| MIME | `MimePartOptions`, `MimeStreamOpenOptions`, `MimeStreamItemizeOptions` |
+| Replication | `ReplicateOption` |
+| HTML | `CommandId`, `CommandArgumentId`, `ReferenceType`, `TargetType` |
+
+Example bitmask creation:
+
+```java
+import com.mindoo.domino.jna.constants.FTSearch;
+
+import java.util.EnumSet;
+
+int options = FTSearch.toBitMask(EnumSet.of(
+    FTSearch.SCORES,
+    FTSearch.RET_IDTABLE,
+    FTSearch.TOP_SCORES
+));
+```
+
+## Errors
+
+Most Domino-native failures are represented by `NotesError`, a runtime exception that includes an error ID.
+
+```java
+import com.mindoo.domino.jna.errors.NotesError;
+
+try {
+  // Domino operation
+}
+catch (NotesError e) {
+  System.err.println("Domino error " + e.getId() + ": " + e.getMessage());
+}
+```
+
+`NotesErrorUtils` can convert native result codes to Java exceptions or text:
+
+```java
+import com.mindoo.domino.jna.errors.NotesErrorUtils;
+
+String message = NotesErrorUtils.errToString((short) 0);
+```
+
+Specialized error types include:
+
+- `FormulaCompilationError`
+- `LotusScriptCompilationError`
+- `UnsupportedItemValueError`
+- `UnsupportedPlatformError`
+
+## Low-level APIs
+
+The `internal` package includes lower-level APIs for specialized scenarios:
+
+- Native API interfaces for 32-bit and 64-bit environments
+- Native memory and handle wrappers (`HANDLE`, `DHANDLE`, `Mem`)
+- Structure mappings for native Domino data structures
+- Item, search-result, view-format, and collation decoders
+- LMBCS string conversion helpers
+- Native formula and view-formula compilation utilities
+- Bit stream, stream adapter, and memory-mapping utilities
+
+These APIs are useful when implementing functionality not covered by higher-level objects, but application code should generally prefer the higher-level APIs where available.
+
+## Related API areas
+
+The library’s API is organized around common Domino operations:
+
+- **Forms:** `NotesForm`
+- **Formula execution:** `FormulaExecution`
+- **DXL:** `DXLExporter`, `DXLImporter`
+- **DQL:** `DQL`
+- **HTML conversion:** `HtmlConvertProperties`, `IHtmlConversionResult`
+- **Directory operations:** `DirectoryScanner`
+- **ECL:** `ECL`
+- **Rich text:** `CompoundTextWriter`, `IRichTextNavigator`
+- **Item tables:** `IItemTableData`, `IItemValueTableData`
+- **View metadata:** `IViewColumn`
+- **Date/time conversion:** `NotesTimeDateStruct`, `InnardsConverter`
+- **Lifecycle management:** `NotesGC`, `IRecyclableNotesObject`, `IAllocatedMemory`

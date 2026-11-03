@@ -1,0 +1,75 @@
+# Vaadin Themes
+
+`com.vaadin:vaadin-themes` provides theme contribution support for Java applications using Vaadin and OSGi-style theme discovery.
+
+The library currently exposes a contribution for the **Valo** theme through `ValoThemeContribution`. This class implements `OsgiVaadinTheme`, allowing it to be used wherever an OSGi-compatible Vaadin theme is expected.
+
+## API Overview
+
+### `ValoThemeContribution`
+
+```java
+public class ValoThemeContribution implements OsgiVaadinTheme
+```
+
+Represents an OSGi Vaadin theme contribution for the Valo theme.
+
+#### `getName()`
+
+```java
+public String getName()
+```
+
+Returns the theme contribution's name.
+
+This method can be used by code that discovers or registers `OsgiVaadinTheme` implementations and needs to identify the contributed theme.
+
+## Usage
+
+### Create and inspect a Valo theme contribution
+
+```java
+import com.vaadin.osgi.themes.ValoThemeContribution;
+
+public class ThemeExample {
+
+    public static void main(String[] args) {
+        ValoThemeContribution theme = new ValoThemeContribution();
+
+        String themeName = theme.getName();
+        System.out.println("Available theme: " + themeName);
+    }
+}
+```
+
+### Use the contribution through the `OsgiVaadinTheme` interface
+
+Because `ValoThemeContribution` implements `OsgiVaadinTheme`, it can be handled polymorphically by code that works with theme contributions:
+
+```java
+import com.vaadin.osgi.themes.OsgiVaadinTheme;
+import com.vaadin.osgi.themes.ValoThemeContribution;
+
+public class ThemeRegistry {
+
+    public void registerTheme(OsgiVaadinTheme theme) {
+        // Register or inspect the theme through the shared interface.
+    }
+
+    public void registerValoTheme() {
+        OsgiVaadinTheme valoTheme = new ValoThemeContribution();
+        registerTheme(valoTheme);
+    }
+}
+```
+
+## Dependency
+
+Add the library to your project using the Maven coordinates:
+
+```xml
+<dependency>
+    <groupId>com.vaadin</groupId>
+    <artifactId>vaadin-themes</artifactId>
+</dependency>
+```

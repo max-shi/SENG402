@@ -1,0 +1,625 @@
+# flexmark
+
+`com.vladsch.flexmark:flexmark` is a Java library for parsing Markdown into a document tree, inspecting or transforming that tree, and rendering it back to HTML or Markdown.
+
+Its public API is organized around three main workflows:
+
+1. **Parse** Markdown source into a `Document` AST with `Parser`.
+2. **Inspect or modify** AST nodes such as `Heading`, `Paragraph`, `Link`, `Emphasis`, and list nodes.
+3. **Render** the tree with `HtmlRenderer` or `Formatter`.
+
+The library also provides extension points for custom block parsing, inline parsing, post-processing, link resolution, HTML attributes, node rendering, Markdown formatting, translations, and repository-style reference handling.
+
+## Core usage
+
+A typical application supplies a configured `Parser` and `HtmlRenderer`, parses source text, then renders the resulting document.
+
+```java
+import com.vladsch.flexmark.html.HtmlRenderer;
+import com.vladsch.flexmark.parser.Parser;
+
+// Parser and HtmlRenderer are created by the application's configuration.
+public final class MarkdownService {
+    private final Parser parser;
+    private final HtmlRenderer htmlRenderer;
+
+    public MarkdownService(Parser parser, HtmlRenderer htmlRenderer) {
+        this.parser = parser;
+        this.htmlRenderer = htmlRenderer;
+    }
+
+    public String toHtml(String markdown) {
+        var document = parser.parse(markdown);
+        return htmlRenderer.render(document);
+    }
+}
+```
+
+The central operations are:
+
+```java
+var document = parser.parse("# Title\n\nA paragraph with *emphasis*.");
+String html = htmlRenderer.render(document);
+```
+
+`Parser` also supports parsing from a `Reader`:
+
+```java
+import java.io.Reader;
+
+var document = parser.parseReader(reader);
+```
+
+## Main components
+
+### Parsing: `Parser`
+
+`Parser` implements `IParse` and creates a `Document` from Markdown input.
+
+```java
+Document parse(BasedSequence input);
+Document parse(String input);
+Document parseReader(Reader input) throws IOException;
+```
+
+It exposes its configuration through:
+
+```java
+DataHolder options = parser.getOptions();
+```
+
+It also supports moving reference definitions between documents:
+
+```java
+boolean transferred = parser.transferReferences(targetDocument, includedDocument, true);
+```
+
+Reference repositories can also be transferred directly:
+
+```java
+boolean transferred = Parser.transferReferences(
+    destinationRepository,
+    includedRepository,
+    true
+);
+```
+
+### HTML rendering: `HtmlRenderer`
+
+`HtmlRenderer` implements `IRender` and converts a `Node` or `Document` tree to HTML.
+
+```java
+String html = htmlRenderer.render(document);
+```
+
+To stream output directly:
+
+```java
+StringBuilder output = new StringBuilder();
+htmlRenderer.render(document, output);
+```
+
+A rendering call can also control trailing blank lines:
+
+```java
+htmlRenderer.render(document, output, 1);
+```
+
+`HtmlRenderer` provides static builder entry points and exposes its active options:
+
+```java
+DataHolder options = htmlRenderer.getOptions();
+```
+
+### Markdown formatting: `Formatter`
+
+`Formatter` renders an AST back to Markdown. This is useful for normalizing, rewriting, merging, or translating Markdown documents.
+
+```java
+String formatted = formatter.render(document);
+```
+
+Like the HTML renderer, it can write to any `Appendable`:
+
+```java
+StringBuilder output = new StringBuilder();
+formatter.render(document, output, 1);
+```
+
+The formatter also supports merging multiple documents:
+
+```java
+formatter.mergeRender(new Document[] { first, second }, output);
+
+String merged = formatter.mergeRender(
+    java.util.List.of(first, second),
+    1
+);
+```
+
+## AST model
+
+Parsing produces a tree of `Node` objects rooted at a `Document`. The library defines node types for common Markdown constructs.
+
+### Block nodes
+
+| Node | Represents |
+|---|---|
+| `Document` | Parsed Markdown document root |
+| `Heading` | ATX or Setext heading |
+| `Paragraph` | Paragraph content |
+| `BlockQuote` | Block quote |
+| `BulletList` / `BulletListItem` | Unordered list and item |
+| `OrderedList` / `OrderedListItem` | Ordered list and item |
+| `FencedCodeBlock` | Fenced code block |
+| `IndentedCodeBlock` | Indented code block |
+| `HtmlBlock` | HTML block |
+| `HtmlCommentBlock` | HTML comment block |
+| `ThematicBreak` | Thematic break |
+| `Reference` | Link reference definition |
+
+### Inline nodes
+
+| Node | Represents |
+|---|---|
+| `Text` | Plain text |
+| `Emphasis` | Emphasized text |
+| `StrongEmphasis` | Strongly emphasized text |
+| `Code` | Inline code |
+| `Link` | Inline link |
+| `Image` | Inline image |
+| `LinkRef` | Reference-style link |
+| `ImageRef` | Reference-style image |
+| `AutoLink` | Autolink |
+| `MailLink` | Email link |
+| `HtmlInline` | Inline HTML |
+| `HtmlEntity` | HTML entity |
+| `HardLineBreak` | Hard line break |
+| `SoftLineBreak` | Soft line break |
+
+Many nodes preserve source-oriented parts as `BasedSequence` values, including markers, text, URLs, titles, and references.
+
+For example, a `Heading` exposes its level and markers:
+
+```java
+int level = heading.getLevel();
+
+BasedSequence opening = heading.getOpeningMarker();
+BasedSequence text = heading.getText();
+BasedSequence closing = heading.getClosingMarker();
+```
+
+A `Link` or `Image` exposes text and destination components through its link-node base classes:
+
+```java
+BasedSequence url = link.getUrl();
+BasedSequence title = link.getTitle();
+
+link.setUrl(newUrl);
+link.setTitle(newTitle);
+```
+
+## Inspecting headings
+
+`HeadingCollectingVisitor` collects headings from a node and its descendants.
+
+```java
+import com.vladsch.flexmark.ast.Heading;
+import com.vladsch.flexmark.ast.util.HeadingCollectingVisitor;
+
+var document = parser.parse("""
+    # Introduction
+
+    ## Installation
+
+    ## Usage
+    """);
+
+HeadingCollectingVisitor visitor = new HeadingCollectingVisitor();
+var headings = visitor.collectAndGetHeadings(document);
+
+for (Heading heading : headings) {
+    System.out.println(
+        "Level " + heading.getLevel() + ": " + heading.getAnchorRefText()
+    );
+}
+```
+
+Headings implement `AnchorRefTarget`, allowing an application to inspect or set an anchor ID:
+
+```java
+heading.setAnchorRefId("installation");
+heading.setExplicitAnchorRefId(true);
+
+String id = heading.getAnchorRefId();
+boolean explicitlyAssigned = heading.isExplicitAnchorRefId();
+```
+
+## Collecting text
+
+`TextCollectingVisitor` extracts textual content from an AST subtree.
+
+```java
+import com.vladsch.flexmark.ast.util.TextCollectingVisitor;
+
+var document = parser.parse("""
+    # Welcome
+
+    This has *formatted* text and a [link](https://example.com).
+    """);
+
+TextCollectingVisitor textCollector = new TextCollectingVisitor();
+String text = textCollector.collectAndGetText(document);
+
+System.out.println(text);
+```
+
+For source-backed output, use:
+
+```java
+BasedSequence text = textCollector.collectAndGetSequence(document);
+```
+
+`LineCollectingVisitor` collects source ranges and end-of-line information:
+
+```java
+import com.vladsch.flexmark.ast.util.LineCollectingVisitor;
+
+LineCollectingVisitor lineCollector = new LineCollectingVisitor();
+var ranges = lineCollector.collectAndGetRanges(document);
+var eols = lineCollector.getEOLs();
+```
+
+## Working with HTML IDs
+
+`HeaderIdGenerator` generates IDs for anchor-reference targets such as headings.
+
+```java
+import com.vladsch.flexmark.html.renderer.HeaderIdGenerator;
+
+HeaderIdGenerator idGenerator = new HeaderIdGenerator();
+idGenerator.generateIds(document);
+
+String headingId = idGenerator.getId(heading);
+```
+
+An ID can also be generated directly from text:
+
+```java
+String id = HeaderIdGenerator.generateId(
+    "Getting Started",
+    "-",
+    true,
+    true
+);
+```
+
+`HtmlIdGenerator` and `HtmlIdGeneratorFactory` provide abstractions for custom ID-generation strategies.
+
+## Formatting and translation
+
+`Formatter` can render Markdown for different purposes through `RenderPurpose`:
+
+- `FORMAT`
+- `TRANSLATION_SPANS`
+- `TRANSLATED_SPANS`
+- `TRANSLATED`
+
+A `TranslationHandler` manages translatable and non-translatable spans.
+
+```java
+TranslationHandler handler = formatter.getTranslationHandler();
+
+formatter.translationRender(
+    document,
+    output,
+    handler,
+    RenderPurpose.TRANSLATION_SPANS
+);
+
+var textsToTranslate = handler.getTranslatingTexts();
+```
+
+After translation, provide the translated text and render again:
+
+```java
+handler.setTranslatedTexts(translatedTexts);
+
+formatter.translationRender(
+    document,
+    output,
+    handler,
+    RenderPurpose.TRANSLATED
+);
+```
+
+## Links and reference definitions
+
+### Inline links
+
+`LinkNodeBase` exposes URL, title, page-reference, and anchor-reference components:
+
+```java
+String url = link.getUrl().toString();
+String pageRef = link.getPageRef().toString();
+String anchorRef = link.getAnchorRef().toString();
+
+link.setUrl(newUrl);
+link.setTitle(newTitle);
+```
+
+### Reference links
+
+`Reference` represents a link-reference definition, while `RefNode`, `LinkRef`, and `ImageRef` represent usages.
+
+```java
+Reference reference = refNode.getReferenceNode(document);
+
+if (reference != null) {
+    System.out.println(reference.getUrl());
+    System.out.println(reference.getTitle());
+}
+```
+
+`ReferenceRepository` manages document reference definitions:
+
+```java
+ReferenceRepository repository = new ReferenceRepository(options);
+String normalized = repository.normalizeKey("My Reference");
+```
+
+## Rendering customization
+
+### Custom HTML node renderers
+
+Implement `NodeRenderer` to supply handlers for AST node types:
+
+```java
+import com.vladsch.flexmark.html.renderer.NodeRenderer;
+import com.vladsch.flexmark.html.renderer.NodeRenderingHandler;
+
+public final class CustomRenderer implements NodeRenderer {
+    @Override
+    public java.util.Set<NodeRenderingHandler<?>> getNodeRenderingHandlers() {
+        return java.util.Set.of(
+            new NodeRenderingHandler<>(
+                MyNode.class,
+                (node, context, html) -> {
+                    html.tag("span", false);
+                }
+            )
+        );
+    }
+}
+```
+
+`NodeRendererContext` gives a renderer access to the current document, options, link resolution, delegated rendering, attributes, rendering phases, and `HtmlWriter`.
+
+### HTML attributes
+
+Implement `AttributeProvider` to add or modify attributes for rendered nodes:
+
+```java
+import com.vladsch.flexmark.html.AttributeProvider;
+import com.vladsch.flexmark.html.renderer.AttributablePart;
+
+public final class HeadingClassProvider implements AttributeProvider {
+    @Override
+    public void setAttributes(
+        Node node,
+        AttributablePart part,
+        MutableAttributes attributes
+    ) {
+        if (node instanceof Heading) {
+            attributes.addValue("class", "document-heading");
+        }
+    }
+}
+```
+
+`AttributeProviderFactory` can create providers from a `LinkResolverContext`.
+
+### Link resolution
+
+Implement `LinkResolver` to inspect or replace URLs during rendering:
+
+```java
+import com.vladsch.flexmark.html.LinkResolver;
+import com.vladsch.flexmark.html.renderer.LinkResolverBasicContext;
+import com.vladsch.flexmark.html.renderer.ResolvedLink;
+
+public final class DocumentationLinkResolver implements LinkResolver {
+    @Override
+    public ResolvedLink resolveLink(
+        Node node,
+        LinkResolverBasicContext context,
+        ResolvedLink link
+    ) {
+        if (link.getUrl().startsWith("/docs/")) {
+            return link.withUrl("https://docs.example.com" + link.getUrl());
+        }
+
+        return link;
+    }
+}
+```
+
+A resolver can also update link type, title, target, attributes, or status:
+
+```java
+ResolvedLink updated = link
+    .withUrl("https://example.com")
+    .withTitle("Example")
+    .withTarget("_blank");
+```
+
+## Parsing customization
+
+The parser API supports custom processing at several levels.
+
+### Custom block parsing
+
+Implement `CustomBlockParserFactory` to provide a `BlockParserFactory`:
+
+```java
+public final class MyBlockFactory implements CustomBlockParserFactory {
+    @Override
+    public BlockParserFactory apply(DataHolder options) {
+        return (state, matchedBlockParser) -> BlockStart.none();
+    }
+}
+```
+
+A block parser controls how a block starts, continues, accumulates lines, closes, and parses inlines:
+
+```java
+public interface BlockParser {
+    Block getBlock();
+    BlockContinue tryContinue(ParserState state);
+    void addLine(ParserState state, BasedSequence line);
+    void closeBlock(ParserState state);
+}
+```
+
+`BlockStart` and `BlockContinue` describe parser transitions:
+
+```java
+BlockStart start = BlockStart.of(blockParser).atIndex(nextIndex);
+BlockContinue keepGoing = BlockContinue.atColumn(nextColumn);
+BlockContinue finish = BlockContinue.finished();
+```
+
+### Inline parsing
+
+`InlineParserExtension` can participate in inline parsing:
+
+```java
+public final class MyInlineExtension implements InlineParserExtension {
+    @Override
+    public boolean parse(LightInlineParser inlineParser) {
+        return false;
+    }
+
+    @Override
+    public void finalizeBlock(InlineParser inlineParser) {
+    }
+
+    @Override
+    public void finalizeDocument(InlineParser inlineParser) {
+    }
+}
+```
+
+`LightInlineParser` provides source access, cursor control, text accumulation, node insertion, matching helpers, and whitespace parsing methods.
+
+### Delimiter processing
+
+`DelimiterProcessor` supports custom delimiter syntax:
+
+```java
+public interface DelimiterProcessor {
+    char getOpeningCharacter();
+    char getClosingCharacter();
+    int getMinLength();
+
+    int getDelimiterUse(DelimiterRun opener, DelimiterRun closer);
+    void process(Delimiter opener, Delimiter closer, int delimitersUsed);
+}
+```
+
+Built-in delimiter processor types include `EmphasisDelimiterProcessor`, `AsteriskDelimiterProcessor`, and `UnderscoreDelimiterProcessor`.
+
+### Post-processing
+
+`PostProcessor` can process the entire document or tracked nodes:
+
+```java
+public final class MyPostProcessor implements PostProcessor {
+    @Override
+    public Document processDocument(Document document) {
+        return document;
+    }
+
+    @Override
+    public void process(NodeTracker state, Node node) {
+        // Inspect, replace, add, or remove nodes.
+    }
+}
+```
+
+## List configuration
+
+`ListOptions` represents list parsing and formatting behavior. It can be retrieved from a `DataHolder`:
+
+```java
+ListOptions options = ListOptions.getFrom(dataHolder);
+```
+
+Use `MutableListOptions` to configure list behavior:
+
+```java
+MutableListOptions listOptions = new MutableListOptions()
+    .setAutoLoose(true)
+    .setOrderedItemDotOnly(true)
+    .setCodeIndent(4)
+    .setItemIndent(2);
+```
+
+The resulting options can be stored in a mutable data holder:
+
+```java
+listOptions.setIn(mutableOptions);
+```
+
+`ParserEmulationProfile` supplies predefined parser behavior profiles:
+
+```java
+MutableDataHolder profileOptions =
+    ParserEmulationProfile.COMMONMARK.getProfileOptions();
+```
+
+## Useful utility classes
+
+| Class | Purpose |
+|---|---|
+| `Parsing` | Whitespace, line-break, tab-stop, and character helpers |
+| `TextNodeConverter` | Combines and inserts merged text nodes |
+| `TextNodeMergingList` | Builds merged `Text` node lists |
+| `HeadingCollectingVisitor` | Collects `Heading` nodes |
+| `TextCollectingVisitor` | Extracts text from a subtree |
+| `LineCollectingVisitor` | Collects source line ranges |
+| `ClassifyingBlockTracker` | Tracks block parsers, blocks, and node classifications |
+| `FormatterUtils` | Markdown formatting helpers for lists, quotes, whitespace, and paragraphs |
+
+For example:
+
+```java
+int columns = Parsing.columnsToNextTabStop(3);
+boolean blank = Parsing.isBlank(" \t");
+int lineBreak = Parsing.findLineBreak(markdown, 0);
+```
+
+## Rendering phases
+
+Custom renderers may implement `PhasedNodeRenderer` to participate in named rendering phases:
+
+- `HEAD_TOP`
+- `HEAD`
+- `HEAD_CSS`
+- `HEAD_SCRIPTS`
+- `HEAD_BOTTOM`
+- `BODY_TOP`
+- `BODY`
+- `BODY_BOTTOM`
+- `BODY_LOAD_SCRIPTS`
+- `BODY_SCRIPTS`
+
+Similarly, Markdown formatters may implement `PhasedNodeFormatter` and render during:
+
+- `COLLECT`
+- `DOCUMENT_FIRST`
+- `DOCUMENT_TOP`
+- `DOCUMENT`
+- `DOCUMENT_BOTTOM`
+
+These phases allow renderers and formatters to coordinate document-level output in addition to rendering individual nodes.

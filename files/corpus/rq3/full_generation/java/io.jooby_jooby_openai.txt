@@ -1,0 +1,917 @@
+# Jooby
+
+`io.jooby:jooby` is a Java web application library centered on a request/response `Context`, composable route handlers and filters, HTTP value conversion, sessions, cookies, static assets, streaming output, WebSockets, Server-Sent Events, validation, and configurable server/runtime services.
+
+The API is designed around a few core concepts:
+
+- **`Context`** represents one HTTP exchange: request data, request body, response state, services, and lifecycle callbacks.
+- **`Value`**, `Body`, `QueryString`, and `Formdata` provide a uniform way to inspect and convert request values.
+- **`Route.Handler`**, `Route.Filter`, and `Route.Before` integrate request-processing logic.
+- **`Output`**, `Sender`, streams, and writers support buffered and streaming responses.
+- **`Session`**, `Cookie`, and `FlashMap` support state across requests.
+- **`Server`**, `ServerOptions`, `Environment`, and `RouterOptions` configure the runtime.
+- **`WebSocket`** and `ServerSentEmitter` support persistent and event-driven HTTP connections.
+
+## Installation
+
+```xml
+<dependency>
+  <groupId>io.jooby</groupId>
+  <artifactId>jooby</artifactId>
+  <version><!-- version --></version>
+</dependency>
+```
+
+## Core request handling
+
+A `Context` is the main API used while processing a request. It exposes:
+
+- Request metadata: method, path, URL, host, protocol, remote address, TLS state, certificates, and request length.
+- Request parameters: path, query, headers, cookies, form values, flash values, and session values.
+- Request content: `Body`, multipart `Formdata`, and `FileUpload`.
+- Response controls: status, headers, cookies, content type, response length, redirects, output streams, and send operations.
+- Application services via the `Registry` API.
+
+A handler typically reads data from the `Context` and returns a value or writes a response directly.
+
+```java
+import io.jooby.Context;
+import io.jooby.StatusCode;
+
+public final class AccountHandler {
+  public Object getAccount(Context ctx) {
+    long accountId = ctx.path("id").longValue();
+
+    String include = ctx.query("include", "summary").value();
+    String requestId = ctx.header("X-Request-Id", "unknown").value();
+
+    ctx.setResponseHeader("X-Request-Id", requestId);
+    ctx.setResponseCode(StatusCode.OK);
+
+    return new AccountResponse(accountId, include);
+  }
+
+  record AccountResponse(long id, String include) {}
+}
+```
+
+### Sending responses directly
+
+`Context` provides overloads for common response forms:
+
+```java
+ctx.send("Hello, world!");
+ctx.send("Hello, UTF-8", java.nio.charset.StandardCharsets.UTF_8);
+ctx.send(new byte[] {1, 2, 3});
+
+ctx.setResponseType("application/json");
+ctx.send("{\"ok\":true}");
+
+ctx.send(StatusCode.NO_CONTENT);
+ctx.sendRedirect("/login");
+```
+
+For more response control:
+
+```java
+ctx.setResponseCode(201);
+ctx.setResponseType("text/plain");
+ctx.setResponseHeader("X-Result", "created");
+ctx.send("Created");
+```
+
+Use `render(Object)` when response rendering should be delegated to the configured output/encoding infrastructure:
+
+```java
+ctx.setResponseType("application/json");
+ctx.render(new Result(true, "saved"));
+
+record Result(boolean ok, String message) {}
+```
+
+## Request values and conversion
+
+`Value` is the common abstraction for named request values. Values can come from path parameters, query strings, headers, cookies, forms, sessions, flash scope, and nested structures.
+
+Useful methods include:
+
+```java
+String name = ctx.query("name", "guest").value();
+
+int page = ctx.query("page").intValue(1);
+boolean verbose = ctx.query("verbose").booleanValue(false);
+
+java.util.Optional<String> token = ctx.header("Authorization").toOptional();
+
+java.util.List<Long> ids = ctx.query("id").toList(Long.class);
+java.util.Set<String> tags = ctx.query("tag").toSet();
+
+UserFilter filter = ctx.query(UserFilter.class);
+```
+
+`Value` also supports object-oriented access:
+
+```java
+Value user = ctx.query("user");
+
+String email = user.get("email").valueOrNull();
+String country = user.getOrDefault("country", "US").value();
+```
+
+To specify which request source should be searched, use `ParamLookup` or `Context.lookup`:
+
+```java
+import io.jooby.ParamSource;
+import io.jooby.Value;
+
+Value id = ctx.lookup("id", ParamSource.PATH, ParamSource.QUERY);
+
+Value tenant = ctx.lookup()
+    .inHeader()
+    .get("X-Tenant");
+```
+
+Available `ParamSource` values are:
+
+- `PATH`
+- `HEADER`
+- `COOKIE`
+- `FLASH`
+- `SESSION`
+- `QUERY`
+- `FORM`
+
+## Request bodies
+
+`Context.body()` returns a `Body`, which extends `Value` and offers byte, stream, channel, text, and typed conversion APIs.
+
+```java
+import io.jooby.Body;
+
+Body body = ctx.body();
+
+byte[] bytes = body.bytes();
+String text = body.value(java.nio.charset.StandardCharsets.UTF_8);
+
+boolean inMemory = body.isInMemory();
+long size = body.getSize();
+```
+
+Convert a request body into an application type:
+
+```java
+CreateUser request = ctx.body(CreateUser.class);
+```
+
+Or use a reflective `Type` when generic type information is needed:
+
+```java
+java.lang.reflect.Type type = new io.jooby.Reified<java.util.List<CreateUser>>() {}.getType();
+java.util.List<CreateUser> users = ctx.body(type);
+```
+
+`Reified` provides helpers for common generic types:
+
+```java
+io.jooby.Reified<java.util.List<String>> listType =
+    io.jooby.Reified.list(String.class);
+
+io.jooby.Reified<java.util.Map<String, Integer>> mapType =
+    io.jooby.Reified.map(String.class, Integer.class);
+```
+
+For explicit decoding with a selected media type:
+
+```java
+CreateUser user = ctx.decode(
+    CreateUser.class,
+    io.jooby.MediaType.json
+);
+```
+
+## Forms and file uploads
+
+`Context.form()` provides form values, while `Context.files()` and `Context.file(name)` expose multipart uploads.
+
+```java
+import io.jooby.FileUpload;
+import io.jooby.Formdata;
+
+public Object upload(Context ctx) throws Exception {
+  Formdata form = ctx.form();
+
+  String title = form.get("title").value();
+  FileUpload upload = form.file("document");
+
+  byte[] content = upload.bytes();
+
+  return new UploadResult(
+      title,
+      upload.getFileName(),
+      upload.getContentType(),
+      upload.getFileSize(),
+      content.length
+  );
+}
+
+record UploadResult(
+    String title,
+    String fileName,
+    String contentType,
+    long declaredSize,
+    int receivedBytes
+) {}
+```
+
+A `FileUpload` can provide its content as an `InputStream`, byte array, or `Path`:
+
+```java
+FileUpload image = ctx.file("image");
+
+try (java.io.InputStream stream = image.stream()) {
+  // Consume the uploaded content.
+}
+
+java.nio.file.Path temporaryFile = image.path();
+```
+
+`FileUpload` extends `Closeable`, so close it when your processing lifecycle requires it.
+
+## Cookies, sessions, and flash values
+
+### Cookies
+
+Create a response cookie and attach it to the current response:
+
+```java
+import io.jooby.Cookie;
+import io.jooby.SameSite;
+
+Cookie preferences = new Cookie("theme", "dark")
+    .setPath("/")
+    .setHttpOnly(true)
+    .setSecure(true)
+    .setSameSite(SameSite.LAX);
+
+ctx.setResponseCookie(preferences);
+```
+
+Read request cookies:
+
+```java
+String theme = ctx.cookie("theme", "light").value();
+```
+
+Cookie utilities include signing, verification, and attribute encoding:
+
+```java
+String signed = Cookie.sign("user-42", "secret");
+String value = Cookie.unsign(signed, "secret");
+```
+
+### Sessions
+
+The current session is available from `Context.session()`:
+
+```java
+import io.jooby.Session;
+
+Session session = ctx.session();
+
+int visits = session.get("visits").intValue(0) + 1;
+session.put("visits", visits);
+
+String userId = session.get("userId").valueOrNull();
+```
+
+Sessions can be created by a `SessionStore`. Built-in factory methods cover memory-backed and signed session configurations:
+
+```java
+Cookie sessionCookie = new Cookie("sid")
+    .setPath("/")
+    .setHttpOnly(true);
+
+io.jooby.SessionStore store =
+    io.jooby.SessionStore.memory(sessionCookie);
+
+io.jooby.SessionStore signedStore =
+    io.jooby.SessionStore.signed(sessionCookie, "application-secret");
+```
+
+`SessionToken` supports cookie-based, signed-cookie, header-based, and combined token strategies.
+
+### Flash scope
+
+`FlashMap` is a string map intended for request-to-request values:
+
+```java
+ctx.flash().put("notice", "Profile updated");
+
+// On a later request:
+String notice = ctx.flash("notice").valueOrNull();
+```
+
+Call `keep()` to retain a flash map:
+
+```java
+ctx.flash().keep();
+```
+
+## Streaming and buffered output
+
+For direct response streaming, use `responseStream`, `responseWriter`, or `responseSender`.
+
+```java
+ctx.setResponseType("text/plain");
+
+ctx.responseWriter(writer -> {
+  writer.println("first line");
+  writer.println("second line");
+});
+```
+
+Set a content type while creating a writer or stream:
+
+```java
+ctx.responseStream(io.jooby.MediaType.json, output -> {
+  output.write("{\"status\":\"ok\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+});
+```
+
+`Sender` supports callback-based asynchronous writes:
+
+```java
+ctx.responseSender().write(
+    "chunk",
+    failure -> {
+      if (failure != null) {
+        ctx.sendError(failure);
+      }
+    }
+);
+```
+
+### `Output` and `OutputFactory`
+
+`Output` represents byte-oriented response content. `BufferedOutput` adds append-style write APIs, and `OutputFactory` creates or wraps output values.
+
+```java
+import io.jooby.output.BufferedOutput;
+import io.jooby.output.OutputFactory;
+
+OutputFactory factory = ctx.getOutputFactory();
+
+BufferedOutput output = factory.allocate();
+output.write("Hello ");
+output.write("from buffered output");
+
+ctx.send(output);
+```
+
+Output configuration is represented by `OutputOptions`:
+
+```java
+import io.jooby.output.OutputFactory;
+import io.jooby.output.OutputOptions;
+
+OutputOptions options = OutputOptions.defaults()
+    .setSize(16 * 1024)
+    .setDirectBuffers(false);
+
+OutputFactory factory = OutputFactory.create(options);
+```
+
+## File responses and byte ranges
+
+`FileDownload` models a downloadable response. `AttachedFile` and `InlineFile` select attachment-style and inline-style delivery.
+
+```java
+import io.jooby.AttachedFile;
+
+java.nio.file.Path report = java.nio.file.Path.of("/data/reports/monthly.pdf");
+
+ctx.send(new AttachedFile(report, "monthly-report.pdf"));
+```
+
+For inline display:
+
+```java
+import io.jooby.InlineFile;
+
+ctx.send(new InlineFile(java.nio.file.Path.of("/data/images/logo.png")));
+```
+
+`FileDownload` also has builders for streams, byte arrays, and paths:
+
+```java
+io.jooby.FileDownload download =
+    io.jooby.FileDownload
+        .build("export".getBytes(java.nio.charset.StandardCharsets.UTF_8), "export.txt")
+        .build();
+
+ctx.send(download);
+```
+
+`ByteRange.parse(value, contentLength)` represents HTTP byte-range processing and can apply range metadata to a `Context` or limit an input stream.
+
+```java
+String rangeHeader = ctx.header("Range").valueOrNull();
+
+if (rangeHeader != null) {
+  io.jooby.ByteRange range =
+      io.jooby.ByteRange.parse(rangeHeader, contentLength);
+
+  range.apply(ctx);
+}
+```
+
+## Static assets
+
+Static asset support is based on `Asset`, `AssetSource`, and `AssetHandler`.
+
+An `AssetSource` resolves a request path to an `Asset`. Sources can be created from a class loader location, a filesystem location, or a WebJar-like source.
+
+```java
+import io.jooby.handler.AssetHandler;
+import io.jooby.handler.AssetSource;
+
+AssetSource publicFiles =
+    AssetSource.create(java.nio.file.Path.of("public"));
+
+AssetHandler assets = new AssetHandler(publicFiles)
+    .setETag(true)
+    .setLastModified(true)
+    .setMaxAge(java.time.Duration.ofHours(1));
+```
+
+`CacheControl` can be used to set default or no-cache behavior:
+
+```java
+import io.jooby.handler.CacheControl;
+
+CacheControl cache = CacheControl.defaults()
+    .setETag(true)
+    .setLastModified(true)
+    .setMaxAge(java.time.Duration.ofDays(7));
+```
+
+## Filters and request policies
+
+Several reusable handlers implement `Route.Filter` or `Route.Before`:
+
+| Type | Role |
+|---|---|
+| `AccessLogHandler` | Produces access-log entries. |
+| `CorsHandler` | Applies CORS options. |
+| `CsrfHandler` | Adds CSRF token processing. |
+| `HeadHandler` | Handles `HEAD` response behavior. |
+| `RateLimitHandler` | Applies bucket-based rate limiting. |
+| `SSLHandler` | Applies secure-request handling. |
+| `TraceHandler` | Adds request tracing behavior. |
+| `WebVariables` | Exposes web-related variables with a selected scope. |
+| `GracefulShutdown` | Installs graceful shutdown support. |
+| `ReactiveSupport` | Provides support for reactive `Flow` processing. |
+
+For example, construct a rate limiter from a bucket factory:
+
+```java
+import io.jooby.handler.RateLimitHandler;
+
+// Bucket is supplied by the configured bucket4j API.
+RateLimitHandler rateLimit =
+    new RateLimitHandler(clientId -> createBucket(clientId));
+
+private io.github.bucket4j.Bucket createBucket(String clientId) {
+  throw new UnsupportedOperationException("Configure a bucket for " + clientId);
+}
+```
+
+`AccessLogHandler` can customize log output and selected headers:
+
+```java
+import io.jooby.handler.AccessLogHandler;
+
+AccessLogHandler accessLog = new AccessLogHandler(ctx -> ctx.getUser())
+    .extended()
+    .requestHeader("User-Agent", "X-Request-Id")
+    .responseHeader("Content-Type")
+    .log(System.out::println);
+```
+
+## Content encoding and templates
+
+A `MessageEncoder` converts an object into `Output` for a request:
+
+```java
+public interface MessageEncoder {
+  Output encode(Context ctx, Object value) throws Exception;
+}
+```
+
+A `MessageDecoder` converts request content into a requested Java `Type`:
+
+```java
+public interface MessageDecoder {
+  Object decode(Context ctx, java.lang.reflect.Type type) throws Exception;
+}
+```
+
+`TemplateEngine` extends `MessageEncoder` and renders `ModelAndView<?>` values:
+
+```java
+import io.jooby.MapModelAndView;
+
+MapModelAndView model = new MapModelAndView("profile")
+    .put("name", "Ada")
+    .put("roles", java.util.List.of("admin", "author"));
+
+ctx.render(model);
+```
+
+`MapModelAndView` is a map-backed model with an optional locale:
+
+```java
+MapModelAndView page = new MapModelAndView("welcome")
+    .put("message", "Welcome")
+    .setLocale(java.util.Locale.CANADA);
+```
+
+For JSON-specific integration, implement or register `JsonEncoder` and `JsonDecoder`:
+
+```java
+public final class ExampleJsonEncoder implements io.jooby.json.JsonEncoder {
+  @Override
+  public String encode(Object value) {
+    return "{\"value\":\"" + value + "\"}";
+  }
+}
+```
+
+## WebSockets
+
+`Context.upgrade(WebSocket.Initializer)` upgrades a request to a `WebSocket` connection.
+
+A `WebSocket` exposes the originating `Context`, a connection attribute map, all sessions, text/binary send operations, ping support, rendering, and close controls.
+
+```java
+void broadcast(WebSocket socket, String message) {
+  socket.forEach(session -> {
+    if (session.isOpen()) {
+      session.send(message);
+    }
+  });
+}
+```
+
+Send text, binary data, or rendered values:
+
+```java
+socket.send("hello");
+socket.sendBinary(new byte[] {1, 2, 3});
+socket.render(new Event("connected"));
+
+record Event(String type) {}
+```
+
+Use callbacks when completion/failure notification is needed:
+
+```java
+socket.send("message", failure -> {
+  if (failure != null) {
+    socket.close(new io.jooby.WebSocketCloseStatus(1011, "Write failed"));
+  }
+});
+```
+
+## Server-Sent Events
+
+`Context.upgrade(ServerSentEmitter.Handler)` upgrades a request into a `ServerSentEmitter`.
+
+An emitter can send text, bytes, objects, named events, or explicit `ServerSentMessage` values.
+
+```java
+import io.jooby.ServerSentEmitter;
+import io.jooby.ServerSentMessage;
+
+void publish(ServerSentEmitter emitter) {
+  emitter.setId("notifications");
+
+  emitter.send("connected");
+
+  emitter.send(
+      new ServerSentMessage(new Notification("Build completed"))
+          .setId(1001)
+          .setEvent("build")
+          .setRetry(5000L)
+  );
+}
+
+record Notification(String message) {}
+```
+
+Keep-alive and lifecycle APIs are also available:
+
+```java
+emitter.keepAlive(30, java.util.concurrent.TimeUnit.SECONDS);
+
+emitter.onClose(() -> {
+  // Release per-connection resources.
+});
+```
+
+## Services and dependency lookup
+
+`Registry` provides typed service lookup. `ServiceRegistry` adds registration, optional lookup, and collection-oriented binders.
+
+```java
+MyService service = ctx.require(MyService.class);
+
+MyService named = ctx.require(MyService.class, "primary");
+```
+
+A `ServiceKey<T>` or `Reified<T>` can be used when a name or generic type is part of the lookup key:
+
+```java
+io.jooby.Reified<java.util.List<MyPlugin>> pluginsType =
+    io.jooby.Reified.list(MyPlugin.class);
+
+java.util.List<MyPlugin> plugins = ctx.require(pluginsType);
+```
+
+`ServiceRegistry` supports registration:
+
+```java
+registry.put(MyService.class, new MyService());
+
+registry.put(MyService.class, () -> new MyService());
+```
+
+`RequestScope` provides per-thread key/value bindings:
+
+```java
+RequestScope.bind("request-id", "req-123");
+
+try {
+  String requestId = RequestScope.get("request-id");
+} finally {
+  RequestScope.unbind("request-id");
+}
+```
+
+## Configuration and runtime options
+
+### Environment
+
+`Environment` combines a class loader, configuration, and active environment names.
+
+```java
+import io.jooby.Environment;
+import io.jooby.EnvironmentOptions;
+
+EnvironmentOptions options = new EnvironmentOptions()
+    .setActiveNames("dev")
+    .setBasedir(".");
+
+Environment environment = Environment.loadEnvironment(options);
+
+String appName = environment.getProperty("application.name", "my-app");
+boolean dev = environment.isActive("dev");
+```
+
+Helpers are available for default, system-property, and system-environment configuration:
+
+```java
+com.typesafe.config.Config defaults = Environment.defaults();
+com.typesafe.config.Config systemProperties = Environment.systemProperties();
+com.typesafe.config.Config systemEnvironment = Environment.systemEnv();
+```
+
+### Server options
+
+`ServerOptions` controls the selected server, bind address, ports, thread counts, request limits, output behavior, TLS, HTTP/2, and related runtime settings.
+
+```java
+import io.jooby.ServerOptions;
+import io.jooby.output.OutputOptions;
+
+ServerOptions options = new ServerOptions()
+    .setHost("127.0.0.1")
+    .setPort(8080)
+    .setIoThreads(2)
+    .setWorkerThreads(16)
+    .setMaxRequestSize(10 * 1024 * 1024)
+    .setOutput(OutputOptions.defaults().setSize(16 * 1024));
+```
+
+Load and start a server:
+
+```java
+io.jooby.Server server = io.jooby.Server.loadServer(options);
+
+// application is an initialized Jooby application instance.
+server.start(application);
+```
+
+### Router options
+
+`RouterOptions` configures path and routing behavior:
+
+```java
+import io.jooby.RouterOptions;
+
+RouterOptions routerOptions = RouterOptions.defaults()
+    .setIgnoreCase(true)
+    .setIgnoreTrailingSlash(true)
+    .setNormalizeSlash(true)
+    .setTrustProxy(true)
+    .setResetHeadersOnError(true);
+```
+
+## TLS configuration
+
+`SslOptions` supports certificate/key/trust material, passwords, protocols, client authentication, provided `SSLContext` instances, and convenience factories.
+
+```java
+import io.jooby.SslOptions;
+
+SslOptions ssl = SslOptions.x509(
+    "classpath:server.crt",
+    "classpath:server.key"
+).setProtocol("TLSv1.3", "TLSv1.2");
+```
+
+Attach it to server options:
+
+```java
+ServerOptions options = new ServerOptions()
+    .setPort(8080)
+    .setSecurePort(8443)
+    .setSsl(ssl);
+```
+
+## Errors and problems
+
+`StatusCodeException` represents an exception associated with an HTTP status. Specialized exceptions include:
+
+- `BadRequestException`
+- `ForbiddenException`
+- `UnauthorizedException`
+- `NotFoundException`
+- `MethodNotAllowedException`
+- `NotAcceptableException`
+- `UnsupportedMediaType`
+- `TypeMismatchException`
+- `MissingValueException`
+- `RegistryException`
+
+```java
+import io.jooby.exception.NotFoundException;
+
+public Object find(Context ctx) {
+  String id = ctx.path("id").value();
+
+  Object entity = findEntity(id);
+  if (entity == null) {
+    throw new NotFoundException(ctx.getRequestPath());
+  }
+
+  return entity;
+}
+```
+
+`HttpProblem` represents structured HTTP error information and can be created directly:
+
+```java
+import io.jooby.problem.HttpProblem;
+
+throw HttpProblem.badRequest(
+    "Invalid request",
+    "The `email` field must be a valid email address."
+);
+```
+
+For error mapping, implement `ErrorHandler`:
+
+```java
+import io.jooby.Context;
+import io.jooby.ErrorHandler;
+import io.jooby.StatusCode;
+
+public final class ApiErrorHandler implements ErrorHandler {
+  @Override
+  public void apply(Context ctx, Throwable cause, StatusCode code) {
+    ctx.setResponseCode(code);
+    ctx.setResponseType("application/json");
+    ctx.render(java.util.Map.of(
+        "status", code.value(),
+        "message", cause.getMessage()
+    ));
+  }
+}
+```
+
+`DefaultErrorHandler` can be configured to mute selected status codes or exception types:
+
+```java
+io.jooby.DefaultErrorHandler errors =
+    new io.jooby.DefaultErrorHandler()
+        .mute(io.jooby.StatusCode.NOT_FOUND)
+        .mute(io.jooby.exception.NotFoundException.class);
+```
+
+Validation integrations can return `ValidationResult`, which implements `HttpProblemMappable`.
+
+## Security and escaping helpers
+
+`XSS` provides escaping helpers for URI, HTML, and JSON contexts:
+
+```java
+String safeHtml = io.jooby.XSS.html("<strong>Hello</strong>");
+String safeJson = io.jooby.XSS.json("\"quoted\"");
+String safeUri = io.jooby.XSS.uri("a value/with spaces");
+```
+
+## OpenAPI support
+
+`OpenAPIModule` is an `Extension` that can configure OpenAPI output and optional documentation UIs.
+
+```java
+import io.jooby.OpenAPIModule;
+
+OpenAPIModule openapi = new OpenAPIModule()
+    .file("/openapi")
+    .swaggerUI("/swagger")
+    .redoc("/redoc");
+```
+
+Use `format(...)` to select one or more output formats.
+
+## Utility APIs
+
+### HTTP method and proxy-aware request details
+
+```java
+String method = ctx.getMethod();
+String path = ctx.getRequestPath();
+String url = ctx.getRequestURL();
+
+String remoteAddress = ctx.getRemoteAddress();
+String host = ctx.getHost();
+boolean secure = ctx.isSecure();
+```
+
+### Content negotiation
+
+```java
+boolean acceptsJson = ctx.accept(io.jooby.MediaType.json);
+
+io.jooby.MediaType selected = ctx.accept(
+    java.util.List.of(
+        io.jooby.MediaType.json,
+        io.jooby.MediaType.html
+    )
+);
+```
+
+### Completion callbacks
+
+Register work to run when request processing completes:
+
+```java
+ctx.onComplete((context, route, result, cause) -> {
+  // Record timing, release resources, or inspect the final outcome.
+});
+```
+
+### Reactive streams
+
+`ReactiveSupport` can create a `Flow.Subscriber` associated with a context:
+
+```java
+java.util.concurrent.Flow.Subscriber<String> subscriber =
+    io.jooby.ReactiveSupport.newSubscriber(ctx);
+```
+
+It also exposes route-filter and handler helpers for concurrent processing.
+
+---
+
+## API map
+
+| Area | Primary types |
+|---|---|
+| Request/response | `Context`, `DefaultContext`, `ForwardingContext` |
+| Parameters and conversion | `Value`, `ValueFactory`, `Converter`, `QueryString`, `Formdata`, `ParamLookup` |
+| Request content | `Body`, `FileUpload` |
+| Response output | `Output`, `BufferedOutput`, `OutputFactory`, `Sender` |
+| Downloads | `FileDownload`, `AttachedFile`, `InlineFile`, `ByteRange` |
+| Cookies and state | `Cookie`, `Session`, `SessionStore`, `SessionToken`, `FlashMap` |
+| Routing behavior | `RouterOptions`, `ExecutionMode`, `ReactiveSupport` |
+| Assets | `Asset`, `AssetSource`, `AssetHandler`, `CacheControl` |
+| Encoding/templates | `MessageEncoder`, `MessageDecoder`, `TemplateEngine`, `MapModelAndView` |
+| WebSockets | `WebSocket`, `WebSocketConfigurer`, `WebSocketMessage`, `WebSocketCloseStatus` |
+| Server-Sent Events | `ServerSentEmitter`, `ServerSentMessage` |
+| Services | `Registry`, `ServiceRegistry`, `Reified`, `RequestScope` |
+| Runtime configuration | `Environment`, `EnvironmentOptions`, `Server`, `ServerOptions`, `SslOptions` |
+| Errors | `ErrorHandler`, `DefaultErrorHandler`, `HttpProblem`, `ValidationResult` |
+| Extensions | `Extension`, `GracefulShutdown`, `OpenAPIModule` |

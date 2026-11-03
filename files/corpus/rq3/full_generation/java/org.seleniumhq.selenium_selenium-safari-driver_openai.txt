@@ -1,0 +1,343 @@
+# Selenium Safari Driver for Java
+
+`org.seleniumhq.selenium:selenium-safari-driver` provides Java APIs for creating and controlling Safari browser sessions through Selenium’s WebDriver interfaces.
+
+The primary entry point is `SafariDriver`, which extends `RemoteWebDriver`. It therefore supports standard browser automation operations such as navigation, script execution, screenshots, printing, input actions, downloads, virtual authenticators, and WebDriver session management. The library also exposes Safari-specific configuration and capabilities, including permission management and debugger attachment.
+
+## Getting started
+
+Add the dependency to your build. Use the version appropriate for the Selenium release used by the rest of your project.
+
+### Maven
+
+```xml
+<dependency>
+  <groupId>org.seleniumhq.selenium</groupId>
+  <artifactId>selenium-safari-driver</artifactId>
+  <version>${selenium.version}</version>
+</dependency>
+```
+
+### Gradle
+
+```groovy
+dependencies {
+  implementation("org.seleniumhq.selenium:selenium-safari-driver:${seleniumVersion}")
+}
+```
+
+## Core API
+
+### `SafariDriver`
+
+`SafariDriver` is the main browser-driver implementation.
+
+```java
+SafariDriver driver = new SafariDriver();
+```
+
+It can also be created with options, an explicit driver service, or HTTP client configuration:
+
+```java
+SafariOptions options = new SafariOptions();
+
+SafariDriver driver = new SafariDriver(options);
+```
+
+```java
+SafariDriverService service = SafariDriverService.createDefaultService();
+SafariOptions options = new SafariOptions();
+
+SafariDriver driver = new SafariDriver(service, options);
+```
+
+```java
+ClientConfig clientConfig = ClientConfig.defaultConfig();
+
+SafariDriver driver = new SafariDriver(options, clientConfig);
+```
+
+Because it extends `RemoteWebDriver`, `SafariDriver` provides APIs including:
+
+- `get(String url)` — navigate to a URL.
+- `getTitle()` and `getCurrentUrl()` — inspect the current page.
+- `findElement(By)` and `findElements(By)` — locate page elements.
+- `executeScript(...)` and `executeAsyncScript(...)` — run JavaScript.
+- `getScreenshotAs(OutputType<X>)` — capture a screenshot.
+- `print(PrintOptions)` — produce a PDF representation of a page.
+- `manage()`, `navigate()`, and `switchTo()` — access browser management, navigation, and target-switching APIs.
+- `quit()` — end the session.
+
+Always close a driver session when it is no longer needed.
+
+```java
+driver.quit();
+```
+
+## Configuring Safari
+
+### `SafariOptions`
+
+Use `SafariOptions` to configure session capabilities before creating the driver.
+
+```java
+SafariOptions options = new SafariOptions()
+    .setAutomaticInspection(true)
+    .setAutomaticProfiling(false)
+    .setUseTechnologyPreview(false);
+
+SafariDriver driver = new SafariDriver(options);
+```
+
+Available Safari-specific option methods include:
+
+| Method | Purpose |
+|---|---|
+| `setAutomaticInspection(boolean)` | Enable or disable automatic inspection. |
+| `setAutomaticProfiling(boolean)` | Enable or disable automatic profiling. |
+| `setUseTechnologyPreview(boolean)` | Request use of Safari Technology Preview. |
+| `enableBiDi()` | Enable WebDriver BiDi support for the session. |
+| `merge(Capabilities)` | Merge additional capabilities into the options. |
+| `SafariOptions.fromCapabilities(Capabilities)` | Create Safari options from an existing capabilities object. |
+
+`SafariOptions` also inherits general WebDriver option methods from `AbstractDriverOptions`, such as:
+
+```java
+SafariOptions options = new SafariOptions()
+    .setBrowserVersion("latest")
+    .setAcceptInsecureCerts(true)
+    .setPageLoadStrategy(PageLoadStrategy.EAGER)
+    .setImplicitWaitTimeout(Duration.ofSeconds(5))
+    .setPageLoadTimeout(Duration.ofSeconds(30))
+    .setScriptTimeout(Duration.ofSeconds(10))
+    .setEnableDownloads(true);
+```
+
+## Safari permissions
+
+`SafariDriver` implements `HasPermissions`, allowing permissions to be set and inspected for the current session.
+
+```java
+try (SafariDriver driver = new SafariDriver()) {
+  driver.setPermissions("geolocation", true);
+
+  Map<String, Boolean> permissions = driver.getPermissions();
+  System.out.println(permissions);
+}
+```
+
+The permission name is supplied as a string. Use permission identifiers supported by the target Safari environment.
+
+The same functionality is available through the `HasPermissions` interface:
+
+```java
+HasPermissions permissions = driver;
+
+permissions.setPermissions("notifications", false);
+Map<String, Boolean> currentPermissions = permissions.getPermissions();
+```
+
+## Debugger attachment
+
+`SafariDriver` implements `HasDebugger`.
+
+```java
+try (SafariDriver driver = new SafariDriver()) {
+  driver.attachDebugger();
+
+  driver.get("https://example.test/");
+}
+```
+
+Use `attachDebugger()` when a Safari session requires debugger attachment.
+
+## WebDriver BiDi
+
+Safari options can enable BiDi support:
+
+```java
+SafariOptions options = new SafariOptions().enableBiDi();
+
+try (SafariDriver driver = new SafariDriver(options)) {
+  driver.get("https://example.test/");
+}
+```
+
+`SafariDriver` inherits the `HasBiDi` contract through `RemoteWebDriver`. Obtain the optional BiDi connection with `maybeGetBiDi()` or require one with `getBiDi()`.
+
+```java
+SafariOptions options = new SafariOptions().enableBiDi();
+
+try (SafariDriver driver = new SafariDriver(options)) {
+  driver.maybeGetBiDi().ifPresent(bidi -> {
+    System.out.println("BiDi is available");
+  });
+}
+```
+
+The `BiDi` API supports command execution and event subscriptions:
+
+- `send(Command<X>)` sends a protocol command and waits for its result.
+- `addListener(Event<X>, Consumer<X>)` registers an event listener.
+- `removeListener(String)` removes a listener by ID.
+- `clearListeners()` removes all listeners.
+- `getBidiSessionStatus()` retrieves connection readiness information.
+- `close()` closes the BiDi connection.
+
+For example, subscribe to log entries:
+
+```java
+import org.openqa.selenium.bidi.BiDi;
+import org.openqa.selenium.bidi.log.Log;
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariOptions;
+
+SafariOptions options = new SafariOptions().enableBiDi();
+
+try (SafariDriver driver = new SafariDriver(options)) {
+  BiDi bidi = driver.getBiDi();
+
+  String listenerId = bidi.addListener(
+      Log.entryAdded(),
+      entry -> System.out.println(entry));
+
+  driver.get("https://example.test/");
+
+  bidi.removeListener(listenerId);
+}
+```
+
+## Driver services
+
+### `SafariDriverService`
+
+`SafariDriverService` represents a local Safari driver service.
+
+```java
+SafariDriverService service = SafariDriverService.createDefaultService();
+SafariOptions options = new SafariOptions();
+
+try (SafariDriver driver = new SafariDriver(service, options)) {
+  driver.get("https://example.test/");
+}
+```
+
+A service can also be constructed explicitly:
+
+```java
+SafariDriverService service = new SafariDriverService(
+    executable,
+    port,
+    timeout,
+    arguments,
+    environment);
+```
+
+The service exposes driver metadata through methods such as:
+
+- `getDriverName()`
+- `getDriverProperty()`
+- `getDriverEnvironmentVariable()`
+- `getDriverExecutable()`
+
+### `SafariTechPreviewDriverService`
+
+`SafariTechPreviewDriverService` provides a corresponding service type for Safari Technology Preview:
+
+```java
+SafariTechPreviewDriverService service =
+    SafariTechPreviewDriverService.createDefaultService();
+```
+
+It exposes driver metadata and default driver options:
+
+```java
+Capabilities defaultOptions = service.getDefaultDriverOptions();
+```
+
+## Driver discovery
+
+`SafariDriverInfo` and `SafariTechPreviewDriverInfo` implement `WebDriverInfo`. They can be used to inspect support and availability before creating a driver.
+
+```java
+SafariDriverInfo info = new SafariDriverInfo();
+
+boolean available = info.isAvailable();
+boolean present = info.isPresent();
+
+Capabilities canonical = info.getCanonicalCapabilities();
+```
+
+Both types provide:
+
+- `getDisplayName()`
+- `getCanonicalCapabilities()`
+- `isSupporting(Capabilities)`
+- `isSupportingCdp()`
+- `isSupportingBiDi()`
+- `isAvailable()`
+- `isPresent()`
+- `getMaximumSimultaneousSessions()`
+- `createDriver(Capabilities, ClientConfig)`
+
+Example:
+
+```java
+SafariDriverInfo info = new SafariDriverInfo();
+SafariOptions options = new SafariOptions();
+
+Optional<WebDriver> created =
+    info.createDriver(options, ClientConfig.defaultConfig());
+
+created.ifPresent(driver -> {
+  try {
+    driver.get("https://example.test/");
+    System.out.println(driver.getTitle());
+  } finally {
+    driver.quit();
+  }
+});
+```
+
+## End-to-end example
+
+The following example configures a Safari session, grants a permission, opens a page, runs JavaScript, and ends the session.
+
+```java
+import org.openqa.selenium.safari.SafariDriver;
+import org.openqa.selenium.safari.SafariOptions;
+
+public class SafariExample {
+  public static void main(String[] args) {
+    SafariOptions options = new SafariOptions()
+        .setAutomaticInspection(true)
+        .setAcceptInsecureCerts(true);
+
+    try (SafariDriver driver = new SafariDriver(options)) {
+      driver.setPermissions("geolocation", true);
+
+      driver.get("https://example.test/");
+
+      System.out.println("Title: " + driver.getTitle());
+      System.out.println("URL: " + driver.getCurrentUrl());
+
+      Object readyState = driver.executeScript("return document.readyState");
+      System.out.println("Document state: " + readyState);
+    }
+  }
+}
+```
+
+## Related Selenium types
+
+The Safari driver integrates with shared Selenium APIs:
+
+- **Capabilities:** `Capabilities`, `MutableCapabilities`, `ImmutableCapabilities`, and `PersistentCapabilities`.
+- **Remote configuration:** `ClientConfig`, `DriverService`, and `RemoteWebDriverBuilder`.
+- **Browser automation:** `WebDriver`, `WebElement`, `By`, `Actions`, `JavascriptExecutor`, `TakesScreenshot`, and `PrintsPage`.
+- **Protocol extensions:** `HasBiDi`, `BiDi`, and related BiDi command and event types.
+- **Errors:** Safari and WebDriver failures are represented by `WebDriverException` subclasses, including `ConnectionClosedException`, `SessionNotCreatedException`, and `UnreachableBrowserException`.
+
+## Resource management
+
+`SafariDriver` is used with try-with-resources in the examples because it inherits closeable behavior through its remote-driver implementation. Whether using try-with-resources or explicit lifecycle management, terminate each session with `quit()` when browser automation is complete.
