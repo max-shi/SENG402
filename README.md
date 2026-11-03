@@ -27,7 +27,7 @@ Each `src/` folder has its own README listing its files, starting at [`src/READM
 | `files/analysis/` | Results and figures |
 | `files/corpus/` | One folder per sampling frame: manifests, logs, LIWC-22 output, per-frame results |
 | `RULES.md` | Decision rules, filters, exclusions and changes from the plan |
-| `report/` | Report figures and literature search record (the written report itself isn't in this repo) |
+| `report/` | Report source (`main.tex`, `references.bib`, `figures/`) and literature search record |
 | `tests/` | Automated tests for the core statistics and text handling |
 | `archive/` | Scripts and files no longer in use (see `archive/README.md`) |
 
@@ -129,6 +129,18 @@ Run `confirmatory_liwc_stats.py` first: it produces the per-frame statistics, an
 
 - Automated tests only cover the core statistics and text handling (`tests/`). Other quality checks are the validity audits, permutation baselines, contamination checks and fixed seeds.
 - The script defaults for permutation counts have changed over time: the p = 0.0099 in the report matches a 100-permutation run.
+
+## Building the report
+
+The report is LaTeX (IEEEtran). From `report/`:
+
+```bash
+pdflatex main && bibtex main && pdflatex main && pdflatex main
+```
+
+Or upload `main.tex`, `references.bib` and `figures/` to Overleaf. Figures are read from
+`figures/`. Some are also written there by the analysis scripts, so rerunning those scripts
+can change them.
 
 ## Further reading
 
